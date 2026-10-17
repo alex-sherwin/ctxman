@@ -1,0 +1,62 @@
+---
+import { getCollection } from 'astro:content';
+import DatasetBadge from '../../components/DatasetBadge.astro';
+import EmptyState from '../../components/EmptyState.astro';
+import EntryTable from '../../components/EntryTable.astro';
+import FilterForm from '../../components/FilterForm.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import { getDataset } from '../../datasets/registry.ts';
+import { filterEntries } from '../../lib/entry-filter.ts';
+import { listEntries } from '../../lib/entries.ts';
+import { parseListParams } from '../../lib/url-state.ts';
+import Base from '../../layouts/Base.astro';
+
+const def = getDataset(Astro.params.dataset ?? '');
+if (!def) return Astro.rewrite('/404');
+
+// Unknown / not-applicable params are ignored by parseListParams (never an error).
+const params = parseListParams(Astro.url.searchParams, def.id);
+const all = await listEntries(def.id);
+const entries = filterEntries(all, {
+  q: params.q,
+  states: params.states,
+  tags: params.tags,
+  type: params.type,
+  sort: params.sort,
+});
+
+// EntrySummary carries no reference owner; the Owner column reads it from the collection.
+const owners: Record<string, string> = {};
+if (def.id === 'reference') {
+  for (const ref of await getCollection('reference')) owners[ref.id] = ref.data.owner;
+}
+
+const newHref = def.id === 'context' ? '/forge?context=new' : `/tools?add=${def.id}#add-entry`;
+---
+
+<Base title={def.label} active={def.id}>
+  <PageHeader title={def.label}>
+    <DatasetBadge slot="eyebrow" dataset={def.id} />
+    <a
+      slot="actions"
+      class="ck-button ck-button--secondary ck-button--sm"
+      href={newHref}
+      data-testid="list-new-entry"
+    >
+      <span class="ck-button__label">New {def.singular}</span>
+    </a>
+    <span slot="meta">{def.description}</span>
+  </PageHeader>
+
+  <FilterForm def={def} params={params} entries={all} shown={entries.length} />
+
+  {
+    entries.length > 0 ? (
+      <EntryTable def={def} entries={entries} sort={params.sort} owners={owners} />
+    ) : (
+      <EmptyState title={all.length > 0 ? 'No entries match these filters.' : `No ${def.plural} yet.`}>
+        {all.length > 0 ? <a href={`/${def.id}`}>Clear filters</a> : <a href={newHref}>Add the first one</a>}
+      </EmptyState>
+    )
+  }
+</Base>

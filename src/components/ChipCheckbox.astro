@@ -1,0 +1,27 @@
+---
+import type { DatasetId } from '../datasets/registry.ts';
+
+// HTML twin of the kit's Chip (src/ui/kit/Chip.tsx) for the GET filter form: a real checkbox / radio.
+interface Props {
+  name: string;
+  value: string;
+  label: string;
+  /** id of the input (also the focus-restore target of the list-page script). */
+  id: string;
+  testid: string;
+  type?: 'checkbox' | 'radio';
+  count?: number | undefined;
+  checked?: boolean;
+  dataset?: DatasetId | undefined;
+}
+
+const { name, value, label, id, testid, type = 'checkbox', count, checked = false, dataset } =
+  Astro.props;
+---
+
+<label class="ck-chip ck-chip--sm" data-ds={dataset}>
+  <input class="ck-sr-only" type={type} name={name} value={value} id={id} checked={checked} data-testid={testid} />
+  {dataset && <span class="ck-chip__dot" aria-hidden="true" />}
+  <span class="ck-chip__label">{label}</span>
+  {count !== undefined && <span class="ck-chip__count">{count}</span>}
+</label>

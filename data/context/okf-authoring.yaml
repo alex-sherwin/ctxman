@@ -1,0 +1,17 @@
+name: okf-authoring
+description: Everything needed to write or review OKF bundles in ctxman, including the format summary, the authoring skill and a model skill repository.
+tags:
+  - okf
+links:
+  - dataset: kb
+    slug: okf-format
+    notes: |
+      The rules for concepts, provenance and navigation.
+  - dataset: skill
+    slug: okf-authoring
+    notes: |
+      Step-by-step instructions plus a preflight checklist.
+  - dataset: reference
+    slug: anthropic-skills
+    notes: |
+      Example of well-formed skills; use it for style, not content.

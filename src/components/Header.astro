@@ -1,0 +1,71 @@
+---
+import { DATASETS } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
+import SearchButton from './SearchButton.astro';
+
+interface Props {
+  active?: DatasetId | 'forge' | 'tools' | 'home';
+}
+
+const { active } = Astro.props;
+const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
+
+// "page" on the exact page, "true" (section) on detail / sub-doc pages below it.
+const current = (id: string, href: string): 'page' | 'true' | undefined =>
+  pathname === href ? 'page' : active === id ? 'true' : undefined;
+---
+
+<header class="cx-header" data-testid="app-header">
+  <a
+    class="cx-header__brand"
+    href="/"
+    data-testid="nav-home"
+    aria-label="ctxman home"
+    aria-current={current('home', '/')}
+  >
+    <span class="cx-header__logo" aria-hidden="true">cx</span>
+    <span
+      class="cx-header__title cyber-glitch cyber-glitch--subtle cyber-text-glow"
+      data-text="ctxman"
+      aria-hidden="true">ctxman</span
+    >
+  </a>
+  <nav class="cx-nav" aria-label="Primary" data-testid="primary-nav">
+    <ul class="cx-nav__list">
+      {
+        DATASETS.map((d) => (
+          <li>
+            <a
+              class="cx-nav__link"
+              data-ds={d.id}
+              href={`/${d.id}`}
+              aria-current={current(d.id, `/${d.id}`)}
+              data-testid={`nav-${d.id}`}
+            >
+              <span class="cx-nav__dot" aria-hidden="true" />
+              {d.navLabel}
+            </a>
+          </li>
+        ))
+      }
+      <li class="cx-nav__sep" aria-hidden="true"></li>
+      <li>
+        <a
+          class="cx-nav__link cx-nav__link--tool"
+          href="/forge"
+          aria-current={current('forge', '/forge')}
+          data-testid="nav-forge">Forge</a
+        >
+      </li>
+      <li>
+        <a
+          class="cx-nav__link cx-nav__link--tool"
+          href="/tools"
+          aria-current={current('tools', '/tools')}
+          data-testid="nav-tools">Tools</a
+        >
+      </li>
+    </ul>
+  </nav>
+  <SearchButton />
+</header>

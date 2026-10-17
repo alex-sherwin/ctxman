@@ -1,0 +1,13 @@
+---
+// One key/value row of a MetaPanel `<dl class="cx-meta__list">` (rows are `display: contents` in a 2-column grid).
+interface Props {
+  label: string;
+}
+
+const { label } = Astro.props;
+---
+
+<div class="cx-meta__row">
+  <dt>{label}</dt>
+  <dd><slot /></dd>
+</div>

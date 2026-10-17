@@ -1,0 +1,241 @@
+---
+import { REFERENCE_TYPES, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
+import type { DatasetDef } from '../datasets/registry.ts';
+import { stateCounts as countStates, tagCounts } from '../lib/entry-filter.ts';
+import type { EntrySummary } from '../lib/entry-summary.ts';
+import type { ListParams } from '../lib/url-state.ts';
+import ChipCheckbox from './ChipCheckbox.astro';
+
+interface Props {
+  def: DatasetDef;
+  /** Parsed URL params (the source of truth for what the form shows). */
+  params: ListParams;
+  /** Every entry of the dataset (chip counts are over the whole dataset, so they stay stable while toggling). */
+  entries: EntrySummary[];
+  /** Entries matching the filters. */
+  shown: number;
+}
+
+const { def, params, entries, shown } = Astro.props;
+const lifecycle = def.states !== undefined;
+const anyActive =
+  params.q.trim() !== '' ||
+  params.states.length > 0 ||
+  params.tags.length > 0 ||
+  params.type !== null ||
+  params.sort !== 'modified';
+
+const stateTotals = countStates(entries);
+
+const typeTotals: Record<string, number> = {};
+for (const e of entries) if (e.refType) typeTotals[e.refType] = (typeTotals[e.refType] ?? 0) + 1;
+
+// Tag chips: the 20 most used tags, plus every selected tag (even when unknown, so it can be un-ticked).
+const allTags = tagCounts(entries);
+const MAX_VISIBLE_TAGS = 20;
+const visibleTags = allTags.slice(0, MAX_VISIBLE_TAGS);
+const shownTags = new Set(visibleTags.map((t) => t.tag));
+const restTags = allTags.slice(MAX_VISIBLE_TAGS).filter((t) => !params.tags.includes(t.tag));
+for (const tag of params.tags) {
+  if (!shownTags.has(tag)) {
+    visibleTags.push({ tag, count: allTags.find((t) => t.tag === tag)?.count ?? 0 });
+    shownTags.add(tag);
+  }
+}
+
+const usedIds = new Set<string>();
+function tagId(tag: string): string {
+  const base = `f-tag-${tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tag'}`;
+  let id = base;
+  for (let n = 2; usedIds.has(id); n++) id = `${base}-${n}`;
+  usedIds.add(id);
+  return id;
+}
+const visible = visibleTags.map((t) => ({ ...t, id: tagId(t.tag) }));
+const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
+---
+
+<form
+  class="cx-filters"
+  method="get"
+  action={`/${def.id}`}
+  role="search"
+  aria-label={`Filter ${def.plural}`}
+  data-testid="list-filter-form"
+  data-filter-form
+>
+  <div class="cx-filters__row">
+    <label class="ck-sr-only" for="f-q">Filter text</label>
+    <input
+      id="f-q"
+      class="ck-input cx-filters__q"
+      type="search"
+      name="q"
+      value={params.q}
+      placeholder="Filter by name, title, description, tag…"
+      data-testid="list-filter-q"
+      autocomplete="off"
+    />
+    <label class="cx-filters__sort">
+      <span class="ck-field__label">Sort</span>
+      <select id="f-sort" class="ck-native-select" name="sort" data-testid="list-sort">
+        <option value="modified" selected={params.sort === 'modified'}>Last modified</option>
+        <option value="name" selected={params.sort === 'name'}>Name</option>
+        {lifecycle && <option value="state" selected={params.sort === 'state'}>State</option>}
+      </select>
+    </label>
+    <button
+      class="ck-button ck-button--primary ck-button--sm cx-filters__submit"
+      type="submit"
+      data-testid="list-filter-apply"><span class="ck-button__label">Apply</span></button
+    >
+    {
+      anyActive && (
+        <a
+          class="ck-button ck-button--ghost ck-button--sm"
+          href={`/${def.id}`}
+          data-testid="list-filter-clear"
+        >
+          <span class="ck-button__label">Clear</span>
+        </a>
+      )
+    }
+    <output class="cx-filters__count" data-testid="list-result-count" aria-live="polite"
+      >{shown} of {entries.length}</output
+    >
+  </div>
+  {
+    def.states && (
+      <fieldset class="cx-filters__facet">
+        <legend class="cx-filters__legend">State</legend>
+        <div class="ck-chip-group">
+          {def.states.map((s) => (
+            <ChipCheckbox
+              name="state"
+              value={s.id}
+              label={s.label}
+              count={stateTotals[s.id] ?? 0}
+              checked={params.states.includes(s.id)}
+              id={`f-state-${s.id}`}
+              testid={`list-chip-state-${s.id}`}
+            />
+          ))}
+        </div>
+      </fieldset>
+    )
+  }
+  {
+    def.id === 'reference' && (
+      <fieldset class="cx-filters__facet">
+        <legend class="cx-filters__legend">Type</legend>
+        <div class="ck-chip-group">
+          <ChipCheckbox
+            type="radio"
+            name="type"
+            value=""
+            label="All"
+            checked={params.type === null}
+            id="f-type-all"
+            testid="list-chip-type-all"
+          />
+          {REFERENCE_TYPES.map((t) => (
+            <ChipCheckbox
+              type="radio"
+              name="type"
+              value={t}
+              label={REFERENCE_TYPE_LABELS[t]}
+              count={typeTotals[t] ?? 0}
+              checked={params.type === t}
+              id={`f-type-${t}`}
+              testid={`list-chip-type-${t}`}
+            />
+          ))}
+        </div>
+      </fieldset>
+    )
+  }
+  {
+    visible.length + rest.length > 0 && (
+      <fieldset class="cx-filters__facet">
+        <legend class="cx-filters__legend">Tags</legend>
+        <div class="ck-chip-group">
+          {visible.map((t) => (
+            <ChipCheckbox
+              name="tag"
+              value={t.tag}
+              label={t.tag}
+              count={t.count}
+              checked={params.tags.includes(t.tag)}
+              id={t.id}
+              testid={`list-chip-tag-${t.tag}`}
+            />
+          ))}
+          {rest.length > 0 && (
+            <details class="cx-filters__more">
+              <summary class="ck-button ck-button--ghost ck-button--sm">+{rest.length} more</summary>
+              <div class="ck-chip-group">
+                {rest.map((t) => (
+                  <ChipCheckbox
+                    name="tag"
+                    value={t.tag}
+                    label={t.tag}
+                    count={t.count}
+                    checked={false}
+                    id={t.id}
+                    testid={`list-chip-tag-${t.tag}`}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      </fieldset>
+    )
+  }
+</form>
+
+<script>
+  // Progressive enhancement (UI_SPEC §E.4). Without JS the form is a plain GET form with an Apply button.
+  // With JS every chip / select change navigates to the clean URL, so back / forward work natively.
+  // The text field does NOT auto-submit while typing (a reload would lose the caret); Enter submits.
+  const FOCUS_KEY = 'cx-filter-focus';
+
+  function submitClean(form: HTMLFormElement, focusId: string | undefined): void {
+    const params = new URLSearchParams();
+    for (const [key, value] of new FormData(form)) {
+      if (typeof value !== 'string' || value.trim() === '') continue;
+      if (key === 'sort' && value === 'modified') continue;
+      params.append(key, value);
+    }
+    try {
+      if (focusId) sessionStorage.setItem(FOCUS_KEY, focusId);
+    } catch {
+      // storage blocked: focus restoration is a nicety only
+    }
+    const qs = params.toString();
+    location.assign((form.getAttribute('action') ?? location.pathname) + (qs ? `?${qs}` : ''));
+  }
+
+  const form = document.querySelector<HTMLFormElement>('[data-filter-form]');
+  if (form) {
+    form.dataset.enhanced = '';
+    try {
+      const id = sessionStorage.getItem(FOCUS_KEY);
+      if (id) {
+        sessionStorage.removeItem(FOCUS_KEY);
+        document.getElementById(id)?.focus();
+      }
+    } catch {
+      // see above
+    }
+    form.addEventListener('change', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === 'search') return;
+      if (target instanceof HTMLElement) submitClean(form, target.id);
+    });
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitClean(form, document.activeElement?.id);
+    });
+  }
+</script>

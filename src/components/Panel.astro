@@ -1,0 +1,20 @@
+---
+interface Props {
+  title: string;
+  /** id of the heading (aria-labelledby target). */
+  id: string;
+  testid: string;
+  count?: number | undefined;
+}
+
+const { title, id, testid, count } = Astro.props;
+---
+
+<section class="cx-panel" aria-labelledby={id} data-testid={testid}>
+  <h2 class="cx-panel__title" id={id}>
+    {title}
+    {count != null && <span class="cx-panel__count">{count}</span>}
+    <span class="cx-panel__actions"><slot name="actions" /></span>
+  </h2>
+  <slot />
+</section>

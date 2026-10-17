@@ -1,0 +1,228 @@
+---
+import { getDataset } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
+import type { SkillData } from '../datasets/schemas.ts';
+import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
+import { stringifyYaml } from '../lib/yaml.ts';
+import Freshness from './Freshness.astro';
+import MetaRow from './MetaRow.astro';
+import OkfStatusBadge from './OkfStatusBadge.astro';
+import SkillMeta from './SkillMeta.astro';
+import StaleBadge from './StaleBadge.astro';
+import StateBadge from './StateBadge.astro';
+import { withParams } from '../lib/url-state.ts';
+
+interface Props {
+  dataset: DatasetId;
+  kind: 'okf' | 'skill' | 'reference' | 'context';
+  /** Frontmatter / yaml data of the entry (or of the sub-doc). */
+  data: Record<string, unknown>;
+  /** ISO mtime of the shown file / entry. */
+  lastModified: string;
+  /** Data-dir-relative posix path of the shown file, e.g. 'kb/ctxman/main.md'. */
+  file: string;
+  /** Sub-doc pages: link back to the bundle's entry. */
+  bundle?: { url: string; title: string };
+}
+
+const { dataset, kind, data, lastModified, file, bundle } = Astro.props;
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined);
+const toIso = (v: unknown): string | undefined => {
+  const d = v instanceof Date ? v : typeof v === 'string' ? new Date(v) : undefined;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined;
+};
+
+const description = str(data.description);
+const tags = Array.isArray(data.tags) ? data.tags.filter((t): t is string => typeof t === 'string') : [];
+const state = getDataset(dataset)?.states ? str(data.state) : undefined;
+const status = str(data.status);
+const staleAfter =
+  data.stale_after instanceof Date || typeof data.stale_after === 'string'
+    ? toYmd(data.stale_after) || undefined
+    : undefined;
+const stale = isStale(staleAfter, Date.now());
+const type = str(data.type);
+
+const generated = isRecord(data.generated) ? data.generated : undefined;
+const generatedBy = str(generated?.by);
+const generatedAt = toIso(generated?.at);
+
+const verified = (Array.isArray(data.verified) ? data.verified : data.verified ? [data.verified] : []).flatMap(
+  (v: unknown) => {
+    const by = isRecord(v) ? str(v.by) : undefined;
+    return by ? [{ by, at: isRecord(v) ? toIso(v.at) : undefined }] : [];
+  },
+);
+const trust =
+  verified.length === 0
+    ? { label: 'unverified', tone: 'muted' }
+    : verified.some((v) => v.by.startsWith('human:'))
+      ? { label: 'human-reviewed', tone: 'success' }
+      : { label: 'machine-confirmed', tone: 'info' };
+
+interface Source {
+  id?: string;
+  resource: string;
+  title?: string;
+}
+const rawSources = Array.isArray(data.sources) ? data.sources : data.sources === undefined ? [] : [data.sources];
+const sources: Source[] = [];
+const oddSources: unknown[] = [];
+for (const s of rawSources) {
+  const resource = isRecord(s) ? str(s.resource) : undefined;
+  if (isRecord(s) && resource) {
+    const source: Source = { resource };
+    const id = str(s.id);
+    const title = str(s.title);
+    if (id) source.id = id;
+    if (title) source.title = title;
+    sources.push(source);
+  } else {
+    oddSources.push(s);
+  }
+}
+const isUrl = (s: string): boolean => /^https?:\/\//i.test(s);
+const filePath = `data/${file}`;
+---
+
+<section class="cx-panel cx-meta" aria-labelledby="h-meta" data-testid="detail-meta">
+  <h2 class="cx-panel__title" id="h-meta">Details</h2>
+  <dl class="cx-meta__list">
+    {
+      bundle && (
+        <MetaRow label="Bundle">
+          <a href={bundle.url}>{bundle.title}</a>
+        </MetaRow>
+      )
+    }
+    {description && <MetaRow label="Description">{description}</MetaRow>}
+    {
+      tags.length > 0 && (
+        <MetaRow label="Tags">
+          <ul>
+            {tags.map((tag) => (
+              <li>
+                <a class="ck-badge ck-badge--tag" href={withParams(`/${dataset}`, { tag })}>
+                  {tag}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </MetaRow>
+      )
+    }
+    {
+      state && (
+        <MetaRow label="State">
+          <StateBadge dataset={dataset} state={state} />
+        </MetaRow>
+      )
+    }
+    <MetaRow label="Modified">
+      <Freshness iso={lastModified} />
+      {" "}
+      <span class="cx-subtle">{formatAbsolute(lastModified)}</span>
+    </MetaRow>
+    {
+      kind === 'okf' && status && (
+        <MetaRow label="Status">
+          {status === 'draft' || status === 'deprecated' ? (
+            <OkfStatusBadge status={status} />
+          ) : (
+            status
+          )}
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && staleAfter && (
+        <MetaRow label="Stale after">
+          <span class="cx-mono">{staleAfter}</span>
+          {" "}
+          {stale && <StaleBadge since={staleAfter} />}
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && generatedBy && (
+        <MetaRow label="Generated">
+          <code class="cx-mono">{generatedBy}</code>
+          {generatedAt && (
+            <>
+              {' · '}
+              <Freshness iso={generatedAt} />
+            </>
+          )}
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && (verified.length > 0 || generatedBy) && (
+        <MetaRow label="Verified">
+          {verified.length > 0 && (
+            <ul class="cx-meta__col">
+              {verified.map((v) => (
+                <li>
+                  <code class="cx-mono">{v.by}</code>
+                  {v.at && (
+                    <>
+                      {' · '}
+                      <Freshness iso={v.at} />
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <span class={`ck-badge ck-badge--${trust.tone}`}>{trust.label}</span>
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && (sources.length > 0 || oddSources.length > 0) && (
+        <MetaRow label="Sources">
+          {sources.length > 0 && (
+            <ul class="cx-meta__col">
+              {sources.map((s) => (
+                <li>
+                  {s.id && <code class="cx-mono">{s.id} </code>}
+                  {isUrl(s.resource) ? (
+                    <a href={s.resource} target="_blank" rel="noreferrer">
+                      {s.title ?? s.resource}
+                    </a>
+                  ) : (
+                    <span title={s.resource}>{s.title ?? s.resource}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {oddSources.length > 0 && <pre class="cx-meta__yaml">{stringifyYaml(oddSources)}</pre>}
+        </MetaRow>
+      )
+    }
+    {
+      type && (kind === 'okf' || kind === 'reference') && (
+        <MetaRow label="Type">
+          <span class="ck-badge ck-badge--muted ck-badge--mono">{type}</span>
+        </MetaRow>
+      )
+    }
+    {kind === 'skill' && <SkillMeta data={data as SkillData} />}
+    <MetaRow label="File">
+      <code class="cx-mono">{filePath}</code>
+      {" "}
+      <button
+        type="button"
+        class="ck-button ck-button--ghost ck-button--sm"
+        data-copy={filePath}
+        aria-label="Copy file path"
+      >
+        <span class="ck-button__label">Copy</span>
+      </button>
+    </MetaRow>
+  </dl>
+</section>

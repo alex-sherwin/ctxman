@@ -1,0 +1,44 @@
+---
+import type { SkillData } from '../datasets/schemas.ts';
+import MetaRow from './MetaRow.astro';
+
+// agentskills.io frontmatter rows of a skill, rendered inside MetaPanel's `<dl>`.
+interface Props {
+  data: SkillData;
+}
+
+const { data } = Astro.props;
+// Space-separated, but a pattern may hold spaces inside parentheses: Bash(pnpm run check:*)
+const allowedTools = (data['allowed-tools'] ?? '').match(/[^\s(]+(?:\([^)]*\))?/g) ?? [];
+const metadata = Object.entries(data.metadata ?? {});
+---
+
+{data.license && <MetaRow label="License">{data.license}</MetaRow>}
+{data.compatibility && <MetaRow label="Compat.">{data.compatibility}</MetaRow>}
+{
+  allowedTools.length > 0 && (
+    <MetaRow label="Tools">
+      <ul>
+        {allowedTools.map((tool) => (
+          <li>
+            <span class="ck-badge ck-badge--tag">{tool}</span>
+          </li>
+        ))}
+      </ul>
+    </MetaRow>
+  )
+}
+{
+  metadata.length > 0 && (
+    <MetaRow label="Metadata">
+      <dl class="cx-meta__sub">
+        {metadata.map(([key, value]) => (
+          <>
+            <dt>{key}</dt>
+            <dd class="cx-mono">{value}</dd>
+          </>
+        ))}
+      </dl>
+    </MetaRow>
+  )
+}

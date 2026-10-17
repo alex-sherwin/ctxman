@@ -1,0 +1,8 @@
+name: catcom
+description: ksa mod for in-game scripting using lua or typescript
+type: remote-repo
+uri: git@github.com:meow-sci/catcom.git
+owner: me
+tags:
+  - ksa
+  - mod

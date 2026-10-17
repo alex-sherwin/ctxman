@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "semi": true,
+  "printWidth": 100,
+  // oxfmt 0.73 formats ts/tsx/js/json/css/md/yaml but NOT .astro (silently skipped).
+  // .gitignore entries (node_modules, dist, .astro, .tmp, test-results, ...) are also honored.
+  "ignorePatterns": [
+    "dist/**",
+    "public/**",
+    "plans/**",
+    "data/**",
+    ".tmp/**",
+    ".agents/**",
+    ".claude/**",
+    "test-results/**",
+    "playwright-report/**",
+    "INITIAL_INSTRUCTIONS.md"
+  ]
+}

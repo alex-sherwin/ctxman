@@ -1,0 +1,41 @@
+@layer cx-kit {
+  .ck-breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .ck-breadcrumbs__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .ck-breadcrumbs__item:not(:last-child)::after {
+    content: '/';
+    color: var(--border-strong);
+  }
+  .ck-breadcrumbs__link {
+    color: var(--fg-muted);
+    text-decoration: none;
+    outline: none;
+  }
+  a.ck-breadcrumbs__link:hover,
+  .ck-breadcrumbs__link[data-hovered] {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .ck-breadcrumbs__link[data-current],
+  .ck-breadcrumbs__link[aria-current='page'] {
+    color: var(--fg);
+  }
+  .ck-breadcrumbs__link[data-focus-visible] {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+  .ck-breadcrumbs__link--mono {
+    font-family: var(--font-mono);
+    font-size: var(--fs-mono);
+  }
+}

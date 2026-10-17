@@ -1,0 +1,34 @@
+@layer cx-kit {
+  .ck-popover {
+    z-index: var(--z-popover);
+    max-height: min(360px, var(--visual-viewport-height));
+    overflow: auto;
+    color: var(--fg);
+    background: var(--surface-raised);
+    border: 1px solid var(--accent-line);
+    border-radius: var(--r-sm);
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--accent) 12%, transparent),
+      var(--shadow-md);
+    outline: none;
+  }
+  .ck-popover[data-entering] {
+    animation: ck-popover-in var(--dur-fast) var(--ease);
+  }
+  .ck-popover[data-exiting] {
+    animation: ck-popover-in var(--dur-fast) var(--ease) reverse;
+  }
+  @keyframes ck-popover-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-popover {
+      animation: none !important;
+    }
+  }
+}

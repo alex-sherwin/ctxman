@@ -1,0 +1,62 @@
+---
+import { DATASETS } from '../datasets/registry.ts';
+import type { ResolvedLink } from '../lib/entries.ts';
+import DatasetBadge from './DatasetBadge.astro';
+import EmptyState from './EmptyState.astro';
+import StateBadge from './StateBadge.astro';
+
+// The links of a context, grouped by dataset (registry order); links keep their stored order within a group.
+interface Props {
+  slug: string;
+  links: ResolvedLink[];
+}
+
+const { slug, links } = Astro.props;
+
+const groups = DATASETS.map((def) => ({
+  def,
+  links: links.filter((l) => l.dataset === def.id),
+})).filter((g) => g.links.length > 0);
+---
+
+<section aria-labelledby="h-links">
+  <h2 id="h-links">Links <span class="cx-subtle">({links.length})</span></h2>
+  {
+    groups.length === 0 ? (
+      <EmptyState title="No links yet.">
+        <a
+          slot="action"
+          class="ck-button ck-button--primary ck-button--sm"
+          href={`/forge?context=${slug}`}
+        >
+          <span class="ck-button__label">Open in Forge</span>
+        </a>
+      </EmptyState>
+    ) : (
+      groups.map((g) => (
+        <section class="cx-ctxgroup" data-ds={g.def.id} data-testid={`context-group-${g.def.id}`}>
+          <h3 class="cx-ctxgroup__title">
+            <DatasetBadge dataset={g.def.id} />
+            {g.def.label}
+            <span class="cx-subtle">{g.links.length}</span>
+          </h3>
+          <ol class="cx-ctxgroup__list">
+            {g.links.map((l) => (
+              <li class="cx-ctxlink" data-testid="context-link" data-slug={l.slug}>
+                <div class="cx-row">
+                  <a href={l.url}>{l.title ?? l.slug}</a>
+                  <code class="cx-subtle">{l.slug}</code>
+                  {l.state && <StateBadge dataset={l.dataset} state={l.state} />}
+                  {l.missing && <span class="ck-badge ck-badge--danger">missing</span>}
+                </div>
+                {l.notesHtml && (
+                  <div class="cx-prose cx-prose--compact cx-ctxlink__notes" set:html={l.notesHtml} />
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))
+    )
+  }
+</section>

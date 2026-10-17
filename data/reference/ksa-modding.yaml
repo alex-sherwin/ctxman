@@ -1,0 +1,8 @@
+name: ksa-modding
+description: KSA modding skill bundle (agentskills.io skill folder) distributed as a tarball
+type: remote-skill
+uri: https://meow.science.fail/ksa-coffer/downloads/ksa-modding-latest.tar.gz
+owner: me
+tags:
+  - ksa
+  - skills

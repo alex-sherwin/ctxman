@@ -1,0 +1,37 @@
+---
+import type { DatasetDef } from '../datasets/registry.ts';
+import type { EntrySummary } from '../lib/entry-summary.ts';
+import { stateGroup } from '../datasets/registry.ts';
+import { formatRelative } from '../lib/time.ts';
+
+interface Props {
+  def: DatasetDef;
+  entries: EntrySummary[];
+  nowMs: number;
+}
+
+const { def, entries, nowMs } = Astro.props;
+
+const count = (group: 'neutral' | 'active') =>
+  entries.filter((e) => e.state !== undefined && stateGroup(def.id, e.state) === group).length;
+
+let sub: string;
+if (def.states) {
+  sub = `${count('neutral')} pending · ${count('active')} active`;
+} else if (def.id === 'context') {
+  sub = `${entries.reduce((sum, e) => sum + (e.linkCount ?? 0), 0)} links`;
+} else if (entries.length === 0) {
+  sub = 'empty';
+} else {
+  const newest = entries.reduce((a, e) => (e.lastModified > a ? e.lastModified : a), '');
+  sub = `upd ${formatRelative(newest, nowMs)}`;
+}
+---
+
+<a class="cx-tile" data-ds={def.id} href={`/${def.id}`} data-testid={`dataset-card-${def.id}`}>
+  <div class="cyber-card cyber-card--interactive cx-tile__card">
+    <span class="cx-tile__label">{def.navLabel}</span>
+    <span class="cx-tile__count">{entries.length}</span>
+    <span class="cx-tile__sub">{sub}</span>
+  </div>
+</a>

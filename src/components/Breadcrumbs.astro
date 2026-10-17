@@ -1,0 +1,34 @@
+---
+// HTML twin of the kit's Breadcrumbs (src/ui/kit/Breadcrumbs.tsx). The last item is the current page.
+interface Props {
+  items: { label: string; href?: string | undefined; mono?: boolean | undefined }[];
+}
+
+const { items } = Astro.props;
+---
+
+<nav aria-label="Breadcrumb">
+  <ol class="ck-breadcrumbs">
+    {
+      items.map((item, i) => (
+        <li class="ck-breadcrumbs__item">
+          {i === items.length - 1 || !item.href ? (
+            <span
+              class:list={['ck-breadcrumbs__link', { 'ck-breadcrumbs__link--mono': item.mono }]}
+              aria-current={i === items.length - 1 ? 'page' : undefined}
+            >
+              {item.label}
+            </span>
+          ) : (
+            <a
+              class:list={['ck-breadcrumbs__link', { 'ck-breadcrumbs__link--mono': item.mono }]}
+              href={item.href}
+            >
+              {item.label}
+            </a>
+          )}
+        </li>
+      ))
+    }
+  </ol>
+</nav>

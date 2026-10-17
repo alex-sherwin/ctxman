@@ -1,0 +1,55 @@
+---
+import { isLinkableDatasetId } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
+import type { BackRef } from '../lib/entries.ts';
+import { withParams } from '../lib/url-state.ts';
+
+// "Linked from contexts": every context whose links point at this entry (all datasets except context).
+interface Props {
+  dataset: DatasetId;
+  slug: string;
+  refs: BackRef[];
+}
+
+const { dataset, slug, refs } = Astro.props;
+
+const NOTES_PREVIEW = 120;
+const preview = (notes: string): string => {
+  const flat = notes.replace(/\s+/g, ' ').trim();
+  return flat.length > NOTES_PREVIEW ? `${flat.slice(0, NOTES_PREVIEW).trimEnd()}…` : flat;
+};
+---
+
+<section class="cx-panel" aria-labelledby="h-backrefs" data-testid="detail-backrefs">
+  <h2 class="cx-panel__title" id="h-backrefs">
+    Linked from contexts <span class="cx-panel__count">{refs.length}</span>
+  </h2>
+  {
+    refs.length > 0 ? (
+      <ul class="cx-minilist">
+        {refs.map((ref) => (
+          <li class="cx-minilist__row cx-backref">
+            <a class="cx-minilist__title cx-truncate" href={`/context/${ref.context}`}>
+              {ref.context}
+            </a>
+            <a
+              class="ck-button ck-button--ghost ck-button--sm"
+              href={`/forge?context=${ref.context}`}
+              aria-label={`Open ${ref.context} in Forge`}
+            >
+              <span class="ck-button__label">Forge</span>
+            </a>
+            {ref.notes && <span class="cx-backref__notes cx-subtle cx-clamp-2">{preview(ref.notes)}</span>}
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p class="cx-backref__empty cx-subtle">
+        Not linked from any context.
+        {isLinkableDatasetId(dataset) && (
+          <a href={withParams('/forge', { dataset, q: slug })}>Find in Forge</a>
+        )}
+      </p>
+    )
+  }
+</section>

@@ -1,0 +1,8 @@
+name: blasto
+description: ksa mod for ground landing vfx
+type: remote-repo
+uri: git@github.com:meow-sci/blasto.git
+owner: me
+tags:
+  - ksa
+  - mod

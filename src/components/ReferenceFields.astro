@@ -1,0 +1,60 @@
+---
+import { OWNER_LABELS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
+import type { ReferenceData } from '../datasets/schemas.ts';
+import { classifyRemoteUri } from '../lib/remote-uri.ts';
+
+// Reference records have no markdown: their fields are the content (main column of the detail page).
+interface Props {
+  data: ReferenceData;
+}
+
+const { data } = Astro.props;
+
+const where =
+  data.type === 'local-repo' ? { label: 'Path', value: data.path } : { label: 'URI', value: data.uri };
+const subpath = data.subpath ?? '';
+const uriKind = data.type === 'remote-skill' ? classifyRemoteUri(data.uri) : null;
+const isUrl = /^https?:\/\//i.test(where.value);
+---
+
+<dl class="cx-fields" data-testid="reference-fields">
+  <dt>Type</dt>
+  <dd>
+    <span class="ck-badge ck-badge--muted ck-badge--mono">{data.type}</span>
+    {" "}
+    {
+      uriKind && (
+        <>
+          <span class="ck-badge ck-badge--info ck-badge--mono" data-testid="uri-kind-badge">{uriKind}</span>
+          {" "}
+        </>
+      )
+    }
+    <span class="cx-subtle">{REFERENCE_TYPE_LABELS[data.type]}</span>
+  </dd>
+  <dt>{where.label}</dt>
+  <dd>
+    {
+      isUrl ? (
+        <a class="cx-mono" href={where.value} target="_blank" rel="noreferrer">
+          {where.value} ↗
+        </a>
+      ) : (
+        <code class="cx-mono">{where.value}</code>
+      )
+    }
+    {" "}
+    <button
+      type="button"
+      class="ck-button ck-button--ghost ck-button--sm"
+      data-copy={where.value}
+      aria-label={`Copy ${where.label.toLowerCase()}`}
+    >
+      <span class="ck-button__label">Copy</span>
+    </button>
+  </dd>
+  <dt>Subpath</dt>
+  <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{uriKind === 'archive' ? 'archive root' : 'repo root'}</span>}</dd>
+  <dt>Owner</dt>
+  <dd>{OWNER_LABELS[data.owner]}</dd>
+</dl>

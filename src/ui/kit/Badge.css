@@ -1,0 +1,110 @@
+@layer cx-kit {
+  .ck-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    height: 16px;
+    padding: 0 var(--sp-2);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    line-height: 1;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+    background: var(--bg-muted);
+    border: var(--border-w) solid transparent;
+    border-radius: var(--r-sm);
+    vertical-align: middle;
+  }
+  .ck-badge--mono {
+    font-family: var(--font-mono);
+    font-weight: var(--fw-normal);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .ck-badge--ds {
+    color: var(--ds-fg);
+    background: var(--ds-bg);
+    border-color: var(--ds-line);
+    border-left: 2px solid var(--ds-c);
+    font-family: var(--font-mono);
+    font-weight: var(--fw-normal);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .ck-badge--state {
+    color: var(--st-fg);
+    background: var(--st-bg);
+    border-color: var(--st-border);
+    border-radius: var(--r-pill);
+    padding: 0 var(--sp-3) 0 var(--sp-2);
+  }
+  .ck-badge__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .ck-badge--ds .ck-badge__dot {
+    display: none;
+  } /* the left bar carries the color */
+  /* state shape cue (not color-only): neutral=hollow ring, active=half + glow, done=filled, closed=dash */
+  .ck-badge--state[data-state-group='neutral'] .ck-badge__dot {
+    border: 1.5px solid currentColor;
+  }
+  .ck-badge--state[data-state-group='active'] .ck-badge__dot {
+    border: 1.5px solid currentColor;
+    background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+    box-shadow: 0 0 4px currentColor;
+  }
+  .ck-badge--state[data-state-group='done'] .ck-badge__dot {
+    background: currentColor;
+  }
+  .ck-badge--state[data-state-group='closed'] .ck-badge__dot {
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+  }
+  .ck-badge--state[data-state-group='closed'] {
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+  }
+  .ck-badge--info {
+    color: var(--info-fg);
+    background: var(--info-bg);
+    border-color: var(--accent-line);
+  }
+  .ck-badge--success {
+    color: var(--success-fg);
+    background: var(--success-bg);
+  }
+  .ck-badge--warn {
+    color: var(--warn-fg);
+    background: var(--warn-bg);
+    border-color: color-mix(in srgb, var(--warn-fg) 40%, transparent);
+  }
+  .ck-badge--danger {
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  }
+  .ck-badge--muted {
+    color: var(--fg-subtle);
+    background: transparent;
+    border-color: var(--border);
+  }
+  .ck-badge--tag {
+    font-family: var(--font-mono);
+    font-weight: var(--fw-normal);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--fg-muted);
+    background: transparent;
+    border-color: var(--border);
+  }
+  .ck-badge--tag::before {
+    content: '#';
+    color: var(--fg-subtle);
+  }
+}

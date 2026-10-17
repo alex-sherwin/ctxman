@@ -1,0 +1,114 @@
+---
+import BackRefs from '../../../components/BackRefs.astro';
+import Breadcrumbs from '../../../components/Breadcrumbs.astro';
+import ContextLinks from '../../../components/ContextLinks.astro';
+import DatasetBadge from '../../../components/DatasetBadge.astro';
+import FileTree from '../../../components/FileTree.astro';
+import Freshness from '../../../components/Freshness.astro';
+import MetaPanel from '../../../components/MetaPanel.astro';
+import OkfStatusBadge from '../../../components/OkfStatusBadge.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import ReferenceFields from '../../../components/ReferenceFields.astro';
+import StaleBadge from '../../../components/StaleBadge.astro';
+import StateBadge from '../../../components/StateBadge.astro';
+import { getDataset } from '../../../datasets/registry.ts';
+import type { OkfDatasetId } from '../../../datasets/registry.ts';
+import { getEntryDetail } from '../../../lib/entries.ts';
+import Base from '../../../layouts/Base.astro';
+
+const def = getDataset(Astro.params.dataset ?? '');
+if (!def) return Astro.rewrite('/404');
+const slug = Astro.params.slug ?? '';
+const detail = await getEntryDetail(def.id, slug);
+if (!detail) return Astro.rewrite('/404');
+
+const { summary } = detail;
+const title = summary.title ?? summary.name;
+---
+
+<Base title={title} active={def.id}>
+  <Breadcrumbs
+    items={[
+      { label: 'ctxman', href: '/' },
+      { label: def.label, href: `/${def.id}` },
+      { label: slug, mono: true },
+    ]}
+  />
+  <PageHeader title={title}>
+    <Fragment slot="meta">
+      <code class="cx-detail__slug" data-testid="detail-slug">{slug}</code>
+      <button
+        type="button"
+        class="ck-button ck-button--ghost ck-button--sm"
+        data-copy={slug}
+        aria-label="Copy slug"
+      >
+        <span class="ck-button__label">Copy</span>
+      </button>
+      <DatasetBadge dataset={def.id} />
+      {summary.state && <StateBadge dataset={def.id} state={summary.state} />}
+      <OkfStatusBadge status={summary.okfStatus} />
+      {summary.stale && <StaleBadge since={summary.staleAfter} />}
+      <Freshness iso={summary.lastModified} prefix="Modified" />
+    </Fragment>
+    <Fragment slot="actions">
+      {
+        def.id === 'context' && (
+          <a
+            class="ck-button ck-button--primary ck-button--sm"
+            href={`/forge?context=${slug}`}
+            data-testid="detail-open-forge"
+          >
+            <span class="ck-button__label">Open in Forge</span>
+          </a>
+        )
+      }
+    </Fragment>
+  </PageHeader>
+
+  <div class="cx-detail">
+    {
+      (detail.kind === 'okf' || detail.kind === 'skill') && (
+        <article class="cx-detail__main cx-prose" data-testid="detail-content">
+          <Fragment set:html={detail.html} />
+        </article>
+      )
+    }
+    {
+      detail.kind === 'reference' && (
+        <article class="cx-detail__main" data-testid="detail-content">
+          <p class="cx-detail__lede">{summary.description}</p>
+          <ReferenceFields data={detail.data} />
+        </article>
+      )
+    }
+    {
+      detail.kind === 'context' && (
+        <article class="cx-detail__main" data-testid="detail-content">
+          <p class="cx-detail__lede">{summary.description}</p>
+          <ContextLinks slug={slug} links={detail.links} />
+        </article>
+      )
+    }
+    <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
+      <MetaPanel
+        dataset={def.id}
+        kind={detail.kind}
+        data={detail.data}
+        lastModified={summary.lastModified}
+        file={detail.fileRelPath}
+      />
+      {
+        (detail.kind === 'okf' || detail.kind === 'skill') && (
+          <FileTree
+            dataset={def.id as OkfDatasetId | 'skill'}
+            slug={slug}
+            files={detail.files}
+            current={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+          />
+        )
+      }
+      {def.id !== 'context' && <BackRefs dataset={def.id} slug={slug} refs={detail.backRefs} />}
+    </aside>
+  </div>
+</Base>

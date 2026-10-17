@@ -1,0 +1,9 @@
+---
+import { readList, withParams } from '../lib/url-state.ts';
+
+// Legacy / convenience entry point: /search?q=foo&in=kb,task -> /?search=1&sq=foo&in=kb,task.
+// The search widget is global (every page); there is no standalone search page (UI_SPEC §0.4).
+const params = Astro.url.searchParams;
+const q = params.get('q') ?? params.get('sq') ?? '';
+return Astro.redirect(withParams('/', { search: '1', sq: q, in: readList(params, 'in') }), 302);
+---

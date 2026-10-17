@@ -1,0 +1,92 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
+  // JS plugin alias required because "react-hooks" is a reserved native oxlint plugin name.
+  "jsPlugins": [{ "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" }],
+  "env": {
+    "browser": true,
+    "es2026": true
+  },
+  // oxlint lints .ts/.tsx and the frontmatter + <script> blocks of .astro files.
+  "ignorePatterns": [
+    "dist",
+    "public",
+    ".astro",
+    "node_modules",
+    "data",
+    "test-results",
+    "playwright-report",
+    ".tmp",
+    "plans",
+    ".agents",
+    ".claude"
+  ],
+  "rules": {
+    "react/exhaustive-deps": "warn",
+    "react/only-export-components": ["error", { "allowConstantExport": true }],
+    // `new Array<T>(n)` is used deliberately for typed pre-allocation that is
+    // immediately filled by index; the ambiguity this rule guards against
+    // doesn't apply here.
+    "unicorn/no-new-array": "off",
+
+    // A raw react-aria `ListBoxItem` renders with NO className at all: no hover/focus
+    // ring, no selection wash, no check, and the browser's default type size. Every
+    // dropdown/list option must come from the kit (src/ui/kit). GridListItem is NOT
+    // restricted — feature grids may style rows themselves.
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "react-aria-components",
+            "importNames": ["ListBoxItem"],
+            "message": "Import ListBoxItem from src/ui/kit — the raw one is unstyled."
+          }
+        ]
+      }
+    ],
+
+    // React Compiler rules (eslint-plugin-react-hooks recommended-latest).
+    // rules-of-hooks and exhaustive-deps are omitted here — covered by the
+    // native react plugin above.
+    "react-hooks-js/static-components": "error",
+    "react-hooks-js/use-memo": "error",
+    "react-hooks-js/void-use-memo": "error",
+    "react-hooks-js/preserve-manual-memoization": "error",
+    "react-hooks-js/incompatible-library": "warn",
+    "react-hooks-js/immutability": "error",
+    "react-hooks-js/globals": "error",
+    "react-hooks-js/refs": "error",
+    "react-hooks-js/set-state-in-effect": "error",
+    "react-hooks-js/error-boundaries": "error",
+    "react-hooks-js/purity": "error",
+    "react-hooks-js/set-state-in-render": "error",
+    "react-hooks-js/unsupported-syntax": "warn",
+    "react-hooks-js/config": "error",
+    "react-hooks-js/gating": "error"
+  },
+  "overrides": [
+    {
+      // The component kit intentionally co-locates components with their style
+      // variants, helpers, and the toast queue. The one-export-kind rule doesn't
+      // apply to a shared primitives library.
+      "files": ["src/ui/kit/**/*.{ts,tsx}"],
+      "rules": {
+        "react/only-export-components": "off",
+        // The kit is where the raw react-aria primitives get wrapped.
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      // Node-side code: CLIs, server libs, API routes, tests, tool configs.
+      "files": [
+        "scripts/**/*.ts",
+        "src/lib/**/*.ts",
+        "src/pages/api/**/*.ts",
+        "tests/**/*.ts",
+        "*.config.ts"
+      ],
+      "env": { "node": true, "browser": false }
+    }
+  ]
+}

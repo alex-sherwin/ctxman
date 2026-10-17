@@ -1,0 +1,10 @@
+---
+interface Props {
+  /** OKF `stale_after`, YYYY-MM-DD (goes into the tooltip). */
+  since?: string | undefined;
+}
+
+const { since } = Astro.props;
+---
+
+<span class="ck-badge ck-badge--warn" title={since ? `stale since ${since}` : 'stale'}>stale</span>

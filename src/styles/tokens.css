@@ -1,0 +1,171 @@
+@layer cx-tokens {
+  :root {
+    /* ---- fonts (override cybercore's variables so cyber-* components use them too) ---- */
+    --font-body:
+      'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-display: var(--font-body);
+    --font-mono: 'Hack', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-sans: var(--font-body); /* our alias */
+
+    /* ---- type (dense; px so cybercore's fluid --text-* never leaks in) ---- */
+    --fs-xs: 11px; /* badges, table headers, legends, kbd */
+    --fs-sm: 12px; /* metadata, descriptions, chips, secondary text */
+    --fs-md: 13px; /* base UI text, inputs, buttons-as-text */
+    --fs-lg: 14px; /* prose body, search result titles */
+    --fs-xl: 16px; /* prose h2, search input */
+    --fs-2xl: 20px; /* page h1 */
+    --fs-3xl: 22px; /* dashboard tile count */
+    --fs-mono: 0.92em; /* inline mono inside sans text (Hack runs wide) */
+    --lh-tight: 1.2;
+    --lh: 1.4;
+    --lh-prose: 1.55;
+    --fw-normal: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+    --tracking-label: 0.06em; /* uppercase HUD labels */
+
+    /* ---- spacing (tight: 2/4/6/8/12/16; 16 is the max, used only between page sections) ---- */
+    --sp-0: 0;
+    --sp-1: 2px;
+    --sp-2: 4px;
+    --sp-3: 6px;
+    --sp-4: 8px;
+    --sp-5: 12px;
+    --sp-6: 16px;
+
+    /* ---- radius / borders / sizes ---- */
+    --r-sm: 2px;
+    --r-md: 3px;
+    --r-lg: 4px;
+    --r-pill: 999px;
+    --r-cyber: 0 6px 0 6px; /* scaled-down cybercore --radius-cyber (0 12px 0 12px) */
+    --cut: 6px; /* corner-cut size for clip-path on panels/dialogs */
+    --border-w: 1px;
+    --focus-w: 2px;
+    --focus-offset: 1px;
+    --control-h-sm: 22px;
+    --control-h-md: 28px;
+    --control-h-lg: 36px;
+    --row-h: 28px; /* table rows, list rows, menu/listbox items */
+    --header-h: 40px;
+    --gutter: 12px;
+    --content-max: 1600px;
+    --sidebar-w: 280px;
+    --prose-max: 84ch;
+
+    /* ---- motion / layering ---- */
+    --dur-fast: 80ms;
+    --dur: 150ms;
+    --ease: var(--ease-cyber, cubic-bezier(0.77, 0, 0.175, 1));
+    --z-header: var(--z-sticky); /* 100 */
+    --z-popover: calc(
+      var(--z-modal) + 100
+    ); /* 1100: Select/Menu popovers can open from inside modals */
+    --z-tooltip: calc(var(--z-modal) + 200); /* 1200 */
+
+    /* ---- extra neons (cybercore 0.3.0 ships only cyan/magenta/yellow/green; these match its saturation) ---- */
+    --cx-neon-orange: #ff8a3d;
+    --cx-neon-blue: #5c9dff;
+    --cx-neon-blue-text: #7db1ff;
+    --cx-neon-violet: #b26bff;
+    --cx-neon-violet-text: #c493ff;
+    --cx-neon-lime: #b8ff3d;
+    --cx-neon-pink: #ff6ad5;
+    --cx-magenta-text: #ff6b96; /* magenta-500 is 4.49:1 on tinted void-400; this is 6.0:1 */
+
+    /* ---- surfaces + text ---- */
+    --bg: var(--cyber-void-500); /* #0d0e14 page */
+    --bg-subtle: var(--cyber-void-400); /* #12141d panels, table head, header */
+    --bg-muted: var(--cyber-void-300); /* #181a25 hover, code, closed-state */
+    --surface: var(--cyber-void-400);
+    --surface-raised: var(--cyber-void-200); /* #1f2230 popovers, dialogs */
+    --bg-deep: var(--cyber-void-700); /* #07080c header bar, search overlay, editor gutter */
+    --border: var(--cyber-void-100); /* #2a2d3a */
+    --border-strong: var(--cyber-chrome-600); /* #5c647a (non-text, 3.3:1) */
+    --fg: var(--cyber-chrome-100); /* #f0f1f5 — 17.1:1 on bg, 14.0:1 on surface-raised */
+    --fg-muted: var(--cyber-chrome-300); /* #b2b7c7 — 9.6:1 on bg, 7.9:1 on surface-raised */
+    --fg-subtle: var(
+      --cyber-chrome-400
+    ); /* #939ab0 — 6.9:1 on bg, 5.6:1 on surface-raised. chrome-500 fails on void-300/400; never use it for text */
+
+    /* ---- accent (cyan = default/primary/info) ---- */
+    --accent: var(--cyber-cyan-500); /* #00f0ff */
+    --accent-hover: var(--cyber-cyan-400);
+    --accent-pressed: var(--cyber-cyan-600);
+    --accent-on: var(--cyber-void-500); /* text on filled cyan: 13.7:1 */
+    --accent-text: var(--cyber-cyan-500); /* links: 13.7:1 */
+    --accent-bg: color-mix(
+      in srgb,
+      var(--cyber-cyan-500) 14%,
+      var(--cyber-void-400)
+    ); /* selected wash */
+    --accent-line: color-mix(in srgb, var(--cyber-cyan-500) 40%, transparent); /* hairlines */
+    --focus-ring: var(--cyber-cyan-500);
+    --glow-sm: 0 0 6px color-mix(in srgb, var(--cyber-cyan-500) 55%, transparent);
+    --glow-md: 0 0 12px color-mix(in srgb, var(--cyber-cyan-500) 40%, transparent);
+
+    /* ---- semantics (magenta danger, yellow warning, green success, cyan info) ---- */
+    --danger: var(--cyber-magenta-500);
+    --danger-hover: color-mix(in srgb, var(--cyber-magenta-500) 80%, white);
+    --danger-on: var(--cyber-void-500); /* 5.3:1 on magenta */
+    --danger-fg: var(--cx-magenta-text);
+    --danger-bg: color-mix(in srgb, var(--cyber-magenta-500) 14%, var(--cyber-void-400));
+    --success-fg: var(--cyber-green-500);
+    --success-bg: color-mix(in srgb, var(--cyber-green-500) 14%, var(--cyber-void-400));
+    --warn-fg: var(--cyber-yellow-500);
+    --warn-bg: color-mix(in srgb, var(--cyber-yellow-500) 14%, var(--cyber-void-400));
+    --info-fg: var(--cyber-cyan-500);
+    --info-bg: var(--accent-bg);
+    --glow-text-magenta:
+      0 0 10px var(--cyber-magenta-500),
+      0 0 20px color-mix(in srgb, var(--cyber-magenta-500) 60%, transparent);
+    --glow-text-yellow:
+      0 0 10px var(--cyber-yellow-500),
+      0 0 20px color-mix(in srgb, var(--cyber-yellow-500) 60%, transparent);
+    --glow-text-green:
+      0 0 10px var(--cyber-green-500),
+      0 0 20px color-mix(in srgb, var(--cyber-green-500) 60%, transparent);
+
+    --overlay: color-mix(in srgb, var(--cyber-void-900) 82%, transparent);
+    --mark-bg: color-mix(
+      in srgb,
+      var(--cyber-yellow-500) 28%,
+      var(--cyber-void-500)
+    ); /* fg on it: 7.7:1 */
+    --mark-fg: var(--cyber-chrome-100);
+    --code-bg: var(--cyber-void-300);
+    --code-bg-block: var(--cyber-void-700);
+    --selection-bg: color-mix(
+      in srgb,
+      var(--cyber-cyan-500) 25%,
+      var(--cyber-void-500)
+    ); /* fg on it: 9.2:1 */
+    --scrollbar: var(--cyber-void-100);
+    --shadow-md: 0 4px 16px rgb(0 0 0 / 0.55);
+    --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.7);
+
+    /* ---- dataset colors: --ds-X solid neon (dots, bars, borders); -fg text on -bg tint (>= 5.4:1); -bg tint ---- */
+    --ds-kb: var(--cyber-cyan-500);
+    --ds-kb-fg: var(--cyber-cyan-500);
+    --ds-rca: var(--cx-neon-orange);
+    --ds-rca-fg: var(--cx-neon-orange);
+    --ds-idea: var(--cyber-yellow-500);
+    --ds-idea-fg: var(--cyber-yellow-500);
+    --ds-task: var(--cx-neon-blue);
+    --ds-task-fg: var(--cx-neon-blue-text);
+    --ds-bug: var(--cyber-magenta-500);
+    --ds-bug-fg: var(--cx-magenta-text);
+    --ds-feature: var(--cyber-green-500);
+    --ds-feature-fg: var(--cyber-green-500);
+    --ds-project: var(--cx-neon-violet);
+    --ds-project-fg: var(--cx-neon-violet-text);
+    --ds-skill: var(--cx-neon-lime);
+    --ds-skill-fg: var(--cx-neon-lime);
+    --ds-reference: var(--cyber-chrome-300);
+    --ds-reference-fg: var(--cyber-chrome-300);
+    --ds-context: var(--cx-neon-pink);
+    --ds-context-fg: var(--cx-neon-pink);
+    /* tints: 14% of the solid over void-400 (defined per dataset in §A.2 via --ds-bg) */
+  }
+}

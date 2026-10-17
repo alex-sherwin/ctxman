@@ -1,0 +1,107 @@
+---
+import DatasetTile from '../components/DatasetTile.astro';
+import EmptyState from '../components/EmptyState.astro';
+import EntryMiniList from '../components/EntryMiniList.astro';
+import PageHeader from '../components/PageHeader.astro';
+import Panel from '../components/Panel.astro';
+import { DATASETS, OKF_DATASET_IDS } from '../datasets/registry.ts';
+import { listAllEntries } from '../lib/entries.ts';
+import Base from '../layouts/Base.astro';
+
+const nowMs = Date.now();
+const all = await listAllEntries(nowMs);
+
+const totalEntries = DATASETS.reduce((sum, d) => sum + all[d.id].length, 0);
+const staleEntries = DATASETS.flatMap((d) => all[d.id])
+  .filter((e) => e.stale)
+  .sort((a, b) => (a.staleAfter ?? '').localeCompare(b.staleAfter ?? '') || a.slug.localeCompare(b.slug));
+
+const RECENT_LIMIT = 20;
+const recent = OKF_DATASET_IDS.flatMap((id) => all[id])
+  .sort((a, b) => b.lastModified.localeCompare(a.lastModified) || a.slug.localeCompare(b.slug))
+  .slice(0, RECENT_LIMIT);
+
+const contexts = [...all.context].sort((a, b) => a.slug.localeCompare(b.slug));
+---
+
+<Base title="Dashboard" active="home">
+  <PageHeader title="Dashboard">
+    <span slot="meta"
+      >{totalEntries} entries · {DATASETS.length} datasets · {staleEntries.length} stale</span
+    >
+  </PageHeader>
+
+  <section aria-labelledby="h-datasets" class="cx-dash__section">
+    <h2 id="h-datasets" class="ck-sr-only">Datasets</h2>
+    <ul class="cx-dash__tiles" data-testid="dashboard-cards">
+      {
+        DATASETS.map((def) => (
+          <li>
+            <DatasetTile def={def} entries={all[def.id]} nowMs={nowMs} />
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <div class="cx-dash__grid">
+    <Panel title="Recently modified" id="h-recent" testid="dashboard-recent">
+      {
+        recent.length > 0 ? (
+          <EntryMiniList entries={recent} />
+        ) : (
+          <EmptyState title="Nothing here yet." />
+        )
+      }
+    </Panel>
+    <div class="cx-dash__side">
+      <Panel title="Stale" count={staleEntries.length} id="h-stale" testid="dashboard-stale">
+        {
+          staleEntries.length > 0 ? (
+            <EntryMiniList entries={staleEntries} showStaleAfter />
+          ) : (
+            <EmptyState title="Nothing stale." />
+          )
+        }
+      </Panel>
+      <Panel title="Contexts" count={contexts.length} id="h-contexts" testid="dashboard-contexts">
+        <a slot="actions" class="ck-button ck-button--ghost ck-button--sm" href="/forge?context=new">
+          <span class="ck-button__label">New</span>
+        </a>
+        {
+          contexts.length > 0 ? (
+            <ul class="cx-minilist">
+              {contexts.map((c) => (
+                <li class="cx-minilist__row">
+                  <a class="cx-minilist__title" href={c.url}>
+                    {c.slug}
+                  </a>
+                  <span class="cx-subtle cx-truncate" title={c.description}>
+                    {c.description}
+                  </span>
+                  <span class="cx-mono cx-subtle">{c.linkCount ?? 0} links</span>
+                  <a
+                    class="ck-button ck-button--ghost ck-button--sm"
+                    href={`/forge?context=${c.slug}`}
+                  >
+                    <span class="ck-button__label">Forge</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="No contexts yet.">
+              <a
+                slot="action"
+                class="ck-button ck-button--primary ck-button--sm"
+                href="/forge?context=new"
+              >
+                <span class="ck-button__label">New context</span>
+              </a>
+            </EmptyState>
+          )
+        }
+      </Panel>
+    </div>
+  </div>
+</Base>

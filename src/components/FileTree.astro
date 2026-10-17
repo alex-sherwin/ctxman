@@ -1,0 +1,69 @@
+---
+import { docUrl, entryUrl } from '../datasets/registry.ts';
+import type { OkfDatasetId } from '../datasets/registry.ts';
+import type { BundleFile } from '../lib/bundles.ts';
+
+interface Props {
+  dataset: OkfDatasetId | 'skill';
+  slug: string;
+  /** Files in tree order (src/lib/bundles.ts#listBundleFiles). */
+  files: BundleFile[];
+  /** Bundle-relative path of the file being shown, e.g. 'main.md' or 'concepts/search.md'. */
+  current: string;
+}
+
+const { dataset, slug, files, current } = Astro.props;
+
+const HINTS: Record<NonNullable<BundleFile['role']>, string> = {
+  'root-index': 'bundle index',
+  entry: 'entry',
+  log: 'log',
+};
+
+// okf markdown files link to their route (main.md = the entry page). Skill files and non-markdown
+// files have no route, so they are listed as plain text.
+function hrefOf(file: BundleFile): string | undefined {
+  if (dataset === 'skill' || file.kind !== 'markdown') return undefined;
+  return file.path === 'main.md' ? entryUrl(dataset, slug) : docUrl(dataset, slug, file.path);
+}
+
+const items = files.map((file) => {
+  const cut = file.path.lastIndexOf('/');
+  return {
+    file,
+    href: hrefOf(file),
+    dir: cut === -1 ? '' : file.path.slice(0, cut + 1),
+    base: cut === -1 ? file.path : file.path.slice(cut + 1),
+    hint: file.role ? HINTS[file.role] : undefined,
+    current: file.path === current,
+  };
+});
+---
+
+<nav class="cx-panel cx-files" aria-labelledby="h-files" data-testid="detail-files">
+  <h2 class="cx-panel__title" id="h-files">Files</h2>
+  <ul class="cx-files__list" role="list">
+    {
+      items.map((item) => (
+        <li>
+          {item.href ? (
+            <a
+              class="cx-files__item"
+              href={item.href}
+              aria-current={item.current ? 'page' : undefined}
+            >
+              {item.dir && <span class="cx-files__dir">{item.dir}</span>}
+              {item.base}
+            </a>
+          ) : (
+            <span class="cx-files__item" aria-current={item.current ? 'page' : undefined}>
+              {item.dir && <span class="cx-files__dir">{item.dir}</span>}
+              {item.base}
+            </span>
+          )}
+          {item.hint && <span class="cx-files__hint">{item.hint}</span>}
+        </li>
+      ))
+    }
+  </ul>
+</nav>

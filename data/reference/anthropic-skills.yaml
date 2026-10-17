@@ -1,0 +1,9 @@
+name: anthropic-skills
+description: Anthropic's public skills repository; the skill-creator skill is a good model for authoring new agent skills.
+type: remote-skill
+uri: https://github.com/anthropics/skills.git
+subpath: skills/skill-creator
+owner: not-me
+tags:
+  - skills
+  - agentskills

@@ -1,0 +1,44 @@
+---
+import '../styles/global.css';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import type { DatasetId } from '../datasets/registry.ts';
+import { SearchWidget } from '../ui/search/SearchWidget.tsx';
+
+interface Props {
+  title: string;
+  /** Full-height app pages (/forge): the page itself scrolls inside `main`, not the window. */
+  fill?: boolean;
+  /** Which header link to mark as the current section. */
+  active?: DatasetId | 'forge' | 'tools' | 'home';
+}
+
+const { title, fill = false, active } = Astro.props;
+
+const favicon = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#0d0e14"/><text x="16" y="22" text-anchor="middle" font-family="monospace" font-size="16" font-weight="700" fill="#00f0ff">cx</text></svg>',
+)}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>{title} · ctxman</title>
+    <link rel="icon" href={favicon} />
+  </head>
+  <body class:list={['cx-shell', { 'cx-shell--fill': fill }]}>
+    <a class="cx-skip ck-sr-only" href="#main">Skip to content</a>
+    <Header active={active} />
+    <main id="main" class="cx-main" tabindex="-1">
+      <slot />
+    </main>
+    <Footer />
+    <SearchWidget client:only="react" />
+    <script>
+      import '../scripts/shell.ts';
+    </script>
+  </body>
+</html>

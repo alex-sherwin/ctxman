@@ -1,0 +1,253 @@
+// NODE: "what would `astro sync` reject?" for every data file, in plain Node, reporting ALL problems
+// instead of stopping at the first. Mirrors src/content.config.ts (globs, ids, schemas). Rule ids: PLAN.md §E.10.
+import { existsSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { DATASET_IDS, OKF_DATASET_IDS } from '../datasets/registry.ts';
+import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
+import { DATASET_SCHEMAS, docSchema, skillSchema } from '../datasets/schemas.ts';
+import { walkFiles } from './bundles.ts';
+import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { issueMessage, sortFindings } from './findings.ts';
+import type { Finding, PathIssue } from './findings.ts';
+import { entryFileRelPath } from './freshness.ts';
+import { parseFrontmatter, parseFrontmatterLoose } from './okf.ts';
+import { parseYaml } from './yaml.ts';
+
+interface Ctx {
+  dataDir: string;
+  findings: Finding[];
+  files: Set<string>;
+}
+
+function add(
+  ctx: Ctx,
+  severity: Finding['severity'],
+  rule: string,
+  file: string,
+  message: string,
+  line?: number,
+): void {
+  ctx.findings.push(
+    line === undefined
+      ? { severity, rule, file, message }
+      : { severity, rule, file, line, message },
+  );
+}
+
+function schemaIssues(ctx: Ctx, file: string, issues: readonly PathIssue[], root: unknown): void {
+  for (const issue of issues) {
+    add(ctx, 'error', 'collections/schema', file, issueMessage(issue, root));
+  }
+}
+
+async function dirEntries(abs: string) {
+  try {
+    return (await readdir(abs, { withFileTypes: true })).filter((e) => !e.name.startsWith('.'));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------- okf datasets (+ the docs collection)
+
+async function checkOkfDataset(ctx: Ctx, dataset: OkfDatasetId): Promise<void> {
+  const base = datasetDir(dataset, ctx.dataDir);
+  for (const entry of await dirEntries(base)) {
+    if (!entry.isDirectory()) continue;
+    const bundle = entry.name;
+    const root = path.join(base, bundle);
+    for (const relPath of (await walkFiles(root)).filter((f) => f.endsWith('.md'))) {
+      const file = `${dataset}/${bundle}/${relPath}`;
+      const source = await readFile(path.join(root, ...relPath.split('/')), 'utf8');
+      ctx.files.add(file);
+
+      if (relPath === 'main.md') {
+        // The entry collection (glob '*/main.md', id = directory name).
+        const parsed = parseFrontmatter(source);
+        if (!parsed.ok) {
+          add(
+            ctx,
+            'error',
+            'collections/schema',
+            file,
+            `frontmatter: ${parsed.error}`,
+            parsed.line,
+          );
+          continue;
+        }
+        const result = DATASET_SCHEMAS[dataset].safeParse(parsed.doc.data);
+        if (!result.success) schemaIssues(ctx, file, result.error.issues, parsed.doc.data);
+        const name = parsed.doc.data.name;
+        if (typeof name === 'string' && name !== bundle) {
+          add(
+            ctx,
+            'error',
+            'collections/name-mismatch',
+            file,
+            `name "${name}" must equal the directory name "${bundle}"`,
+          );
+        }
+        continue;
+      }
+
+      // The `docs` collection (every other markdown file in an okf bundle): loose schema.
+      let data: Record<string, unknown>;
+      try {
+        data = parseFrontmatterLoose(source).data;
+      } catch (error) {
+        add(ctx, 'error', 'collections/schema', file, `frontmatter: ${(error as Error).message}`);
+        continue;
+      }
+      const result = docSchema.safeParse(data);
+      if (!result.success) schemaIssues(ctx, file, result.error.issues, data);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- skills
+
+async function checkSkills(ctx: Ctx): Promise<void> {
+  const base = datasetDir('skill', ctx.dataDir);
+  for (const entry of await dirEntries(base)) {
+    if (!entry.isDirectory()) {
+      add(
+        ctx,
+        'warning',
+        'collections/stray-file',
+        `skill/${entry.name}`,
+        'only skill directories belong in data/skill/',
+      );
+      continue;
+    }
+    const file = `skill/${entry.name}/SKILL.md`;
+    const abs = path.join(base, entry.name, 'SKILL.md');
+    if (!existsSync(abs)) {
+      add(
+        ctx,
+        'error',
+        'collections/missing-skill-md',
+        `skill/${entry.name}`,
+        'skill directory has no SKILL.md',
+      );
+      continue;
+    }
+    ctx.files.add(file);
+    const parsed = parseFrontmatter(await readFile(abs, 'utf8'));
+    if (!parsed.ok) {
+      add(ctx, 'error', 'collections/schema', file, `frontmatter: ${parsed.error}`, parsed.line);
+      continue;
+    }
+    // Strict (agentskills.io): unknown keys are errors.
+    const result = skillSchema.safeParse(parsed.doc.data);
+    if (!result.success) schemaIssues(ctx, file, result.error.issues, parsed.doc.data);
+    const name = parsed.doc.data.name;
+    if (typeof name === 'string' && name !== entry.name) {
+      add(
+        ctx,
+        'error',
+        'collections/name-mismatch',
+        file,
+        `name "${name}" must equal the directory name "${entry.name}"`,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------- reference + context (yaml)
+
+async function checkYamlDataset(ctx: Ctx, dataset: 'reference' | 'context'): Promise<void> {
+  const base = datasetDir(dataset, ctx.dataDir);
+  const linkChecks: { file: string; links: { dataset: DatasetId; slug: string }[] }[] = [];
+
+  for (const entry of await dirEntries(base)) {
+    const rel = `${dataset}/${entry.name}`;
+    if (!entry.isFile() || !entry.name.endsWith('.yaml')) {
+      add(
+        ctx,
+        'warning',
+        'collections/stray-file',
+        rel,
+        entry.name.endsWith('.yml')
+          ? 'astro only loads *.yaml; rename this .yml file'
+          : `only <name>.yaml files belong in data/${dataset}/`,
+      );
+      continue;
+    }
+    ctx.files.add(rel);
+    const stem = entry.name.slice(0, -'.yaml'.length);
+    let value: unknown;
+    try {
+      value = parseYaml(await readFile(path.join(base, entry.name), 'utf8'));
+    } catch (error) {
+      const message = error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error);
+      const linePos = (error as { linePos?: { line?: number }[] }).linePos?.[0]?.line;
+      add(ctx, 'error', 'collections/schema', rel, `YAML: ${message}`, linePos);
+      continue;
+    }
+    const input = value !== null && typeof value === 'object' ? value : {};
+    const result = DATASET_SCHEMAS[dataset].safeParse(input);
+    if (!result.success) {
+      schemaIssues(ctx, rel, result.error.issues, input);
+      continue;
+    }
+    const name = (result.data as { name: string }).name;
+    if (name !== stem) {
+      add(
+        ctx,
+        'error',
+        'collections/name-mismatch',
+        rel,
+        `name "${name}" must equal the file name "${stem}"`,
+      );
+    }
+    if (dataset === 'context') {
+      const links = (result.data as { links: { dataset: DatasetId; slug: string }[] }).links;
+      linkChecks.push({ file: rel, links });
+    }
+  }
+
+  for (const { file, links } of linkChecks) {
+    for (const link of links) {
+      const target = path.join(
+        ctx.dataDir,
+        ...entryFileRelPath(link.dataset, link.slug).split('/'),
+      );
+      if (!existsSync(target)) {
+        add(
+          ctx,
+          'warning',
+          'collections/dangling-link',
+          file,
+          `link ${link.dataset}/${link.slug} does not exist`,
+        );
+      }
+    }
+  }
+}
+
+/** Validates every data file against its dataset schema; see PLAN.md §E.10 for the rules. */
+export async function checkCollections(
+  dataDir: string = resolveDataDir(),
+): Promise<{ findings: Finding[]; filesChecked: number }> {
+  const ctx: Ctx = { dataDir, findings: [], files: new Set() };
+
+  for (const entry of await dirEntries(dataDir)) {
+    if (entry.isDirectory() && !(DATASET_IDS as readonly string[]).includes(entry.name)) {
+      add(
+        ctx,
+        'warning',
+        'collections/unknown-dir',
+        entry.name,
+        `data/${entry.name} is not a ctxman dataset and is ignored`,
+      );
+    }
+  }
+
+  for (const dataset of OKF_DATASET_IDS) await checkOkfDataset(ctx, dataset);
+  await checkSkills(ctx);
+  await checkYamlDataset(ctx, 'reference');
+  await checkYamlDataset(ctx, 'context');
+
+  return { findings: sortFindings(ctx.findings), filesChecked: ctx.files.size };
+}

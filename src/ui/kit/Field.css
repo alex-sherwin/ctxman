@@ -1,0 +1,150 @@
+@layer cx-kit {
+  .ck-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+  }
+  .ck-field__label {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .ck-field__description {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .ck-field__error {
+    font-size: var(--fs-xs);
+    color: var(--danger-fg);
+  }
+  .ck-input,
+  .ck-native-select {
+    height: var(--control-h-md);
+    padding: 0 var(--sp-3);
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: var(--fs-md);
+    color: var(--fg);
+    background: var(--cyber-void-700);
+    caret-color: var(--accent);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--r-sm);
+    outline: none;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      box-shadow var(--dur-fast) var(--ease);
+  }
+  .ck-input::placeholder {
+    color: var(--fg-subtle);
+  }
+  .ck-input[data-hovered],
+  .ck-input:not([data-rac]):hover {
+    border-color: var(--border-strong);
+  }
+  .ck-input[data-focused],
+  .ck-input:not([data-rac]):focus-visible,
+  .ck-native-select:focus-visible {
+    border-color: var(--accent);
+    box-shadow: var(--glow-sm);
+    outline: none;
+  }
+  .ck-field[data-invalid] .ck-input,
+  .ck-input[data-invalid] {
+    border-color: var(--danger);
+    box-shadow: inset 0 0 6px color-mix(in srgb, var(--danger) 30%, transparent);
+  }
+  .ck-input[data-disabled] {
+    opacity: 0.5;
+  }
+  .ck-input[readonly] {
+    background: var(--bg-subtle);
+    color: var(--fg-muted);
+    border-style: dashed;
+  }
+  .ck-input--multiline {
+    height: auto;
+    min-height: calc(var(--control-h-md) * 2);
+    padding: var(--sp-2) var(--sp-3);
+    line-height: var(--lh);
+    resize: vertical;
+  }
+  .ck-field--mono .ck-input {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+  }
+  .ck-field--sm .ck-input {
+    height: var(--control-h-sm);
+    font-size: var(--fs-sm);
+  }
+  .ck-field--lg .ck-input {
+    height: var(--control-h-lg);
+    font-size: var(--fs-xl);
+  }
+  .ck-searchfield__box {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .ck-searchfield .ck-input {
+    padding-inline: 24px 24px;
+  }
+  .ck-field--lg.ck-searchfield .ck-input {
+    padding-inline: 32px 32px;
+  }
+  .ck-searchfield__icon {
+    position: absolute;
+    left: var(--sp-3);
+    width: 13px;
+    height: 13px;
+    color: var(--accent);
+    pointer-events: none;
+  }
+  .ck-field--lg .ck-searchfield__icon {
+    left: var(--sp-4);
+    width: 16px;
+    height: 16px;
+  }
+  .ck-searchfield__clear {
+    position: absolute;
+    right: var(--sp-1);
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--fg-subtle);
+    background: transparent;
+    border: 0;
+    border-radius: var(--r-sm);
+    cursor: default;
+    outline: none;
+  }
+  .ck-searchfield__clear[data-hovered] {
+    color: var(--fg);
+    background: var(--bg-muted);
+  }
+  .ck-searchfield__clear[data-focus-visible] {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: 0;
+  }
+  .ck-searchfield[data-empty] .ck-searchfield__clear {
+    visibility: hidden;
+  }
+  .ck-native-select {
+    appearance: auto;
+    padding-right: var(--sp-1);
+  }
+
+  .ck-field[data-disabled] .ck-field__label {
+    opacity: 0.5;
+  }
+  .ck-searchfield .ck-input::-webkit-search-cancel-button,
+  .ck-searchfield .ck-input::-webkit-search-decoration {
+    appearance: none;
+  }
+}

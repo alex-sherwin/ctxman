@@ -1,0 +1,54 @@
+@layer cx-kit {
+  .ck-listbox {
+    outline: none;
+    padding: var(--sp-1);
+    max-height: inherit;
+    overflow: auto;
+  }
+  .ck-listbox__item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: var(--row-h);
+    padding: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-md);
+    color: var(--fg);
+    cursor: default;
+    outline: none;
+  }
+  .ck-listbox__item[data-focused] {
+    background: var(--accent-bg);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .ck-listbox__item[data-selected] {
+    color: var(--accent-text);
+  }
+  .ck-listbox__item[data-disabled] {
+    opacity: 0.4;
+  }
+  .ck-listbox__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .ck-listbox__desc {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .ck-listbox__check {
+    margin-left: auto;
+    color: var(--accent);
+  }
+  .ck-listbox__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+    background: var(--surface-raised);
+  }
+}

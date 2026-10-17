@@ -1,0 +1,18 @@
+@layer cx-kit {
+  .ck-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--sp-1);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1;
+    color: var(--fg-muted);
+    background: var(--cyber-void-700);
+    border: 1px solid var(--border);
+    border-bottom-color: var(--border-strong);
+    border-radius: var(--r-sm);
+  }
+}

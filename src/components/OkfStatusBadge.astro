@@ -1,0 +1,11 @@
+---
+// OKF `status`: only `draft` and `deprecated` get a badge; `stable` / absent render nothing.
+interface Props {
+  status?: string | undefined;
+}
+
+const { status } = Astro.props;
+---
+
+{status === 'draft' && <span class="ck-badge ck-badge--muted">draft</span>}
+{status === 'deprecated' && <span class="ck-badge ck-badge--danger">deprecated</span>}

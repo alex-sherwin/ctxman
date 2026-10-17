@@ -1,0 +1,17 @@
+---
+import { getDataset, stateGroup, stateLabel } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
+
+// HTML twin of the kit's StateBadge (src/ui/kit/Badge.tsx): identical markup.
+interface Props {
+  dataset: DatasetId;
+  state: string;
+}
+
+const { dataset, state } = Astro.props;
+const label = getDataset(dataset)?.states?.find((s) => s.id === state)?.label ?? stateLabel(state);
+---
+
+<span class="ck-badge ck-badge--state" data-state-group={stateGroup(dataset, state)} data-state={state}
+  ><span class="ck-badge__dot" aria-hidden="true"></span>{label}</span
+>

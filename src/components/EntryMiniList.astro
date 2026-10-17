@@ -1,0 +1,34 @@
+---
+import type { EntrySummary } from '../lib/entry-summary.ts';
+import DatasetBadge from './DatasetBadge.astro';
+import Freshness from './Freshness.astro';
+import StaleBadge from './StaleBadge.astro';
+import StateBadge from './StateBadge.astro';
+
+interface Props {
+  entries: EntrySummary[];
+  /** Print the entry's `stale_after` date next to the stale badge. */
+  showStaleAfter?: boolean;
+}
+
+const { entries, showStaleAfter = false } = Astro.props;
+---
+
+<ul class="cx-minilist">
+  {
+    entries.map((e) => (
+      <li class="cx-minilist__row" data-testid="minilist-row">
+        <DatasetBadge dataset={e.dataset} />
+        <a class="cx-minilist__title cx-truncate" href={e.url}>
+          {e.title ?? e.name}
+        </a>
+        <span class="cx-row">
+          {e.state && <StateBadge dataset={e.dataset} state={e.state} />}
+          {e.stale && <StaleBadge since={e.staleAfter} />}
+          {showStaleAfter && e.staleAfter && <code class="cx-mono cx-subtle">{e.staleAfter}</code>}
+        </span>
+        <Freshness iso={e.lastModified} />
+      </li>
+    ))
+  }
+</ul>

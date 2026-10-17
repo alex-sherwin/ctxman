@@ -1,0 +1,23 @@
+---
+import PageHeader from '../components/PageHeader.astro';
+import Base from '../layouts/Base.astro';
+import { SCRIPTS } from '../lib/scripts-allowlist.ts';
+import ToolsRunner from '../ui/tools/ToolsRunner.tsx';
+
+// The island gets the public fields only; the script file paths stay on the server.
+const scripts = SCRIPTS.map(({ name, label, description, kind }) => ({
+  name,
+  label,
+  description,
+  kind,
+}));
+---
+
+<Base title="Tools" active="tools">
+  <PageHeader title="Tools">
+    <span slot="meta">Run the compliance checks and scaffold new dataset entries.</span>
+  </PageHeader>
+  <ToolsRunner client:only="react" scripts={scripts}>
+    <div slot="fallback" class="cx-island-fallback">Loading tools…</div>
+  </ToolsRunner>
+</Base>

@@ -1,0 +1,8 @@
+name: unscience
+description: ksa mod for a kitchen sink of various ways to hack the game
+type: remote-repo
+uri: git@github.com:meow-sci/unscience.git
+owner: me
+tags:
+  - ksa
+  - mod

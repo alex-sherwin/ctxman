@@ -1,0 +1,167 @@
+/*
+ * Tools island styles (UI_SPEC §I). Replaces P4's stub. Every rule lives in @layer cx-app, after
+ * cybercore's layers, so these rules win over cybercore's `cyber-terminal` / `cyber-scanlines` spacing.
+ */
+@layer cx-app {
+  /* ---------- I.3 layout ---------- */
+  .cx-tools {
+    display: grid;
+    grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr);
+    gap: var(--sp-4);
+    align-items: start;
+  }
+  @media (max-width: 1099px) {
+    .cx-tools {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .cx-tools__left {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    min-width: 0;
+  }
+  .cx-scripts__row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: var(--row-h);
+    padding: var(--sp-1) var(--sp-4);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-scripts__row:last-child {
+    border-bottom: 0;
+  }
+  .cx-scripts__info {
+    flex: 1;
+    min-width: 0;
+  }
+  .cx-scripts__info p {
+    font-size: var(--fs-xs);
+  }
+  .cx-scripts__name {
+    font-size: var(--fs-sm);
+    margin-right: var(--sp-2);
+  }
+
+  /* ---------- I.4 output panel (cybercore terminal, tightened) ---------- */
+  .cx-output {
+    position: sticky;
+    top: calc(var(--header-h) + var(--sp-3));
+    isolation: isolate;
+    min-width: 0;
+  }
+  .cx-output__fx {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .cx-output__head,
+  .cx-output__body {
+    position: relative;
+    z-index: 1;
+  }
+  .cx-output__head {
+    gap: var(--sp-2);
+    height: var(--row-h);
+    padding: 0 var(--sp-3);
+  }
+  .cx-output__title {
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    margin-right: var(--sp-2);
+  }
+  .cx-output__status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    font-size: var(--fs-sm);
+  }
+  .cx-output__spacer {
+    flex: 1;
+  }
+  .cx-output__body {
+    padding: var(--sp-2) var(--sp-3);
+    line-height: 1.45;
+    min-height: 120px;
+  }
+  .cx-output__label {
+    margin-top: var(--sp-2);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .cx-output__label--err {
+    color: var(--danger-fg);
+  }
+  .cx-output__pre {
+    margin-top: var(--sp-1);
+    max-height: 65vh;
+    overflow: auto;
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--cyber-green-400);
+  }
+  .cx-output__pre--err {
+    color: var(--danger-fg);
+    border-left: 2px solid var(--danger);
+    padding-left: var(--sp-2);
+  }
+  .cx-output__prompt {
+    color: var(--accent-text);
+    font-size: var(--fs-sm);
+  }
+  .cx-output__cursor {
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--accent);
+    animation: ck-blink 1s steps(1) infinite;
+  }
+  @keyframes ck-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cx-output__cursor {
+      animation: none;
+    }
+  }
+
+  /* ---------- I.5 add entry form ---------- */
+  .cx-addform {
+    padding: var(--sp-3) var(--sp-4);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2) var(--sp-3);
+    align-items: start;
+  }
+  .cx-addform__actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .cx-addform__result {
+    margin: 0 var(--sp-4) var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    background: var(--success-bg);
+    color: var(--success-fg);
+    border-left: 2px solid var(--success-fg);
+  }
+  .cx-addform__result code {
+    color: var(--fg);
+  }
+}

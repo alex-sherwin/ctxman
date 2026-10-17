@@ -1,0 +1,11 @@
+---
+import Base from '../layouts/Base.astro';
+import Forge from '../ui/forge/Forge.tsx';
+---
+
+<Base title="Context Forge" active="forge" fill>
+  <h1 class="ck-sr-only">Context Forge</h1>
+  <Forge client:only="react">
+    <div slot="fallback" class="cx-island-fallback">Loading Forge…</div>
+  </Forge>
+</Base>

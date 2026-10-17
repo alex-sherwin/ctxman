@@ -1,0 +1,21 @@
+---
+import pkg from '../../package.json';
+import { resolveDataDir } from '../lib/data-dir.ts';
+
+const dataDir = resolveDataDir();
+---
+
+<footer class="cx-footer" data-testid="app-footer">
+  <span class="cx-label">data</span>
+  <code class="cx-mono" data-testid="footer-data-dir">{dataDir}</code>
+  <button
+    type="button"
+    class="ck-button ck-button--ghost ck-button--sm"
+    data-copy={dataDir}
+    aria-label="Copy data directory path"
+  >
+    <span class="ck-button__label">Copy</span>
+  </button>
+  <span class="cx-footer__spacer"></span>
+  <span class="cx-mono">ctxman v{pkg.version}</span>
+</footer>

@@ -1,0 +1,8 @@
+name: purrtty
+description: ksa mod for in-game terminal emulator
+type: remote-repo
+uri: git@github.com:meow-sci/purrtty.git
+owner: me
+tags:
+  - ksa
+  - mod

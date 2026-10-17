@@ -1,0 +1,169 @@
+@layer cx-kit {
+  .ck-button {
+    --_c: var(--fg-muted); /* accent: border + text */
+    --_border: var(--border-strong);
+    --_bg: transparent;
+    --_fill: var(--bg-muted); /* hover background */
+    --_fill-fg: var(--fg); /* hover text */
+    --_glow: none;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    height: var(--control-h-md);
+    min-width: var(--control-h-md);
+    padding: 0 var(--sp-4);
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-semibold);
+    line-height: 1;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-decoration: none;
+    color: var(--_c);
+    background: var(--_bg);
+    border: var(--border-w) solid var(--_border);
+    border-radius: var(--r-cyber);
+    cursor: default;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+    transition:
+      background-color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease),
+      box-shadow var(--dur-fast) var(--ease);
+  }
+  .ck-button:is(a):hover {
+    text-decoration: none;
+  }
+  .ck-button[data-hovered],
+  .ck-button:not([data-rac]):hover {
+    background: var(--_fill);
+    color: var(--_fill-fg);
+    border-color: var(--_c);
+    box-shadow: var(--_glow);
+  }
+  .ck-button[data-pressed],
+  .ck-button:not([data-rac]):active {
+    filter: brightness(0.85);
+  }
+  .ck-button[data-focus-visible],
+  .ck-button:not([data-rac]):focus-visible {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: var(--glow-sm);
+  }
+  .ck-button[data-disabled],
+  .ck-button:not([data-rac]):disabled,
+  .ck-button[aria-disabled='true'] {
+    opacity: 0.4;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  .ck-button[data-pending] .ck-button__label {
+    visibility: hidden;
+  }
+  .ck-button[data-pending] .ck-spinner {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+  }
+
+  .ck-button--primary {
+    --_c: var(--accent);
+    --_border: var(--accent);
+    --_bg: color-mix(in srgb, var(--accent) 10%, transparent);
+    --_fill: var(--accent);
+    --_fill-fg: var(--accent-on);
+    --_glow: var(--glow-md);
+  }
+  .ck-button--secondary {
+    --_c: var(--fg);
+    --_border: var(--border-strong);
+    --_fill: var(--accent-bg);
+    --_fill-fg: var(--accent-text);
+  }
+  .ck-button--secondary[data-hovered],
+  .ck-button--secondary:not([data-rac]):hover {
+    border-color: var(--accent);
+  }
+  .ck-button--ghost {
+    --_c: var(--fg-muted);
+    --_border: transparent;
+    --_fill: var(--bg-muted);
+    --_fill-fg: var(--fg);
+  }
+  .ck-button--ghost[data-hovered],
+  .ck-button--ghost:not([data-rac]):hover {
+    border-color: transparent;
+  }
+  .ck-button--danger {
+    --_c: var(--danger-fg);
+    --_border: var(--danger);
+    --_fill: var(--danger);
+    --_fill-fg: var(--danger-on);
+    --_glow: 0 0 12px color-mix(in srgb, var(--danger) 45%, transparent);
+  }
+
+  .ck-button--sm {
+    height: var(--control-h-sm);
+    min-width: var(--control-h-sm);
+    padding: 0 var(--sp-3);
+    font-size: var(--fs-xs);
+    gap: var(--sp-1);
+    border-radius: var(--r-sm);
+  }
+  .ck-button--icon {
+    padding: 0;
+    aspect-ratio: 1;
+    letter-spacing: 0;
+  }
+  .ck-button > svg,
+  .ck-button__label > svg {
+    width: 13px;
+    height: 13px;
+    flex: none;
+  }
+  .ck-button--sm > svg {
+    width: 11px;
+    height: 11px;
+  }
+  .ck-button .ck-kbd {
+    height: 16px;
+    min-width: 16px;
+    font-size: 10px;
+    margin-left: var(--sp-1);
+  }
+
+  .ck-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: ck-spin 0.7s linear infinite;
+  }
+  @keyframes ck-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-spinner {
+      animation-duration: 2s;
+    }
+    .ck-button {
+      transition: none;
+    }
+  }
+
+  /* standalone <Spinner/> (outside a button) */
+  .ck-spinner[role='status'] {
+    color: var(--accent);
+  }
+}

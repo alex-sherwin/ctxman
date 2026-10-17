@@ -1,0 +1,20 @@
+---
+// HTML twin of the kit's EmptyState (src/ui/kit/EmptyState.tsx). Default slot = body, `action` slot = button.
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<div class="ck-empty">
+  <div class="ck-empty__title">{title}</div>
+  {
+    Astro.slots.has('default') && (
+      <div>
+        <slot />
+      </div>
+    )
+  }
+  <slot name="action" />
+</div>

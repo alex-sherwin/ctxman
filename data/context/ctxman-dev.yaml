@@ -1,0 +1,52 @@
+name: ctxman-dev
+description: Everything an agent needs to work on ctxman itself, from architecture and datasets to open work and sources of truth.
+tags:
+  - ctxman
+  - development
+links:
+  - dataset: kb
+    slug: ctxman
+    notes: |
+      Start here. Read the architecture and datasets concepts before touching code or data.
+  - dataset: kb
+    slug: astro-content-layer
+    notes: |
+      Background on collections and loaders. This entry is marked stale, so re-verify
+      details against the Astro version in `package.json` before relying on them.
+  - dataset: rca
+    slug: astro-dev-full-reload-on-save
+    notes: |
+      Explains why the `context` collection uses a loader without a watcher.
+      Never call `getCollection('context')` at runtime.
+  - dataset: idea
+    slug: context-inflate
+    notes: |
+      Planned and **not built**. Do not implement it unless asked.
+  - dataset: task
+    slug: write-agents-md
+    notes: |
+      Open work. When finishing it:
+
+      - run every command you document at least once
+      - keep the file short
+      - state the pnpm-only rule
+  - dataset: bug
+    slug: stale-badge-timezone
+    notes: |
+      Pending and not yet reproduced; start by writing a unit test with a negative UTC offset.
+  - dataset: feature
+    slug: context-forge
+    notes: |
+      The main feature. Acceptance criteria at the bottom show what is still open.
+  - dataset: project
+    slug: ctxman-v1
+    notes: |
+      Scope and milestones; check the out-of-scope list before starting new work.
+  - dataset: skill
+    slug: okf-authoring
+    notes: |
+      Follow its checklist whenever you edit markdown under `data/`.
+  - dataset: reference
+    slug: astro-docs
+    notes: |
+      Upstream Astro docs; the content collection pages live under `guides/` and `reference/`.

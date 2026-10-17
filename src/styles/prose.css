@@ -1,0 +1,287 @@
+@layer cx-prose {
+  .cx-prose {
+    font-size: var(--fs-lg);
+    line-height: var(--lh-prose);
+    color: var(--fg);
+    overflow-wrap: break-word;
+  }
+  .cx-prose > :first-child {
+    margin-top: 0;
+  }
+  .cx-prose > :last-child {
+    margin-bottom: 0;
+  }
+  /* cybercore's reset zeroed every margin; prose re-adds block rhythm (dense) */
+  .cx-prose :where(p, ul, ol, dl, blockquote, pre, table, figure, hr, details) {
+    margin: 0 0 var(--sp-5);
+  }
+
+  .cx-prose :where(h1, h2, h3, h4, h5, h6) {
+    margin: var(--sp-6) 0 var(--sp-3);
+    line-height: var(--lh-tight);
+    font-weight: var(--fw-semibold);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--fg);
+    scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+  }
+  .cx-prose h1 {
+    font-size: var(--fs-2xl);
+  }
+  .cx-prose h2 {
+    font-size: var(--fs-xl);
+    padding-bottom: var(--sp-2);
+    border-bottom: var(--border-w) solid transparent;
+    border-image: linear-gradient(90deg, var(--accent-line), transparent 70%) 1;
+  }
+  .cx-prose h3 {
+    font-size: var(--fs-lg);
+    color: var(--accent-text);
+  }
+  .cx-prose h4 {
+    font-size: var(--fs-md);
+  }
+  .cx-prose :where(h5, h6) {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+
+  .cx-prose a {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-decoration-color: var(--accent-line);
+    text-underline-offset: 2px;
+  }
+  .cx-prose a:hover {
+    text-decoration-color: currentColor;
+    text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .cx-prose a[href^='http']::after {
+    content: '↗';
+    font-size: 0.75em;
+    margin-left: 1px;
+    vertical-align: super;
+    color: var(--fg-subtle);
+  }
+
+  .cx-prose ul {
+    list-style: square;
+    padding-left: 1.4em;
+  }
+  .cx-prose ol {
+    list-style: decimal;
+    padding-left: 1.6em;
+  }
+  .cx-prose li + li {
+    margin-top: var(--sp-1);
+  }
+  .cx-prose li > :where(ul, ol) {
+    margin: var(--sp-1) 0 0;
+  }
+  .cx-prose li::marker {
+    color: var(--accent);
+  }
+  .cx-prose ol > li::marker {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .cx-prose ul.contains-task-list {
+    list-style: none;
+    padding-left: 0.2em;
+  }
+  .cx-prose .task-list-item input[type='checkbox'] {
+    margin: 0 var(--sp-3) 0 0;
+    vertical-align: -1px;
+    accent-color: var(--accent);
+  }
+
+  .cx-prose dt {
+    font-weight: var(--fw-semibold);
+  }
+  .cx-prose dd {
+    margin: 0 0 var(--sp-3) var(--sp-5);
+    color: var(--fg-muted);
+  }
+
+  .cx-prose :not(pre) > code {
+    padding: 0 0.3em;
+    font-size: 0.86em;
+    color: var(--cyber-cyan-400);
+    background: var(--code-bg);
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--r-sm);
+  }
+  .cx-prose pre {
+    padding: var(--sp-4) var(--sp-5);
+    overflow-x: auto;
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    tab-size: 2;
+    background: var(--code-bg-block);
+    border: var(--border-w) solid var(--border);
+    border-left: 2px solid var(--accent-line);
+    border-radius: var(--r-sm);
+  }
+  .cx-prose pre code {
+    font-size: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+  }
+  .cx-prose pre.astro-code {
+    background-color: var(--code-bg-block) !important;
+  } /* Shiki sets an inline bg; keep ours */
+
+  .cx-prose blockquote {
+    padding: var(--sp-2) var(--sp-5);
+    color: var(--fg-muted);
+    border-left: 2px solid var(--border-strong);
+    background: var(--bg-subtle);
+  }
+  .cx-prose blockquote > :last-child {
+    margin-bottom: 0;
+  }
+
+  .cx-prose table {
+    display: block;
+    max-width: 100%;
+    width: max-content;
+    overflow-x: auto;
+    font-size: var(--fs-md);
+    border: var(--border-w) solid var(--border);
+  }
+  .cx-prose :where(th, td) {
+    padding: var(--sp-1) var(--sp-4);
+    border-bottom: var(--border-w) solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  .cx-prose :where(th, td) + :where(th, td) {
+    border-left: var(--border-w) solid var(--border);
+  }
+  .cx-prose th {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-muted);
+    background: var(--bg-deep);
+  }
+  .cx-prose tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--bg-subtle) 70%, transparent);
+  }
+  .cx-prose tbody tr:hover td {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .cx-prose tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .cx-prose hr {
+    margin: var(--sp-6) 0;
+    border-top-color: var(--accent-line);
+  }
+  .cx-prose img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+  }
+  .cx-prose details {
+    padding: var(--sp-2) var(--sp-4);
+    border: var(--border-w) solid var(--border);
+  }
+  .cx-prose summary {
+    cursor: pointer;
+    font-weight: var(--fw-medium);
+    color: var(--accent-text);
+  }
+  .cx-prose kbd {
+    padding: 0 var(--sp-1);
+    font-size: 0.8em;
+    border: var(--border-w) solid var(--border);
+    border-bottom-color: var(--border-strong);
+    background: var(--cyber-void-700);
+  }
+  .cx-prose mark {
+    background: var(--mark-bg);
+    color: var(--mark-fg);
+    padding: 0 2px;
+  }
+
+  /* GFM footnotes (OKF source attribution) */
+  .cx-prose sup:has(> a[data-footnote-ref]) {
+    line-height: 0;
+  }
+  .cx-prose a[data-footnote-ref] {
+    padding: 0 0.25em;
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    text-decoration: none;
+    color: var(--accent-text);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-line);
+  }
+  .cx-prose a[data-footnote-ref]::before {
+    content: '[';
+  }
+  .cx-prose a[data-footnote-ref]::after {
+    content: ']';
+    vertical-align: baseline;
+    margin: 0;
+    font-size: inherit;
+    color: inherit;
+  }
+  .cx-prose section[data-footnotes] {
+    margin-top: var(--sp-6);
+    padding-top: var(--sp-3);
+    border-top: var(--border-w) solid var(--accent-line);
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .cx-prose section[data-footnotes] > h2 {
+    /* remark renders an sr-only "Footnotes" h2; show it as a HUD label */
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+    margin: 0 0 var(--sp-2);
+    padding: 0;
+    border: 0;
+    border-image: none;
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .cx-prose section[data-footnotes] li:target {
+    background: var(--mark-bg);
+    color: var(--fg);
+  }
+  .cx-prose a[data-footnote-backref] {
+    margin-left: var(--sp-2);
+    text-decoration: none;
+  }
+  .cx-prose :target {
+    scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+  }
+
+  /* compact variant: context link notes */
+  .cx-prose--compact {
+    font-size: var(--fs-md);
+    line-height: var(--lh);
+  }
+  .cx-prose--compact :where(p, ul, ol, pre, blockquote, table) {
+    margin-bottom: var(--sp-2);
+  }
+  .cx-prose--compact :where(h1, h2, h3, h4) {
+    margin: var(--sp-3) 0 var(--sp-1);
+    font-size: var(--fs-md);
+    border: 0;
+    border-image: none;
+    padding: 0;
+    color: var(--fg);
+  }
+}

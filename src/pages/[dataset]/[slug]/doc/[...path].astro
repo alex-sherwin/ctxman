@@ -1,0 +1,74 @@
+---
+import BackRefs from '../../../../components/BackRefs.astro';
+import Breadcrumbs from '../../../../components/Breadcrumbs.astro';
+import DatasetBadge from '../../../../components/DatasetBadge.astro';
+import FileTree from '../../../../components/FileTree.astro';
+import Freshness from '../../../../components/Freshness.astro';
+import MetaPanel from '../../../../components/MetaPanel.astro';
+import OkfStatusBadge from '../../../../components/OkfStatusBadge.astro';
+import PageHeader from '../../../../components/PageHeader.astro';
+import StaleBadge from '../../../../components/StaleBadge.astro';
+import { entryUrl, getDataset, isOkfDatasetId } from '../../../../datasets/registry.ts';
+import { getDocDetail } from '../../../../lib/entries.ts';
+import { isStale, toYmd } from '../../../../lib/time.ts';
+import Base from '../../../../layouts/Base.astro';
+
+// Any markdown file of an okf bundle except main.md (index.md, log.md, concepts/**).
+const def = getDataset(Astro.params.dataset ?? '');
+if (!def || !isOkfDatasetId(def.id)) return Astro.rewrite('/404');
+const slug = Astro.params.slug ?? '';
+const docPath = Astro.params.path ?? '';
+
+// main.md is the entry page itself, not a sub-doc.
+if (docPath === 'main') return Astro.redirect(entryUrl(def.id, slug), 301);
+
+const doc = await getDocDetail(def.id, slug, docPath);
+if (!doc) return Astro.rewrite('/404');
+
+const entryTitle = doc.entry.title ?? doc.entry.name;
+const type = typeof doc.data.type === 'string' && doc.data.type !== '' ? doc.data.type : undefined;
+const status = typeof doc.data.status === 'string' ? doc.data.status : undefined;
+const staleAfter =
+  doc.data.stale_after instanceof Date || typeof doc.data.stale_after === 'string'
+    ? toYmd(doc.data.stale_after) || undefined
+    : undefined;
+---
+
+<Base title={`${doc.title} · ${entryTitle}`} active={def.id}>
+  <Breadcrumbs
+    items={[
+      { label: 'ctxman', href: '/' },
+      { label: def.label, href: `/${def.id}` },
+      { label: slug, href: doc.entry.url, mono: true },
+      { label: docPath, mono: true },
+    ]}
+  />
+  <PageHeader title={doc.title}>
+    <Fragment slot="meta">
+      <code class="cx-detail__slug" data-testid="detail-path">{doc.relPath}</code>
+      <DatasetBadge dataset={def.id} />
+      {type && <span class="ck-badge ck-badge--muted ck-badge--mono">{type}</span>}
+      <OkfStatusBadge status={status} />
+      {isStale(staleAfter, Date.now()) && <StaleBadge since={staleAfter} />}
+      <Freshness iso={doc.lastModified} prefix="Modified" />
+    </Fragment>
+  </PageHeader>
+
+  <div class="cx-detail">
+    <article class="cx-detail__main cx-prose" data-testid="detail-content">
+      <Fragment set:html={doc.html} />
+    </article>
+    <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
+      <MetaPanel
+        dataset={def.id}
+        kind="okf"
+        data={doc.data}
+        lastModified={doc.lastModified}
+        file={`${def.id}/${slug}/${doc.relPath}`}
+        bundle={{ url: doc.entry.url, title: entryTitle }}
+      />
+      <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} />
+      <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
+    </aside>
+  </div>
+</Base>

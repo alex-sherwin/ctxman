@@ -1,0 +1,61 @@
+@layer cx-kit {
+  .ck-disclosure {
+    min-width: 0;
+  }
+  .ck-disclosure__heading {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  .ck-disclosure__trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    height: var(--control-h-sm);
+    padding: 0 var(--sp-2);
+    font-family: var(--font-body);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    text-align: left;
+    color: var(--fg-subtle);
+    background: none;
+    border: 0;
+    border-radius: var(--r-sm);
+    cursor: default;
+    outline: none;
+  }
+  .ck-disclosure__trigger[data-hovered] {
+    color: var(--accent-text);
+  }
+  .ck-disclosure__trigger[data-focus-visible] {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  .ck-disclosure__trigger[data-disabled] {
+    opacity: 0.4;
+  }
+  .ck-disclosure__chevron {
+    color: var(--accent);
+    transition: transform var(--dur) var(--ease);
+  }
+  .ck-disclosure[data-expanded] .ck-disclosure__chevron {
+    transform: rotate(90deg);
+  }
+  .ck-disclosure__meta {
+    margin-left: var(--sp-2);
+    font-family: var(--font-mono);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .ck-disclosure__panel {
+    padding-top: var(--sp-2);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-disclosure__chevron {
+      transition: none;
+    }
+  }
+}

@@ -1,0 +1,330 @@
+/*
+ * Context Forge island styles (UI_SPEC §H). Replaces P4's stub. Every rule lives in @layer cx-app;
+ * Monaco's own CSS is unlayered and wins, so editors are styled via the kit's `.ck-code` rules only.
+ */
+@layer cx-app {
+  /* ---------- H.3 layout ---------- */
+  .cx-forge {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(380px, 1fr) minmax(460px, 1.2fr);
+  }
+  .cx-forge__pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .cx-forge__pane--discover {
+    border-right: 1px solid var(--accent-line);
+    background: var(--bg-subtle);
+  }
+  .cx-forge__pane-header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex: none;
+    height: 36px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-deep);
+  }
+  .cx-forge__pane-title {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--accent-text);
+  }
+  .cx-forge__pane-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .cx-forge__pane-body[data-view='yaml'] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .cx-forge__toolbar {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-forge__count {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-forge__footer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex: none;
+    height: 40px;
+    padding: 0 var(--sp-4);
+    border-top: 1px solid var(--accent-line);
+    background: var(--bg-deep);
+  }
+  .cx-forge__status {
+    margin-left: var(--sp-2);
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .cx-forge__status[data-kind='dirty'] {
+    color: var(--warn-fg);
+  }
+  .cx-forge__status[data-kind='error'] {
+    color: var(--danger-fg);
+  }
+  .cx-forge__status[data-kind='saved'] {
+    color: var(--success-fg);
+  }
+  .cx-forge__hint {
+    font-size: var(--fs-xs);
+  }
+  .cx-forge__loading {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-6) var(--sp-4);
+    color: var(--fg-subtle);
+    font-size: var(--fs-sm);
+  }
+  @media (max-width: 899px) {
+    .cx-forge {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(260px, 45%) minmax(0, 1fr);
+    }
+    .cx-forge__pane--discover {
+      border-right: 0;
+      border-bottom: 1px solid var(--accent-line);
+    }
+  }
+
+  /* ---------- H.4 discover pane ---------- */
+  .cx-forge__tabs {
+    flex: 1;
+    min-height: 0;
+  }
+  .cx-forge__tablist {
+    flex: none;
+    padding: 0 var(--sp-3);
+    background: var(--bg-subtle);
+  }
+  .cx-forge__tablist .ck-tabs__tab {
+    padding: 0 var(--sp-3);
+  }
+  /* the tab panel is a flex column (kit): the results list is the scroller under the fixed toolbar */
+  .cx-discover {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .cx-discover__item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+  .cx-discover__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .cx-discover__line {
+    flex-wrap: nowrap;
+    gap: var(--sp-2);
+    min-width: 0;
+  }
+  .cx-discover__title {
+    font-weight: var(--fw-medium);
+    flex: 0 1 auto;
+  }
+  .cx-discover__slug {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-discover__desc {
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .cx-discover__actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex: none;
+  }
+  .cx-discover__item[data-added] .cx-discover__title {
+    color: var(--fg-muted);
+  }
+  .cx-discover__hint {
+    flex: none;
+    margin: var(--sp-2) var(--sp-4) 0;
+    padding: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--info-fg);
+    background: var(--info-bg);
+    border-left: 2px solid var(--accent);
+  }
+  .cx-discover__error {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    color: var(--danger-fg);
+  }
+
+  /* ---------- H.5 context pane ---------- */
+  .cx-forge__ctxselect {
+    flex: 0 1 320px;
+    min-width: 200px;
+  }
+  /* the trigger shows only the context name; the description is for the popup list */
+  .cx-forge__ctxselect .ck-select__value .ck-listbox__desc {
+    display: none;
+  }
+  .cx-forge__pane-header .ck-chip-group {
+    flex-wrap: nowrap;
+  }
+  .cx-ctx {
+    padding: var(--sp-3) var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .cx-ctx__meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: var(--sp-2) var(--sp-3);
+    align-items: end;
+  }
+  .cx-ctx__tags {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+  }
+  .cx-ctx__linkshead h3 {
+    outline-offset: 2px;
+  }
+  .cx-links {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+  }
+  .cx-link {
+    padding: 0 var(--sp-3);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--ds-c);
+  }
+  .cx-link:last-child {
+    border-bottom: 0;
+  }
+  .cx-link:focus-within {
+    background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  }
+  .cx-link[data-missing] {
+    border-left-color: var(--danger);
+    background: var(--danger-bg);
+  }
+  .cx-link__head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    min-height: var(--row-h);
+  }
+  .cx-link__index {
+    width: 18px;
+    flex: none;
+    font-family: var(--font-mono);
+    text-align: right;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .cx-link__title {
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+    min-width: 0;
+  }
+  .cx-link__slug {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-link__actions {
+    margin-left: auto;
+    flex: none;
+  }
+  .cx-link__notes {
+    padding: 0 0 var(--sp-2) 26px;
+  }
+  .cx-link__notes-help {
+    margin-top: var(--sp-1);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+
+  /* ---------- H.6 new context dialog ---------- */
+  .cx-newctx {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: min(420px, 80vw);
+  }
+  .cx-newctx__error {
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+
+  /* ---------- H.7 YAML view ---------- */
+  .cx-yaml {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .cx-yaml__help {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-yaml__issues {
+    flex: none;
+    max-height: 120px;
+    overflow: auto;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+    border-top: 1px solid var(--border);
+    padding-top: var(--sp-2);
+  }
+  /* the kit's button label is uppercase; problem messages read better as sentences */
+  .cx-yaml__issues .ck-button {
+    height: auto;
+    min-height: var(--control-h-sm);
+    padding-block: var(--sp-1);
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: normal;
+    color: inherit;
+  }
+  .cx-yaml__issues code {
+    color: var(--fg-muted);
+    margin-right: var(--sp-2);
+  }
+  .cx-yaml__ok {
+    color: var(--success-fg);
+    font-size: var(--fs-sm);
+  }
+}

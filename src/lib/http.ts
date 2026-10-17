@@ -1,0 +1,135 @@
+// SERVER: JSON responses and request guards shared by every API route (PLAN §E.19, §G).
+// Every response is JSON with `cache-control: no-store`; errors are `{ error, message, issues? }`.
+// No astro:* imports, so it is unit-testable (tests/unit/http.test.ts).
+import { ContextIoError } from './context-io.ts';
+import type { Issue } from './context-io.ts';
+
+/** Statuses that must not carry a body (a `Response` with a body and one of these throws). */
+const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([101, 204, 205, 304]);
+
+/** JSON response (`Response.json`) with `cache-control: no-store`. Null-body statuses (204...) get no body. */
+export function json(data: unknown, status = 200, headers?: HeadersInit): Response {
+  const merged = new Headers(headers);
+  merged.set('cache-control', 'no-store');
+  if (NULL_BODY_STATUSES.has(status)) return new Response(null, { status, headers: merged });
+  return Response.json(data, { status, headers: merged });
+}
+
+/** 204 with an empty body (DELETE). */
+export function noContent(): Response {
+  return json(null, 204);
+}
+
+/** Error body `{ error: <machine code>, message, issues? }`. */
+export function apiError(
+  status: number,
+  error: string,
+  message: string,
+  issues?: Issue[],
+): Response {
+  const body: { error: string; message: string; issues?: Issue[] } = { error, message };
+  if (issues !== undefined) body.issues = issues;
+  return json(body, status);
+}
+
+/** 405 for a method the route does not implement (`export const ALL`). */
+export function methodNotAllowed(allowed: readonly string[]): Response {
+  const allow = allowed.join(', ');
+  return json({ error: 'method-not-allowed', message: `use ${allow}` }, 405, { allow });
+}
+
+/** 500 for an unexpected exception; the cause is logged to the server console. */
+export function internalError(error: unknown): Response {
+  console.error('[ctxman] api error:', error);
+  return apiError(500, 'internal', error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * 403 `forbidden-origin` when the request carries an `Origin` header that is not this server's origin
+ * (a browser page on another site, or a sandboxed `null` origin). Requests without `Origin` (curl,
+ * Playwright's request context, server-to-server) pass. Used by every mutating route, including DELETE.
+ */
+export function checkOrigin(request: Request, url: URL): Response | null {
+  const origin = request.headers.get('origin');
+  if (origin !== null && origin !== url.origin) {
+    return apiError(403, 'forbidden-origin', `cross-origin request from ${origin} is not allowed`);
+  }
+  return null;
+}
+
+const JSON_CONTENT_TYPE = /^\s*application\/json\s*(?:;|$)/i;
+
+/**
+ * Reads a JSON request body with the guards every mutating route needs:
+ * 403 `forbidden-origin` (see `checkOrigin`), 415 `unsupported-media-type` unless the content type is
+ * `application/json` (also stops Astro's form-post exemption from mattering), 400 `bad-json` when the
+ * body does not parse. `allowEmpty` (check scripts) accepts a completely empty body, whatever its
+ * content type, as `value: undefined`.
+ */
+export async function readJson(
+  request: Request,
+  url: URL,
+  options: { allowEmpty?: boolean } = {},
+): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }> {
+  const forbidden = checkOrigin(request, url);
+  if (forbidden !== null) return { ok: false, response: forbidden };
+
+  const isJson = JSON_CONTENT_TYPE.test(request.headers.get('content-type') ?? '');
+  let text: string;
+  try {
+    text = await request.text();
+  } catch (error) {
+    return {
+      ok: false,
+      response: apiError(
+        400,
+        'bad-json',
+        `could not read the request body: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    };
+  }
+
+  if (options.allowEmpty === true && text.trim() === '') return { ok: true, value: undefined };
+  if (!isJson) {
+    return {
+      ok: false,
+      response: apiError(415, 'unsupported-media-type', 'send the body as application/json'),
+    };
+  }
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch (error) {
+    return {
+      ok: false,
+      response: apiError(
+        400,
+        'bad-json',
+        `request body is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    };
+  }
+}
+
+/**
+ * Maps a context-io failure to its API response (PLAN §G). `read` (GET): a file that exists but fails
+ * parsing/schema is 422 `invalid-file`; `write` (POST/PUT): schema problems are 400 `invalid`.
+ */
+export function contextErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
+  if (!(error instanceof ContextIoError)) return internalError(error);
+  const issues = error.issues.length > 0 ? error.issues : undefined;
+  switch (error.code) {
+    case 'bad-slug':
+      return apiError(400, 'bad-slug', error.message);
+    case 'not-found':
+      return apiError(404, 'not-found', error.message);
+    case 'exists':
+      return apiError(409, 'exists', error.message);
+    case 'name-mismatch':
+      return apiError(400, 'name-mismatch', error.message, issues);
+    case 'invalid':
+    case 'parse':
+      return mode === 'read'
+        ? apiError(422, 'invalid-file', error.message, issues)
+        : apiError(400, 'invalid', error.message, issues ?? []);
+  }
+}

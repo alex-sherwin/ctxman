@@ -1,0 +1,9 @@
+name: astro-docs
+description: The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.
+type: remote-repo
+uri: https://github.com/withastro/docs.git
+subpath: src/content/docs/en
+owner: not-me
+tags:
+  - astro
+  - docs

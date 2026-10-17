@@ -1,0 +1,704 @@
+/*
+ * App CSS (UI_SPEC §C-§F): shell, shared Astro components, dashboard, list page, detail page.
+ * Everything lives in @layer cx-app. Island-specific CSS lives next to the islands
+ * (src/ui/search/search.css, src/ui/forge/forge.css, src/ui/tools/tools.css) in the same layer.
+ */
+@layer cx-app {
+  /* ---------- C.1 shell ---------- */
+  /* `.cx-skip` is paired with `.ck-sr-only` in markup. The utility lives in the LAST layer, so on focus
+     its plain declarations would beat ours and its `position: absolute !important` would beat `fixed`.
+     `!important` flips the layer order (earlier layer wins), so the link becomes visible on focus. */
+  .cx-skip:focus {
+    position: fixed !important;
+    top: var(--sp-2);
+    left: var(--sp-2);
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    white-space: normal !important;
+    padding: var(--sp-2) var(--sp-4);
+    background: var(--surface-raised);
+    border: 1px solid var(--accent);
+    z-index: var(--z-tooltip);
+  }
+  .cx-main {
+    flex: 1;
+    width: 100%;
+    max-width: var(--content-max);
+    margin: 0 auto;
+    padding: var(--sp-4) var(--gutter) var(--sp-6);
+    min-width: 0;
+  }
+  .cx-shell--fill {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .cx-shell--fill .cx-main {
+    max-width: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+
+  /* ---------- C.2 header ---------- */
+  .cx-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'brand nav search';
+    align-items: center;
+    gap: var(--sp-5);
+    min-height: var(--header-h);
+    padding: 0 var(--gutter);
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--accent-line);
+    box-shadow: 0 1px 12px -4px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .cx-header__brand {
+    grid-area: brand;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .cx-header__brand:hover {
+    text-decoration: none;
+  }
+  .cx-header__logo {
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    background: var(--accent);
+    color: var(--accent-on);
+    font: 700 10px/1 var(--font-mono);
+    clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%);
+  }
+  .cx-header__title {
+    font-size: var(--fs-lg);
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .cx-nav {
+    grid-area: nav;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cx-nav__list {
+    display: flex;
+    gap: 0;
+    white-space: nowrap;
+  }
+  .cx-nav__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: var(--header-h);
+    padding: 0 var(--sp-3);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+    border-bottom: 2px solid transparent;
+  }
+  .cx-nav__link:hover {
+    color: var(--fg);
+    text-decoration: none;
+    background: color-mix(in srgb, var(--ds-c, var(--accent)) 6%, transparent);
+  }
+  .cx-nav__link[aria-current] {
+    color: var(--ds-fg, var(--accent-text));
+    border-bottom-color: var(--ds-c, var(--accent));
+    text-shadow: 0 0 8px color-mix(in srgb, var(--ds-c, var(--accent)) 55%, transparent);
+  }
+  .cx-nav__dot {
+    width: 6px;
+    height: 6px;
+    background: var(--ds-c);
+    box-shadow: 0 0 4px var(--ds-c);
+  }
+  .cx-nav__link--tool {
+    color: var(--fg-muted);
+  }
+  .cx-nav__sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 10px var(--sp-2);
+    background: var(--border);
+  }
+  .cx-header__search {
+    grid-area: search;
+  }
+  @media (max-width: 1279px) {
+    .cx-header {
+      grid-template-columns: auto 1fr;
+      grid-template-areas: 'brand search' 'nav nav';
+      row-gap: 0;
+    }
+    .cx-nav__link {
+      height: 30px;
+    }
+    .cx-header__search {
+      justify-self: end;
+    }
+  }
+
+  /* ---------- C.3 footer ---------- */
+  .cx-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    height: 24px;
+    padding: 0 var(--gutter);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    border-top: 1px solid var(--border);
+    background: var(--bg-deep);
+  }
+  .cx-footer__spacer {
+    flex: 1;
+  }
+
+  /* ---------- C.4 shared Astro components ---------- */
+  .cx-pagehead {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-4);
+    padding-bottom: var(--sp-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-pagehead__row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    justify-content: space-between;
+  }
+  .cx-pagehead__title {
+    font-size: var(--fs-2xl);
+    font-weight: var(--fw-semibold);
+    overflow-wrap: anywhere;
+  }
+  .cx-pagehead__actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex: none;
+  }
+  .cx-pagehead__meta {
+    color: var(--fg-muted);
+    font-size: var(--fs-sm);
+    gap: var(--sp-3);
+  }
+  .cx-freshness {
+    color: var(--fg-muted);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+    text-decoration: underline dotted var(--border-strong);
+    text-underline-offset: 3px;
+  }
+  .cx-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+  }
+  .cx-panel__title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: var(--row-h);
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-muted);
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .cx-panel__count {
+    font-family: var(--font-mono);
+    color: var(--accent-text);
+    letter-spacing: 0;
+  }
+  .cx-panel__actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--sp-1);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  /* ---------- D dashboard ---------- */
+  .cx-dash__tiles {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-4);
+  }
+  @media (max-width: 1279px) {
+    .cx-dash__tiles {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  .cx-tile {
+    display: block;
+    color: var(--fg);
+    text-decoration: none;
+    outline: none;
+  }
+  .cx-tile:hover {
+    text-decoration: none;
+  }
+  /* `--card-accent` beats cybercore's components layer; padding replaces its fluid padding. */
+  .cx-tile__card {
+    --card-accent: var(--ds-c);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: var(--sp-2) var(--sp-4);
+    background: var(--surface);
+  }
+  /* shrink cybercore's corner brackets for density */
+  .cx-tile__card.cyber-card::before,
+  .cx-tile__card.cyber-card::after {
+    width: 10px;
+    height: 10px;
+    border-width: 1px;
+  }
+  /* neon border on focus that follows the clip-path (outline/box-shadow would be clipped) */
+  .cx-tile:focus-visible {
+    filter: drop-shadow(0 0 2px var(--ds-c)) drop-shadow(0 0 6px var(--ds-c));
+  }
+  .cx-tile__label {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--ds-fg);
+  }
+  .cx-tile__count {
+    font-family: var(--font-mono);
+    font-size: var(--fs-3xl);
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .cx-tile__sub {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cx-dash__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--sp-4);
+    align-items: start;
+  }
+  .cx-dash__side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  @media (max-width: 1099px) {
+    .cx-dash__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .cx-minilist__row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: var(--sp-3);
+    align-items: center;
+    min-height: var(--row-h);
+    padding: var(--sp-1) var(--sp-4);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-md);
+  }
+  .cx-minilist__row:last-child {
+    border-bottom: 0;
+  }
+  .cx-minilist__row:hover {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .cx-minilist__title {
+    color: var(--fg);
+    font-weight: var(--fw-medium);
+  }
+  .cx-minilist__title:hover {
+    color: var(--accent-text);
+  }
+
+  /* ---------- E list page: filters ---------- */
+  .cx-filters {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    margin-bottom: var(--sp-3);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent-line);
+  }
+  .cx-filters__row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+  }
+  .cx-filters__q {
+    flex: 1 1 320px;
+    max-width: 520px;
+  }
+  .cx-filters__sort {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+  .cx-filters__count {
+    margin-left: auto;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .cx-filters__facet {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: var(--sp-2);
+    align-items: start;
+  }
+  /* legend uses the .cx-label look */
+  .cx-filters__legend {
+    float: left;
+    padding-top: 3px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .cx-filters[data-enhanced] .cx-filters__submit {
+    display: none;
+  }
+  .cx-filters__more > summary {
+    list-style: none;
+  }
+  .cx-filters__more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .cx-filters__more[open] > summary {
+    margin-bottom: var(--sp-1);
+  }
+
+  /* ---------- E list page: results table ---------- */
+  .cx-table {
+    width: 100%;
+    font-size: var(--fs-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .cx-table th {
+    position: sticky;
+    top: var(--header-h);
+    z-index: 1;
+    height: 24px;
+    text-align: left;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--fg-subtle);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    padding: 0 var(--sp-4);
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--accent-line);
+  }
+  .cx-table th[aria-sort] {
+    color: var(--accent-text);
+  }
+  .cx-table td {
+    height: var(--row-h);
+    padding: var(--sp-1) var(--sp-4);
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border);
+    line-height: var(--lh-tight);
+  }
+  .cx-table__row:hover td {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .cx-table__row:hover td:first-child {
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .cx-table__title {
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+  }
+  .cx-table__title:hover {
+    color: var(--accent-text);
+  }
+  .cx-table__slug {
+    display: block;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-table__desc {
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+    max-width: 0;
+  }
+  .cx-table td:last-child {
+    white-space: nowrap;
+  }
+  /* column widths */
+  .cx-table__th--entry {
+    min-width: 220px;
+    width: 26%;
+  }
+  .cx-table__th--state,
+  .cx-table__th--type,
+  .cx-table__th--modified {
+    width: 120px;
+  }
+  .cx-table__th--tags {
+    width: 180px;
+  }
+  .cx-table__th--owner,
+  .cx-table__th--links {
+    width: 80px;
+  }
+  /* narrow viewports: the table scrolls horizontally inside its wrapper, so the sticky header goes */
+  @media (max-width: 999px) {
+    .cx-table-wrap {
+      overflow-x: auto;
+    }
+    .cx-table-wrap .cx-table th {
+      position: static;
+    }
+  }
+
+  /* ---------- F detail page ---------- */
+  .cx-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
+    gap: var(--sp-5);
+    align-items: start;
+  }
+  .cx-detail__aside {
+    position: sticky;
+    top: calc(var(--header-h) + var(--sp-3));
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    max-height: calc(100dvh - var(--header-h) - var(--sp-6));
+    overflow: auto;
+  }
+  @media (max-width: 1099px) {
+    .cx-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .cx-detail__aside {
+      position: static;
+      max-height: none;
+      order: -1;
+    }
+  }
+  .cx-detail__main {
+    max-width: var(--prose-max);
+    min-width: 0;
+  }
+  .cx-detail__slug {
+    font-family: var(--font-mono);
+    font-size: var(--fs-mono);
+  }
+  .cx-detail__lede {
+    margin-bottom: var(--sp-5);
+    font-size: var(--fs-lg);
+    line-height: var(--lh-prose);
+    color: var(--fg-muted);
+  }
+  .cx-main > nav[aria-label='Breadcrumb'] {
+    margin-bottom: var(--sp-3);
+  }
+
+  /* F.2 MetaPanel */
+  .cx-meta__list {
+    padding: var(--sp-2) var(--sp-4);
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    column-gap: var(--sp-3);
+    row-gap: var(--sp-2);
+  }
+  .cx-meta__row {
+    display: contents;
+  }
+  /* dt uses the .cx-label look */
+  .cx-meta__row dt {
+    padding-top: 2px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .cx-meta__row dd {
+    margin: 0;
+    font-size: var(--fs-sm);
+    overflow-wrap: anywhere;
+  }
+  .cx-meta__row dd ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+  }
+  .cx-meta__yaml {
+    font-size: var(--fs-xs);
+    background: var(--code-bg-block);
+    padding: var(--sp-2);
+    max-height: 160px;
+    overflow: auto;
+  }
+
+  /* F.3 reference fields (main column) */
+  .cx-fields {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-3);
+    margin: 0 0 var(--sp-5);
+  }
+  .cx-fields dt {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+    padding-top: 2px;
+  }
+  .cx-fields dd {
+    margin: 0;
+    font-size: var(--fs-md);
+    overflow-wrap: anywhere;
+  }
+
+  /* F.3 context links */
+  .cx-ctxgroup {
+    border-left: 2px solid var(--ds-c);
+    padding-left: var(--sp-4);
+    margin-top: var(--sp-5);
+  }
+  .cx-ctxgroup__title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
+    font-size: var(--fs-md);
+  }
+  .cx-ctxlink {
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-ctxlink__notes {
+    margin-top: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--bg-subtle);
+    border-radius: var(--r-sm);
+  }
+
+  /* F.4 file tree */
+  .cx-files__list {
+    list-style: none;
+    padding: var(--sp-2);
+  }
+  .cx-files__list > li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .cx-files__item {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    align-items: center;
+    padding: 0 var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--fg);
+  }
+  .cx-files__item:hover {
+    background: var(--bg-muted);
+    text-decoration: none;
+  }
+  .cx-files__item[aria-current] {
+    background: var(--accent-bg);
+    color: var(--accent-text);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .cx-files__dir {
+    color: var(--fg-subtle);
+  }
+  .cx-files__hint {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    margin-left: auto;
+  }
+
+  /* ---------- P5 additions: small rules the Astro pages need on top of the spec CSS ---------- */
+  /* header search link: icon + label + kbd hints on one line */
+  .cx-header__search .ck-button__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  /* the description span must be a block for text-overflow to truncate inside the table cell */
+  .cx-table__desc > .cx-truncate {
+    display: block;
+  }
+  /* MetaPanel: vertical lists (sources, verification events) and nested key/value lists (skill metadata) */
+  .cx-meta__row dd ul.cx-meta__col {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+  }
+  .cx-meta__sub {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--sp-1) var(--sp-3);
+  }
+  .cx-meta__row dd .cx-meta__sub dt {
+    padding-top: 0;
+  }
+  .cx-meta__row dd .cx-meta__sub dd {
+    font-size: var(--fs-xs);
+  }
+  /* back-refs live in the 280px sidebar: name + Forge button on the first line, notes below */
+  .cx-minilist__row.cx-backref {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0;
+  }
+  .cx-backref__notes {
+    grid-column: 1 / -1;
+    font-size: var(--fs-sm);
+  }
+  .cx-backref__empty {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+  }
+}

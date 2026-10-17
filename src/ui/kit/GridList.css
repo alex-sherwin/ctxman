@@ -1,0 +1,30 @@
+@layer cx-kit {
+  .ck-gridlist {
+    display: flex;
+    flex-direction: column;
+    outline: none;
+  }
+  .ck-gridlist__item {
+    min-height: var(--row-h);
+    padding: var(--sp-2) var(--sp-4);
+    border-bottom: 1px solid var(--border);
+    outline: none;
+  }
+  .ck-gridlist__item[data-hovered] {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .ck-gridlist__item[data-focus-visible] {
+    box-shadow:
+      inset 2px 0 0 var(--accent),
+      inset 0 0 0 1px var(--accent-line);
+  }
+  .ck-gridlist__item[data-disabled] {
+    opacity: 0.4;
+  }
+  .ck-gridlist__empty {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-6) var(--sp-4);
+    color: var(--fg-subtle);
+  }
+}

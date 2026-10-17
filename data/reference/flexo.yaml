@@ -1,0 +1,8 @@
+name: flexo
+description: a static site tool which can build ksa parts and subpart asset mods
+type: remote-repo
+uri: git@github.com:meow-sci/flexo.git
+owner: me
+tags:
+  - ksa
+  - modding

@@ -1,0 +1,20 @@
+@layer cx-kit {
+  .ck-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-6) var(--sp-4);
+    text-align: center;
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  /* same look as the .cx-label utility, kept local so the kit has no dependency on it */
+  .ck-empty__title {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+}

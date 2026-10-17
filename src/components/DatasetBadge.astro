@@ -1,0 +1,14 @@
+---
+import type { DatasetId } from '../datasets/registry.ts';
+
+// HTML twin of the kit's DatasetBadge (src/ui/kit/Badge.tsx): identical markup.
+interface Props {
+  dataset: DatasetId;
+}
+
+const { dataset } = Astro.props;
+---
+
+<span class="ck-badge ck-badge--ds ck-badge--mono" data-ds={dataset}
+  ><span class="ck-badge__dot" aria-hidden="true"></span>{dataset}</span
+>

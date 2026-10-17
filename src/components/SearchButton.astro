@@ -1,0 +1,33 @@
+---
+import { withParams } from '../lib/url-state.ts';
+
+// Degrades to a plain link that sets ?search=1 (the search island opens itself from the URL on load).
+// src/scripts/shell.ts upgrades the click to the `ctxman:search-open` window event.
+const href = withParams(Astro.url.pathname + Astro.url.search, { search: '1' });
+---
+
+<a
+  class="ck-button ck-button--secondary ck-button--sm cx-header__search"
+  href={href}
+  data-search-trigger
+  data-testid="search-button"
+  aria-keyshortcuts="Meta+K Control+K /"
+>
+  <span class="ck-button__label">
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="4.5"></circle>
+      <path d="M10.5 10.5L14 14"></path>
+    </svg>
+    Search
+    <kbd class="ck-kbd" data-kbd-mod>Ctrl</kbd><kbd class="ck-kbd">K</kbd>
+  </span>
+</a>

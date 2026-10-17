@@ -1,0 +1,80 @@
+@layer cx-kit {
+  .ck-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    align-items: center;
+  }
+  .ck-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: var(--control-h-sm);
+    padding: 0 var(--sp-3);
+    font-size: var(--fs-sm);
+    line-height: 1;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    background: transparent;
+    border: var(--border-w) solid var(--border);
+    border-radius: var(--r-sm);
+    cursor: default;
+    user-select: none;
+    outline: none;
+  }
+  .ck-chip[data-hovered],
+  label.ck-chip:hover {
+    border-color: var(--border-strong);
+    color: var(--fg);
+  }
+  .ck-chip[data-selected],
+  label.ck-chip:has(input:checked) {
+    color: var(--accent-text);
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  .ck-chip[data-ds][data-selected],
+  label.ck-chip[data-ds]:has(input:checked) {
+    color: var(--ds-fg);
+    background: var(--ds-bg);
+    border-color: var(--ds-c);
+    box-shadow: inset 0 0 6px color-mix(in srgb, var(--ds-c) 25%, transparent);
+  }
+  .ck-chip[data-focus-visible],
+  label.ck-chip:has(input:focus-visible) {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+  .ck-chip[data-disabled] {
+    opacity: 0.4;
+  }
+  .ck-chip__dot {
+    width: 6px;
+    height: 6px;
+    background: var(--ds-c);
+    box-shadow: 0 0 4px var(--ds-c);
+  } /* square dot = HUD pixel */
+  .ck-chip__count {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .ck-chip[data-selected] .ck-chip__count,
+  label.ck-chip:has(input:checked) .ck-chip__count {
+    color: inherit;
+    opacity: 0.85;
+  }
+  .ck-chip--md {
+    height: var(--control-h-md);
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-md);
+  }
+
+  label.ck-chip {
+    cursor: pointer;
+  }
+  .ck-chip[data-ds] .ck-chip__dot {
+    background: var(--ds-c);
+  }
+}

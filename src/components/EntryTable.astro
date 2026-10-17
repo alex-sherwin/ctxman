@@ -1,0 +1,138 @@
+---
+import { OWNER_LABELS } from '../datasets/registry.ts';
+import type { DatasetDef, Owner } from '../datasets/registry.ts';
+import type { EntrySummary } from '../lib/entry-summary.ts';
+import type { ListSort } from '../lib/url-state.ts';
+import Freshness from './Freshness.astro';
+import OkfStatusBadge from './OkfStatusBadge.astro';
+import StaleBadge from './StaleBadge.astro';
+import StateBadge from './StateBadge.astro';
+
+interface Props {
+  def: DatasetDef;
+  entries: EntrySummary[];
+  sort: ListSort;
+  /** reference only: owner per slug (EntrySummary does not carry it). */
+  owners?: Record<string, string>;
+}
+
+const { def, entries, sort, owners = {} } = Astro.props;
+
+type Column = 'entry' | 'desc' | 'state' | 'tags' | 'modified' | 'type' | 'owner' | 'links';
+const LABELS: Record<Column, string> = {
+  entry: 'Entry',
+  desc: 'Description',
+  state: 'State',
+  tags: 'Tags',
+  modified: 'Modified',
+  type: 'Type',
+  owner: 'Owner',
+  links: 'Links',
+};
+
+const columns: Column[] =
+  def.id === 'reference'
+    ? ['entry', 'desc', 'type', 'owner', 'modified']
+    : def.id === 'context'
+      ? ['entry', 'desc', 'links', 'tags', 'modified']
+      : def.states
+        ? ['entry', 'desc', 'state', 'tags', 'modified']
+        : ['entry', 'desc', 'tags', 'modified'];
+
+const sorted: Partial<Record<Column, 'ascending' | 'descending'>> =
+  sort === 'name'
+    ? { entry: 'ascending' }
+    : sort === 'state'
+      ? { state: 'ascending' }
+      : { modified: 'descending' };
+
+const MAX_TAGS = 4;
+---
+
+<div class="cx-table-wrap">
+  <table class="cx-table" data-testid="list-results">
+    <thead>
+      <tr>
+        {
+          columns.map((c) => (
+            <th scope="col" class={`cx-table__th cx-table__th--${c}`} aria-sort={sorted[c]}>
+              {LABELS[c]}
+            </th>
+          ))
+        }
+      </tr>
+    </thead>
+    <tbody>
+      {
+        entries.map((e) => (
+          <tr class="cx-table__row" data-testid="list-row" data-slug={e.slug}>
+            {columns.map((c) => {
+              switch (c) {
+                case 'entry':
+                  return (
+                    <td>
+                      <a class="cx-table__title" href={e.url}>
+                        {e.title ?? e.name}
+                      </a>
+                      {e.stale && <>{" "}<StaleBadge since={e.staleAfter} /></>}
+                      {(e.okfStatus === "draft" || e.okfStatus === "deprecated") && <>{" "}<OkfStatusBadge status={e.okfStatus} /></>}
+                      {e.title !== undefined && e.title !== e.name && (
+                        <code class="cx-table__slug">{e.slug}</code>
+                      )}
+                    </td>
+                  );
+                case 'desc':
+                  return (
+                    <td class="cx-table__desc">
+                      <span class="cx-truncate" title={e.description}>
+                        {e.description}
+                      </span>
+                    </td>
+                  );
+                case 'state':
+                  return <td>{e.state && <StateBadge dataset={e.dataset} state={e.state} />}</td>;
+                case 'tags':
+                  return (
+                    <td>
+                      <span class="cx-row">
+                        {e.tags.slice(0, MAX_TAGS).map((t) => (
+                          <span class="ck-badge ck-badge--tag">{t}</span>
+                        ))}
+                        {e.tags.length > MAX_TAGS && (
+                          <span class="ck-badge ck-badge--muted" title={e.tags.slice(MAX_TAGS).join(', ')}>
+                            +{e.tags.length - MAX_TAGS}
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                  );
+                case 'type':
+                  return (
+                    <td>
+                      {e.refType && <span class="ck-badge ck-badge--muted ck-badge--mono">{e.refType}</span>}
+                      {e.uriKind && (
+                        <>
+                          {" "}
+                          <span class="ck-badge ck-badge--info ck-badge--mono" data-testid="uri-kind-badge">{e.uriKind}</span>
+                        </>
+                      )}
+                    </td>
+                  );
+                case 'owner':
+                  return <td>{OWNER_LABELS[owners[e.slug] as Owner] ?? owners[e.slug] ?? ''}</td>;
+                case 'links':
+                  return <td class="cx-mono">{e.linkCount ?? 0}</td>;
+                case 'modified':
+                  return (
+                    <td>
+                      <Freshness iso={e.lastModified} />
+                    </td>
+                  );
+              }
+            })}
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>

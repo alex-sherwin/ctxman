@@ -1,0 +1,16 @@
+---
+import { formatAbsolute, formatRelative } from '../lib/time.ts';
+
+interface Props {
+  /** ISO timestamp. */
+  iso: string;
+  /** e.g. "Modified" */
+  prefix?: string;
+}
+
+const { iso, prefix } = Astro.props;
+---
+
+<time class="cx-freshness" datetime={iso} title={formatAbsolute(iso)}
+  >{prefix ? `${prefix} ` : ''}{formatRelative(iso, Date.now())}</time
+>

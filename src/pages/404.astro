@@ -1,0 +1,19 @@
+---
+import EmptyState from '../components/EmptyState.astro';
+import PageHeader from '../components/PageHeader.astro';
+import Base from '../layouts/Base.astro';
+
+// Also served (with status 404) for every `return Astro.rewrite('/404')` and for unmatched routes.
+Astro.response.status = 404;
+const path = Astro.originPathname.replace(/(.)\/+$/, '$1');
+---
+
+<Base title="Not found">
+  <PageHeader title="Not found" />
+  <EmptyState title="Not found">
+    There is nothing at <code class="cx-mono" data-testid="notfound-path">{path}</code>.
+    <a slot="action" class="ck-button ck-button--primary ck-button--sm" href="/">
+      <span class="ck-button__label">Back to the dashboard</span>
+    </a>
+  </EmptyState>
+</Base>

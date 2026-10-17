@@ -1,0 +1,11 @@
+@layer cx-kit {
+  .ck-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .ck-toolbar[data-orientation='vertical'] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
