@@ -2,6 +2,7 @@
 import BackRefs from '../../../../components/BackRefs.astro';
 import Breadcrumbs from '../../../../components/Breadcrumbs.astro';
 import DatasetBadge from '../../../../components/DatasetBadge.astro';
+import EmptyState from '../../../../components/EmptyState.astro';
 import FileTree from '../../../../components/FileTree.astro';
 import IdeOpenButton from '../../../../components/IdeOpenButton.astro';
 import Freshness from '../../../../components/Freshness.astro';
@@ -9,88 +10,161 @@ import MetaPanel from '../../../../components/MetaPanel.astro';
 import OkfStatusBadge from '../../../../components/OkfStatusBadge.astro';
 import PageHeader from '../../../../components/PageHeader.astro';
 import StaleBadge from '../../../../components/StaleBadge.astro';
-import { entryUrl, getDataset, isOkfDatasetId } from '../../../../datasets/registry.ts';
+import { docUrl, entryUrl, getDataset, isOkfDatasetId } from '../../../../datasets/registry.ts';
+import { normalizeDocPath } from '../../../../lib/doc-io.ts';
+import { getEntryIndex } from '../../../../lib/entry-index.ts';
 import { getDocDetail } from '../../../../lib/entries.ts';
+import { classifyOkfPath } from '../../../../lib/okf.ts';
 import { isStale, toYmd } from '../../../../lib/time.ts';
 import { parseEditUrl } from '../../../../lib/url-state.ts';
 import Base from '../../../../layouts/Base.astro';
+import EntryTools from '../../../../ui/entry/EntryTools.tsx';
 import DocEditor from '../../../../ui/markdown/DocEditor.tsx';
 
 // Any markdown file of an okf bundle except main.md (index.md, log.md, concepts/**).
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def || !isOkfDatasetId(def.id)) return Astro.rewrite('/404');
 const slug = Astro.params.slug ?? '';
-const docPath = Astro.params.path ?? '';
+const rawPath = Astro.params.path ?? '';
 
+// `…/doc/concepts/x.md` is the same page as `…/doc/concepts/x` (UX-32): one canonical URL, query kept (`?edit=1`).
 // main.md is the entry page itself, not a sub-doc.
+const docPath = rawPath.endsWith('.md') ? rawPath.slice(0, -'.md'.length) : rawPath;
 if (docPath === 'main') return Astro.redirect(entryUrl(def.id, slug), 301);
+if (docPath !== rawPath && docPath !== '') {
+  return Astro.redirect(`${docUrl(def.id, slug, docPath)}${Astro.url.search}`, 301);
+}
 
 const doc = await getDocDetail(def.id, slug, docPath);
-if (!doc) return Astro.rewrite('/404');
+
+// A concept file that does not exist yet in an existing bundle: a 404 page that offers to create it
+// (EntryTools' New concept dialog with the path fixed). index.md / log.md and invalid paths are plain 404s.
+const missingPath = normalizeDocPath(`${docPath}.md`);
+const bundle =
+  doc === null && missingPath !== null && classifyOkfPath(missingPath) === 'concept'
+    ? (await getEntryIndex()).byKey.get(`${def.id}/${slug}`)
+    : undefined;
+if (doc === null && bundle === undefined) return Astro.rewrite('/404');
+if (doc === null) Astro.response.status = 404;
 
 const { edit } = parseEditUrl(Astro.url.searchParams);
-const entryTitle = doc.entry.title ?? doc.entry.name;
-const type = typeof doc.data.type === 'string' && doc.data.type !== '' ? doc.data.type : undefined;
-const status = typeof doc.data.status === 'string' ? doc.data.status : undefined;
+const bundleTitle = doc
+  ? (doc.entry.title ?? doc.entry.name)
+  : typeof bundle?.data.title === 'string' && bundle.data.title.trim() !== ''
+    ? bundle.data.title
+    : slug;
+const type = doc && typeof doc.data.type === 'string' && doc.data.type !== '' ? doc.data.type : undefined;
+const status = doc && typeof doc.data.status === 'string' ? doc.data.status : undefined;
 const staleAfter =
-  doc.data.stale_after instanceof Date || typeof doc.data.stale_after === 'string'
+  doc && (doc.data.stale_after instanceof Date || typeof doc.data.stale_after === 'string')
     ? toYmd(doc.data.stale_after) || undefined
     : undefined;
+const breadcrumbs = [
+  { label: 'ctxman', href: '/' },
+  { label: def.label, href: `/${def.id}` },
+  { label: slug, href: entryUrl(def.id, slug), mono: true },
+  { label: docPath, mono: true },
+];
 ---
 
-<Base title={`${doc.title} · ${entryTitle}`} active={def.id}>
-  <Breadcrumbs
-    items={[
-      { label: 'ctxman', href: '/' },
-      { label: def.label, href: `/${def.id}` },
-      { label: slug, href: doc.entry.url, mono: true },
-      { label: docPath, mono: true },
-    ]}
-  />
-  <PageHeader title={doc.title}>
-    <Fragment slot="meta">
-      <code class="cx-detail__slug" data-testid="detail-path">{doc.relPath}</code>
-      <DatasetBadge dataset={def.id} />
-      {type && <span class="ck-badge ck-badge--muted ck-badge--mono">{type}</span>}
-      <OkfStatusBadge status={status} />
-      {isStale(staleAfter, Date.now()) && <StaleBadge since={staleAfter} />}
-      <Freshness iso={doc.lastModified} prefix="Modified" />
-    </Fragment>
-  </PageHeader>
+{
+  doc === null ? (
+    <Base title={`${docPath}.md · ${bundleTitle}`} active={def.id}>
+      <Breadcrumbs items={breadcrumbs} />
+      <PageHeader title={`${docPath}.md`}>
+        <Fragment slot="meta">
+          <DatasetBadge dataset={def.id} />
+          <a href={entryUrl(def.id, slug)}>{bundleTitle}</a>
+        </Fragment>
+        <Fragment slot="actions">
+          <EntryTools
+            client:only="react"
+            dataset={def.id}
+            slug={slug}
+            title={bundleTitle}
+            kind="okf"
+          />
+        </Fragment>
+      </PageHeader>
+      <section data-testid="doc-missing">
+        <EmptyState title={`${missingPath} doesn't exist yet in this bundle.`}>
+          It is not part of <a href={entryUrl(def.id, slug)}>{bundleTitle}</a> yet.
+          <button
+            slot="action"
+            type="button"
+            class="ck-button ck-button--primary ck-button--sm"
+            disabled
+            data-entry-action="new-concept"
+            data-path={missingPath}
+            data-testid="doc-missing-create"
+          >
+            <span class="ck-button__label">Create {missingPath}</span>
+          </button>
+        </EmptyState>
+      </section>
+    </Base>
+  ) : (
+    <Base title={`${doc.title} · ${bundleTitle}`} active={def.id}>
+      <Breadcrumbs items={breadcrumbs} />
+      <PageHeader title={doc.title}>
+        <Fragment slot="meta">
+          <code class="cx-detail__slug" data-testid="detail-path">{doc.relPath}</code>
+          <DatasetBadge dataset={def.id} />
+          {type && <span class="ck-badge ck-badge--muted ck-badge--mono">{type}</span>}
+          <OkfStatusBadge status={status} />
+          {isStale(staleAfter, Date.now()) && <StaleBadge since={staleAfter} />}
+          <Freshness iso={doc.lastModified} prefix="Modified" />
+        </Fragment>
+        <Fragment slot="actions">
+          <EntryTools
+            client:only="react"
+            dataset={def.id}
+            slug={slug}
+            title={bundleTitle}
+            kind="okf"
+            relationKeys={[]}
+            childEntries={[]}
+            related={[]}
+            linkedContexts={doc.backRefs.map((ref) => ref.context)}
+          />
+        </Fragment>
+      </PageHeader>
 
-  <div class="cx-detail cx-detail--doc">
-    <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
-      <IdeOpenButton dataset={def.id} slug={slug} path={doc.relPath} />
-      <MetaPanel
-        dataset={def.id}
-        kind="okf"
-        data={doc.data}
-        lastModified={doc.lastModified}
-        file={`${def.id}/${slug}/${doc.relPath}`}
-        bundle={{ url: doc.entry.url, title: entryTitle }}
-      />
-      <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} />
-      <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
-    </aside>
-    <section class="cx-detail__main cx-doc" aria-label="Content">
-      <DocEditor
-        client:only="react"
-        dataset={def.id}
-        slug={slug}
-        path={doc.relPath}
-        previewId="cx-doc-preview"
-        initialEdit={edit}
-      >
-        <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
-      </DocEditor>
-      <article
-        id="cx-doc-preview"
-        class="cx-prose cx-doc__preview"
-        data-testid="detail-content"
-        hidden={edit}
-      >
-        <Fragment set:html={doc.html} />
-      </article>
-    </section>
-  </div>
-</Base>
+      <div class="cx-detail cx-detail--doc">
+        <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
+          <IdeOpenButton dataset={def.id} slug={slug} path={doc.relPath} />
+          <MetaPanel
+            dataset={def.id}
+            kind="okf"
+            data={doc.data}
+            lastModified={doc.lastModified}
+            file={`${def.id}/${slug}/${doc.relPath}`}
+            bundle={{ url: doc.entry.url, title: bundleTitle }}
+          />
+          <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} canCreate />
+          <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
+        </aside>
+        <section class="cx-detail__main cx-doc" aria-label="Content">
+          <DocEditor
+            client:only="react"
+            dataset={def.id}
+            slug={slug}
+            path={doc.relPath}
+            previewId="cx-doc-preview"
+            initialEdit={edit}
+          >
+            <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
+          </DocEditor>
+          <article
+            id="cx-doc-preview"
+            class="cx-prose cx-doc__preview"
+            data-testid="detail-content"
+            hidden={edit}
+          >
+            <Fragment set:html={doc.html} />
+          </article>
+        </section>
+      </div>
+    </Base>
+  )
+}

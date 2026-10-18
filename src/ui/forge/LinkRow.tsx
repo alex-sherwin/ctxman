@@ -16,7 +16,7 @@ import {
   Toolbar,
   Tooltip,
 } from '../kit/index.ts';
-import { isMissing, labelOf } from './link-label.ts';
+import { invalidTitle, isMissing, labelOf } from './link-label.ts';
 import { firstLine, lineCount, plural } from './notes.ts';
 
 export interface LinkRowProps {
@@ -52,6 +52,11 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
         {missing && (
           <Badge tone="danger" title="This entry no longer exists">
             missing
+          </Badge>
+        )}
+        {entry?.invalid && (
+          <Badge tone="danger" title={invalidTitle(entry)}>
+            invalid
           </Badge>
         )}
         <Toolbar aria-label={`Actions for ${label}`} className="cx-link__actions">

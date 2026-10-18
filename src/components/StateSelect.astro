@@ -1,0 +1,62 @@
+---
+import { getDataset, stateGroup } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
+
+// Lifecycle state as a native <select> (ROUND3_SPEC §E.3, A9): list rows and the detail header. No island:
+// src/scripts/shell.ts handles `change` on `select[data-state-select]` with PATCH /api/entry/<ds>/<slug> {state}.
+// The dev server's reload (or the script's fallback reload) re-renders the page with the same URL, so filters stay.
+// EntryTools disables every state select while the doc editor is open.
+interface Props {
+  dataset: DatasetId;
+  slug: string;
+  /** For the label of the select. */
+  title: string;
+  /** The raw `state` of the file; may be missing or not a registry state (an invalid file). */
+  state: string | undefined;
+  /** Detail header: after a save the entry page also parks the "State: …" message for EntryTools' status line. */
+  remember?: boolean;
+}
+
+const { dataset, slug, title, state, remember = false } = Astro.props;
+const states = getDataset(dataset)?.states ?? [];
+const current = state ?? '';
+const known = states.some((s) => s.id === current);
+const id = `ss-${dataset}-${slug}`;
+---
+
+{
+  states.length > 0 && (
+    <span class="cx-statesel" data-state-group={stateGroup(dataset, current)}>
+      <label class="ck-sr-only" for={id}>
+        State of {title}
+      </label>
+      <select
+        id={id}
+        class="ck-native-select cx-statesel__select"
+        data-state-select
+        data-dataset={dataset}
+        data-slug={slug}
+        data-prev={current}
+        data-remember={remember ? '' : undefined}
+        data-testid="state-select"
+      >
+        {!known && (
+          <option value={current} selected disabled data-group="neutral">
+            {current === '' ? 'no state (invalid)' : `${current} (invalid)`}
+          </option>
+        )}
+        {states.map((s) => (
+          <option value={s.id} selected={s.id === current} data-group={s.group}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <output
+        class="cx-statesel__status"
+        data-state-status
+        aria-live="polite"
+        data-testid="state-select-status"
+      />
+    </span>
+  )
+}

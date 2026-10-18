@@ -3,7 +3,7 @@ import { DATASET_IDS, datasetDef, isOkfDatasetId } from '../../src/datasets/regi
 import { DATASET_SCHEMAS } from '../../src/datasets/schemas.ts';
 import { parseFrontmatter, validateOkfFile } from '../../src/lib/okf.ts';
 import { schemaCommentLine, schemaCommentStatus } from '../../src/lib/schema-comment.ts';
-import { planNewEntry, titleFromName } from '../../src/lib/templates.ts';
+import { linkText, planNewEntry, titleFromName } from '../../src/lib/templates.ts';
 import type { PlannedFile } from '../../src/lib/templates.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 
@@ -267,4 +267,39 @@ describe('planned files validate against the schemas', () => {
       });
     }
   }
+});
+
+describe('planNewEntry tags (okf)', () => {
+  it('writes tags as a flow sequence and the rest of the template stays as without tags', () => {
+    const plain = byPath(planNewEntry('task', 'x', { now, description: 'd' }), 'task/x/main.md');
+    const tagged = byPath(
+      planNewEntry('task', 'x', { now, description: 'd', tags: ['docs', 'agent-notes'] }),
+      'task/x/main.md',
+    );
+    expect(plain).toContain('\ntags: []\n');
+    expect(tagged).toBe(plain.replace('tags: []', 'tags: [docs, agent-notes]'));
+    const parsed = parseFrontmatter(tagged);
+    expect(parsed.ok && parsed.doc.data.tags).toEqual(['docs', 'agent-notes']);
+  });
+
+  it('output without tags (undefined or empty) is byte-identical', () => {
+    const base = planNewEntry('kb', 'x', { now });
+    expect(planNewEntry('kb', 'x', { now, tags: [] })).toEqual(base);
+    expect(planNewEntry('kb', 'x', { now, tags: undefined })).toEqual(base);
+  });
+
+  it('rejects malformed tags and tags on non-okf datasets', () => {
+    expect(() => planNewEntry('task', 'x', { now, tags: ['Bad Tag'] })).toThrow(/Invalid tag/);
+    expect(() => planNewEntry('task', 'x', { now, tags: ['ok', '-no'] })).toThrow(/"-no"/);
+    expect(() => planNewEntry('skill', 'x', { now, tags: ['a'] })).toThrow(/okf/);
+    expect(() => planNewEntry('context', 'x', { now, tags: ['a'] })).toThrow(/okf/);
+    expect(planNewEntry('skill', 'x', { now, tags: [] })).toHaveLength(1);
+  });
+});
+
+describe('linkText', () => {
+  it('escapes backslashes and square brackets', () => {
+    expect(linkText('a[b]c\\d')).toBe('a\\[b\\]c\\\\d');
+    expect(linkText('plain')).toBe('plain');
+  });
 });

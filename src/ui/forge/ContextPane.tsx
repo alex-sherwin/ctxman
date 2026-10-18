@@ -9,6 +9,7 @@ import {
   $baseline,
   $contextLoad,
   $dirty,
+  $draftRestored,
   $forgeUrl,
   $newContextPrefill,
   $saveStatus,
@@ -53,6 +54,7 @@ import {
   TextField,
 } from '../kit/index.ts';
 import type { CodeEditorApi } from '../kit/index.ts';
+import { DraftBanner } from './DraftBanner.tsx';
 import { LinkRow } from './LinkRow.tsx';
 import { isMissing, labelOf } from './link-label.ts';
 
@@ -361,6 +363,14 @@ function ContextFooter({ name }: { name: string }) {
 
 // ---------------------------------------------------------------- pane
 
+/** The working copy came back from a saved draft (a reload, a dev reload): say so, offer Discard. */
+function DraftNotice() {
+  const restored = useStore($draftRestored);
+  const dirty = useStore($dirty);
+  if (restored === null || !dirty) return null;
+  return <DraftBanner testIdPrefix="forge" stale={restored.stale} onDiscard={revert} />;
+}
+
 function Body() {
   const url = useStore($forgeUrl);
   const load = useStore($contextLoad);
@@ -464,6 +474,7 @@ export function ContextPane() {
           </ButtonLink>
         )}
       </header>
+      <DraftNotice />
       <div className="cx-forge__pane-body" data-view={working ? view : 'form'}>
         <Body />
       </div>

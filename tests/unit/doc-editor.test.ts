@@ -52,12 +52,15 @@ function disk(
 const sessionData = new Map<string, string>();
 const loc = { pathname: '/kb/demo/doc/concepts/a%20b', search: '', hash: '', reload: vi.fn() };
 const popstateHandlers: (() => void)[] = [];
+/** Every event type the store ever registered on `window` (no `beforeunload`: ROUND3_SPEC §G). */
+const windowListeners: string[] = [];
 const replaceState = vi.fn();
 
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   sessionData.clear();
   popstateHandlers.length = 0;
+  windowListeners.length = 0;
   loc.search = '';
   loc.reload = vi.fn();
   replaceState.mockReset();
@@ -66,15 +69,19 @@ beforeEach(async () => {
     loc.pathname = parsed.pathname;
     loc.search = parsed.search;
   });
-  vi.stubGlobal('sessionStorage', {
+  // drafts live in localStorage since round 3, the "Saved" record in sessionStorage: one backing map for both
+  const storage = {
     getItem: (k: string) => sessionData.get(k) ?? null,
     setItem: (k: string, v: string) => void sessionData.set(k, v),
     removeItem: (k: string) => void sessionData.delete(k),
-  });
+  };
+  vi.stubGlobal('sessionStorage', storage);
+  vi.stubGlobal('localStorage', storage);
   vi.stubGlobal('location', loc);
   vi.stubGlobal('history', { state: null, replaceState });
   vi.stubGlobal('window', {
     addEventListener: (type: string, fn: () => void) => {
+      windowListeners.push(type);
       if (type === 'popstate') popstateHandlers.push(fn);
     },
     removeEventListener: () => {},
@@ -126,6 +133,19 @@ describe('edit mode and loading', () => {
     expect(s.$docDirty.get()).toBe(false);
   });
 
+  it('$docEditing is true only with a DocEditor mounted (initDoc) AND edit mode', async () => {
+    loc.search = '?edit=1'; // a page that has ?edit=1 but no DocEditor (the reference form)
+    expect(s.$docEdit.get()).toBe(true);
+    expect(s.$docEditing.get()).toBe(false);
+    disk({ markdown: '# Hi', lastModified: 'T1' });
+    s.initDoc({ ...TARGET });
+    expect(s.$docEditing.get()).toBe(true);
+    await settle();
+    s.discardEdit();
+    expect(s.$docEdit.get()).toBe(false);
+    expect(s.$docEditing.get()).toBe(false);
+  });
+
   it('does not load while the page is in preview mode', async () => {
     const calls = disk({ markdown: '# Hi', lastModified: 'T1' });
     s.initDoc({ ...TARGET });
@@ -175,13 +195,13 @@ describe('edit mode and loading', () => {
   });
 });
 
-describe('draft and the sessionStorage backup', () => {
+describe('draft and the localStorage backup', () => {
   it('typing marks the document dirty and mirrors the draft; going back to the saved text clears it', async () => {
     await openEditor('base', 'T1');
     s.setDocDraft('base plus');
     expect(s.$docDirty.get()).toBe(true);
     expect(s.$docStatus.get()).toEqual({ kind: 'dirty' });
-    expect(JSON.parse(sessionData.get(`ctxman:draft:${KEY}`) ?? 'null')).toEqual({
+    expect(JSON.parse(sessionData.get(`ctxman:draft:${KEY}`) ?? 'null')).toMatchObject({
       text: 'base plus',
       base: 'T1',
     });
@@ -198,21 +218,71 @@ describe('draft and the sessionStorage backup', () => {
     expect(s.$docDirty.get()).toBe(true);
   });
 
-  it('drops a backup whose base is not the file on disk', async () => {
-    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'old', base: 'T0' }));
+  it('restores a backup whose base is not the file on disk, flagged stale (the file changed meanwhile)', async () => {
+    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'old work', base: 'T0' }));
+    await openEditor('base', 'T1');
+    expect(s.$docDraft.get()).toBe('old work');
+    expect(s.$docRestored.get()).toBe(true);
+    expect(s.$docDraftStale.get()).toBe(true);
+    expect(s.$docDirty.get()).toBe(true);
+    // the draft stays stored; the baseline is the DISK version, so a save overwrites it (the banner says so)
+    expect(s.$docBaseline.get()).toEqual({ text: 'base', lastModified: 'T1' });
+    expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(true);
+  });
+
+  it('a backup from the same file version is not stale', async () => {
+    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'unsaved', base: 'T1' }));
+    await openEditor('base', 'T1');
+    expect(s.$docRestored.get()).toBe(true);
+    expect(s.$docDraftStale.get()).toBe(false);
+  });
+
+  it('drops a backup that equals the disk text (nothing to restore), whatever its base', async () => {
+    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'base', base: 'T0' }));
     await openEditor('base', 'T1');
     expect(s.$docDraft.get()).toBe('base');
     expect(s.$docRestored.get()).toBe(false);
+    expect(s.$docDraftStale.get()).toBe(false);
     expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(false);
   });
 
-  it('discardDraft returns to the saved text and removes the backup', async () => {
-    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'unsaved', base: 'T1' }));
+  it('a draft older than 14 days is dropped, one without savedAt counts as fresh', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    sessionData.set(
+      `ctxman:draft:${KEY}`,
+      JSON.stringify({ text: 'ancient', base: 'T1', savedAt: Date.now() - 15 * day }),
+    );
     await openEditor('base', 'T1');
+    expect(s.$docRestored.get()).toBe(false);
+    expect(s.$docDraft.get()).toBe('base');
+    expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(false);
+
+    sessionData.set(
+      `ctxman:draft:${KEY}`,
+      JSON.stringify({ text: 'recent', base: 'T1', savedAt: Date.now() - 13 * day }),
+    );
+    await s.loadDoc();
+    expect(s.$docDraft.get()).toBe('recent');
+    expect(s.$docRestored.get()).toBe(true);
+  });
+
+  it('discardDraft returns to the saved text and removes the backup', async () => {
+    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'unsaved', base: 'T0' }));
+    await openEditor('base', 'T1');
+    expect(s.$docDraftStale.get()).toBe(true);
     s.discardDraft();
     expect(s.$docDraft.get()).toBe('base');
     expect(s.$docRestored.get()).toBe(false);
+    expect(s.$docDraftStale.get()).toBe(false);
+    expect(s.$docDraftAvailable.get()).toBe(false);
     expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(false);
+  });
+
+  it('registers no beforeunload listener: only popstate (the draft backup replaces the native prompt)', async () => {
+    await openEditor('base', 'T1');
+    s.setDocDraft('dirty');
+    expect(s.$docDirty.get()).toBe(true);
+    expect(windowListeners).toEqual(['popstate']);
   });
 
   it('discardEdit leaves edit mode: URL without edit, draft reset, backup cleared', async () => {
@@ -224,6 +294,90 @@ describe('draft and the sessionStorage backup', () => {
     expect(s.$docDraft.get()).toBe('base');
     expect(s.$docDirty.get()).toBe(false);
     expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(false);
+  });
+});
+
+describe('draft available (preview mode)', () => {
+  it('is false without a stored draft', () => {
+    s.initDoc({ ...TARGET });
+    expect(s.$docEdit.get()).toBe(false);
+    expect(s.$docDraftAvailable.get()).toBe(false);
+  });
+
+  it('is true for a stored draft; Resume editing (enterEdit) restores it', async () => {
+    sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'unsaved', base: 'T1' }));
+    disk({ markdown: 'base', lastModified: 'T1' });
+    s.initDoc({ ...TARGET });
+    expect(s.$docDraftAvailable.get()).toBe(true);
+    expect(s.$docEdit.get()).toBe(false);
+    s.enterEdit();
+    await settle();
+    expect(s.$docDraft.get()).toBe('unsaved');
+    expect(s.$docRestored.get()).toBe(true);
+    expect(s.$docDraftAvailable.get()).toBe(true);
+  });
+
+  it('an expired draft is not available (and is removed)', () => {
+    const day = 24 * 60 * 60 * 1000;
+    sessionData.set(
+      `ctxman:draft:${KEY}`,
+      JSON.stringify({ text: 'ancient', base: 'T1', savedAt: Date.now() - 15 * day }),
+    );
+    s.initDoc({ ...TARGET });
+    expect(s.$docDraftAvailable.get()).toBe(false);
+    expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(false);
+  });
+
+  it('follows the stored draft: typing sets it, going back to the saved text, discardEdit and Save clear it', async () => {
+    disk({ markdown: 'base', lastModified: 'T1' }, () => ({
+      body: { lastModified: 'T2', warnings: [] },
+    }));
+    s.initDoc({ ...TARGET });
+    s.enterEdit();
+    await settle();
+    expect(s.$docDraftAvailable.get()).toBe(false);
+    s.setDocDraft('typed');
+    expect(s.$docDraftAvailable.get()).toBe(true);
+    s.setDocDraft('base');
+    expect(s.$docDraftAvailable.get()).toBe(false);
+    s.setDocDraft('typed again');
+    s.discardEdit();
+    expect(s.$docDraftAvailable.get()).toBe(false);
+
+    s.enterEdit();
+    await settle();
+    s.setDocDraft('to be saved');
+    expect(s.$docDraftAvailable.get()).toBe(true);
+    await s.saveDoc();
+    expect(s.$docDraftAvailable.get()).toBe(false);
+  });
+
+  it('leaving edit mode with the browser back button keeps the draft and offers it', async () => {
+    await openEditor('base', 'T1');
+    s.setDocDraft('typed');
+    loc.search = '';
+    popstateHandlers.forEach((fn) => fn());
+    expect(s.$docEdit.get()).toBe(false);
+    expect(s.$docDraftAvailable.get()).toBe(true);
+    expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(true);
+  });
+
+  it('Load disk version drops the draft too', async () => {
+    stubFetch((call) =>
+      call.method === 'GET'
+        ? { body: { path: TARGET.path, markdown: 'theirs', lastModified: 'T9', warnings: [] } }
+        : { status: 409, body: { error: 'conflict', message: 'x', lastModified: 'T9' } },
+    );
+    s.initDoc({ ...TARGET });
+    s.enterEdit();
+    await settle();
+    s.setDocDraft('mine');
+    await s.saveDoc();
+    s.loadDiskVersion();
+    await settle();
+    expect(s.$docDraftAvailable.get()).toBe(false);
+    expect(s.$docRestored.get()).toBe(false);
+    expect(s.$docDraft.get()).toBe('theirs');
   });
 });
 
@@ -308,9 +462,10 @@ describe('saveDoc', () => {
     s.setDocDraft('no frontmatter');
     await s.saveDoc();
     expect(s.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 2 warnings' });
+    // every finding is a warning, whatever its severity: the save went through
     expect(s.$docWarnings.get()).toEqual([
-      { severity: 'warning', rule: 'okf/stale', message: 'old', line: 3 },
-      { severity: 'error', rule: 'okf/type', message: 'type missing' },
+      { rule: 'okf/stale', message: 'old', line: 3 },
+      { rule: 'okf/type', message: 'type missing' },
     ]);
 
     // a fresh page (new module instance) picks the message and findings up exactly once
@@ -320,6 +475,39 @@ describe('saveDoc', () => {
     expect(next.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 2 warnings' });
     expect(next.$docWarnings.get()).toHaveLength(2);
     expect(sessionData.has(`ctxman:saved:${KEY}`)).toBe(false);
+  });
+
+  it('lists link findings (severity error) as warnings and counts them in the status', async () => {
+    const warnings = [
+      {
+        severity: 'error',
+        rule: 'links/broken',
+        file: 'kb/demo/concepts/a b.md',
+        line: 7,
+        message: 'Broken link ./missing.md',
+      },
+      {
+        severity: 'error',
+        rule: 'links/ctxman-target',
+        file: 'kb/demo/concepts/a b.md',
+        line: 8,
+        message: 'ctxman:idea/e2e-nope does not exist',
+      },
+    ];
+    disk({ markdown: 'base', lastModified: 'T1' }, () => ({
+      body: { lastModified: 'T2', warnings },
+    }));
+    s.initDoc({ ...TARGET });
+    s.enterEdit();
+    await settle();
+    s.setDocDraft('[a](./missing.md) [b](ctxman:idea/e2e-nope)');
+    await s.saveDoc();
+    expect(s.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 2 warnings' });
+    expect(s.$docWarnings.get().map((w) => w.rule)).toEqual([
+      'links/broken',
+      'links/ctxman-target',
+    ]);
+    expect(s.$docEdit.get()).toBe(false);
   });
 
   it('uses the singular for one warning', async () => {
@@ -500,7 +688,7 @@ describe('settle reload (dev content layer lags the dev reload)', () => {
     // the record is written again (reloads + 1) so the reloaded page still shows Saved
     expect(JSON.parse(sessionData.get(`ctxman:saved:${KEY}`) ?? 'null')).toEqual({
       message: 'Saved · 1 warning',
-      warnings: [{ severity: 'warning', rule: 'okf/stale', message: 'old', line: 2 }],
+      warnings: [{ rule: 'okf/stale', message: 'old', line: 2 }],
       reloads: 1,
     });
 
@@ -597,5 +785,50 @@ describe('settle reload (dev content layer lags the dev reload)', () => {
       base: 'T2',
     });
     expect(s.$docDirty.get()).toBe(false);
+  });
+});
+
+describe('draft restore plan (shared with the markdown popups)', () => {
+  it('restores a differing draft, stale only when its base is not the loaded lastModified', async () => {
+    const { planRestore, restoredMessage } = await import('../../src/ui/markdown/draft-restore.ts');
+    const disk = { text: 'disk', lastModified: 'T2' };
+    expect(planRestore(null, disk)).toEqual({ text: 'disk', restored: false, stale: false });
+    expect(planRestore({ text: 'disk', base: 'T1' }, disk)).toEqual({
+      text: 'disk',
+      restored: false,
+      stale: false,
+    });
+    expect(planRestore({ text: 'mine', base: 'T2' }, disk)).toEqual({
+      text: 'mine',
+      restored: true,
+      stale: false,
+    });
+    expect(planRestore({ text: 'mine', base: 'T1' }, disk)).toEqual({
+      text: 'mine',
+      restored: true,
+      stale: true,
+    });
+    expect(restoredMessage(false)).toBe('Restored unsaved changes from earlier.');
+    expect(restoredMessage(true)).toContain('the file changed on disk since');
+  });
+
+  it('keys a popup draft by endpoint and target id', async () => {
+    const { mdDraftKey } = await import('../../src/ui/markdown/draft-restore.ts');
+    expect(
+      mdDraftKey({
+        kind: 'context-notes',
+        id: 'notes:kb:ctxman',
+        slug: 'my-ctx',
+        dataset: 'kb',
+        target: 'ctxman',
+        label: 'notes for ctxman',
+      }),
+    ).toBe('md:/api/context/my-ctx#notes:kb:ctxman');
+    expect(
+      mdDraftKey({ kind: 'recipe-preamble', id: 'preamble', slug: 'r1', label: 'preamble' }),
+    ).toBe('md:/api/recipe/r1#preamble');
+    expect(
+      mdDraftKey({ kind: 'recipe-block', id: 'block:b1', slug: 'r1', blockId: 'b1', label: 'x' }),
+    ).toBe('md:/api/recipe/r1#block:b1');
   });
 });

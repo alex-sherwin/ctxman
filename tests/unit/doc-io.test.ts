@@ -14,6 +14,9 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MAX_TEXT_BYTES } from '../../src/lib/bundles.ts';
 import {
+  addConceptToIndex,
+  addCreateToLog,
+  createDoc,
   DocIoError,
   isDocDatasetId,
   normalizeDocPath,
@@ -376,5 +379,368 @@ describe('validateDoc', () => {
     writeTree(dir, validKbBundle('demo'));
     const doc = await readDoc('kb', 'demo', 'main.md', dir);
     expect(doc.warnings).toEqual([]);
+  });
+});
+
+describe('link findings as warnings (validateDoc / readDoc / writeDoc)', () => {
+  const concept = (body: string): string => `---\ntype: Concept\n---\n${body}`;
+
+  it('validateDoc appends the link findings of that file, resolved against the given data dir', () => {
+    const dir = tmp.make({
+      'task/exists/main.md': '---\ntype: Task\nname: exists\ndescription: d\nstate: pending\n---\n',
+    });
+    const source = concept(
+      '[a](./nope.md) [b](ctxman:idea/e2e-nope) [c](ctxman:task/exists) [d](ctxman:Bad)\n',
+    );
+    const findings = validateDoc('kb', 'x', 'concepts/c.md', source, dir);
+    expect(ruleIds(findings)).toEqual([
+      'links/broken',
+      'links/ctxman-invalid',
+      'links/ctxman-target',
+    ]);
+    expect(findings.every((f) => f.file === 'kb/x/concepts/c.md')).toBe(true);
+    const target = findings.find((f) => f.rule === 'links/ctxman-target');
+    expect(target?.message).toContain('idea/e2e-nope');
+    expect(target?.line).toBe(4);
+  });
+
+  it('also covers skill markdown files and main.md frontmatter relations', () => {
+    const dir = tmp.make();
+    expect(ruleIds(validateDoc('skill', 's', 'references/x.md', '[x](./gone.md)\n', dir))).toEqual([
+      'links/broken',
+    ]);
+    const main =
+      '---\ntype: Task\nname: x\ndescription: d\nstate: pending\nlinks:\n  - dataset: idea\n    slug: e2e-nope\n    rel: related\n---\n';
+    expect(ruleIds(validateDoc('task', 'x', 'main.md', main, dir))).toEqual([
+      'links/relation-target',
+    ]);
+  });
+
+  it('PUT and GET return them in warnings; the save still never blocks', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': MAIN, 'kb/x/concepts/c.md': concept('# C\n') });
+    const source = concept('[a](./nope.md) and [b](ctxman:idea/e2e-nope)\n');
+    const saved = await writeDoc('kb', 'x', 'concepts/c.md', { markdown: source }, dir);
+    expect(ruleIds(saved.warnings)).toEqual(['links/broken', 'links/ctxman-target']);
+    expect(readFileSync(path.join(dir, 'kb', 'x', 'concepts', 'c.md'), 'utf8')).toBe(source);
+    const read = await readDoc('kb', 'x', 'concepts/c.md', dir);
+    expect(ruleIds(read.warnings)).toEqual(['links/broken', 'links/ctxman-target']);
+  });
+});
+
+describe('writeDoc runs under the per-file lock', () => {
+  it('serializes concurrent saves of one file: each sees the previous mtime guard', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const old = new Date('2026-01-02T03:04:05.000Z');
+    utimesSync(path.join(dir, 'kb', 'x', 'main.md'), old, old);
+    const first = await readDoc('kb', 'x', 'main.md', dir);
+    const results = await Promise.allSettled([
+      writeDoc(
+        'kb',
+        'x',
+        'main.md',
+        { markdown: `${MAIN}one\n`, ifUnmodifiedSince: first.lastModified },
+        dir,
+      ),
+      writeDoc(
+        'kb',
+        'x',
+        'main.md',
+        { markdown: `${MAIN}two\n`, ifUnmodifiedSince: first.lastModified },
+        dir,
+      ),
+    ]);
+    // Only one can win the optimistic check; the other waited for it and then conflicted.
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect((rejected.reason as DocIoError).code).toBe('conflict');
+  });
+});
+
+describe('addConceptToIndex', () => {
+  const concept = { title: 'New one', path: 'concepts/new-one.md', description: 'Brand new.' };
+  const line = '[New one](/concepts/new-one.md) - Brand new.';
+
+  it('inserts after the last list item of ## Concepts, using the section bullet', () => {
+    const source =
+      '---\nokf_version: "0.2"\n---\n# T\n\n## Entry\n\n* [T](/main.md) - E.\n\n## Concepts\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n\n* x\n';
+    expect(addConceptToIndex(source, concept)).toBe(
+      source.replace('- [B](/concepts/b.md) - B.\n', `- [B](/concepts/b.md) - B.\n- ${line}\n`),
+    );
+  });
+
+  it('matches the heading case-insensitively, ignores headings in code and keeps deeper headings in the section', () => {
+    const source =
+      '# T\n\n```\n## Concepts\n```\n\n## CONCEPTS\n\n### Sub\n\n* [A](/concepts/a.md) - A.\n';
+    expect(addConceptToIndex(source, concept)).toBe(`${source}* ${line}\n`);
+  });
+
+  it('keeps continuation lines of the last item attached', () => {
+    const source = '## Concepts\n\n* [A](/concepts/a.md) - A long\n  description.\n\n## Next\n';
+    expect(addConceptToIndex(source, concept)).toBe(
+      '## Concepts\n\n* [A](/concepts/a.md) - A long\n  description.\n' + `* ${line}\n\n## Next\n`,
+    );
+  });
+
+  it('a section without a list gets the item after the heading and one blank line', () => {
+    expect(addConceptToIndex('# T\n\n## Concepts\n', concept)).toBe(
+      `# T\n\n## Concepts\n\n* ${line}\n`,
+    );
+    expect(addConceptToIndex('# T\n\n## Concepts\n\n## Next\n', concept)).toBe(
+      `# T\n\n## Concepts\n\n* ${line}\n\n## Next\n`,
+    );
+    expect(addConceptToIndex('# T\n## Concepts\n## Next\n', concept)).toBe(
+      `# T\n## Concepts\n\n* ${line}\n\n## Next\n`,
+    );
+  });
+
+  it('without the heading appends one, with exactly one blank line before it', () => {
+    expect(addConceptToIndex('# T\n', concept)).toBe(`# T\n\n## Concepts\n\n* ${line}\n`);
+    expect(addConceptToIndex('# T\n\n\n\n', concept)).toBe(`# T\n\n## Concepts\n\n* ${line}\n`);
+    expect(addConceptToIndex('', concept)).toBe(`## Concepts\n\n* ${line}\n`);
+  });
+
+  it('uses the title as the description text when none is given, escapes link text and encodes the path', () => {
+    expect(
+      addConceptToIndex('## Concepts\n', { title: 'A [b] c', path: 'concepts/a b (1).md' }),
+    ).toBe('## Concepts\n\n* [A \\[b\\] c](/concepts/a%20b%20%281%29.md) - A [b] c\n');
+  });
+
+  it('keeps CRLF files CRLF', () => {
+    const source = '# T\r\n\r\n## Concepts\r\n\r\n* [A](/concepts/a.md) - A.\r\n';
+    expect(addConceptToIndex(source, concept)).toBe(`${source}* ${line}\r\n`);
+    expect(addConceptToIndex('# T\r\n', concept)).toBe(
+      `# T\r\n\r\n## Concepts\r\n\r\n* ${line}\r\n`,
+    );
+  });
+});
+
+describe('addCreateToLog', () => {
+  const concept = { title: 'New one', path: 'concepts/new-one.md' };
+  const entry = '* **Create**: Created [New one](/concepts/new-one.md).';
+
+  it("adds under today's heading when it is the first one", () => {
+    const source =
+      '# Update log\n\n## 2026-10-18\n* **Update**: Edited.\n\n## 2026-10-17\n* **Create**: Created.\n';
+    expect(addCreateToLog(source, concept, '2026-10-18')).toBe(
+      source.replace('## 2026-10-18\n', `## 2026-10-18\n${entry}\n`),
+    );
+  });
+
+  it('adds a new dated section before the first ## heading otherwise', () => {
+    const source = '# Update log\n\n## 2026-10-17\n* **Create**: Created.\n';
+    expect(addCreateToLog(source, concept, '2026-10-18')).toBe(
+      `# Update log\n\n## 2026-10-18\n${entry}\n\n## 2026-10-17\n* **Create**: Created.\n`,
+    );
+    // today exists but is not the newest section: still a new section on top
+    expect(
+      addCreateToLog('## 2026-10-19\n* x\n\n## 2026-10-18\n* y\n', concept, '2026-10-18'),
+    ).toBe(`## 2026-10-18\n${entry}\n\n## 2026-10-19\n* x\n\n## 2026-10-18\n* y\n`);
+  });
+
+  it('appends a dated section when there is no heading, and ignores headings in code', () => {
+    expect(addCreateToLog('# Update log\n', concept, '2026-10-18')).toBe(
+      `# Update log\n\n## 2026-10-18\n${entry}\n`,
+    );
+    expect(addCreateToLog('# Update log\n\n```\n## 2026-10-18\n```\n', concept, '2026-10-18')).toBe(
+      `# Update log\n\n\`\`\`\n## 2026-10-18\n\`\`\`\n\n## 2026-10-18\n${entry}\n`,
+    );
+    expect(addCreateToLog('', concept, '2026-10-18')).toBe(`## 2026-10-18\n${entry}\n`);
+  });
+});
+
+describe('createDoc', () => {
+  const now = new Date('2026-10-18T09:00:00Z');
+  const bundle = (): Record<string, string> => validKbBundle('demo');
+
+  it('creates the file, lists it in index.md and logs it, atomically', async () => {
+    const dir = tmp.make(bundle());
+    const created = await createDoc(
+      'kb',
+      'demo',
+      'concepts/w2-new.md',
+      { title: 'W2 new', type: 'Guide', description: 'A new guide.' },
+      dir,
+      now,
+    );
+    expect(created).toMatchObject({
+      dataset: 'kb',
+      slug: 'demo',
+      path: 'concepts/w2-new.md',
+      url: '/kb/demo/doc/concepts/w2-new',
+      warnings: [],
+    });
+    const file = path.join(dir, 'kb', 'demo', 'concepts', 'w2-new.md');
+    expect(readFileSync(file, 'utf8')).toBe(
+      '---\ntype: Guide\ntitle: W2 new\ndescription: A new guide.\n---\n\n# W2 new\n',
+    );
+    expect(created.lastModified).toBe(statSync(file).mtime.toISOString());
+    const index = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
+    expect(index).toBe(
+      validKbBundle('demo')['kb/demo/index.md']!.replace(
+        '* [One](/concepts/one.md) - First concept.\n',
+        '* [One](/concepts/one.md) - First concept.\n* [W2 new](/concepts/w2-new.md) - A new guide.\n',
+      ),
+    );
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8')).toBe(
+      '# Update log\n\n## 2026-10-18\n* **Create**: Created [W2 new](/concepts/w2-new.md).\n* **Update**: Edited.\n\n## 2026-10-17\n* **Create**: Created [Demo](/main.md).\n',
+    );
+    // Nothing is left behind and the bundle still passes the okf + link checks.
+    expect(readdirSync(path.join(dir, 'kb', 'demo', 'concepts')).sort()).toEqual([
+      'one.md',
+      'w2-new.md',
+    ]);
+    expect(ruleIds(validateDoc('kb', 'demo', 'index.md', index, dir))).toEqual([]);
+  });
+
+  it('defaults type to Concept, omits a blank description and creates missing folders', async () => {
+    const dir = tmp.make(bundle());
+    await createDoc(
+      'kb',
+      'demo',
+      'concepts/deep/er/x.md',
+      { title: ' A\n title ', description: '  ' },
+      dir,
+      now,
+    );
+    expect(
+      readFileSync(path.join(dir, 'kb', 'demo', 'concepts', 'deep', 'er', 'x.md'), 'utf8'),
+    ).toBe('---\ntype: Concept\ntitle: A title\n---\n\n# A title\n');
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8')).toContain(
+      '* [A title](/concepts/deep/er/x.md) - A title\n',
+    );
+  });
+
+  it('is fine in a bundle without index.md / log.md (they are not created)', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const created = await createDoc('kb', 'x', 'a.md', { title: 'A' }, dir, now);
+    expect(created.warnings).toEqual([]);
+    expect(readdirSync(path.join(dir, 'kb', 'x')).sort()).toEqual(['a.md', 'main.md']);
+  });
+
+  it('answers exists for an existing file (also a directory or a dangling symlink) and changes nothing', async () => {
+    const dir = tmp.make(bundle());
+    const before = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
+    for (const target of ['concepts/one.md']) {
+      const error = await failure(createDoc('kb', 'demo', target, { title: 'X' }, dir, now));
+      expect(error.code, target).toBe('exists');
+    }
+    mkdirSync(path.join(dir, 'kb', 'demo', 'folder.md'));
+    expect(
+      (await failure(createDoc('kb', 'demo', 'folder.md', { title: 'X' }, dir, now))).code,
+    ).toBe('exists');
+    if (process.platform !== 'win32') {
+      symlinkSync(path.join(dir, 'nowhere'), path.join(dir, 'kb', 'demo', 'dangling.md'));
+      expect(
+        (await failure(createDoc('kb', 'demo', 'dangling.md', { title: 'X' }, dir, now))).code,
+      ).toBe('exists');
+    }
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8')).toBe(before);
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'concepts', 'one.md'), 'utf8')).toBe(
+      validKbBundle('demo')['kb/demo/concepts/one.md'],
+    );
+  });
+
+  it('reserves index.md, log.md and the root main.md', async () => {
+    const dir = tmp.make(bundle());
+    for (const target of [
+      'index.md',
+      'log.md',
+      'main.md',
+      'concepts/index.md',
+      'concepts/log.md',
+    ]) {
+      const error = await failure(createDoc('kb', 'demo', target, { title: 'X' }, dir, now));
+      expect(error.code, target).toBe('bad-path');
+    }
+  });
+
+  it('rejects bad datasets, slugs, paths and bodies before writing', async () => {
+    const dir = tmp.make(bundle());
+    expect((await failure(createDoc('skill', 'demo', 'a.md', { title: 'X' }, dir))).code).toBe(
+      'bad-dataset',
+    );
+    expect((await failure(createDoc('context', 'demo', 'a.md', { title: 'X' }, dir))).code).toBe(
+      'bad-dataset',
+    );
+    expect((await failure(createDoc('kb', 'Bad', 'a.md', { title: 'X' }, dir))).code).toBe(
+      'bad-slug',
+    );
+    for (const bad of [undefined, '', '../x.md', 'a/../b.md', '.hidden/x.md', 'x.txt', '/abs.md']) {
+      expect(
+        (await failure(createDoc('kb', 'demo', bad, { title: 'X' }, dir))).code,
+        String(bad),
+      ).toBe('bad-path');
+    }
+    expect((await failure(createDoc('kb', 'missing', 'a.md', { title: 'X' }, dir))).code).toBe(
+      'not-found',
+    );
+
+    const body = await failure(
+      createDoc(
+        'kb',
+        'demo',
+        'a.md',
+        { title: '', type: 5, description: 'x'.repeat(1025), extra: 1 },
+        dir,
+      ),
+    );
+    expect(body.code).toBe('invalid');
+    expect(body.issues.map((i) => i.path).sort()).toEqual([
+      'description',
+      'extra',
+      'title',
+      'type',
+    ]);
+    expect((await failure(createDoc('kb', 'demo', 'a.md', 'nope', dir))).code).toBe('invalid');
+    expect(
+      (await failure(createDoc('kb', 'demo', 'a.md', { title: 'x'.repeat(201) }, dir))).issues[0]
+        ?.path,
+    ).toBe('title');
+    expect(existsSync(path.join(dir, 'kb', 'demo', 'a.md'))).toBe(false);
+  });
+
+  it('never writes through a symlinked folder that leaves the bundle', async () => {
+    if (process.platform === 'win32') return;
+    const dir = tmp.make(bundle());
+    const outside = tmp.make({ 'keep.txt': 'x' });
+    symlinkSync(outside, path.join(dir, 'kb', 'demo', 'escape'));
+    const error = await failure(
+      createDoc('kb', 'demo', 'escape/new/x.md', { title: 'X' }, dir, now),
+    );
+    expect(error.code).toBe('bad-path');
+    expect(readdirSync(outside)).toEqual(['keep.txt']);
+  });
+
+  it('refuses a path with a file where a folder is needed', async () => {
+    const dir = tmp.make(bundle());
+    const error = await failure(
+      createDoc('kb', 'demo', 'concepts/one.md/inner.md', { title: 'X' }, dir, now),
+    );
+    expect(error.code).toBe('bad-path');
+  });
+
+  it('two concurrent creates of the same file: one wins, one gets exists', async () => {
+    const dir = tmp.make(bundle());
+    const results = await Promise.allSettled([
+      createDoc('kb', 'demo', 'concepts/race.md', { title: 'One' }, dir, now),
+      createDoc('kb', 'demo', 'concepts/race.md', { title: 'Two' }, dir, now),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const index = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
+    expect(index.match(/race\.md/g)).toHaveLength(1);
+  });
+
+  it('concurrent creates of different files list every one in index.md and log.md', async () => {
+    const dir = tmp.make(bundle());
+    const names = ['a', 'b', 'c', 'd', 'e'];
+    await Promise.all(
+      names.map((n) => createDoc('kb', 'demo', `concepts/${n}.md`, { title: `T ${n}` }, dir, now)),
+    );
+    const index = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
+    const log = readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8');
+    for (const n of names) {
+      expect(index).toContain(`(/concepts/${n}.md)`);
+      expect(log).toContain(`(/concepts/${n}.md)`);
+    }
   });
 });

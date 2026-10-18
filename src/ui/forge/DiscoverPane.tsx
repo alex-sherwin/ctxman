@@ -1,13 +1,16 @@
-// Left pane of the Forge: find entries in any linkable dataset and add them to the working context
-// (UI_SPEC §H.4). Rows come from the shared entries cache, filtered client-side.
+// Left pane of the Forge: find entries in any linkable dataset (or in all of them, the "All" tab) and add them to
+// the working context (UI_SPEC §H.4, ROUND3_SPEC §E.8). Rows come from the shared entries cache, filtered
+// client-side. A row whose entry has `child` relations (a project) can be added together with its children.
 import { useStore } from '@nanostores/react';
 import { flushSync } from 'react-dom';
 import type { Key } from 'react-aria-components';
 import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
+import { isDiscoverDataset } from '../../lib/url-state.ts';
+import type { DiscoverDataset } from '../../lib/url-state.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
-import { $entries, ensureEntries } from '../../stores/entries.ts';
-import type { EntriesState } from '../../stores/entries.ts';
+import { discoverTabCount } from '../../stores/discover.ts';
+import { $entries, ensureAllEntries, ensureEntries } from '../../stores/entries.ts';
 import {
   $discover,
   $forgeUrl,
@@ -16,6 +19,8 @@ import {
   $yamlInvalid,
   DISCOVER_CAP,
   addLink,
+  addLinks,
+  addableChildren,
   linkKey,
   parseLinkKey,
   setDataset,
@@ -29,6 +34,7 @@ import {
   ButtonLink,
   Chip,
   ChipGroup,
+  DatasetBadge,
   Disclosure,
   GridList,
   GridListItem,
@@ -39,6 +45,7 @@ import {
   TabPanel,
   Tabs,
 } from '../kit/index.ts';
+import { invalidTitle } from './link-label.ts';
 
 /** Tag chips shown inline; the rest go into "More tags". */
 const VISIBLE_TAGS = 16;
@@ -49,10 +56,17 @@ interface RowProps {
   entry: EntrySummary;
   added: boolean;
   addDisabled: boolean;
+  /** The "All" tab: the dataset is not implied by the tab, so the row says it. */
+  showDataset: boolean;
+  /** Children of the entry that "Add with children" would append (not linked yet, present in the cache). */
+  addable: { dataset: LinkableDatasetId; slug: string }[];
 }
 
-function DiscoverRow({ id, entry, added, addDisabled }: RowProps) {
+function DiscoverRow({ id, entry, added, addDisabled, showDataset, addable }: RowProps) {
   const title = entry.title ?? entry.name;
+  const flag = invalidTitle(entry);
+  const n = addable.length;
+  const kids = `${n} ${n === 1 ? 'child' : 'children'}`;
   return (
     <GridListItem
       id={id}
@@ -60,13 +74,23 @@ function DiscoverRow({ id, entry, added, addDisabled }: RowProps) {
       className="cx-discover__item"
       data-testid="forge-result"
       data-slug={entry.slug}
+      data-dataset={entry.dataset}
       data-added={added || undefined}
+      data-invalid={entry.invalid ? '' : undefined}
     >
       <div className="cx-discover__main">
         <div className="cx-row cx-discover__line">
           <span className="cx-discover__title cx-truncate">{title}</span>
           <code className="cx-discover__slug">{entry.slug}</code>
+          {showDataset && <DatasetBadge dataset={entry.dataset} />}
           {entry.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
+          {entry.invalid && (
+            <span data-testid="forge-invalid">
+              <Badge tone="danger" title={flag}>
+                invalid
+              </Badge>
+            </span>
+          )}
           {entry.stale && <Badge tone="warn">stale</Badge>}
           {entry.tags.slice(0, 3).map((tag) => (
             <Badge key={tag} tone="tag">
@@ -88,6 +112,23 @@ function DiscoverRow({ id, entry, added, addDisabled }: RowProps) {
         >
           ↗
         </ButtonLink>
+        {n > 0 && (
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={addDisabled}
+            onPress={() =>
+              addLinks([
+                { dataset: entry.dataset as LinkableDatasetId, slug: entry.slug },
+                ...addable,
+              ])
+            }
+            aria-label={added ? `Add the ${kids} of ${title}` : `Add ${title} with ${kids}`}
+            data-testid="forge-add-children"
+          >
+            {added ? `+ Add ${kids}` : `+ Add with ${kids}`}
+          </Button>
+        )}
         <Button
           size="sm"
           variant={added ? 'ghost' : 'secondary'}
@@ -103,16 +144,20 @@ function DiscoverRow({ id, entry, added, addDisabled }: RowProps) {
   );
 }
 
-function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
+function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
   const url = useStore($forgeUrl);
   const view = useStore($discover);
+  const entries = useStore($entries);
   const linked = useStore($linkedKeys);
   const working = useStore($working);
   const yamlInvalid = useStore($yamlInvalid);
-  const def = datasetDef(dataset);
+  const isAll = dataset === 'all';
+  const def = isAll ? null : datasetDef(dataset);
+  const plural = def?.plural ?? 'entries';
 
   const canAdd = working !== null && !yamlInvalid;
-  const states = def.states;
+  // "All" mixes lifecycles that share no state ids: no state chips there
+  const states = def?.states;
 
   const selectedTags = new Set(url.tags);
   const inline = view.tagCounts.slice(0, VISIBLE_TAGS);
@@ -151,14 +196,14 @@ function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
     view.status === 'loading'
       ? 'Loading…'
       : view.total === 0
-        ? `No ${def.plural} yet.`
+        ? `No ${plural} yet.`
         : 'No entries match these filters.';
 
   return (
     <>
       <div className="cx-forge__toolbar">
         <SearchField
-          aria-label={`Filter ${def.plural}`}
+          aria-label={`Filter ${plural}`}
           value={url.q}
           onChange={setQuery}
           size="sm"
@@ -226,10 +271,18 @@ function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
           </p>
         )
       )}
+      {isAll && view.status === 'error' && view.items.length > 0 && (
+        <div className="cx-discover__error cx-discover__notice" role="alert">
+          <span>{view.error ?? "Couldn't load some entries"}.</span>
+          <Button size="sm" onPress={() => ensureAllEntries()}>
+            Retry
+          </Button>
+        </div>
+      )}
       <GridList
-        aria-label={`${def.label} results`}
+        aria-label={`${def?.label ?? 'All'} results`}
         items={view.items}
-        dependencies={[linked, canAdd]}
+        dependencies={[linked, canAdd, entries, isAll]}
         onAction={onAdd}
         emptyText={emptyText}
         renderEmptyState={
@@ -237,7 +290,10 @@ function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
             ? () => (
                 <div className="ck-gridlist__empty cx-discover__error" role="alert">
                   <span>Couldn't load entries.</span>
-                  <Button size="sm" onPress={() => ensureEntries(dataset)}>
+                  <Button
+                    size="sm"
+                    onPress={() => (isAll ? ensureAllEntries() : ensureEntries(dataset))}
+                  >
                     Retry
                   </Button>
                 </div>
@@ -253,22 +309,13 @@ function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
             entry={entry}
             added={linked.has(linkKey(entry))}
             addDisabled={!canAdd}
+            showDataset={isAll}
+            addable={addableChildren(entry, entries, linked)}
           />
         )}
       </GridList>
     </>
   );
-}
-
-/**
- * Tab count: `null` ("…") until the first response, the number once there are entries (a refresh keeps
- * showing the old number), nothing when the dataset failed to load.
- */
-function tabCount(state: EntriesState | undefined): number | null | undefined {
-  if (state === undefined || (state.status === 'loading' && state.entries.length === 0)) {
-    return null;
-  }
-  return state.status === 'error' ? undefined : state.entries.length;
 }
 
 export function DiscoverPane() {
@@ -287,22 +334,31 @@ export function DiscoverPane() {
       </header>
       <Tabs
         selectedKey={url.dataset}
-        onSelectionChange={(key) => setDataset(String(key) as LinkableDatasetId)}
+        onSelectionChange={(key) => {
+          const next = String(key);
+          if (isDiscoverDataset(next)) setDataset(next);
+        }}
         className="cx-forge__tabs"
       >
         <TabList aria-label="Datasets" className="cx-forge__tablist">
+          <Tab id="all" count={discoverTabCount(entries, 'all')} data-testid="forge-tab-all">
+            All
+          </Tab>
           {LINKABLE_DATASETS.map((id) => (
             <Tab
               key={id}
               id={id}
               dataset={id}
-              count={tabCount(entries[id])}
+              count={discoverTabCount(entries, id)}
               data-testid={`forge-tab-${id}`}
             >
               {datasetDef(id).navLabel}
             </Tab>
           ))}
         </TabList>
+        <TabPanel id="all">
+          <DiscoverPanel dataset="all" />
+        </TabPanel>
         {LINKABLE_DATASETS.map((id) => (
           <TabPanel key={id} id={id}>
             <DiscoverPanel dataset={id} />

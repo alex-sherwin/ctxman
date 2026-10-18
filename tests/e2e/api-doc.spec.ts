@@ -1,4 +1,5 @@
-// Doc API (ROUND2_BACKEND_SPEC §A.4) over Playwright's request context: GET|PUT /api/doc/<dataset>/<slug>/<path>.
+// Doc API (ROUND2_BACKEND_SPEC §A.4, ROUND3_SPEC §D.3/§D.4) over Playwright's request context: GET|PUT|POST
+// /api/doc/<dataset>/<slug>/<path> (POST creates a concept; PUT/GET return link problems as warnings).
 // The entry is created through the add script; the API reads and writes the files directly, so no spec waits for
 // the content layer. The entry is removed afterwards (the e2e data copy is shared by the whole run).
 import { readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -233,9 +234,60 @@ test('guards: text/plain is 415, a foreign Origin is 403, other methods are 405'
   expect(foreign.status()).toBe(403);
   expect((await errorOf(foreign)).error).toBe('forbidden-origin');
 
-  const post = await request.post(docUrl('main.md'), { data: { markdown: 'x' } });
-  expect(post.status()).toBe(405);
-  expect(post.headers().allow).toBe('GET, PUT');
-  expect((await errorOf(post)).error).toBe('method-not-allowed');
+  const patch = await request.patch(docUrl('main.md'), { data: { markdown: 'x' } });
+  expect(patch.status()).toBe(405);
+  expect(patch.headers().allow).toBe('GET, PUT, POST');
+  expect((await errorOf(patch)).error).toBe('method-not-allowed');
   expect((await request.delete(docUrl('main.md'))).status()).toBe(405);
+});
+
+test('PUT returns link problems as warnings (links/broken, links/ctxman-target) and still saves', async ({
+  request,
+}) => {
+  writeFileSync(path.join(entryDir, 'concepts', 'links.md'), '---\ntype: Concept\n---\n# Links\n');
+  const markdown =
+    '---\ntype: Concept\n---\n# Links\n\nSee [x](./x.md), [y](ctxman:idea/e2e-nope) and [ok](ctxman:kb/ctxman).\n';
+  const response = await request.put(docUrl('concepts/links.md'), { data: { markdown } });
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as DocBody;
+  expect(body.warnings.map((w) => w.rule).sort()).toEqual(['links/broken', 'links/ctxman-target']);
+  const file = `task/${name}/concepts/links.md`;
+  expect(body.warnings.every((w) => w.file === file)).toBe(true);
+  expect(body.warnings.find((w) => w.rule === 'links/broken')?.message).toContain('./x.md');
+  expect(body.warnings.find((w) => w.rule === 'links/ctxman-target')?.message).toContain(
+    'idea/e2e-nope',
+  );
+  expect(readFileSync(path.join(entryDir, 'concepts', 'links.md'), 'utf8')).toBe(markdown);
+
+  // GET reports the same warnings; a clean rewrite clears them.
+  const got = (await (await request.get(docUrl('concepts/links.md'))).json()) as DocBody;
+  expect(got.warnings.map((w) => w.rule).sort()).toEqual(['links/broken', 'links/ctxman-target']);
+  const clean = await request.put(docUrl('concepts/links.md'), {
+    data: { markdown: '---\ntype: Concept\n---\n# Links\n\n[ok](ctxman:kb/ctxman)\n' },
+  });
+  expect(((await clean.json()) as DocBody).warnings).toEqual([]);
+});
+
+test('POST creates a concept (201), a second POST is 409 exists, reserved paths are 400', async ({
+  request,
+}) => {
+  const created = await request.post(docUrl('concepts/e2e-doc-created.md'), {
+    data: { title: 'Created by the doc spec', description: 'Doc API POST.' },
+  });
+  expect(created.status()).toBe(201);
+  const body = (await created.json()) as { path: string; url: string; warnings: unknown[] };
+  expect(body.path).toBe('concepts/e2e-doc-created.md');
+  expect(body.url).toBe(`/task/${name}/doc/concepts/e2e-doc-created`);
+  expect(body.warnings).toEqual([]);
+  expect(readFileSync(path.join(entryDir, 'concepts', 'e2e-doc-created.md'), 'utf8')).toBe(
+    '---\ntype: Concept\ntitle: Created by the doc spec\ndescription: Doc API POST.\n---\n\n# Created by the doc spec\n',
+  );
+
+  const again = await request.post(docUrl('concepts/e2e-doc-created.md'), { data: { title: 'T' } });
+  expect(again.status()).toBe(409);
+  expect((await errorOf(again)).error).toBe('exists');
+
+  const reserved = await request.post(docUrl('log.md'), { data: { title: 'T' } });
+  expect(reserved.status()).toBe(400);
+  expect((await errorOf(reserved)).error).toBe('bad-path');
 });

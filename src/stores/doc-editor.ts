@@ -2,12 +2,19 @@
 // editor that sits next to the server-rendered preview. URL-synced per UI_SPEC §0.3: `onMount($docEdit)` reads
 // `?edit=1` and registers popstate; actions are plain functions that `.set()` stores and call
 // `history.replaceState` themselves (edit mode never adds history entries); popstate re-reads the URL and never
-// writes history. Imported only by the client:only DocEditor island.
+// writes history. Imported by the client:only DocEditor island and, for `$docEditing`, the EntryTools island.
+// `$docEdit` is only the URL flag: other pages use `?edit=1` too (the reference DataForm has no DocEditor), so
+// whatever must know that a DocEditor is really open (EntryTools' lock, the post-write reload) reads `$docEditing`.
 //
 // Save model: explicit Save (PUT /api/doc with `ifUnmodifiedSince`), a 409 opens the ConflictDialog, a 200
 // switches back to the preview and dims it until the page reloads (the dev server reloads by itself ~0.7 s
-// after the file changes; `pnpm start` has no watcher, so a 2 s fallback reload runs). Unsaved text is mirrored
-// to sessionStorage so a reload caused by ANOTHER file does not lose it.
+// after the file changes; `pnpm start` has no watcher, so a 2 s fallback reload runs).
+// Unsaved text is mirrored to localStorage (draft-backup.ts, 14 days) on every change, so a reload caused by
+// ANOTHER file, a closed tab or a crash does not lose it; there is NO native `beforeunload` prompt (ROUND3_SPEC
+// §G). `loadDoc` restores the draft whenever it differs from the disk text; when the file ALSO changed on disk
+// since the draft was started (`base` != `lastModified`) it is restored with `$docDraftStale` set (saving then
+// overwrites the newer disk version, which the banner says). In preview mode `$docDraftAvailable` tells the island
+// that a draft exists ("Resume editing").
 // Stale preview after the dev reload: Astro's content layer re-reads the file ~1 s after the write, so the page
 // the dev reload brings can still render the OLD markdown. The remembered "Saved" record therefore carries a
 // `reloads` counter: the page that consumes a record with `reloads < MAX_SETTLE_RELOADS` schedules exactly ONE more
@@ -17,9 +24,10 @@ import { atom, computed, onMount } from 'nanostores';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { parseEditUrl, withParams } from '../lib/url-state.ts';
 import { getJson, sendJson } from '../ui/edit/api.ts';
-import { clearDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
+import { clearDraft, hasDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
 import { rememberSave, takeSave } from '../ui/edit/last-save.ts';
 import type { SaveStatus } from '../ui/edit/status.ts';
+import { planRestore } from '../ui/markdown/draft-restore.ts';
 
 export type DocDataset = OkfDatasetId | 'skill';
 
@@ -41,9 +49,11 @@ export interface DocBaseline {
   lastModified: string;
 }
 
-/** A validator finding returned by the doc API (`src/lib/findings.ts`), reduced to what the UI shows. */
+/**
+ * A validator finding returned by the doc API (`src/lib/findings.ts`), reduced to what the UI shows. The save
+ * never blocks, so EVERY finding is a warning here, whatever its `severity` (the link checks report `error`).
+ */
 export interface DocWarning {
-  severity: 'error' | 'warning';
   rule: string;
   message: string;
   line?: number;
@@ -58,8 +68,17 @@ export const MAX_SETTLE_RELOADS = 1;
 const MAX_WARNINGS = 50;
 
 export const $docTarget = atom<DocTarget | null>(null);
-/** `?edit=1`. */
+/** `?edit=1` (also true on pages without a DocEditor, e.g. the reference form: use `$docEditing` for the lock). */
 export const $docEdit = atom<boolean>(false);
+/**
+ * A DocEditor island is mounted (it set `$docTarget`) AND the page is in edit mode. This, not `$docEdit`, locks the
+ * EntryTools buttons and holds back the post-write reload: on `/reference/<slug>?edit=1` (DataForm, no DocEditor)
+ * `$docEdit` is true but there is no draft whose base a PATCH could invalidate.
+ */
+export const $docEditing = computed(
+  [$docTarget, $docEdit],
+  (target, edit) => target !== null && edit,
+);
 export const $docLoad = atom<DocLoad>({ status: 'idle' });
 /** Last loaded / saved server copy. */
 export const $docBaseline = atom<DocBaseline | null>(null);
@@ -73,8 +92,12 @@ export const $docStatus = computed([$docSave, $docDirty], (s, dirty): SaveStatus
 );
 /** The ConflictDialog is open (the last PUT answered 409). */
 export const $docConflict = atom<boolean>(false);
-/** A sessionStorage draft was restored into the editor. */
+/** A localStorage draft was restored into the editor. */
 export const $docRestored = atom<boolean>(false);
+/** The restored draft was started from an older version of the file: the file changed on disk since. */
+export const $docDraftStale = atom<boolean>(false);
+/** A draft of this file is stored (checked on page load and after every change to it): "Resume editing". */
+export const $docDraftAvailable = atom<boolean>(false);
 /** A save succeeded and the page has not reloaded yet: the SSR preview is stale (dimmed). */
 export const $docStale = atom<boolean>(false);
 /** Validator findings of the last successful save. */
@@ -82,7 +105,7 @@ export const $docWarnings = atom<readonly DocWarning[]>([]);
 
 // ---------------------------------------------------------------- helpers
 
-/** sessionStorage key of a file: draft backup and the remembered "Saved". */
+/** Storage key of a file: draft backup (localStorage) and the remembered "Saved" (sessionStorage). */
 export const docKey = (t: DocTarget): string => `doc:${t.dataset}/${t.slug}/${t.path}`;
 
 /** `/api/doc/<dataset>/<slug>/<path>` with each path segment URI-encoded. */
@@ -97,6 +120,12 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+/** Re-reads whether a draft of the current file is stored. */
+function syncDraftAvailable(): void {
+  const target = $docTarget.get();
+  $docDraftAvailable.set(target !== null && hasDraft(docKey(target)));
+}
+
 function toWarnings(value: unknown): DocWarning[] {
   if (!Array.isArray(value)) return [];
   const out: DocWarning[] = [];
@@ -105,7 +134,6 @@ function toWarnings(value: unknown): DocWarning[] {
     const f = item as Record<string, unknown>;
     if (typeof f.message !== 'string') continue;
     const warning: DocWarning = {
-      severity: f.severity === 'error' ? 'error' : 'warning',
       rule: typeof f.rule === 'string' ? f.rule : '',
       message: f.message,
     };
@@ -167,6 +195,7 @@ function replaceEdit(edit: boolean): void {
 function onPopState(): void {
   const edit = readEdit();
   $docEdit.set(edit);
+  syncDraftAvailable();
   if (edit && $docTarget.get() !== null && $docLoad.get().status === 'idle') void loadDoc();
 }
 
@@ -229,6 +258,8 @@ function resetDoc(): void {
   $docSave.set({ kind: 'idle' });
   $docConflict.set(false);
   $docRestored.set(false);
+  $docDraftStale.set(false);
+  $docDraftAvailable.set(false);
   $docStale.set(false);
   $docWarnings.set([]);
 }
@@ -241,6 +272,7 @@ export function initDoc(target: DocTarget, initialEdit = false): void {
   const previous = $docTarget.get();
   if (previous !== null && !sameTarget(previous, target)) resetDoc();
   $docTarget.set(target);
+  syncDraftAvailable();
   const key = docKey(target);
   const saved = takeSave(key);
   if (saved !== null) {
@@ -258,7 +290,7 @@ interface DocGetBody {
   lastModified: string;
 }
 
-/** GET the file; adopt it as baseline + draft, restoring a sessionStorage draft that was started from it. */
+/** GET the file; adopt it as baseline + draft, restoring a stored draft (stale or not: see the header). */
 export async function loadDoc(): Promise<void> {
   const target = $docTarget.get();
   if (target === null) return;
@@ -272,20 +304,14 @@ export async function loadDoc(): Promise<void> {
   }
   const { markdown, lastModified } = res.body;
   const key = docKey(target);
-  let draft = markdown;
-  let restored = false;
   const backup = loadDraft(key);
-  if (backup !== null) {
-    if (backup.base === lastModified && backup.text !== markdown) {
-      draft = backup.text;
-      restored = true;
-    } else {
-      clearDraft(key);
-    }
-  }
+  const plan = planRestore(backup, { text: markdown, lastModified });
+  if (backup !== null && !plan.restored) clearDraft(key); // identical to the disk text: nothing to keep
   $docBaseline.set({ text: markdown, lastModified });
-  $docDraft.set(draft);
-  $docRestored.set(restored);
+  $docDraft.set(plan.text);
+  $docRestored.set(plan.restored);
+  $docDraftStale.set(plan.stale);
+  syncDraftAvailable();
   $docConflict.set(false);
   const { kind } = $docSave.get();
   if (kind === 'error' || kind === 'conflict') $docSave.set({ kind: 'idle' });
@@ -317,6 +343,7 @@ export function setDocDraft(text: string): void {
   if (target === null || baseline === null) return;
   if (text !== baseline.text) saveDraft(docKey(target), { text, base: baseline.lastModified });
   else clearDraft(docKey(target));
+  syncDraftAvailable();
 }
 
 /** The "Discard" of the restored-draft banner: back to the saved text, backup removed. */
@@ -325,6 +352,8 @@ export function discardDraft(): void {
   if (target !== null) clearDraft(docKey(target));
   $docDraft.set($docBaseline.get()?.text ?? '');
   $docRestored.set(false);
+  $docDraftStale.set(false);
+  syncDraftAvailable();
   touch();
 }
 
@@ -336,6 +365,8 @@ export function discardEdit(): void {
   $docEdit.set(false);
   $docDraft.set($docBaseline.get()?.text ?? '');
   $docRestored.set(false);
+  $docDraftStale.set(false);
+  syncDraftAvailable();
   $docConflict.set(false);
   touch();
   if ($docStale.get()) scheduleReload();
@@ -351,6 +382,7 @@ export function loadDiskVersion(): void {
   const target = $docTarget.get();
   if (target !== null) clearDraft(docKey(target));
   $docConflict.set(false);
+  syncDraftAvailable();
   void loadDoc();
 }
 
@@ -394,6 +426,8 @@ export async function saveDoc(opts: { force?: boolean } = {}): Promise<void> {
   cancelSettleReload(); // a newer save supersedes the record the old timer would write back
   rememberSave(key, encodeSaved({ message, warnings, reloads: 0 }));
   $docRestored.set(false);
+  $docDraftStale.set(false);
+  syncDraftAvailable();
   $docWarnings.set(warnings);
   $docSave.set({ kind: 'saved', message });
   $docStale.set(true);

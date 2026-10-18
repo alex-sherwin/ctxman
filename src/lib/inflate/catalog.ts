@@ -416,7 +416,9 @@ export function isModeFor(kind: ItemKind, mode: string): mode is ModeId {
 export function defaultModeFor(kind: ItemKind, target: InflateTarget): ModeId {
   switch (familyOf(kind)) {
     case 'okf':
-      return kind === 'kb' || kind === 'rca' ? 'inline-main' : 'summary';
+      // Every okf kind is brought in as its main.md (plans/ROUND3_SPEC.md §H.1); a brief with only a
+      // description for a task or project says too little.
+      return 'inline-main';
     case 'skill':
       return target === 'generic' ? 'pointer' : 'install';
     case 'local-repo':

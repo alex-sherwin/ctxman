@@ -1,5 +1,6 @@
 // PURE list filtering/sorting shared by SSR list pages and the Forge (UI_SPEC §0.5, PLAN §E.14).
 import { getDataset } from '../datasets/registry.ts';
+import type { DatasetId } from '../datasets/registry.ts';
 import type { EntrySummary } from './entry-summary.ts';
 
 export interface EntryFilter {
@@ -11,6 +12,11 @@ export interface EntryFilter {
   tags?: readonly string[];
   /** Reference type; compared to `refType`. null/undefined/'' = all. */
   type?: string | null;
+  /**
+   * Restrict to these entries, keys `dataset/slug` (the children of a project: `childrenOf(graph, 'project/x')`).
+   * null/undefined = no restriction; an empty set matches nothing.
+   */
+  keys?: ReadonlySet<string> | null;
   /** 'name' | 'modified' | 'state'; anything else = 'modified'. */
   sort?: string;
 }
@@ -53,8 +59,10 @@ export function filterEntries(entries: readonly EntrySummary[], p: EntryFilter):
   const states = p.states ?? [];
   const tags = p.tags ?? [];
   const type = p.type === undefined || p.type === null || p.type === '' ? null : p.type;
+  const keys = p.keys ?? null;
 
   const out = entries.filter((e) => {
+    if (keys !== null && !keys.has(`${e.dataset}/${e.slug}`)) return false;
     if (terms.length > 0) {
       const hay = `${e.name} ${e.title ?? ''} ${e.description} ${e.tags.join(' ')}`.toLowerCase();
       if (!terms.every((t) => hay.includes(t))) return false;
@@ -87,4 +95,16 @@ export function stateCounts(entries: readonly EntrySummary[]): Record<string, nu
     if (e.state !== undefined) counts.set(e.state, (counts.get(e.state) ?? 0) + 1);
   }
   return Object.fromEntries(counts);
+}
+
+/**
+ * The entries of several datasets as one list (Forge / Inflate "All" tab): `datasets` order, each dataset's entries
+ * in the order given. `map` is the shape of the entries store (`{ entries }` per dataset); datasets missing from
+ * it contribute nothing. Filter and sort the result with `filterEntries`.
+ */
+export function mergeEntries(
+  map: Partial<Record<DatasetId, { readonly entries: readonly EntrySummary[] }>>,
+  datasets: readonly DatasetId[],
+): EntrySummary[] {
+  return [...new Set(datasets)].flatMap((id) => map[id]?.entries ?? []);
 }

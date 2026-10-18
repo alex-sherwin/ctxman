@@ -1,9 +1,11 @@
 // Inflate state (INFLATE_SPEC §9.2). Same structure as src/stores/forge.ts: `onMount($inflateUrl)` reads
-// `location.search` and registers the popstate / beforeunload / keydown listeners; actions are plain
+// `location.search` and registers the popstate / keydown listeners; actions are plain
 // functions that `.set()` stores and call `history.pushState/replaceState` themselves; popstate re-reads the
 // URL and never writes history. The composition shown in the UI is the PURE `expandRecipe` run over the
 // cached `/api/entries` + `/api/context/:slug` data (instant feedback); the server re-expands for the real
 // render (`POST /api/inflate/render`, debounced). Imported only by the client:only Inflate island.
+// Unsaved work is not guarded by a native `beforeunload` prompt (ROUND3_SPEC §G): the working copy is written to
+// localStorage on every change (`inflate:<slug>`) and restored on the next load, with a banner.
 import { atom, computed, map, onMount } from 'nanostores';
 import { LINKABLE_DATASETS } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId } from '../datasets/registry.ts';
@@ -48,14 +50,24 @@ import type {
   ExpandedPlan,
   ItemSegment,
 } from '../lib/inflate/expand.ts';
-import { sameRecipe } from '../lib/inflate/recipe.ts';
+import { parseRecipe, sameRecipe } from '../lib/inflate/recipe.ts';
 // Type-only: erased at build time, nothing of the NODE renderer reaches the browser bundle.
 import type { InflateResult } from '../lib/inflate/render.ts';
+import { filterEntries } from '../lib/entry-filter.ts';
+import type { EntrySummary } from '../lib/entry-summary.ts';
 import { reorderKeys } from '../lib/reorder.ts';
 import type { DropPosition } from '../lib/reorder.ts';
 import { parseInflateUrl, withParams } from '../lib/url-state.ts';
-import type { InflatePaths, InflateUrl, InflateView, ParamPatchValue } from '../lib/url-state.ts';
-import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
+import type {
+  DiscoverDataset,
+  InflatePaths,
+  InflateUrl,
+  InflateView,
+  ParamPatchValue,
+} from '../lib/url-state.ts';
+import { clearDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
+import { discoverSource } from './discover.ts';
+import { $entries, ensureAllEntries, ensureEntries, invalidateEntries } from './entries.ts';
 import type { EntriesState } from './entries.ts';
 import type { Issue, SaveStatus } from './forge.ts';
 
@@ -99,6 +111,14 @@ export const $inflateUrl = map<InflateUrl>({
 export const $baseline = atom<RecipeData | null>(null);
 /** Editable copy. Only ever replaced (immutable updates), never mutated. */
 export const $working = atom<RecipeData | null>(null);
+/** `lastModified` of the file behind `$baseline` (GET / PUT / POST response): the base of a saved draft. */
+export const $baselineModified = atom<string | null>(null);
+/**
+ * Non-null while the working copy was restored from a saved draft (ROUND3_SPEC §G); `stale` = the file changed on
+ * disk since the draft was started. Cleared by save, revert, delete, a recipe switch and by editing back to the
+ * saved state.
+ */
+export const $draftRestored = atom<{ stale: boolean } | null>(null);
 export const $recipeLoad = atom<RecipeLoad>({ status: 'none' });
 export const $saveStatus = atom<SaveStatus>({ kind: 'idle' });
 export const $dirty = computed(
@@ -132,6 +152,36 @@ export const $lastAddedBlock = atom<string | null>(null);
 /** Set while the "discard changes?" dialog waits for an answer (the recipe the user wanted to switch to). */
 export const $pendingSwitch = atom<{ next: string | null } | null>(null);
 export const $newRecipePrefill = atom<string>('');
+
+// ---------------------------------------------------------------- "Add items" list
+
+/** Rows rendered per Discover tab; the filter narrows the rest. */
+export const ADHOC_CAP = 200;
+
+export interface AdhocView {
+  status: 'loading' | 'ready' | 'error';
+  error?: string;
+  /** Matching entries (newest first), capped at `ADHOC_CAP`. */
+  items: EntrySummary[];
+  /** Entries in the tab (the dataset, or every linkable dataset for `all`). */
+  total: number;
+  /** Entries matching the filter (before the cap). */
+  matched: number;
+}
+
+/** The "Add items" tab: one dataset's entries, or every linkable dataset merged for `all`, filtered by `q`. */
+export const $adhoc = computed([$entries, $inflateUrl], (entries, url): AdhocView => {
+  const source = discoverSource(entries, url.dataset);
+  const matched = filterEntries(source.entries, { q: url.q, sort: 'modified' });
+  const view: AdhocView = {
+    status: source.status,
+    items: matched.slice(0, ADHOC_CAP),
+    total: source.entries.length,
+    matched: matched.length,
+  };
+  if (source.error !== undefined) view.error = source.error;
+  return view;
+});
 
 // ---------------------------------------------------------------- browser lookup (§5.5)
 
@@ -203,12 +253,18 @@ export function flushQuery(): void {
   replaceUrl({ q: $inflateUrl.get().q });
 }
 
+/** Start loading what an "Add items" tab shows (every linkable dataset for `all`). */
+function ensureDiscover(dataset: DiscoverDataset): void {
+  if (dataset === 'all') ensureAllEntries();
+  else ensureEntries(dataset);
+}
+
 /** Re-read `location` into the stores (mount and popstate). Never writes history. */
 function applyUrl(): void {
   cancelQueryTimer();
   const url = readLocation();
   $inflateUrl.set(url);
-  ensureEntries(url.dataset);
+  ensureDiscover(url.dataset);
 }
 
 // ---------------------------------------------------------------- helpers
@@ -348,18 +404,92 @@ function resetOutputs(): void {
   $lastAddedBlock.set(null);
 }
 
-/** Make `recipe` the loaded one: baseline and working copy are independent deep copies. */
-function adopt(recipe: RecipeData): void {
-  $baseline.set(clone(recipe));
-  $working.set(clone(recipe));
-  for (const slug of recipe.contexts) ensureContext(slug);
+// ---------------------------------------------------------------- drafts (ROUND3_SPEC §G)
+
+/** localStorage key (prefixed `ctxman:draft:` by draft-backup) of the draft of recipe `slug`. */
+export const draftKey = (slug: string): string => `inflate:${slug}`;
+
+/** Set while `adopt` swaps the stores, so its own `$working.set` neither clears nor rewrites the stored draft. */
+let draftSuspended = false;
+/** `base` written with the next draft: the one a restored draft came with (so a stale warning survives another reload). */
+let draftBase: string | null = null;
+
+/** Mirror the working copy into storage: dirty -> save the draft, clean -> clear it. */
+function syncDraft(): void {
+  if (draftSuspended) return;
+  const working = $working.get();
+  const baseline = $baseline.get();
+  if (working === null || baseline === null) return;
+  const key = draftKey(baseline.name);
+  if (sameRecipe(working, baseline)) {
+    clearDraft(key);
+    $draftRestored.set(null);
+    return;
+  }
+  saveDraft(key, {
+    text: JSON.stringify(working),
+    base: draftBase ?? $baselineModified.get() ?? '',
+  });
+}
+
+/**
+ * The stored draft of `recipe` as a working copy, or null. Anything unusable (not JSON, fails the recipe schema,
+ * other `name`, equal to the saved recipe) is removed.
+ */
+function readDraft(recipe: RecipeData): { working: RecipeData; base: string } | null {
+  const key = draftKey(recipe.name);
+  const draft = loadDraft(key);
+  if (draft === null) return null;
+  let working: RecipeData | null = null;
+  try {
+    const parsed = parseRecipe(JSON.parse(draft.text), recipe.name);
+    if (parsed.ok) working = parsed.recipe;
+  } catch {
+    // not JSON: dropped below
+  }
+  if (working === null || sameRecipe(working, recipe)) {
+    clearDraft(key);
+    return null;
+  }
+  return { working, base: draft.base };
+}
+
+/** Forget the stored draft of recipe `name` and hide the banner (save, revert / Discard, delete). */
+function dropDraft(name: string): void {
+  clearDraft(draftKey(name));
+  draftBase = null;
+  $draftRestored.set(null);
+}
+
+/**
+ * Make `recipe` the loaded one: baseline and working copy are independent deep copies. With `restore`, a saved
+ * draft of this recipe replaces the working copy (banner on; `stale` when `lastModified` is not the draft's base).
+ */
+function adopt(recipe: RecipeData, lastModified: string | null, restore: boolean): void {
+  const draft = restore ? readDraft(recipe) : null;
+  if (!restore) clearDraft(draftKey(recipe.name));
+  const working = draft === null ? clone(recipe) : draft.working;
+  draftSuspended = true;
+  try {
+    $baseline.set(clone(recipe));
+    $baselineModified.set(lastModified);
+    $working.set(working);
+  } finally {
+    draftSuspended = false;
+  }
+  draftBase = draft === null ? null : draft.base;
+  $draftRestored.set(draft === null ? null : { stale: draft.base !== lastModified });
+  for (const slug of working.contexts) ensureContext(slug);
   void renderNow();
 }
 
 function clearRecipe(): void {
   loadSeq++;
   $baseline.set(null);
+  $baselineModified.set(null);
   $working.set(null);
+  $draftRestored.set(null);
+  draftBase = null;
   $recipeLoad.set({ status: 'none' });
   resetOutputs();
 }
@@ -371,7 +501,10 @@ export async function loadRecipe(slug: string): Promise<void> {
   }
   const seq = ++loadSeq;
   $baseline.set(null);
+  $baselineModified.set(null);
   $working.set(null);
+  $draftRestored.set(null);
+  draftBase = null;
   resetOutputs();
   $recipeLoad.set({ status: 'loading' });
   try {
@@ -391,9 +524,9 @@ export async function loadRecipe(slug: string): Promise<void> {
       $recipeLoad.set({ status: 'error', message: (await messageOf(res)).message });
       return;
     }
-    const body = (await res.json()) as { recipe: RecipeData };
+    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
     if (seq !== loadSeq) return;
-    adopt(body.recipe);
+    adopt(body.recipe, body.lastModified ?? null, true);
     $recipeLoad.set({ status: 'ready' });
   } catch (error) {
     if (seq === loadSeq) $recipeLoad.set({ status: 'error', message: errorText(error) });
@@ -416,12 +549,12 @@ export function retryLoad(): void {
 
 // ---------------------------------------------------------------- Discover actions (ad hoc items)
 
-export function setDataset(dataset: LinkableDatasetId): void {
+export function setDataset(dataset: DiscoverDataset): void {
   const cur = $inflateUrl.get();
   if (dataset === cur.dataset) return;
   flushQuery();
   $inflateUrl.set({ ...cur, dataset });
-  ensureEntries(dataset);
+  ensureDiscover(dataset);
   history.pushState(null, '', hrefWith({ dataset }));
 }
 
@@ -975,6 +1108,7 @@ export function reloadSources(): void {
 export function revert(): void {
   const baseline = $baseline.get();
   if (baseline === null) return;
+  dropDraft(baseline.name);
   $saveStatus.set({ kind: 'idle' });
   $working.set(clone(baseline));
 }
@@ -1003,13 +1137,16 @@ export async function save(): Promise<void> {
       $saveStatus.set(status);
       return;
     }
-    const body = (await res.json()) as { recipe: RecipeData };
+    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
     $baseline.set(clone(body.recipe));
+    $baselineModified.set(body.lastModified ?? null);
     // Keep keystrokes made while the request was in flight; the server copy only replaces a working
     // copy that still equals what was sent AND differs from the response (never in practice).
     if ($working.get() === working && !sameRecipe(working, body.recipe)) {
       $working.set(clone(body.recipe));
     }
+    dropDraft(body.recipe.name);
+    syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
     $saveStatus.set({ kind: 'saved', at: Date.now() });
     invalidateEntries('recipe');
   } catch (error) {
@@ -1029,6 +1166,7 @@ export async function deleteRecipe(): Promise<void> {
       $saveStatus.set({ kind: 'error', message: (await messageOf(res)).message });
       return;
     }
+    dropDraft(baseline.name);
     clearRecipe();
     invalidateEntries('recipe');
     history.replaceState(history.state, '', hrefWith({ recipe: null }));
@@ -1062,10 +1200,10 @@ export async function createRecipe(input: {
       return { ok: false, field: 'name', message: 'A recipe with this name already exists.' };
     }
     if (!res.ok) return { ok: false, message: await describeFailure(res) };
-    const body = (await res.json()) as { recipe: RecipeData };
+    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
     loadSeq++;
     resetOutputs();
-    adopt(body.recipe);
+    adopt(body.recipe, body.lastModified ?? null, false);
     $recipeLoad.set({ status: 'ready' });
     $saveStatus.set({ kind: 'idle' });
     $newRecipePrefill.set('');
@@ -1129,13 +1267,6 @@ export function saveIfDirty(): void {
   if ($dirty.get()) void save();
 }
 
-function onBeforeUnload(e: BeforeUnloadEvent): void {
-  if ($dirty.get()) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
-}
-
 // Registered in the capture phase: react-aria's grid rows (the composition list) stop the propagation of key
 // events that start inside a row, so a bubbling listener would never see Cmd/Ctrl+S typed in a row's input,
 // Select or editor.
@@ -1153,14 +1284,16 @@ onMount($inflateUrl, () => {
   for (const ds of SOURCE_DATASETS) ensureEntries(ds);
   syncRecipe();
   window.addEventListener('popstate', onPopState);
-  window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyDown, true);
   const stopWatching = $working.listen(onWorkingChange);
+  // The working copy follows into localStorage (no native beforeunload prompt: a reload, a closed tab and a dev
+  // reload all find the draft again).
+  const stopDrafting = $working.listen(syncDraft);
   return () => {
     window.removeEventListener('popstate', onPopState);
-    window.removeEventListener('beforeunload', onBeforeUnload);
     window.removeEventListener('keydown', onKeyDown, true);
     stopWatching();
+    stopDrafting();
     cancelRenderTimer();
     flushQuery();
   };

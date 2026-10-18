@@ -6,8 +6,10 @@ import {
   parseForgeUrl,
   parseInflateUrl,
   parseListParams,
+  parseNewEntryUrl,
   parseSearchUrl,
   parseToolsUrl,
+  isDiscoverDataset,
   readList,
   withParams,
 } from '../../src/lib/url-state.ts';
@@ -145,6 +147,7 @@ describe('parseListParams', () => {
       tags: [],
       type: null,
       sort: 'modified',
+      project: null,
     });
   });
 
@@ -160,6 +163,7 @@ describe('parseListParams', () => {
       tags: ['a', 'b'],
       type: null,
       sort: 'name',
+      project: null,
     });
   });
 
@@ -196,6 +200,55 @@ describe('parseListParams', () => {
 
   it('does not comma-split tags and dedupes', () => {
     expect(parseListParams(sp('tag=a&tag=a&tag=b,c'), 'kb').tags).toEqual(['a', 'b,c']);
+  });
+
+  it('reads project=<slug> for any dataset; an invalid name is ignored', () => {
+    expect(parseListParams(sp('project=ctxman-v1'), 'task').project).toBe('ctxman-v1');
+    expect(parseListParams(sp('project=ctxman-v1'), 'kb').project).toBe('ctxman-v1');
+    expect(parseListParams(sp('project=ctxman-v1'), 'reference').project).toBe('ctxman-v1');
+    expect(parseListParams(sp('project=a&project=b'), 'task').project).toBe('a');
+    for (const bad of ['', 'Bad Slug', '../x', 'a--b', '-a', 'a_b']) {
+      expect(
+        parseListParams(sp(`project=${encodeURIComponent(bad)}`), 'task').project,
+        bad,
+      ).toBeNull();
+    }
+  });
+
+  it('keeps project next to the other params when written back', () => {
+    const href = withParams('/task?project=ctxman-v1&state=pending', {
+      state: ['pending', 'complete'],
+    });
+    expect(href).toBe('/task?project=ctxman-v1&state=pending&state=complete');
+    expect(withParams(href, { project: null })).toBe('/task?state=pending&state=complete');
+  });
+});
+
+describe('parseNewEntryUrl', () => {
+  it('reads a valid project slug as the parent', () => {
+    expect(parseNewEntryUrl(sp('parent=ctxman-v1'))).toEqual({ parent: 'ctxman-v1' });
+    expect(parseNewEntryUrl(sp('parent=a&parent=b'))).toEqual({ parent: 'a' });
+  });
+
+  it('is null when absent or not a valid name', () => {
+    expect(parseNewEntryUrl(sp(''))).toEqual({ parent: null });
+    expect(parseNewEntryUrl(sp('parent='))).toEqual({ parent: null });
+    expect(parseNewEntryUrl(sp('parent=Bad%20Slug'))).toEqual({ parent: null });
+    expect(parseNewEntryUrl(sp('parent=..%2Fx'))).toEqual({ parent: null });
+  });
+});
+
+describe('isDiscoverDataset', () => {
+  it('accepts all and every linkable dataset only', () => {
+    expect(isDiscoverDataset('all')).toBe(true);
+    expect(isDiscoverDataset('kb')).toBe(true);
+    expect(isDiscoverDataset('skill')).toBe(true);
+    expect(isDiscoverDataset('reference')).toBe(true);
+    expect(isDiscoverDataset('context')).toBe(false);
+    expect(isDiscoverDataset('recipe')).toBe(false);
+    expect(isDiscoverDataset('ALL')).toBe(false);
+    expect(isDiscoverDataset(null)).toBe(false);
+    expect(isDiscoverDataset(undefined)).toBe(false);
   });
 });
 
@@ -270,6 +323,12 @@ describe('parseForgeUrl', () => {
     expect(parseForgeUrl(sp('dataset=skill')).dataset).toBe('skill');
   });
 
+  it('accepts dataset=all (the merged tab); it has no lifecycle, so no states', () => {
+    expect(parseForgeUrl(sp('dataset=all')).dataset).toBe('all');
+    expect(parseForgeUrl(sp('dataset=all&state=pending&state=fixed')).states).toEqual([]);
+    expect(parseForgeUrl(sp('dataset=all&q=x&tag=docs'))).toMatchObject({ q: 'x', tags: ['docs'] });
+  });
+
   it("filters states to the selected dataset's lifecycle", () => {
     expect(parseForgeUrl(sp('dataset=bug&state=fixed&state=complete')).states).toEqual(['fixed']);
     expect(parseForgeUrl(sp('dataset=kb&state=pending')).states).toEqual([]);
@@ -305,6 +364,12 @@ describe('forgeHref', () => {
   it('supports context=new and a custom pathname', () => {
     expect(forgeHref({ ...base, context: 'new' })).toBe('/forge?context=new');
     expect(forgeHref({ ...base, dataset: 'rca' }, '/elsewhere')).toBe('/elsewhere?dataset=rca');
+  });
+
+  it('writes the all tab and reads it back', () => {
+    const url: ForgeUrl = { ...base, dataset: 'all', q: 'x' };
+    expect(forgeHref(url)).toBe('/forge?dataset=all&q=x');
+    expect(parseForgeUrl(new URL(forgeHref(url), 'http://h').searchParams)).toEqual(url);
   });
 
   it('round-trips through parseForgeUrl', () => {
@@ -359,6 +424,11 @@ describe('parseInflateUrl', () => {
     expect(parseInflateUrl(sp('dataset=nope')).dataset).toBe('kb');
   });
 
+  it('accepts dataset=all', () => {
+    expect(parseInflateUrl(sp('dataset=all')).dataset).toBe('all');
+    expect(parseInflateUrl(sp('dataset=All')).dataset).toBe('kb');
+  });
+
   it('the run view carries a well-formed job id; any other view drops it', () => {
     expect(parseInflateUrl(sp('view=run')).view).toBe('run');
     expect(parseInflateUrl(sp(`view=run&job=${JOB}`)).job).toBe(JOB);
@@ -399,6 +469,7 @@ describe('inflateHref', () => {
     ).toBe('/inflate?recipe=my-recipe&view=preview&dataset=task&q=a%20b');
     expect(inflateHref({ ...base, recipe: 'new' })).toBe('/inflate?recipe=new');
     expect(inflateHref({ ...base, dataset: 'rca' }, '/elsewhere')).toBe('/elsewhere?dataset=rca');
+    expect(inflateHref({ ...base, dataset: 'all' })).toBe('/inflate?dataset=all');
   });
 
   it('writes job only with view=run, and paths only when absolute', () => {

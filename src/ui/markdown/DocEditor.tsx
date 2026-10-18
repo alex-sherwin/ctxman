@@ -4,12 +4,16 @@
 // preview element. Mounted by the okf / skill detail and sub-doc pages with client:only="react".
 // Kit parts and src/ui/edit helpers are imported by file (never kit/index.ts: it pulls Monaco statically); the
 // editor only through LazyCodeEditor, so the ~4 MB chunk loads when Edit is first pressed.
+// Unsaved text is kept in localStorage by the store, so there is no native `beforeunload` prompt (ROUND3_SPEC §G);
+// the in-app discard dialog stays. "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
 import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
 import {
   $docConflict,
   $docDirty,
   $docDraft,
+  $docDraftAvailable,
+  $docDraftStale,
   $docEdit,
   $docLoad,
   $docRestored,
@@ -32,11 +36,13 @@ import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import { statusText } from '../edit/status.ts';
-import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { Button, Spinner } from '../kit/Button.tsx';
 import { Chip, ChipGroup } from '../kit/Chip.tsx';
 import { ConfirmDialog } from '../kit/Dialog.tsx';
 import { Toolbar } from '../kit/Toolbar.tsx';
+import { EntryPicker } from '../pickers/EntryPicker.tsx';
+import { useInsertLink } from '../pickers/useInsertLink.ts';
+import { DraftNotice } from './DraftNotice.tsx';
 
 export interface DocEditorProps {
   dataset: DocDataset;
@@ -58,15 +64,16 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   const saving = useStore($docSave).kind === 'saving';
   const conflict = useStore($docConflict);
   const restored = useStore($docRestored);
+  const draftStale = useStore($docDraftStale);
+  const draftAvailable = useStore($docDraftAvailable);
   const stale = useStore($docStale);
   const warnings = useStore($docWarnings);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const link = useInsertLink();
 
   useEffect(() => {
     initDoc({ dataset, slug, path }, initialEdit);
   }, [dataset, slug, path, initialEdit]);
-
-  useUnsavedGuard(dirty);
 
   // The SSR preview is an external DOM node: hide it while editing, dim it between a save and the reload.
   useEffect(() => {
@@ -122,6 +129,17 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
         </ChipGroup>
         <code className="cx-doctools__path">{path}</code>
         <span className="cx-doctools__spacer" />
+        {edit && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={link.open}
+            isDisabled={load.status !== 'ready' || saving}
+            data-testid="doc-insert-link"
+          >
+            Insert link…
+          </Button>
+        )}
         {edit ? (
           <SaveBar
             status={status}
@@ -142,6 +160,15 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
         )}
       </Toolbar>
 
+      {!edit && draftAvailable && (
+        <p className="cx-doc__restored" role="status" data-testid="doc-draft-available">
+          Unsaved changes to this file ·{' '}
+          <Button variant="ghost" size="sm" onPress={enterEdit} data-testid="doc-draft-resume">
+            Resume editing
+          </Button>
+        </p>
+      )}
+
       {!edit && warnings.length > 0 && (
         <ul
           className="cx-doc__warnings"
@@ -149,7 +176,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
           data-testid="doc-warnings"
         >
           {warnings.map((w, i) => (
-            <li key={`${i}:${w.rule}:${w.message}`} data-severity={w.severity}>
+            <li key={`${i}:${w.rule}:${w.message}`}>
               {w.rule !== '' && <code>{w.rule}</code>}
               {w.line !== undefined && <span className="cx-doc__warnline">line {w.line}</span>}
               <span>{w.message}</span>
@@ -161,17 +188,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
       {edit && (
         <>
           {restored && load.status === 'ready' && (
-            <p className="cx-doc__restored" data-testid="doc-draft-restored">
-              Restored unsaved changes from this tab.{' '}
-              <Button
-                variant="ghost"
-                size="sm"
-                onPress={discardDraft}
-                data-testid="doc-draft-discard"
-              >
-                Discard
-              </Button>
-            </p>
+            <DraftNotice testIdPrefix="doc" stale={draftStale} onDiscard={discardDraft} />
           )}
           <div className="cx-doc__editor" data-testid="doc-editor-wrap">
             {load.status === 'error' ? (
@@ -188,6 +205,8 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
                 value={draft}
                 onChange={setDocDraft}
                 onSave={() => void saveDoc()}
+                onReady={link.onReady}
+                onInsertLink={link.open}
                 readOnly={saving}
                 ariaLabel={`Markdown source of ${path}`}
                 testId="doc-editor"
@@ -201,6 +220,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
         </>
       )}
 
+      <EntryPicker title="Insert link to entry" {...link.picker} />
       <ConflictDialog
         isOpen={conflict}
         what={path}

@@ -46,12 +46,28 @@
     font-size: var(--fs-sm);
     color: var(--danger-fg);
   }
+  /* "Restored unsaved changes" (DraftNotice) and "Unsaved changes to this file · Resume editing" (ROUND3_SPEC §G);
+     data-stale = the file changed on disk since the draft was started */
   .cx-doc__restored {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-3);
     margin: 0 0 var(--sp-2);
+    padding: var(--sp-1) var(--sp-4);
     font-size: var(--fs-sm);
-    color: var(--warn-fg);
+    color: var(--info-fg);
+    background: var(--info-bg);
+    border-left: 2px solid var(--accent);
   }
-  /* findings the validators reported for the file that was just saved (the save itself is never blocked) */
+  .cx-doc__restored[data-stale] {
+    color: var(--warn-fg);
+    background: var(--warn-bg);
+    border-left-color: var(--warn-fg);
+  }
+  /* findings the validators reported for the file that was just saved (the save never blocks; link findings
+     arrive as severity "error" but are listed as plain warnings) */
   .cx-doc__warnings {
     margin: 0 0 var(--sp-4);
     padding: var(--sp-2) var(--sp-4);
@@ -66,9 +82,6 @@
     align-items: baseline;
     gap: var(--sp-3);
     padding-block: var(--sp-1);
-  }
-  .cx-doc__warnings li[data-severity='error'] {
-    color: var(--danger-fg);
   }
   .cx-doc__warnings code {
     font-size: var(--fs-xs);
@@ -106,6 +119,10 @@
     margin: 0;
     font-size: var(--fs-sm);
     color: var(--danger-fg);
+  }
+  /* the Insert link row above the popup's editor */
+  .cx-mdmodal__tools {
+    flex: none;
   }
   .cx-mdmodal__hint {
     margin: 0;

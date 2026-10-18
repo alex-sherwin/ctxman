@@ -4,7 +4,7 @@ description: Create a new ctxman dataset entry (kb, rca, idea, task, bug, featur
 compatibility: Run from the ctxman repository root. Needs Node 24 and pnpm; never use npm.
 metadata:
   author: ctxman
-  version: "1.2"
+  version: "1.3"
 allowed-tools: Read Edit Bash(pnpm run add:*) Bash(pnpm run check:*) Bash(pnpm run fix:yaml-comments)
 ---
 
@@ -46,15 +46,18 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
 
 4. **Fill in the generated files.** For OKF datasets edit `main.md` sections, set `tags`, and replace the `TODO:` description. For the OKF details load the skill `okf-authoring`. A `recipe` is a YAML file (`data/recipe/<name>.yaml`) that starts with `target: claude-code`, `layout: grouped` and empty `contexts` and `items`; recipes have no lifecycle state (`--state` is refused), so fill in the description and then compose it at `/inflate?recipe=<name>` instead of hand-editing the lists (the schema is strict; the fields are documented in `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman)).
 
-   A reference, context or recipe can also be created in the browser form at `/new/reference`, `/new/context` or `/new/recipe` (the other datasets need the script). These yaml files start with the line `# yaml-language-server: $schema=../../schemas/<dataset>.schema.json`: the script and the forms write it, never strip it, and run `pnpm run fix:yaml-comments` for a yaml entry you wrote by hand.
+   Every dataset can also be created in the browser at `/new/<dataset>` (a form with typed fields; `/new/<dataset>?parent=<project>` makes the new entry a child of that project). The script is the way for an agent: it needs no running server. These yaml files (reference, context, recipe) start with the line `# yaml-language-server: $schema=../../schemas/<dataset>.schema.json`: the script and the forms write it, never strip it, and run `pnpm run fix:yaml-comments` for a yaml entry you wrote by hand.
 
-5. **Link related entries** with `ctxman:<dataset>/<slug>`, for example `ctxman:feature/context-forge`.
+5. **Link related entries.** In prose use `ctxman:<dataset>/<slug>`, for example `ctxman:feature/context-forge` (a *mention*). For a typed relation add `links` to the frontmatter of an okf `main.md` (not a skill): `links: [{dataset, slug, rel}]` with `rel` `child` (a project lists the tasks, features, bugs and ideas it contains; the child does not point back), `related` or `depends-on`; one link per target, none to the entry itself. The entry page edits them too (Links and Children panels).
 
-6. **Verify** with `pnpm run check`. It must report zero errors and zero warnings (it also checks that the generated `schemas/*.schema.json` are current; after a change to a yaml dataset's shape run `pnpm run gen:schemas`).
+6. **Change state or frontmatter later without editing the file by hand**: the state select on lists and detail pages, or `PATCH /api/entry/<dataset>/<slug>` with `{"state": "complete"}` (also `title`, `description`, `tags`, `stale_after`, `status`, `addLinks`, `removeLinks`) when the dev server is running. The PATCH edits only the given keys and refuses (writes nothing) a result that fails the schema. Without a server, edit the `state:` line directly.
+
+7. **Verify** with `pnpm run check`. It must report zero errors and zero warnings (it also checks that the generated `schemas/*.schema.json` are current; after a change to a yaml dataset's shape run `pnpm run gen:schemas`).
 
 ## Notes
 
-* The same action is available in the browser at `/tools`, which opens the new entry when the script succeeds.
+* The same action is available in the browser: `/new/<dataset>` forms (the `/tools` Add Entry panel links to them).
 * Entries can be edited in the browser: markdown files on their detail page (Edit toggle, `?edit=1`), reference, context and recipe in a form (`/<dataset>/<slug>?edit=1`). Both save explicitly and are described in the knowledge base concept `concepts/editing.md`.
+* Relations (the `links` field, projects and their children, the panels) are described in the knowledge base concept `concepts/relations.md`.
 * Contexts can also be built interactively at `/forge`; recipes are composed and turned into a markdown document for Claude Code or Codex at `/inflate`.
 * Background on all datasets: [ctxman](ctxman:kb/ctxman).

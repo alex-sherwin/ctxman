@@ -868,4 +868,214 @@
       inset 0 1px 0 var(--accent),
       inset 0 -1px 0 var(--accent);
   }
+
+  /* ---------- Round 3: state select (StateSelect.astro; handled by src/scripts/shell.ts) ---------- */
+  .cx-statesel {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    vertical-align: middle;
+  }
+  /* the state dot over the select's left padding: same shape cues as .ck-badge--state (ring / half / filled / dash) */
+  .cx-statesel::after {
+    content: '';
+    position: absolute;
+    left: var(--sp-3);
+    top: 50%;
+    z-index: 2;
+    width: 6px;
+    height: 6px;
+    translate: 0 -50%;
+    border: 1.5px solid var(--st-fg);
+    border-radius: 50%;
+    color: var(--st-fg);
+    pointer-events: none;
+  }
+  .cx-statesel[data-state-group='active']::after {
+    background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+    box-shadow: 0 0 4px currentColor;
+  }
+  .cx-statesel[data-state-group='done']::after {
+    background: currentColor;
+  }
+  .cx-statesel[data-state-group='closed']::after {
+    height: 2px;
+    border: 0;
+    border-radius: 1px;
+    background: currentColor;
+  }
+  .cx-statesel__select {
+    width: auto;
+    height: var(--control-h-sm);
+    padding-left: calc(var(--sp-3) + 6px + var(--sp-3));
+    font-size: var(--fs-sm);
+    color: var(--st-fg);
+    border-color: var(--st-border);
+  }
+  .cx-statesel__select:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .cx-statesel__status {
+    font-size: var(--fs-xs);
+    color: var(--success-fg);
+    white-space: nowrap;
+  }
+  .cx-statesel__status:empty {
+    display: none;
+  }
+  .cx-statesel__status[data-kind='error'] {
+    color: var(--danger-fg);
+  }
+  /* in a list row the message floats under the select instead of widening the column */
+  .cx-table .cx-statesel__status {
+    position: absolute;
+    left: 0;
+    top: 100%;
+    z-index: 3;
+    padding: 0 var(--sp-2);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+  }
+  .cx-table .cx-statesel__status[data-kind='error'] {
+    white-space: normal;
+    width: max-content;
+    max-width: 260px;
+  }
+  .cx-table__th--state {
+    width: 150px;
+  }
+
+  /* ---------- Round 3: relation panels (RelationPanels.astro, RelationRow.astro) ---------- */
+  .cx-relrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0;
+    padding-block: var(--sp-2);
+  }
+  .cx-relrow__line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+  }
+  .cx-relrow__title {
+    min-width: 0;
+  }
+  .cx-relrow__end {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .cx-relrow__note {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-relrow__rel {
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+  .cx-relrow__in code {
+    color: var(--fg-muted);
+  }
+  .cx-relrow__remove {
+    min-width: 0;
+    padding-inline: var(--sp-3);
+  }
+  .cx-relrow__empty {
+    margin: 0;
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  /* a dangling target has no page to open: no pointer, no hover tint, struck-through title */
+  .cx-relrow[data-missing],
+  .cx-children__row[data-missing] {
+    color: var(--fg-subtle);
+  }
+  .cx-relrow[data-missing]:hover,
+  .cx-children__row[data-missing]:hover {
+    cursor: default;
+    background: none;
+  }
+  .cx-relrow[data-missing] .cx-minilist__title,
+  .cx-children__row[data-missing] .cx-minilist__title {
+    color: var(--fg-subtle);
+    text-decoration: line-through;
+  }
+
+  /* ---------- Round 3: Children panel of a project (ChildrenPanel.astro) ---------- */
+  .cx-children {
+    margin-bottom: var(--sp-4);
+  }
+  .cx-children__progress {
+    margin-left: var(--sp-3);
+    font-family: var(--font-mono);
+    color: var(--success-fg);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .cx-children__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-6);
+    padding: var(--sp-2) var(--sp-4);
+    border-top: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .cx-children__group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .cx-children__count {
+    margin-left: var(--sp-2);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--accent-text);
+  }
+
+  /* ---------- Round 3: invalid file banner (InvalidBanner.astro) ---------- */
+  .cx-invalid {
+    margin-bottom: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--danger-bg);
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--r-sm);
+  }
+  .cx-invalid__title {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin: 0 0 var(--sp-2);
+    font-weight: var(--fw-semibold);
+    color: var(--danger-fg);
+  }
+  .cx-invalid__list {
+    margin: 0 0 var(--sp-3);
+    padding-left: var(--sp-6);
+    list-style: square;
+    font-size: var(--fs-sm);
+  }
+  .cx-invalid__list code {
+    color: var(--fg);
+  }
+  .cx-invalid__hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-4);
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
 }

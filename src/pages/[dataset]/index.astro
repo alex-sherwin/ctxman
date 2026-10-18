@@ -7,8 +7,8 @@ import FilterForm from '../../components/FilterForm.astro';
 import PageHeader from '../../components/PageHeader.astro';
 import { getDataset } from '../../datasets/registry.ts';
 import { filterEntries } from '../../lib/entry-filter.ts';
-import { listEntries } from '../../lib/entries.ts';
-import { isYamlDatasetId } from '../../lib/forms/fields.ts';
+import { getRelationGraph, listEntries } from '../../lib/entries.ts';
+import { childrenOf } from '../../lib/relations.ts';
 import { parseListParams } from '../../lib/url-state.ts';
 import Base from '../../layouts/Base.astro';
 
@@ -17,7 +17,18 @@ if (!def) return Astro.rewrite('/404');
 
 // Unknown / not-applicable params are ignored by parseListParams (never an error).
 const params = parseListParams(Astro.url.searchParams, def.id);
-const all = await listEntries(def.id);
+const everything = await listEntries(def.id);
+
+// `?project=<slug>`: only the children of that project (its `child` relations; any dataset). The project is a scope,
+// not a filter: the chip counts and "n of m" below are over its children of this dataset.
+let all = everything;
+let projectTitle: string | undefined;
+if (params.project !== null) {
+  const children = new Set(childrenOf(await getRelationGraph(), `project/${params.project}`));
+  all = everything.filter((e) => children.has(`${e.dataset}/${e.slug}`));
+  const project = (await listEntries('project')).find((e) => e.slug === params.project);
+  if (project !== undefined) projectTitle = project.title ?? project.name;
+}
 const entries = filterEntries(all, {
   q: params.q,
   states: params.states,
@@ -32,8 +43,12 @@ if (def.id === 'reference') {
   for (const ref of await getCollection('reference')) owners[ref.id] = ref.data.owner;
 }
 
-// reference, context and recipe have a create form (/new/<ds>, ROUND2_UI_SPEC D6); the others are created by the add scripts.
-const newHref = isYamlDatasetId(def.id) ? `/new/${def.id}` : `/tools?add=${def.id}#add-entry`;
+// Every dataset has a create form at /new/<ds>; with a project filter active the new okf / skill entry is prefilled
+// as a child of that project (`?parent=`).
+const newHref =
+  params.project !== null && def.kind !== 'data'
+    ? `/new/${def.id}?parent=${params.project}`
+    : `/new/${def.id}`;
 ---
 
 <Base title={def.label} active={def.id}>
@@ -50,13 +65,27 @@ const newHref = isYamlDatasetId(def.id) ? `/new/${def.id}` : `/tools?add=${def.i
     <span slot="meta">{def.description}</span>
   </PageHeader>
 
-  <FilterForm def={def} params={params} entries={all} shown={entries.length} />
+  <FilterForm
+    def={def}
+    params={params}
+    entries={all}
+    shown={entries.length}
+    projectTitle={projectTitle}
+  />
 
   {
     entries.length > 0 ? (
       <EntryTable def={def} entries={entries} sort={params.sort} owners={owners} />
     ) : (
-      <EmptyState title={all.length > 0 ? 'No entries match these filters.' : `No ${def.plural} yet.`}>
+      <EmptyState
+        title={
+          all.length > 0
+            ? 'No entries match these filters.'
+            : params.project !== null
+              ? `No ${def.plural} in this project yet.`
+              : `No ${def.plural} yet.`
+        }
+      >
         {all.length > 0 ? <a href={`/${def.id}`}>Clear filters</a> : <a href={newHref}>Add the first one</a>}
       </EmptyState>
     )

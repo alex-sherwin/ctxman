@@ -26,7 +26,13 @@ The script validates the name (kebab-case, at most 64 characters) and the state,
 
 ## Forms and the Tools page
 
-References, contexts and recipes can also be created in the browser at `/new/reference`, `/new/context` and `/new/recipe` (a form with typed fields and a YAML tab); the other datasets need the script. The `/tools` page runs the same add script, and after a successful run it opens the new entry automatically, waiting until the dev server has indexed it (an okf, skill or reference entry appears about 0.6 s after the write). A built server keeps its snapshot, so there it shows the created path and asks you to restart instead. See [Editing](/concepts/editing.md).
+Every dataset can also be created in the browser at `/new/<dataset>`:
+
+* `reference`, `context` and `recipe` open a form with typed fields and a YAML tab (the DataForm).
+* The okf datasets (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`) and `skill` open the NewEntryForm: name (checked live against the existing entries), title, description (required), state (lifecycle datasets, the first state is the default), tags (okf) and, for okf entries, **Part of project**. `POST /api/entry/<dataset>` writes the same files as the script, with the same validation and rollback, then opens the new entry.
+* `/new/<dataset>?parent=<project>` preselects the project; on create the project gets a `rel: child` link to the new entry. The Children panel of a project and the "New" button of a list filtered by `?project=` link there.
+
+The `/tools` page still lists the check scripts; its Add Entry panel is now a thin link: pick a dataset, press "Open the New … form" (the equivalent `pnpm run add:<dataset>` command is shown). The CLI stays the way for scripts and agents. Lists and entry pages read the disk, so a created okf or skill entry is listed and opens at once, even on a built server; only the global search index, which still comes from the collection snapshot, needs a rebuild there. See [Editing](/concepts/editing.md) and [Relations](/concepts/relations.md).
 
 ## What gets created
 
@@ -49,7 +55,7 @@ Starter sections by dataset: kb has Overview and Details; rca has Summary, Timel
 
 1. Fill in the description, tags and sections. Keep tags lowercase kebab-case.
 2. Add concept files under the bundle if the entry needs more than one page. Each needs frontmatter with a `type`; list it in the bundle's `index.md`.
-3. Link related entries with `ctxman:<dataset>/<slug>` and bundle files with `/path.md`. See [Datasets](/concepts/datasets.md).
+3. Link related entries with `ctxman:<dataset>/<slug>` and bundle files with `/path.md`, and record typed relations (a project's children, `depends-on`) in the `links` frontmatter, or from the entry's Links and Children panels. See [Datasets](/concepts/datasets.md) and [Relations](/concepts/relations.md).
 4. Append a dated line to `log.md`, newest first.
 5. Run `pnpm run check`; fix every finding. [Compliance checks](/concepts/compliance-checks.md) lists the rules.
 

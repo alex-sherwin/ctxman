@@ -35,7 +35,7 @@ State values are stored kebab-case in the files; the UI shows labels such as "in
 Seven datasets are Open Knowledge Format v0.2 bundles vendored into the repo. A bundle folder contains:
 
 * `index.md`: bundle navigation. Its only frontmatter is `okf_version: "0.2"`.
-* `main.md`: the entry concept. Frontmatter holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`.
+* `main.md`: the entry concept. Frontmatter holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`.
 * `log.md` (optional): update history, newest first, under `## YYYY-MM-DD` headings.
 * Any number of further concept files. Each needs frontmatter with a non-empty `type`.
 
@@ -57,7 +57,7 @@ A reference points outside the repo. Its `type` selects the field set:
 
 `owner` is `me` or `not-me`. All reference types also carry `name`, `description` and optional `tags`.
 
-References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Unlike contexts and recipes, references keep their watched collection, so the dev server reloads the page after a write and server-rendered lists catch up about 0.6 s later; list summaries carry the `owner` of a reference.
+Every dataset can be created in the UI (`/new/<dataset>`). References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Unlike contexts and recipes, references keep their watched collection, so the dev server reloads the page after a write and server-rendered lists catch up about 0.6 s later; list summaries carry the `owner` of a reference.
 
 ### URI rules
 
@@ -84,13 +84,27 @@ name: ctxman-dev
 
 The file writers add it (context-io, recipe-io, reference-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong and `pnpm run fix:yaml-comments` repairs a hand-made file. See [Editing](/concepts/editing.md).
 
+## Relations: the `links` field
+
+An okf `main.md` can declare typed relations to other entries (see [Relations](/concepts/relations.md)):
+
+```yaml
+links:
+  - dataset: task
+    slug: write-agents-md
+    rel: child
+```
+
+`dataset` is a linkable dataset (not `context` or `recipe`), `slug` an entry name, and `rel` is `child` (this entry contains the target; a project owns its children), `related` (the default when `rel` is absent) or `depends-on`. One link per target, no link to the entry itself. Skills have no `links` key. `links/relation-target` (warning) and `links/relation-self` (error) check them; ctxman writes them in block style with the keys in the order `dataset`, `slug`, `rel`, from the Links and Children panels and `PATCH /api/entry`. The okf `links` field has no JSON Schema or arktype twin: the zod schema is its only definition.
+
 ## Links between entries
 
 * Inside a bundle, use bundle-root paths (`/concepts/x.md`) or relative paths (`./x.md`). The link check requires the target file to exist.
-* Between entries, use the `ctxman:` scheme: `ctxman:<dataset>/<slug>`, for example the feature [context-forge](ctxman:feature/context-forge). A path such as `/feature/x` would be read as a path inside the current bundle, which is why a separate scheme exists. The site rewrites these links to the entry page; the link check warns when the target is missing.
+* Between entries, use the `ctxman:` scheme: `ctxman:<dataset>/<slug>`, for example the feature [context-forge](ctxman:feature/context-forge). A path such as `/feature/x` would be read as a path inside the current bundle, which is why a separate scheme exists. The site rewrites these links to the entry page (a missing target is drawn with a dashed underline); the link check warns when the target is missing. Such a body link is a *mention*, shown on the target's page as "Mentioned by"; a typed relation belongs in `links`.
 
 ## Related
 
 * [Adding entries](/concepts/adding-entries.md) scaffolds each shape correctly.
 * [Compliance checks](/concepts/compliance-checks.md) enforces them.
+* [Relations](/concepts/relations.md) explains how `links` is read and edited.
 * [Editing](/concepts/editing.md) covers changing them in the browser.

@@ -1,7 +1,16 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  appendContextLinks,
   backRefs,
   ContextIoError,
   contextFile,
@@ -390,5 +399,127 @@ describe('unused-path guard', () => {
     mkdirSync(path.join(dir, 'context'));
     writeFileSync(path.join(dir, 'context', 'keep.yaml'), 'name: keep\ndescription: d\n');
     await expect(readContext('../keep', dir)).rejects.toBeInstanceOf(ContextIoError);
+  });
+});
+
+describe('appendContextLinks', () => {
+  const issuesOf = async (promise: Promise<unknown>): Promise<string[]> => {
+    try {
+      await promise;
+    } catch (error) {
+      if (error instanceof ContextIoError) return error.issues.map((i) => i.path);
+      throw error;
+    }
+    return [];
+  };
+
+  it('appends new links, skips present ones (notes untouched) and writes the context atomically', async () => {
+    const dir = tmp.make();
+    await createContext(doc(), dir);
+    const before = readContext('my-ctx', dir);
+    const result = await appendContextLinks(
+      'my-ctx',
+      {
+        links: [
+          { dataset: 'kb', slug: 'ctxman', notes: 'REPLACED?' },
+          { dataset: 'task', slug: 'w2-demo', notes: 'x' },
+          { dataset: 'bug', slug: 'b' },
+          { dataset: 'task', slug: 'w2-demo' },
+        ],
+      },
+      dir,
+    );
+    expect(result.added).toEqual(['task/w2-demo', 'bug/b']);
+    expect(result.skipped).toEqual(['kb/ctxman', 'task/w2-demo']);
+    expect(result.record.context.links).toEqual([
+      { dataset: 'kb', slug: 'ctxman', notes: 'Read the overview.\nThen skim details.\n' },
+      { dataset: 'task', slug: 'do-it' },
+      { dataset: 'task', slug: 'w2-demo', notes: 'x\n' },
+      { dataset: 'bug', slug: 'b' },
+    ]);
+    const reread = await readContext('my-ctx', dir);
+    expect(reread.context).toEqual(result.record.context);
+    expect(reread.lastModified).toBe(result.record.lastModified);
+    expect(reread.context.description).toBe((await before).context.description);
+    expect(readdirSync(path.join(dir, 'context'))).toEqual(['my-ctx.yaml']);
+    expect(readFileSync(path.join(dir, 'context', 'my-ctx.yaml'), 'utf8').split('\n')[0]).toContain(
+      'yaml-language-server',
+    );
+  });
+
+  it('writes nothing when every target is already linked', async () => {
+    const dir = tmp.make();
+    await createContext(doc(), dir);
+    const file = path.join(dir, 'context', 'my-ctx.yaml');
+    const old = new Date('2026-01-02T03:04:05.000Z');
+    utimesSync(file, old, old);
+    const result = await appendContextLinks(
+      'my-ctx',
+      { links: [{ dataset: 'task', slug: 'do-it' }] },
+      dir,
+    );
+    expect(result.added).toEqual([]);
+    expect(result.skipped).toEqual(['task/do-it']);
+    expect(statSync(file).mtime.toISOString()).toBe(old.toISOString());
+    expect(result.record.lastModified).toBe(old.toISOString());
+  });
+
+  it('validates the body before touching the file: paths links.N.*', async () => {
+    const dir = tmp.make();
+    await createContext(doc(), dir);
+    const text = readFileSync(path.join(dir, 'context', 'my-ctx.yaml'), 'utf8');
+    expect(await issuesOf(appendContextLinks('my-ctx', { links: [] }, dir))).toEqual(['links']);
+    expect(await issuesOf(appendContextLinks('my-ctx', {}, dir))).toEqual(['links']);
+    expect(await issuesOf(appendContextLinks('my-ctx', null, dir))).toEqual(['']);
+    expect(
+      await issuesOf(
+        appendContextLinks('my-ctx', { links: [{ dataset: 'kb', slug: 'a' }], extra: 1 }, dir),
+      ),
+    ).toEqual(['extra']);
+    expect(
+      await issuesOf(
+        appendContextLinks(
+          'my-ctx',
+          {
+            links: [
+              { dataset: 'kb', slug: 'ok' },
+              { dataset: 'context', slug: 'x' },
+              { dataset: 'kb', slug: 'Bad', foo: 1 },
+            ],
+          },
+          dir,
+        ),
+      ),
+    ).toEqual(['links.1.dataset', 'links.2.slug', 'links.2']);
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({ dataset: 'kb', slug: `s-${i}` }));
+    expect(await issuesOf(appendContextLinks('my-ctx', { links: tooMany }, dir))).toEqual([
+      'links',
+    ]);
+    expect(readFileSync(path.join(dir, 'context', 'my-ctx.yaml'), 'utf8')).toBe(text);
+  });
+
+  it('bad-slug, not-found and invalid-file (the existing file does not parse / validate)', async () => {
+    const dir = tmp.make({
+      'context/broken.yaml': 'name: [unclosed\n',
+      'context/bad-schema.yaml': 'name: bad-schema\ndescription: ""\nlinks: nope\n',
+    });
+    const body = { links: [{ dataset: 'kb', slug: 'a' }] };
+    expect(await codeOf(appendContextLinks('Bad Slug', body, dir))).toBe('bad-slug');
+    expect(await codeOf(appendContextLinks('gone', body, dir))).toBe('not-found');
+    expect(await codeOf(appendContextLinks('broken', body, dir))).toBe('invalid-file');
+    expect(await codeOf(appendContextLinks('bad-schema', body, dir))).toBe('invalid-file');
+  });
+
+  it('concurrent appends lose no link', async () => {
+    const dir = tmp.make();
+    await createContext(doc({ links: [] }), dir);
+    const slugs = Array.from({ length: 12 }, (_, i) => `t-${i}`);
+    await Promise.all(
+      slugs.map((slug) =>
+        appendContextLinks('my-ctx', { links: [{ dataset: 'task', slug }] }, dir),
+      ),
+    );
+    const record = await readContext('my-ctx', dir);
+    expect(record.context.links.map((l) => l.slug).sort()).toEqual([...slugs].sort());
   });
 });

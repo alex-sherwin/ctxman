@@ -8,6 +8,8 @@ import {
   contextSchema,
   dateSchema,
   docSchema,
+  entryLinkSchema,
+  entryLinksSchema,
   nameSchema,
   okfConceptSchema,
   okfEventSchema,
@@ -389,5 +391,95 @@ describe('context', () => {
     );
     const parsed = contextSchema.parse(data);
     expect(parsed.links[0]?.notes).toBe('line one\nline two\n');
+  });
+});
+
+describe('okf entry links (frontmatter `links`)', () => {
+  const withLinks = (links: unknown) => ({ ...okfBase, links });
+
+  it('defaults a missing rel to related and keeps explicit rels', () => {
+    const parsed = DATASET_SCHEMAS.kb.parse(
+      withLinks([
+        { dataset: 'task', slug: 'a' },
+        { dataset: 'feature', slug: 'b', rel: 'depends-on' },
+        { dataset: 'skill', slug: 'c', rel: 'child' },
+      ]),
+    ) as { links: { dataset: string; slug: string; rel: string }[] };
+    expect(parsed.links.map((l) => l.rel)).toEqual(['related', 'depends-on', 'child']);
+    expect(entryLinkSchema.parse({ dataset: 'kb', slug: 'x' })).toEqual({
+      dataset: 'kb',
+      slug: 'x',
+      rel: 'related',
+    });
+  });
+
+  it('is optional, and an empty list is fine', () => {
+    expect(DATASET_SCHEMAS.kb.safeParse(okfBase).success).toBe(true);
+    expect(DATASET_SCHEMAS.kb.safeParse(withLinks([])).success).toBe(true);
+  });
+
+  it('keeps links on every lifecycle dataset (the schema is extended, not rebuilt)', () => {
+    for (const id of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const) {
+      const parsed = DATASET_SCHEMAS[id].safeParse({
+        ...MINIMAL[id],
+        links: [{ dataset: 'kb', slug: 'x' }],
+      });
+      expect(parsed.success, id).toBe(true);
+      expect((parsed.data as { links: unknown[] }).links, id).toHaveLength(1);
+    }
+  });
+
+  it('reports a duplicate target on the second item, with the extended schema too', () => {
+    const links = [
+      { dataset: 'kb', slug: 'a', rel: 'related' },
+      { dataset: 'kb', slug: 'a', rel: 'child' },
+      { dataset: 'task', slug: 'a' },
+    ];
+    for (const id of ['kb', 'task'] as const) {
+      const result = DATASET_SCHEMAS[id].safeParse({ ...MINIMAL[id], links });
+      expect(result.success, id).toBe(false);
+      const issue = result.error?.issues.find((i) => i.message.includes('duplicate'));
+      expect(issue?.path, id).toEqual(['links', 1]);
+      expect(issue?.message, id).toBe('duplicate link kb/a');
+    }
+    expect(entryLinksSchema.safeParse(links).success).toBe(false);
+  });
+
+  it('is strict per item and validates dataset, slug and rel', () => {
+    const bad = (item: unknown) => DATASET_SCHEMAS.kb.safeParse(withLinks([item])).success;
+    expect(bad({ dataset: 'kb', slug: 'a', extra: 1 })).toBe(false);
+    expect(bad({ dataset: 'context', slug: 'a' })).toBe(false);
+    expect(bad({ dataset: 'recipe', slug: 'a' })).toBe(false);
+    expect(bad({ dataset: 'kb', slug: 'Bad Slug' })).toBe(false);
+    expect(bad({ dataset: 'kb', slug: 'a', rel: 'parent' })).toBe(false);
+    expect(bad({ dataset: 'kb' })).toBe(false);
+    expect(bad('kb/a')).toBe(false);
+    expect(DATASET_SCHEMAS.kb.safeParse(withLinks({ dataset: 'kb', slug: 'a' })).success).toBe(
+      false,
+    );
+  });
+
+  it('is not part of concept files, skills, or the loose docs schema', () => {
+    const links = [{ dataset: 'kb', slug: 'a', rel: 'nonsense' }];
+    // concept files keep it as an unknown key (loose), without validating it
+    expect(okfConceptSchema.safeParse({ type: 'Concept', links }).success).toBe(true);
+    expect(docSchema.safeParse({ links }).success).toBe(true);
+    // skills are strict: no links
+    expect(
+      skillSchema.safeParse({ ...MINIMAL.skill, links: [{ dataset: 'kb', slug: 'a' }] }).success,
+    ).toBe(false);
+  });
+
+  it('parses a frontmatter block end to end (rel defaults, order kept)', () => {
+    const data = parseYaml(
+      'type: Task\nname: demo\ndescription: d\nstate: pending\nlinks:\n  - dataset: feature\n    slug: a\n    rel: depends-on\n  - dataset: kb\n    slug: b\n',
+    );
+    const parsed = DATASET_SCHEMAS.task.parse(data) as {
+      links: { slug: string; rel: string }[];
+    };
+    expect(parsed.links.map((l) => [l.slug, l.rel])).toEqual([
+      ['a', 'depends-on'],
+      ['b', 'related'],
+    ]);
   });
 });

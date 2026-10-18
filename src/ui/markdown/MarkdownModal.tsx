@@ -2,15 +2,24 @@
 // preamble or a markdown block. Loads the CURRENT yaml document when opened (D11), edits only the target text
 // in a lazy Monaco editor and saves with a read-modify-write (targets.ts `saveTarget`). After a 200 the page
 // reloads: context / recipe yaml is not watched by the dev server, so no reload would come by itself.
+// Unsaved text is kept in localStorage on every change (key `md:<endpoint>#<target id>`, base = the loaded
+// `lastModified`) and restored, with a banner, the next time the same popup is opened: no native `beforeunload`
+// prompt (ROUND3_SPEC §G), the in-app discard dialog stays. A toolbar button (and Mod+Alt+K in the editor)
+// inserts a link to an entry through the shared EntryPicker.
 // Browser-only; kit parts and src/ui/edit helpers are imported by file, Monaco only through LazyCodeEditor.
 import { useEffect, useState } from 'react';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
+import { clearDraft, loadDraft, saveDraft } from '../edit/draft-backup.ts';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
-import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { Button, Spinner } from '../kit/Button.tsx';
 import { ConfirmDialog, Dialog, Modal } from '../kit/Dialog.tsx';
+import { Toolbar } from '../kit/Toolbar.tsx';
+import { EntryPicker } from '../pickers/EntryPicker.tsx';
+import { useInsertLink } from '../pickers/useInsertLink.ts';
+import { DraftNotice } from './DraftNotice.tsx';
+import { mdDraftKey, planRestore } from './draft-restore.ts';
 import { loadTarget, saveTarget } from './targets.ts';
 import type { LoadedTarget, MdTarget } from './targets.ts';
 
@@ -27,6 +36,9 @@ type View =
       status: 'ready';
       loaded: LoadedTarget;
       draft: string;
+      /** The draft came back from localStorage (banner); `draftStale`: the file changed on disk since. */
+      restored: boolean;
+      draftStale: boolean;
       save: SaveStatus;
       /** Non-null while the ConflictDialog is open: what is on disk now. */
       conflict: LoadedTarget | null;
@@ -36,37 +48,43 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
   const [view, setView] = useState<View>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const link = useInsertLink();
+  const draftKey = mdDraftKey(target);
 
   // Load the current document. `attempt` re-runs it (Retry, "Load disk version"); setState only in the callback.
+  // A stored draft is restored when it differs from the loaded text (stale when the file changed since).
   useEffect(() => {
     let live = true;
     void loadTarget(target).then((result) => {
       if (!live) return;
-      setView(
-        result.ok
-          ? {
-              status: 'ready',
-              loaded: result.loaded,
-              draft: result.loaded.text,
-              save: { kind: 'idle' },
-              conflict: null,
-            }
-          : { status: 'error', message: result.message },
-      );
+      if (!result.ok) {
+        setView({ status: 'error', message: result.message });
+        return;
+      }
+      const { loaded } = result;
+      const backup = loadDraft(draftKey);
+      const plan = planRestore(backup, loaded);
+      if (backup !== null && !plan.restored) clearDraft(draftKey);
+      setView({
+        status: 'ready',
+        loaded,
+        draft: plan.text,
+        restored: plan.restored,
+        draftStale: plan.stale,
+        save: { kind: 'idle' },
+        conflict: null,
+      });
     });
     return () => {
       live = false;
     };
-  }, [target, attempt]);
+  }, [target, draftKey, attempt]);
 
   const ready = view.status === 'ready' ? view : null;
   const dirty = ready !== null && ready.draft !== ready.loaded.text;
   const saving = ready?.save.kind === 'saving';
   const saved = ready?.save.kind === 'saved';
 
-  // Declared before the reload effect below: when `saved` flips, the guard is removed first (React runs all
-  // cleanups of a commit before any new effect), so the reload does not trigger a "leave site?" prompt.
-  useUnsavedGuard(dirty && !saved);
   useEffect(() => {
     if (saved) location.reload();
   }, [saved]);
@@ -82,7 +100,14 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
     update((v) => ({ ...v, save: { kind: 'saving' }, conflict: null }));
     const result = await saveTarget(target, ready.loaded, ready.draft, { force });
     if (result.ok) {
-      update((v) => ({ ...v, loaded: { ...v.loaded, text: v.draft }, save: { kind: 'saved' } }));
+      clearDraft(draftKey);
+      update((v) => ({
+        ...v,
+        loaded: { ...v.loaded, text: v.draft },
+        restored: false,
+        draftStale: false,
+        save: { kind: 'saved' },
+      }));
     } else if (result.kind === 'conflict') {
       update((v) => ({
         ...v,
@@ -100,6 +125,28 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
   function cancel() {
     if (dirty) setConfirmDiscard(true);
     else onClose();
+  }
+
+  /** The editor text changed: mirror it to localStorage (or drop the backup when it is back to the saved text). */
+  function edited(draft: string) {
+    if (ready !== null) {
+      if (draft !== ready.loaded.text) {
+        saveDraft(draftKey, { text: draft, base: ready.loaded.lastModified });
+      } else {
+        clearDraft(draftKey);
+      }
+    }
+    update((v) => ({
+      ...v,
+      draft,
+      save: v.save.kind === 'idle' || v.save.kind === 'saving' ? v.save : { kind: 'idle' },
+    }));
+  }
+
+  /** The restored-draft banner's Discard: back to the loaded text, backup removed. */
+  function discardRestored() {
+    clearDraft(draftKey);
+    update((v) => ({ ...v, draft: v.loaded.text, restored: false, draftStale: false }));
   }
 
   const status: SaveStatus =
@@ -152,33 +199,52 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
             </p>
           )}
           {ready !== null && (
-            <LazyCodeEditor
-              language="markdown"
-              compact={false}
-              height={{ mode: 'auto', minLines: 10, maxLines: 28 }}
-              value={ready.draft}
-              onChange={(draft) =>
-                update((v) => ({
-                  ...v,
-                  draft,
-                  save:
-                    v.save.kind === 'idle' || v.save.kind === 'saving' ? v.save : { kind: 'idle' },
-                }))
-              }
-              onSave={() => void save()}
-              onReady={(api) => api.focus()}
-              readOnly={saving}
-              ariaLabel={target.label}
-              testId="md-editor"
-            />
+            <>
+              {ready.restored && (
+                <DraftNotice
+                  testIdPrefix="md"
+                  stale={ready.draftStale}
+                  onDiscard={discardRestored}
+                />
+              )}
+              <Toolbar className="cx-mdmodal__tools" aria-label="Editor tools">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onPress={link.open}
+                  isDisabled={saving}
+                  data-testid="md-insert-link"
+                >
+                  Insert link…
+                </Button>
+              </Toolbar>
+              <LazyCodeEditor
+                language="markdown"
+                compact={false}
+                height={{ mode: 'auto', minLines: 10, maxLines: 28 }}
+                value={ready.draft}
+                onChange={edited}
+                onSave={() => void save()}
+                onReady={(api) => {
+                  link.onReady(api);
+                  api.focus();
+                }}
+                onInsertLink={link.open}
+                readOnly={saving}
+                ariaLabel={target.label}
+                testId="md-editor"
+              />
+            </>
           )}
         </Dialog>
       </Modal>
+      <EntryPicker title="Insert link to entry" {...link.picker} />
       <ConflictDialog
         isOpen={ready?.conflict != null}
         what={target.label}
         onKeepEditing={() => update((v) => ({ ...v, conflict: null }))}
         onLoadTheirs={() => {
+          clearDraft(draftKey);
           setView({ status: 'loading' });
           setAttempt((n) => n + 1);
         }}
@@ -192,6 +258,7 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
         tone="danger"
         onConfirm={() => {
           setConfirmDiscard(false);
+          clearDraft(draftKey);
           onClose();
         }}
         onCancel={() => setConfirmDiscard(false)}

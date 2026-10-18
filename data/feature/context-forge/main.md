@@ -3,7 +3,7 @@ type: Feature
 name: context-forge
 title: Context forge
 description: A UI at /forge to discover entries across datasets and link them into reusable contexts with per-link markdown notes.
-state: in-progress
+state: complete
 tags: [context, forge, ui]
 generated:
   by: claude-code/ctxman-seed
@@ -27,10 +27,13 @@ The context is the main vessel for giving an agent session what it needs. Contex
 * Offer a raw YAML mode for the whole document, validated with the same schema as the server before saving, with live schema diagnostics from the generated JSON Schema.
 * Save with a button or Cmd/Ctrl+S; guard unsaved changes when switching contexts, navigating Back or closing the tab.
 * Show links to entries that no longer exist as missing instead of failing.
+* Offer an All tab that searches every linkable dataset at once, and add a project together with its children in one press.
+* Keep unsaved changes across a reload (a localStorage draft with a "Restored unsaved changes" banner) instead of a native leave prompt.
+* Receive entries from elsewhere: Add to context on every entry page and Build context on a project open the forge with the links in place; entries whose file is invalid show in Discover as invalid.
 
 ## Design
 
-* One React island on `/forge`, state in nanostores, page state in URL parameters: `context`, `dataset`, `q`, repeatable `state` and `tag`.
+* One React island on `/forge`, state in nanostores, page state in URL parameters: `context`, `dataset` (a linkable dataset or `all`), `q`, repeatable `state` and `tag`.
 * Left pane lists discovery results from `GET /api/entries?dataset=<id>`; right pane edits the working copy of the selected context.
 * Saves go to `PUT /api/context/<slug>`; creation to `POST /api/context`. Writes are atomic (temporary file, then rename).
 * Contexts are read through the filesystem, not the content collection, to avoid a dev full reload on every save; see [astro-dev-full-reload-on-save](ctxman:rca/astro-dev-full-reload-on-save).
@@ -43,6 +46,8 @@ The context is the main vessel for giving an agent session what it needs. Contex
 - [x] Raw YAML mode blocks saving while the document is invalid.
 - [x] Keyboard-only reordering keeps focus (fixed bug: [forge-reorder-focus](ctxman:bug/forge-reorder-focus)).
 - [x] Links reorder by drag and drop with mouse and keyboard, and every Discover tab shows its count on load.
-- [ ] End-to-end coverage of the whole workflow (task: [forge-e2e-coverage](ctxman:task/forge-e2e-coverage)).
+- [x] End-to-end coverage of the whole workflow: `tests/e2e/forge.spec.ts` creates, annotates, reorders, saves, reloads and deletes a context (tracking task: [forge-e2e-coverage](ctxman:task/forge-e2e-coverage)).
+- [x] The All tab lists and adds entries of any dataset, and a project is added with its children in file order.
+- [x] A reload with unsaved changes restores the working copy with a banner; Discard returns to the saved context.
 
 Consumers: the Context Inflate tool (`/inflate`, see [context-inflate](ctxman:idea/context-inflate)) reads what this feature produces. Search is a separate feature: [global-search](ctxman:feature/global-search).

@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   alignRows,
+  dropEmptySections,
   fenced,
+  firstHeadingText,
   guidance,
   headingText,
   inlineCode,
+  nestHeadings,
   rewriteLinks,
   shQuote,
   shiftHeadings,
   stripLeadingTitle,
   truncateText,
 } from '../../src/lib/inflate/markdown.ts';
+import type { UnresolvedReason } from '../../src/lib/inflate/markdown.ts';
 import type { EntryRef } from '../../src/lib/inflate/pipeline.ts';
 
 describe('inlineCode (re-export)', () => {
@@ -102,6 +106,72 @@ describe('shiftHeadings', () => {
 
   it('keeps the rest of the line (closing hashes, inline code) verbatim', () => {
     expect(shiftHeadings('# Title with `code` ##', 2)).toBe('## Title with `code` ##');
+  });
+});
+
+describe('dropEmptySections (ROUND3 §H.2)', () => {
+  it('drops a heading followed by the end of the text or by a heading of the same or a higher level', () => {
+    expect(dropEmptySections('# Do it\n')).toBe('');
+    expect(dropEmptySections('text\n\n## Empty\n\n## Next\n\nbody\n')).toBe(
+      'text\n\n## Next\n\nbody\n',
+    );
+    expect(dropEmptySections('### Deep\n\n# Top\n\nbody')).toBe('# Top\n\nbody');
+    expect(dropEmptySections('text\n\n## Trailing\n\n\n')).toBe('text\n');
+  });
+
+  it('keeps a heading that has content or a deeper heading below it', () => {
+    const body = '# A\n\n## B\n\ntext\n\n## C\n\n### D\n\nmore\n';
+    expect(dropEmptySections(body)).toBe(body);
+    expect(dropEmptySections('## A\n- item')).toBe('## A\n- item');
+  });
+
+  it('repeats until stable: a section that only held empty subsections goes too', () => {
+    expect(dropEmptySections('## A\n### B\n#### C\n## D\n\nkeep')).toBe('## D\n\nkeep');
+    expect(dropEmptySections('# T\n\n## Notes\n\n## Links\n\n### Inner\n')).toBe('');
+  });
+
+  it('never looks inside code: fenced "headings" stay, and a fence counts as content', () => {
+    const fenced = '## Example\n\n```md\n# Heading in code\n```\n';
+    expect(dropEmptySections(fenced)).toBe(fenced);
+    expect(dropEmptySections('```\n## Not a heading\n```\n')).toBe('```\n## Not a heading\n```\n');
+    expect(dropEmptySections('## A\n\n`code`\n\n## B\n')).toBe('## A\n\n`code`\n');
+  });
+
+  it('only matches ATX headings; text without any is returned unchanged', () => {
+    expect(dropEmptySections('#hashtag\n\nplain\n')).toBe('#hashtag\n\nplain\n');
+    expect(dropEmptySections('')).toBe('');
+    expect(dropEmptySections('Title\n=====\n')).toBe('Title\n=====\n');
+  });
+});
+
+describe('nestHeadings (ROUND3 §H.4)', () => {
+  it('shifts a block whose shallowest heading is above the base so that heading lands on the base', () => {
+    expect(nestHeadings('# Big\n\ntext\n\n## Sub', 3)).toBe('### Big\n\ntext\n\n#### Sub');
+    expect(nestHeadings('## Rules\n- a', 3)).toBe('### Rules\n- a');
+  });
+
+  it('keeps a block whose headings are already at the base or deeper, or that has none', () => {
+    expect(nestHeadings('## Rules\n\n### Sub', 2)).toBe('## Rules\n\n### Sub');
+    expect(nestHeadings('#### Deep\n', 3)).toBe('#### Deep\n');
+    expect(nestHeadings('just text', 3)).toBe('just text');
+  });
+
+  it('ignores headings in code when looking for the shallowest level', () => {
+    expect(nestHeadings('```\n# code\n```\n### Real', 3)).toBe('```\n# code\n```\n### Real');
+  });
+});
+
+describe('firstHeadingText', () => {
+  it('is the text of the first ATX heading of any level, closing hashes and extra spaces dropped', () => {
+    expect(firstHeadingText('intro\n\n## Rules  of   play ##\n\n# Later')).toBe('Rules of play');
+    expect(firstHeadingText('### With `code`')).toBe('With `code`');
+  });
+
+  it('is null without a heading; headings in code and empty headings do not count', () => {
+    expect(firstHeadingText('just text')).toBeNull();
+    expect(firstHeadingText('```\n# no\n```\n#\n#hash')).toBeNull();
+    expect(firstHeadingText('')).toBeNull();
+    expect(firstHeadingText('#\n\n## Real')).toBe('Real');
   });
 });
 
@@ -216,6 +286,67 @@ describe('rewriteLinks', () => {
 
   it('ignores empty destinations', () => {
     expect(rw('[x]() [y](<>)')).toBe('[x]() [y](<>)');
+  });
+
+  describe('onUnresolved (ROUND3 §H.5)', () => {
+    const collect = (body: string, fromRel = 'main.md'): [string, UnresolvedReason][] => {
+      const seen: [string, UnresolvedReason][] = [];
+      rewriteLinks(body, {
+        fromRel,
+        files,
+        targets,
+        onUnresolved: (destination, reason) => seen.push([destination, reason]),
+      });
+      return seen;
+    };
+
+    it('reports a missing entry, a missing bundle file, an escaping path and a malformed ctxman: link', () => {
+      expect(
+        collect(
+          '[a](/concepts/missing.md) [b](ctxman:kb/gone) [c](../../etc/passwd) [d](ctxman:bad) [e](ctxman:nope/x)',
+          'concepts/x.md',
+        ),
+      ).toEqual([
+        ['/concepts/missing.md', 'no-file'],
+        ['ctxman:kb/gone', 'no-entry'],
+        ['../../etc/passwd', 'escapes'],
+        ['ctxman:bad', 'malformed'],
+        ['ctxman:nope/x', 'malformed'],
+      ]);
+    });
+
+    it('reports in document order, with the destination as written (fragment kept, <> removed)', () => {
+      expect(
+        collect('[a](ctxman:kb/gone#x) text [b](</concepts/nope.md#f>)\n\n[1]: ./nope.md'),
+      ).toEqual([
+        ['ctxman:kb/gone#x', 'no-entry'],
+        ['/concepts/nope.md#f', 'no-file'],
+        ['./nope.md', 'no-file'],
+      ]);
+    });
+
+    it('stays silent for resolved links, external links, anchors, empty destinations and code', () => {
+      expect(
+        collect(
+          [
+            '[a](/concepts/one.md) [b](ctxman:kb/demo) [c](https://x.test/y.md) [d](#top) [e]() [f](mailto:a@b.c)',
+            '`[g](/nope.md)`',
+            '```',
+            '[h](ctxman:kb/gone)',
+            '```',
+          ].join('\n'),
+        ),
+      ).toEqual([]);
+    });
+
+    it('does not change the output: unresolved destinations stay as written', () => {
+      const body = '[a](/concepts/missing.md) [b](ctxman:kb/gone)';
+      expect(rw(body)).toBe(body);
+    });
+
+    it('a ctxman: key that was never looked up is left alone without a report', () => {
+      expect(collect('[c](ctxman:kb/unknown)')).toEqual([]);
+    });
   });
 });
 

@@ -1,9 +1,10 @@
 // Entries cache for the Forge (UI_SPEC §0.6, §H): one `GET /api/entries?dataset=<id>` per dataset, kept in
 // a map store and filtered client-side with the shared `filterEntries`. The same cache resolves titles /
 // states for the links list and the context Select (dataset `context`). `ensureAllEntries` prefetches every
-// linkable dataset (tab counts, link titles); `waitForEntry` polls until a just-created entry is listed.
+// linkable dataset (tab counts, link titles); `waitForEntry` polls until a just-created entry is listed;
+// `loadAllEntries` is the awaitable form for Monaco's link completion (ROUND3_SPEC §F.2) and the EntryPicker.
 import { map } from 'nanostores';
-import { LINKABLE_DATASETS } from '../datasets/registry.ts';
+import { DATASET_IDS, LINKABLE_DATASETS } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
 
@@ -70,6 +71,61 @@ export function ensureAllEntries(datasets: readonly DatasetId[] = LINKABLE_DATAS
 /** Refetch `ds` (after a save / create / delete). A response to an older request is discarded. */
 export function invalidateEntries(ds: DatasetId): void {
   load(ds);
+}
+
+/** Default wait of `loadAllEntries`. */
+export const LOAD_ALL_TIMEOUT_MS = 3000;
+
+const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
+
+/** Registry dataset order, then display title (`title ?? name`), then slug. For pickers and completion lists. */
+export function compareEntries(a: EntrySummary, b: EntrySummary): number {
+  return (
+    (DATASET_ORDER.get(a.dataset) ?? DATASET_IDS.length) -
+      (DATASET_ORDER.get(b.dataset) ?? DATASET_IDS.length) ||
+    (a.title ?? a.name).localeCompare(b.title ?? b.name, 'en') ||
+    a.slug.localeCompare(b.slug, 'en')
+  );
+}
+
+/**
+ * Every entry of `datasets` (default: all linkable ones) as one list, sorted by `compareEntries`. Starts the
+ * loads (`ensureAllEntries`) and resolves when every dataset is `ready` or `error`, or after `timeoutMs`
+ * (default 3000), with the entries of the datasets that are `ready` by then. Never rejects.
+ */
+export function loadAllEntries(
+  datasets: readonly DatasetId[] = LINKABLE_DATASETS,
+  timeoutMs: number = LOAD_ALL_TIMEOUT_MS,
+): Promise<EntrySummary[]> {
+  ensureAllEntries(datasets);
+  const collect = (): EntrySummary[] => {
+    const all = $entries.get();
+    const out: EntrySummary[] = [];
+    for (const ds of datasets) {
+      const state = all[ds];
+      if (state?.status === 'ready') out.push(...state.entries);
+    }
+    return out.sort(compareEntries);
+  };
+  const settled = (): boolean => {
+    const all = $entries.get();
+    return datasets.every((ds) => {
+      const status = all[ds]?.status;
+      return status === 'ready' || status === 'error';
+    });
+  };
+  if (settled()) return Promise.resolve(collect());
+  return new Promise<EntrySummary[]>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      unlisten();
+      resolve(collect());
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const unlisten = $entries.listen(() => {
+      if (settled()) finish();
+    });
+  });
 }
 
 export function findEntry(ds: DatasetId, slug: string): EntrySummary | undefined {

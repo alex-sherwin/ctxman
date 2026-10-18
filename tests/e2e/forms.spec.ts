@@ -1,15 +1,19 @@
 // DataForm cases (ROUND2_UI_SPEC §H, §L): create (/new/reference, /new/context, /new/recipe) and edit (?edit=1 on the
-// detail pages: scalar edits through PUT, Cancel, Delete, the YAML tab). Names are `e2e-*`; every created entry is
-// removed again.
+// detail pages: scalar edits through PUT, Cancel, Delete, the YAML tab), plus the NewEntryForm of the okf and skill
+// datasets (/new/task, /new/skill, ... ROUND3_SPEC §E.7). Names are `e2e-*`; every created entry is removed again
+// (the okf / skill ones by deleting their folder, there is no delete API for them).
 // A reference is a glob-loaded file: the dev server reloads the page ~0.7 s after the write, and the form resumes its
 // navigation to the new entry after that reload (src/stores/data-form.ts), so these tests only assert the end state.
+import { rmSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,
   createRecipeCopy,
   dataExists,
+  dataPath,
   deleteRecipeQuietly,
+  readDataText,
   readYaml,
   settleDevReload,
   uniqueName,
@@ -146,9 +150,11 @@ test.describe('/new/context', () => {
     await openNew(page, 'context');
     await expect(page.getByTestId('dform-summary')).toContainText('Forge');
     await page.getByTestId('dform-field-name').fill(name);
+    // typed text is split on commas and whitespace (UX-26): two tags, the last one committed by Enter
     await page.getByTestId('dform-field-tags-add-tag').fill('Alpha Beta');
     await page.getByTestId('dform-field-tags-add-tag').press('Enter');
-    await expect(page.getByTestId('dform-field-tags-tags')).toContainText('alpha-beta');
+    await expect(page.getByTestId('dform-field-tags-tags')).toContainText('alpha');
+    await expect(page.getByTestId('dform-field-tags-tags')).toContainText('beta');
     await page.getByTestId('dform-field-description').fill('Created by the forms spec');
     await page.getByTestId('dform-field-description').press('Enter');
 
@@ -156,7 +162,7 @@ test.describe('/new/context', () => {
     expect(readYaml(`context/${name}.yaml`)).toEqual({
       name,
       description: 'Created by the forms spec',
-      tags: ['alpha-beta'],
+      tags: ['alpha', 'beta'],
       links: [],
     });
   });
@@ -306,6 +312,204 @@ test.describe('YAML tab', () => {
       description: 'yaml create',
       links: [{ dataset: 'kb', slug: 'ctxman' }],
     });
+  });
+});
+
+// ---------------------------------------------------------------- NewEntryForm (okf + skill datasets)
+
+const nProject = uniqueName('e2e-nf-proj');
+const nTask = uniqueName('e2e-nf-task');
+const nSkill = uniqueName('e2e-nf-skill');
+const NAV_KEY = 'ctxman:saved:new-entry-nav';
+
+async function openNewEntry(page: Page, ds: string, search = ''): Promise<void> {
+  await page.goto(`/new/${ds}${search}`);
+  await expect(page.getByTestId('new-entry-form')).toBeVisible();
+  await expect(page.getByTestId('new-name')).toBeVisible();
+}
+
+test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      const response = await request.post(`${API}/entry/project`, {
+        data: { name: nProject, title: 'E2E form project', description: 'Parent of the form task' },
+      });
+      expect(response.status()).toBe(201);
+    } finally {
+      await request.dispose();
+    }
+    await settleDevReload();
+  });
+
+  test.afterAll(async () => {
+    rmSync(dataPath(`project/${nProject}`), { recursive: true, force: true });
+    rmSync(dataPath(`task/${nTask}`), { recursive: true, force: true });
+    rmSync(dataPath(`skill/${nSkill}`), { recursive: true, force: true });
+    await settleDevReload();
+  });
+
+  test('?parent= prefills the project; Create writes the entry, links the project and opens it', async ({
+    page,
+    request,
+  }) => {
+    await openNewEntry(page, 'task', `?parent=${nProject}`);
+    await expect(page.getByTestId('new-parent')).toContainText('E2E form project');
+    await expect(page.getByTestId('new-state')).toContainText('Pending');
+    await expect(page.getByTestId('new-submit')).toHaveText('Create task');
+    await expect(page.getByTestId('new-cancel')).toHaveAttribute('href', '/task');
+
+    await page.getByTestId('new-name').fill(nTask);
+    await expect(page.getByTestId('new-title')).toHaveAttribute('placeholder', /^E2e nf task/);
+    await page.getByTestId('new-title').fill('E2E form task');
+    await page.getByTestId('new-description').fill('Created by the NewEntryForm spec');
+    await page.getByTestId('new-state').click();
+    await page.getByRole('option', { name: 'In progress' }).click();
+    await expect(page.getByTestId('new-state')).toContainText('In progress');
+    // typed text is split on whitespace (UX-26): two tags
+    await page.getByTestId('new-add-tag').fill('alpha beta');
+    await page.getByTestId('new-add-tag').press('Enter');
+    await expect(page.getByTestId('new-tags')).toContainText('alpha');
+    await expect(page.getByTestId('new-tags')).toContainText('beta');
+    await page.getByTestId('new-submit').click();
+
+    await expect(page).toHaveURL(new RegExp(`/task/${nTask}$`), { timeout: 15_000 });
+    await expect(page.getByTestId('detail-slug')).toHaveText(nTask);
+    await expect(page.getByTestId('detail-meta')).toContainText('In progress');
+    await expect(page.getByTestId('detail-meta')).toContainText('alpha');
+    const file = readDataText(`task/${nTask}/main.md`);
+    expect(file).toContain(`name: ${nTask}`);
+    expect(file).toContain('title: E2E form task');
+    expect(file).toContain('state: in-progress');
+    expect(file).toContain('tags: [alpha, beta]');
+
+    // the project owns the link: a `child` entry in its frontmatter
+    const response = await request.get(`${API}/entry/project/${nProject}`);
+    expect(response.status()).toBe(200);
+    const { frontmatter } = (await response.json()) as {
+      frontmatter: { links?: { dataset: string; slug: string; rel: string }[] };
+    };
+    expect(frontmatter.links).toContainEqual({ dataset: 'task', slug: nTask, rel: 'child' });
+    await settleDevReload();
+  });
+
+  test('an empty form shows what is missing, sends nothing and focuses the name', async ({
+    page,
+  }) => {
+    const writes: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/api/') && r.method() !== 'GET') writes.push(r.url());
+    });
+    await openNewEntry(page, 'task');
+    await expect(page.getByTestId('new-parent')).toContainText('None');
+    await page.getByTestId('new-submit').click();
+    await expect(page.getByTestId('new-error')).toHaveText('Fix the highlighted fields');
+    await expect(page.locator('.ck-field__error')).toHaveText(['Required', 'Required']);
+    await expect(page.getByTestId('new-name')).toBeFocused();
+
+    // the name rule is live: invalid and taken names are refused while typing
+    await page.getByTestId('new-name').fill('Bad Name');
+    await expect(page.locator('.ck-field__error').first()).toContainText('lowercase letters');
+    await page.getByTestId('new-name').fill(nTask);
+    await expect(page.locator('.ck-field__error').first()).toHaveText(
+      'A task with this name already exists',
+    );
+    expect(writes).toEqual([]);
+  });
+
+  test('a name the server already has (stale list) is refused with a 409 on the name', async ({
+    page,
+  }) => {
+    // The client thinks nothing exists, so only the server can refuse.
+    await page.route('**/api/entries?dataset=task', (route) =>
+      route.fulfill({ json: { entries: [] } }),
+    );
+    await openNewEntry(page, 'task');
+    await page.getByTestId('new-name').fill('write-agents-md');
+    await expect(page.locator('.ck-field__error')).toHaveCount(0);
+    await page.getByTestId('new-description').fill('Duplicate of a seed task');
+    await page.getByTestId('new-submit').click();
+    await expect(page.locator('.ck-field__error')).toHaveText(
+      'A task with this name already exists',
+    );
+    await expect(page.getByTestId('new-error')).toHaveText('A task with this name already exists');
+    await expect(page).toHaveURL(/\/new\/task$/);
+    // typing a new name clears the server error
+    await page.getByTestId('new-name').fill('write-agents-md-2');
+    await expect(page.locator('.ck-field__error')).toHaveCount(0);
+  });
+
+  test('a ?parent= that is not a project is reported and can be cleared with None', async ({
+    page,
+  }) => {
+    await openNewEntry(page, 'task', '?parent=e2e-no-such-project');
+    await expect(page.locator('.ck-field__error')).toHaveText(
+      'Project "e2e-no-such-project" does not exist',
+    );
+    await page.getByTestId('new-parent').click();
+    await page.getByRole('option', { name: 'None' }).click();
+    await expect(page.locator('.ck-field__error')).toHaveCount(0);
+  });
+
+  test('/new/skill has no state, title or tags; Create opens the skill', async ({ page }) => {
+    await openNewEntry(page, 'skill');
+    await expect(page.getByTestId('new-state')).toHaveCount(0);
+    await expect(page.getByTestId('new-title')).toHaveCount(0);
+    await expect(page.getByTestId('new-tags')).toHaveCount(0);
+    await expect(page.getByTestId('new-submit')).toHaveText('Create skill');
+    await page.getByTestId('new-name').fill(nSkill);
+    await page.getByTestId('new-description').fill('A skill from the form. Use when testing it.');
+    await page.getByTestId('new-description').press('Enter');
+
+    await expect(page).toHaveURL(new RegExp(`/skill/${nSkill}$`), { timeout: 15_000 });
+    await expect(page.getByTestId('detail-slug')).toHaveText(nSkill);
+    expect(readDataText(`skill/${nSkill}/SKILL.md`)).toContain(`name: ${nSkill}`);
+    await settleDevReload();
+  });
+
+  test('/new/kb has title and tags but no state', async ({ page }) => {
+    await openNewEntry(page, 'kb');
+    await expect(page.getByTestId('new-title')).toBeVisible();
+    await expect(page.getByTestId('new-tags')).toBeVisible();
+    await expect(page.getByTestId('new-state')).toHaveCount(0);
+    await expect(page.getByTestId('new-parent')).toBeVisible();
+  });
+
+  test('Cancel leaves a clean form for the list', async ({ page }) => {
+    await openNewEntry(page, 'bug');
+    await page.getByTestId('new-cancel').click();
+    await expect(page).toHaveURL(/\/bug$/);
+  });
+
+  test('a fresh parked navigation (a dev reload landed first) resumes; a stale one does not', async ({
+    page,
+  }) => {
+    await openNewEntry(page, 'task');
+    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
+      NAV_KEY,
+      `${Date.now() - 60_000}|/kb/ctxman`,
+    ] as const);
+    await page.reload();
+    await expect(page.getByTestId('new-name')).toBeVisible();
+    await page.waitForTimeout(800);
+    await expect(page).toHaveURL(/\/new\/task$/);
+
+    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
+      NAV_KEY,
+      `${Date.now()}|/kb/ctxman`,
+    ] as const);
+    await page.reload();
+    await expect(page).toHaveURL(/\/kb\/ctxman$/, { timeout: 15_000 });
+  });
+
+  test('the list page "New" button of an okf dataset opens its form', async ({ page }) => {
+    await page.goto('/kb');
+    const link = page.getByTestId('list-new-entry');
+    await expect(link).toHaveAttribute('href', '/new/kb');
+    await link.click();
+    await expect(page.getByTestId('new-entry-form')).toBeVisible();
   });
 });
 
@@ -546,13 +750,21 @@ test.describe('routing', () => {
     await expect(page.getByTestId('notfound-path')).toBeVisible();
   });
 
-  test('/new/<ds> exists only for reference, context and recipe', async ({ page }) => {
-    for (const ds of ['kb', 'task', 'skill', 'nope']) {
+  test('/new/<ds> exists for every dataset and is a 404 for anything else', async ({ page }) => {
+    for (const ds of ['nope', 'index', 'forge']) {
       const response = await page.goto(`/new/${ds}`);
       expect(response?.status(), ds).toBe(404);
     }
-    const ok = await page.goto('/new/reference');
-    expect(ok?.status()).toBe(200);
-    await expect(page.getByTestId('dform')).toBeVisible();
+    for (const ds of ['reference', 'context', 'recipe']) {
+      const ok = await page.goto(`/new/${ds}`);
+      expect(ok?.status(), ds).toBe(200);
+      await expect(page.getByTestId('dform')).toBeVisible();
+    }
+    for (const ds of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project', 'skill']) {
+      const ok = await page.goto(`/new/${ds}`);
+      expect(ok?.status(), ds).toBe(200);
+      await expect(page.getByTestId('new-entry-form')).toBeVisible();
+      await expect(page.getByTestId('new-submit')).toHaveText(/^Create /);
+    }
   });
 });

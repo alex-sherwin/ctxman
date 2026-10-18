@@ -2,6 +2,7 @@
 import type { EntrySummary } from '../lib/entry-summary.ts';
 import DatasetBadge from './DatasetBadge.astro';
 import Freshness from './Freshness.astro';
+import InvalidBadge from './InvalidBadge.astro';
 import StaleBadge from './StaleBadge.astro';
 import StateBadge from './StateBadge.astro';
 
@@ -24,6 +25,7 @@ const { entries, showStaleAfter = false } = Astro.props;
         </a>
         <span class="cx-row">
           {e.state && <StateBadge dataset={e.dataset} state={e.state} />}
+          {e.invalid && <InvalidBadge issues={e.invalid} />}
           {e.stale && <StaleBadge since={e.staleAfter} />}
           {showStaleAfter && e.staleAfter && <code class="cx-mono cx-subtle">{e.staleAfter}</code>}
         </span>

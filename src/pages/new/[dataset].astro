@@ -3,14 +3,19 @@ import Breadcrumbs from '../../components/Breadcrumbs.astro';
 import DatasetBadge from '../../components/DatasetBadge.astro';
 import PageHeader from '../../components/PageHeader.astro';
 import { getDataset } from '../../datasets/registry.ts';
+import { isNewEntryDataset } from '../../lib/forms/entry-form.ts';
 import { isYamlDatasetId } from '../../lib/forms/fields.ts';
+import { parseNewEntryUrl } from '../../lib/url-state.ts';
 import Base from '../../layouts/Base.astro';
 import DataForm from '../../ui/forms/DataForm.tsx';
+import NewEntryForm from '../../ui/forms/NewEntryForm.tsx';
 
-// Create page of the yaml datasets (ROUND2_UI_SPEC D6: /new/<ds>, never /<ds>/new, which a legal entry could shadow).
-// Every other dataset is created from the Tools page (add scripts), so this route is a 404 for them.
+// Create page of EVERY dataset (ROUND2_UI_SPEC D6: /new/<ds>, never /<ds>/new, which a legal entry could shadow).
+// yaml datasets (reference, context, recipe) -> DataForm; okf datasets + skill -> NewEntryForm (POST /api/entry/<ds>,
+// `?parent=<project>` prefills "Part of project"); anything else is a 404.
 const def = getDataset(Astro.params.dataset ?? '');
-if (!def || !isYamlDatasetId(def.id)) return Astro.rewrite('/404');
+if (!def || !(isYamlDatasetId(def.id) || isNewEntryDataset(def.id))) return Astro.rewrite('/404');
+const { parent } = parseNewEntryUrl(Astro.url.searchParams);
 ---
 
 <Base title={`New ${def.singular}`} active={def.id}>
@@ -25,7 +30,21 @@ if (!def || !isYamlDatasetId(def.id)) return Astro.rewrite('/404');
     <DatasetBadge slot="eyebrow" dataset={def.id} />
     <span slot="meta">{def.description}</span>
   </PageHeader>
-  <DataForm client:only="react" dataset={def.id} mode="create">
-    <div slot="fallback" class="cx-island-fallback">Loading editor…</div>
-  </DataForm>
+  {
+    isYamlDatasetId(def.id) ? (
+      <DataForm client:only="react" dataset={def.id} mode="create">
+        <div slot="fallback" class="cx-island-fallback">
+          Loading editor…
+        </div>
+      </DataForm>
+    ) : (
+      isNewEntryDataset(def.id) && (
+        <NewEntryForm client:only="react" dataset={def.id} parent={parent}>
+          <div slot="fallback" class="cx-island-fallback">
+            Loading form…
+          </div>
+        </NewEntryForm>
+      )
+    )
+  }
 </Base>

@@ -15,7 +15,7 @@ const scripts = SCRIPTS.map(({ name, label, description, kind }) => ({
 
 <Base title="Tools" active="tools">
   <PageHeader title="Tools">
-    <span slot="meta">Run the compliance checks and scaffold new dataset entries.</span>
+    <span slot="meta">Run the compliance checks and open the create form of any dataset.</span>
   </PageHeader>
   <ToolsRunner client:only="react" scripts={scripts}>
     <div slot="fallback" class="cx-island-fallback">Loading tools…</div>

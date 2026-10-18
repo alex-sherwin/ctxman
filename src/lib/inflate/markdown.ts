@@ -26,6 +26,16 @@ export function fenced(text: string, lang: string): string {
 
 const HEADING = /^( {0,3})(#{1,6})(?=[ \t]|$)/;
 
+/** Shallowest ATX heading level outside code (1..6), or null without headings. */
+function minHeadingLevel(maskedLines: readonly string[]): number | null {
+  let min = 7;
+  for (const line of maskedLines) {
+    const hashes = HEADING.exec(line)?.[2];
+    if (hashes !== undefined) min = Math.min(min, hashes.length);
+  }
+  return min === 7 ? null : min;
+}
+
 /**
  * Shifts the ATX headings of `body` so the shallowest one lands on level `base` (clamped to 1..6, deeper
  * headings keep their distance and are clamped at 6). Headings inside code are left alone. Setext headings
@@ -33,12 +43,8 @@ const HEADING = /^( {0,3})(#{1,6})(?=[ \t]|$)/;
  */
 export function shiftHeadings(body: string, base: number): string {
   const maskedLines = maskMarkdownCode(body).split('\n');
-  let min = 7;
-  for (const line of maskedLines) {
-    const hashes = HEADING.exec(line)?.[2];
-    if (hashes !== undefined) min = Math.min(min, hashes.length);
-  }
-  if (min === 7) return body;
+  const min = minHeadingLevel(maskedLines);
+  if (min === null) return body;
   const delta = Math.min(base, 6) - min;
   return body
     .split('\n')
@@ -49,6 +55,32 @@ export function shiftHeadings(body: string, base: number): string {
       return `${m[1] ?? ''}${'#'.repeat(level)}${line.slice(m[0].length)}`;
     })
     .join('\n');
+}
+
+/**
+ * Nests a free-standing markdown block under its group: when its shallowest ATX heading is above `base`
+ * (a smaller level) the block is shifted so that heading lands on `base`; a block whose headings already
+ * sit at `base` or deeper (or that has none) is returned unchanged.
+ */
+export function nestHeadings(body: string, base: number): string {
+  const min = minHeadingLevel(maskMarkdownCode(body).split('\n'));
+  return min !== null && min < base ? shiftHeadings(body, base) : body;
+}
+
+/**
+ * Text of the first ATX heading of `body` (outside code, closing `#`s dropped, whitespace collapsed), or
+ * null when there is none.
+ */
+export function firstHeadingText(body: string): string | null {
+  const lines = body.split('\n');
+  const masked = maskMarkdownCode(body).split('\n');
+  for (const [i, line] of masked.entries()) {
+    if (HEADING.exec(line) === null) continue;
+    const m = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/.exec(lines[i] ?? '');
+    const text = (m?.[1] ?? '').replace(/\s+/g, ' ').trim();
+    if (text !== '') return text;
+  }
+  return null;
 }
 
 const norm = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -68,22 +100,58 @@ export function stripLeadingTitle(body: string, title: string): string {
   return lines.slice(next).join('\n');
 }
 
+/**
+ * Removes every ATX heading (outside code) with nothing under it: its next non-blank line is the end of the
+ * text or an ATX heading of the same or a higher level (equal or fewer `#`). The blank lines right after a
+ * removed heading go with it. Repeats until stable, so a section that only held empty subsections goes too.
+ */
+export function dropEmptySections(body: string): string {
+  let lines = body.split('\n');
+  for (;;) {
+    const masked = maskMarkdownCode(lines.join('\n')).split('\n');
+    const levelAt = (i: number): number | null =>
+      HEADING.exec(masked[i] ?? '')?.[2]?.length ?? null;
+    const dropped = new Set<number>();
+    for (let i = 0; i < lines.length; i++) {
+      const level = levelAt(i);
+      if (level === null) continue;
+      let next = i + 1;
+      while (next < lines.length && (lines[next] ?? '').trim() === '') next++;
+      const nextLevel = next < lines.length ? levelAt(next) : null;
+      if (next >= lines.length || (nextLevel !== null && nextLevel <= level)) {
+        dropped.add(i);
+        for (let j = i + 1; j < next; j++) dropped.add(j);
+      }
+    }
+    if (dropped.size === 0) return lines.join('\n');
+    lines = lines.filter((_, i) => !dropped.has(i));
+  }
+}
+
 const INLINE_DEST = /\]\([ \t]*(<[^>\n]*>|[^\s)]+)/g;
 // Footnote definitions (`[^note]: text`) are not link definitions.
 const REF_DEF = /^( {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*)(<[^>\n]*>|\S+)/gm;
 
+export type UnresolvedReason = 'no-entry' | 'no-file' | 'escapes' | 'malformed';
+
+interface LinkContext {
+  fromRel: string;
+  files: ReadonlyMap<string, string>;
+  targets: Readonly<Record<string, EntryRef | null>>;
+  /**
+   * Called once per link that cannot be resolved, in document order:
+   * a `ctxman:` link that is malformed or whose target entry does not exist, a bundle link to a file the
+   * bundle does not have or that leaves the bundle. The destination stays unchanged in the text.
+   */
+  onUnresolved?: (destination: string, reason: UnresolvedReason) => void;
+}
+
 /**
  * Rewrites bundle-relative and `ctxman:` link destinations (inline links, images, reference definitions;
- * never inside code) to absolute file paths. Unresolvable destinations are left unchanged.
+ * never inside code) to absolute file paths. Unresolvable destinations are left unchanged and reported
+ * through `ctx.onUnresolved`.
  */
-export function rewriteLinks(
-  body: string,
-  ctx: {
-    fromRel: string;
-    files: ReadonlyMap<string, string>;
-    targets: Readonly<Record<string, EntryRef | null>>;
-  },
-): string {
+export function rewriteLinks(body: string, ctx: LinkContext): string {
   const masked = maskMarkdownCode(body);
   const found: { start: number; end: number; destination: string }[] = [];
   for (const m of masked.matchAll(INLINE_DEST)) {
@@ -99,36 +167,46 @@ export function rewriteLinks(
   found.sort((a, b) => b.start - a.start);
 
   let out = body;
+  const unresolved: { destination: string; reason: UnresolvedReason }[] = [];
   for (const { start, end, destination } of found) {
     const wrapped = destination.startsWith('<');
     const d = wrapped ? destination.slice(1, -1) : destination;
-    const abs = resolveDestination(d, ctx);
-    if (abs === null) continue;
+    const resolved = resolveDestination(d, ctx);
+    if (resolved === null) continue;
+    if ('reason' in resolved) {
+      unresolved.push({ destination: d, reason: resolved.reason });
+      continue;
+    }
     const hash = d.indexOf('#');
     const fragment = hash === -1 ? '' : d.slice(hash + 1);
-    const next = abs + (fragment === '' ? '' : `#${fragment}`);
+    const next = resolved.abs + (fragment === '' ? '' : `#${fragment}`);
     out = out.slice(0, start) + (/[\s()<>]/.test(next) ? `<${next}>` : next) + out.slice(end);
   }
+  // `found` is walked back to front (offsets stay valid while the text changes); report front to back.
+  for (const { destination, reason } of unresolved.reverse())
+    ctx.onUnresolved?.(destination, reason);
   return out;
 }
 
+/** null = not a link ctxman resolves (external, anchor, empty); otherwise the path or why it failed. */
 function resolveDestination(
   d: string,
-  ctx: {
-    fromRel: string;
-    files: ReadonlyMap<string, string>;
-    targets: Readonly<Record<string, EntryRef | null>>;
-  },
-): string | null {
+  ctx: LinkContext,
+): { abs: string } | { reason: UnresolvedReason } | null {
   if (d.trim() === '') return null;
   const kind = classifyHref(d);
   if (kind === 'bundle') {
     const resolved = resolveBundleHref(d, ctx.fromRel);
-    return 'path' in resolved ? (ctx.files.get(resolved.path) ?? null) : null;
+    if (!('path' in resolved)) return { reason: 'escapes' };
+    const abs = ctx.files.get(resolved.path);
+    return abs === undefined ? { reason: 'no-file' } : { abs };
   }
   if (kind === 'ctxman') {
     const target = parseCtxmanHref(d);
-    return target === null ? null : (ctx.targets[`${target.dataset}/${target.slug}`]?.abs ?? null);
+    if (target === null) return { reason: 'malformed' };
+    const ref = ctx.targets[`${target.dataset}/${target.slug}`];
+    if (ref === null) return { reason: 'no-entry' };
+    return ref === undefined ? null : { abs: ref.abs };
   }
   return null;
 }

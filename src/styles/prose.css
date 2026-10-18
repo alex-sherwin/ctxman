@@ -65,6 +65,14 @@
     vertical-align: super;
     color: var(--fg-subtle);
   }
+  /* a link whose target is missing (rewriteRenderedHtml marks it `cx-link--broken` with a title that says why) */
+  .cx-prose a.cx-link--broken,
+  .cx-prose a.cx-link--broken:hover {
+    text-decoration: underline dashed var(--danger);
+    text-underline-offset: 3px;
+    text-shadow: none;
+    cursor: help;
+  }
 
   .cx-prose ul {
     list-style: square;

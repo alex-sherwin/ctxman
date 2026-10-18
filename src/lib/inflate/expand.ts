@@ -74,6 +74,7 @@ export type InflateWarningCode =
   | 'path-missing'
   | 'file-unreadable'
   | 'large-output'
+  | 'unresolved-link'
   | 'material-invalid'
   | 'primary-invalid'
   | 'dest-collision'

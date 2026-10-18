@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RecipeData } from '../../src/datasets/schemas.ts';
@@ -125,6 +126,8 @@ describe('renderPlan golden document', () => {
       `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/main.md\``,
       '',
       '> **From context `ctx`:** Read this.',
+      '',
+      'A demo knowledge base entry.',
       '',
       `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/main.md).`,
       '',
@@ -510,6 +513,323 @@ describe('okf modes', () => {
       },
     ]);
     expect(manifest.segments.find((s) => s.key === 'kb/demo')?.warnings).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------- brief quality (ROUND3 §H)
+
+describe('brief quality (ROUND3 §H)', () => {
+  const okf = (name: string, description: string, bodyText: string, type = 'Knowledge Base') =>
+    `---\ntype: ${type}\nname: ${name}\ndescription: ${description}\n${
+      type === 'Knowledge Base' ? '' : 'state: pending\n'
+    }---\n\n${bodyText}`;
+  const flat = (r: Record<string, unknown>): RecipeData => recipe({ layout: 'flat', ...r });
+  const one = (key: string, mode?: string, options?: Record<string, unknown>) =>
+    flat({
+      items: [{ dataset: key.split('/')[0], slug: key.split('/')[1] }],
+      ...(mode === undefined && options === undefined
+        ? {}
+        : {
+            overrides: [
+              {
+                key,
+                ...(mode === undefined ? {} : { mode }),
+                ...(options === undefined ? {} : { options }),
+              },
+            ],
+          }),
+    });
+
+  describe('defaults and the description', () => {
+    it('every okf kind is inline-main by default: a task brings its body, headed by its description', async () => {
+      const { D } = world({
+        'task/work/main.md': okf(
+          'work',
+          'Do the work.',
+          '# Work\n\n## Steps\n\n1. one\n2. two\n',
+          'Task',
+        ),
+      });
+      const { markdown, manifest } = await render(D, one('task/work'));
+      expect(body(markdown)).toBe(
+        [
+          '## work',
+          '',
+          `\`task/work\` · Task · state: Pending · \`${D}/task/work/main.md\``,
+          '',
+          'Do the work.',
+          '',
+          '### Steps',
+          '',
+          '1. one',
+          '2. two',
+          '',
+        ].join('\n'),
+      );
+      expect(manifest.segments.find((s) => s.key === 'task/work')).toMatchObject({
+        mode: 'inline-main',
+        modeLabel: 'Inline main.md',
+      });
+    });
+
+    it('prints the description first (inline-main and inline-bundle) when the body does not say it', async () => {
+      const { D } = world({
+        'kb/plain/main.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
+      });
+      for (const mode of ['inline-main', 'inline-bundle']) {
+        const { markdown } = await render(D, one('kb/plain', mode));
+        expect(body(markdown), mode).toBe(
+          [
+            '## plain',
+            '',
+            `\`kb/plain\` · Knowledge Base · \`${D}/kb/plain/main.md\``,
+            '',
+            'Alpha beta gamma.',
+            '',
+            'Something else.',
+            '',
+          ].join('\n'),
+        );
+      }
+    });
+
+    it('does not repeat a description the body already contains (case and whitespace ignored)', async () => {
+      const { D } = world({
+        'kb/plain/main.md': okf(
+          'plain',
+          'Alpha beta gamma.',
+          '# Plain\n\nIntro: ALPHA   beta\ngamma. More.\n',
+        ),
+      });
+      const { markdown } = await render(D, one('kb/plain'));
+      expect(markdown).toContain('\n\nIntro: ALPHA   beta\ngamma. More.\n');
+      expect(markdown.toLowerCase().split('alpha').length - 1).toBe(1);
+    });
+
+    it('with includeFrontmatter the yaml block carries the description: no extra paragraph', async () => {
+      const { D } = world({
+        'kb/plain/main.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
+      });
+      const { markdown } = await render(
+        D,
+        one('kb/plain', 'inline-main', { includeFrontmatter: true }),
+      );
+      expect(markdown.split('Alpha beta gamma.').length - 1).toBe(1);
+      expect(markdown).toContain('description: Alpha beta gamma.');
+    });
+
+    it('prints the description after the context guidance, before the body', async () => {
+      const { D } = world();
+      const { markdown } = await render(D, goldenRecipe());
+      const at = (text: string) => markdown.indexOf(text);
+      expect(at('> **From context `ctx`:** Read this.')).toBeLessThan(
+        at('A demo knowledge base entry.'),
+      );
+      expect(at('A demo knowledge base entry.')).toBeLessThan(at('See ['));
+    });
+
+    it('summary and pointer modes are unchanged (the description is already their text)', async () => {
+      const { D } = world();
+      const summary = await render(D, one('kb/demo', 'summary'));
+      expect(summary.markdown.split('A demo knowledge base entry.').length - 1).toBe(1);
+      const pointer = await render(D, one('kb/demo', 'pointer'));
+      expect(pointer.markdown.split('A demo knowledge base entry.').length - 1).toBe(1);
+    });
+  });
+
+  describe('empty sections', () => {
+    it('drops template headings with nothing under them, in main.md and concepts', async () => {
+      const { D } = world({
+        'bug/crash/main.md': okf(
+          'crash',
+          'It crashes.',
+          [
+            '# Crash',
+            '',
+            '## Steps',
+            '',
+            '1. open it',
+            '',
+            '## Expected',
+            '',
+            '## Actual',
+            '',
+            '### Details',
+            '',
+            '## Notes',
+            '',
+          ].join('\n'),
+          'Bug',
+        ),
+        'bug/crash/concepts/extra.md': '---\ntype: Concept\n---\n\n# Extra\n\n## Empty\n',
+      });
+      const { markdown } = await render(D, one('bug/crash', 'inline-bundle'));
+      expect(body(markdown)).toBe(
+        [
+          '## crash',
+          '',
+          `\`bug/crash\` · Bug · state: Pending · \`${D}/bug/crash/main.md\``,
+          '',
+          'It crashes.',
+          '',
+          '### Steps',
+          '',
+          '1. open it',
+          '',
+          '### Extra',
+          '',
+          `\`concepts/extra.md\` · \`${D}/bug/crash/concepts/extra.md\``,
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('keeps headings inside code fences and headings that have content', async () => {
+      const { D } = world({
+        'kb/plain/main.md': okf(
+          'plain',
+          'Plain.',
+          '# Plain\n\n## Example\n\n```md\n## Not a heading\n```\n\n## Gone\n',
+        ),
+      });
+      const { markdown } = await render(D, one('kb/plain'));
+      expect(markdown).toContain('### Example\n\n```md\n## Not a heading\n```\n');
+      expect(markdown).not.toContain('Gone');
+    });
+  });
+
+  describe('markdown blocks', () => {
+    const blocks = [
+      { id: 'big', body: '# Big rules\n\ntext\n\n## Sub\n\nmore' },
+      { id: 'deep', body: '#### Deep only\n\ntext' },
+      { id: 'plain', body: 'No heading here.' },
+    ];
+
+    it('nest under their group: ### inside a context, ## when ungrouped', async () => {
+      const { D } = world();
+      const { markdown } = await render(
+        D,
+        recipe({
+          contexts: ['ctx'],
+          markdown: blocks,
+          order: ['md:big', 'ctx:ctx', 'md:deep', 'md:plain', 'kb/demo'],
+        }),
+      );
+      const heads = markdown.split('\n').filter((l) => /^#{1,6} /.test(l));
+      expect(heads).toEqual([
+        '# demo-brief',
+        '## Big rules',
+        '### Sub',
+        '## Context: ctx',
+        '#### Deep only',
+        '### Demo',
+        '### do-it',
+      ]);
+      expect(markdown).toContain('\n\nNo heading here.\n');
+    });
+
+    it('a heading above the group level moves to it: # becomes ### inside a group', async () => {
+      const { D } = world();
+      const { markdown } = await render(
+        D,
+        recipe({
+          contexts: ['ctx'],
+          markdown: [blocks[0] ?? { id: 'big', body: '' }],
+          order: ['ctx:ctx', 'md:big', 'kb/demo'],
+        }),
+      );
+      expect(markdown).toContain('## Context: ctx');
+      expect(markdown).toContain('\n\n### Big rules\n\ntext\n\n#### Sub\n\nmore\n');
+    });
+
+    it('flat layout: blocks sit at ##', async () => {
+      const { D } = world();
+      const { markdown } = await render(
+        D,
+        flat({ contexts: ['ctx'], markdown: [blocks[0] ?? { id: 'big', body: '' }] }),
+      );
+      expect(markdown).toContain('\n\n## Big rules\n\ntext\n\n### Sub\n\nmore\n');
+    });
+
+    it('manifest title is the first heading text, else "Markdown <id>"', async () => {
+      const { D } = world();
+      const { manifest } = await render(D, recipe({ markdown: blocks }));
+      expect(manifest.segments.map((s) => [s.key, s.title])).toEqual([
+        ['md:big', 'Big rules'],
+        ['md:deep', 'Deep only'],
+        ['md:plain', 'Markdown plain'],
+      ]);
+    });
+  });
+
+  describe('unresolved links', () => {
+    const links = [
+      'See [ok](/concepts/one.md), [also ok](ctxman:kb/demo) and [web](https://example.test/x.md).',
+      'Broken: [gone](ctxman:kb/gone), [nofile](/concepts/missing.md), [out](../../etc/passwd), [bad](ctxman:nope).',
+      'Again [gone](ctxman:kb/gone) twice.',
+    ].join('\n\n');
+    const linked = () =>
+      world({
+        'kb/linked/main.md': okf('linked', 'Has links.', `# Linked\n\n${links}\n`),
+        'kb/linked/concepts/one.md': '---\ntype: Concept\n---\n\n# One\n\n[nope](./nope.md)\n',
+      });
+
+    it('warns once per distinct link with the exact message, filed under the item', async () => {
+      const { D } = linked();
+      const { markdown, manifest } = await render(D, one('kb/linked'));
+      const expected = [
+        'kb/linked/main.md: link "ctxman:kb/gone" does not resolve (no such entry)',
+        'kb/linked/main.md: link "/concepts/missing.md" does not resolve (no such file in the bundle)',
+        'kb/linked/main.md: link "../../etc/passwd" does not resolve (points outside the bundle)',
+        'kb/linked/main.md: link "ctxman:nope" does not resolve (malformed ctxman: link)',
+      ];
+      expect(manifest.warnings.map((w) => [w.code, w.key, w.message])).toEqual(
+        expected.map((message) => ['unresolved-link', 'kb/linked', message]),
+      );
+      expect(
+        manifest.segments.find((s) => s.key === 'kb/linked')?.warnings.map((w) => w.message),
+      ).toEqual(expected);
+      // destinations stay as written; resolved ones became paths
+      expect(markdown).toContain('[gone](ctxman:kb/gone)');
+      expect(markdown).toContain('[nofile](/concepts/missing.md)');
+      expect(markdown).toContain(`[ok](${D}/kb/linked/concepts/one.md)`);
+    });
+
+    it('names the file of the link in inline-bundle, concept files included', async () => {
+      const { D } = linked();
+      const { manifest } = await render(D, one('kb/linked', 'inline-bundle'));
+      const messages = manifest.warnings.map((w) => w.message);
+      expect(messages).toContain(
+        'kb/linked/concepts/one.md: link "./nope.md" does not resolve (no such file in the bundle)',
+      );
+      expect(messages).toHaveLength(5);
+    });
+
+    it('reports nothing when every link resolves, in summary mode, or with rewriteLinks off', async () => {
+      const { D } = linked();
+      const clean = world();
+      expect((await render(clean.D, one('kb/demo'))).manifest.warnings).toEqual([]);
+      expect((await render(D, one('kb/linked', 'summary'))).manifest.warnings).toEqual([]);
+      expect(
+        (await render(D, one('kb/linked', 'inline-main', { rewriteLinks: false }))).manifest
+          .warnings,
+      ).toEqual([]);
+    });
+
+    it('also reports links of an inlined skill', async () => {
+      const { D } = world({
+        'skill/my-skill/SKILL.md':
+          '---\nname: my-skill\ndescription: A skill.\n---\n\n# my-skill\n\nSee [gone](ctxman:kb/gone).\n',
+      });
+      const { manifest } = await render(D, one('skill/my-skill', 'inline'));
+      expect(manifest.warnings.map((w) => [w.code, w.key, w.message])).toEqual([
+        [
+          'unresolved-link',
+          'skill/my-skill',
+          'skill/my-skill/SKILL.md: link "ctxman:kb/gone" does not resolve (no such entry)',
+        ],
+      ]);
+    });
   });
 });
 
@@ -1252,6 +1572,8 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       '',
       '> **From context `ctxman-dev`:** Start here.',
       '',
+      'What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.',
+      '',
       `See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/main.md) and the [docs](${D}/reference/astro-docs.yaml).`,
       '',
       '#### Datasets',
@@ -1264,9 +1586,13 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       '',
       '`kb/astro-content-layer` · Knowledge Base · `kb/astro-content-layer/main.md`',
       '',
+      'How Astro 7 content collections, loaders and schemas work.',
+      '',
       '### astro-dev-full-reload-on-save',
       '',
       '`rca/astro-dev-full-reload-on-save` · Root Cause Analysis · `rca/astro-dev-full-reload-on-save/main.md`',
+      '',
+      'Saving a context in the forge reloaded the whole page, because the loader watched the file.',
       '',
       '### context-inflate',
       '',
@@ -1903,5 +2229,24 @@ describe('renderPlan with output: item segments', () => {
     expect(md).toContain('Not placed in this directory: source /x does not exist.');
     expect(md).toContain(`(under \`${path.join(w.D, 'kb', 'ctxman')}\`)`);
     expect(section(result.markdown, 'Working directory map')).not.toContain('ctxman/');
+  });
+  it('unresolved links are reported in a working-directory render too (the description is printed first)', async () => {
+    const w = dirWorld();
+    mkdirSync(path.join(w.D, 'kb/broken'), { recursive: true });
+    writeFileSync(
+      path.join(w.D, 'kb/broken/main.md'),
+      '---\ntype: Knowledge Base\nname: broken\ndescription: Has a dead link.\n---\n\n# Broken\n\nSee [gone](ctxman:kb/gone) and [ctxman](ctxman:kb/ctxman).\n',
+    );
+    const { result } = await renderDir(w, flatDir(['kb/broken']));
+    expect(section(result.markdown, 'broken')).toContain(
+      'Has a dead link.\n\nSee [gone](ctxman:kb/gone) and [ctxman](',
+    );
+    expect(result.manifest.warnings).toEqual([
+      {
+        code: 'unresolved-link',
+        key: 'kb/broken',
+        message: 'kb/broken/main.md: link "ctxman:kb/gone" does not resolve (no such entry)',
+      },
+    ]);
   });
 });

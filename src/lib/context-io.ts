@@ -1,16 +1,19 @@
 // NODE: runtime read/write of data/context/<slug>.yaml. Contexts are ALWAYS read through this module
 // (fs + zod) at request time, never through getCollection('context') (PLAN.md §A.2, runtime-mode rules).
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isValidName } from '../datasets/registry.ts';
 import type { LinkableDatasetId } from '../datasets/registry.ts';
-import { contextSchema } from '../datasets/schemas.ts';
+import { contextLinkSchema, contextSchema } from '../datasets/schemas.ts';
 import type { ContextData } from '../datasets/schemas.ts';
+import { withFileLock, writeFileAtomic } from './atomic-write.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { describeIssue, issuePath } from './findings.ts';
 import type { PathIssue } from './findings.ts';
 import { withSchemaComment } from './schema-comment.ts';
 import { parseYaml, stringifyYaml } from './yaml.ts';
+
+type ContextLinkInput = ContextData['links'][number];
 
 export interface ContextRecord {
   slug: string;
@@ -28,7 +31,15 @@ export interface Issue {
 }
 
 export class ContextIoError extends Error {
-  code: 'not-found' | 'exists' | 'invalid' | 'bad-slug' | 'name-mismatch' | 'parse';
+  /** `invalid-file`: the EXISTING file failed to parse / validate while a write needed it (append links). */
+  code:
+    | 'not-found'
+    | 'exists'
+    | 'invalid'
+    | 'bad-slug'
+    | 'name-mismatch'
+    | 'parse'
+    | 'invalid-file';
   issues: Issue[];
   constructor(code: ContextIoError['code'], message: string, issues: Issue[] = []) {
     super(message);
@@ -210,18 +221,16 @@ export async function createContext(
   return recordFor(slug, abs, context);
 }
 
-/**
- * Replaces an existing context (PUT). The context must exist (`not-found`) and `input.name` must equal
- * `slug` (`name-mismatch`; names are immutable). Written atomically: temp file in the same dir, then rename.
- */
-export async function writeContext(
+/** The body of `writeContext`; the caller holds the file's lock. */
+async function writeContextLocked(
   slug: string,
   input: unknown,
-  dataDir: string = resolveDataDir(),
+  dataDir: string,
 ): Promise<ContextRecord> {
   const abs = contextFile(slug, dataDir);
+  let mode: number;
   try {
-    await stat(abs);
+    mode = (await stat(abs)).mode;
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
       throw new ContextIoError('not-found', `context "${slug}" does not exist`);
@@ -238,15 +247,111 @@ export async function writeContext(
       result.issues,
     );
   }
-  const tmp = `${abs}.${process.pid}.tmp`;
-  try {
-    await writeFile(tmp, withSchemaComment('context', serializeContext(result.context)), 'utf8');
-    await rename(tmp, abs);
-  } catch (error) {
-    await unlink(tmp).catch(() => undefined);
-    throw error;
-  }
+  await writeFileAtomic(abs, withSchemaComment('context', serializeContext(result.context)), mode);
   return recordFor(slug, abs, result.context);
+}
+
+/**
+ * Replaces an existing context (PUT). The context must exist (`not-found`) and `input.name` must equal
+ * `slug` (`name-mismatch`; names are immutable). Written atomically (atomic-write.ts: temp file in the same dir,
+ * then rename) under the file's lock, so it never interleaves with an append of links.
+ */
+export async function writeContext(
+  slug: string,
+  input: unknown,
+  dataDir: string = resolveDataDir(),
+): Promise<ContextRecord> {
+  const abs = contextFile(slug, dataDir);
+  return withFileLock(abs, () => writeContextLocked(slug, input, dataDir));
+}
+
+export const APPEND_LINKS_MAX = 200;
+
+export interface AppendedContextLinks {
+  record: ContextRecord;
+  /** `dataset/slug` keys appended, in request order. */
+  added: string[];
+  /** `dataset/slug` keys that were already linked (or repeated in the request) and left untouched. */
+  skipped: string[];
+}
+
+function parseAppendBody(input: unknown): ContextLinkInput[] {
+  const record =
+    input !== null && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : null;
+  if (record === null) {
+    throw new ContextIoError('invalid', 'body must be a JSON object { links }', [
+      { path: '', message: 'must be an object' },
+    ]);
+  }
+  const issues: Issue[] = [];
+  for (const key of Object.keys(record)) {
+    if (key !== 'links') issues.push({ path: key, message: 'unexpected property' });
+  }
+  const links = record.links;
+  if (!Array.isArray(links) || links.length < 1 || links.length > APPEND_LINKS_MAX) {
+    issues.push({ path: 'links', message: `must be an array of 1 to ${APPEND_LINKS_MAX} links` });
+  } else {
+    links.forEach((item: unknown, index: number) => {
+      const parsed = contextLinkSchema.safeParse(item);
+      if (parsed.success) return;
+      for (const issue of parsed.error.issues) {
+        issues.push({
+          path: ['links', String(index), ...issue.path.map(String)].join('.'),
+          message: describeIssue(issue, item ?? {}),
+        });
+      }
+    });
+  }
+  if (issues.length > 0) {
+    throw new ContextIoError('invalid', 'request body is invalid', issues);
+  }
+  return (links as unknown[]).map((item) => contextLinkSchema.parse(item));
+}
+
+/**
+ * Appends links to an existing context (POST /api/context/:slug/links). `input`: `{ links: [{dataset, slug,
+ * notes?}] }`, 1..200. A target that is already linked (or repeated in the request) is skipped and its existing
+ * link, notes included, is left as is; nothing is written when nothing is new. Throws `bad-slug`, `invalid`
+ * (body, paths `links.N.*`), `not-found`, `invalid-file` (the existing file fails to parse / validate).
+ */
+export async function appendContextLinks(
+  slug: string,
+  input: unknown,
+  dataDir: string = resolveDataDir(),
+): Promise<AppendedContextLinks> {
+  const abs = contextFile(slug, dataDir);
+  const requested = parseAppendBody(input);
+  return withFileLock(abs, async () => {
+    let current: ContextRecord;
+    try {
+      current = await readContext(slug, dataDir);
+    } catch (error) {
+      if (error instanceof ContextIoError && (error.code === 'parse' || error.code === 'invalid')) {
+        throw new ContextIoError('invalid-file', error.message, error.issues);
+      }
+      throw error;
+    }
+    const present = new Set(current.context.links.map((l) => `${l.dataset}/${l.slug}`));
+    const links = [...current.context.links];
+    const added: string[] = [];
+    const skipped: string[] = [];
+    for (const link of requested) {
+      const key = `${link.dataset}/${link.slug}`;
+      if (present.has(key)) {
+        skipped.push(key);
+        continue;
+      }
+      present.add(key);
+      added.push(key);
+      links.push(link);
+    }
+    if (added.length === 0) return { record: current, added, skipped };
+    await writeContextLocked(slug, { ...current.context, links }, dataDir);
+    // Re-read so the response shows the file as stored (notes are normalized when serialized).
+    return { record: await readContext(slug, dataDir), added, skipped };
+  });
 }
 
 /** Deletes a context file; `not-found` if it does not exist. */

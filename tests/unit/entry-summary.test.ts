@@ -98,6 +98,88 @@ describe('summarize', () => {
     });
   });
 
+  describe('relations (frontmatter links)', () => {
+    const base = { name: 'ctxman-v1', description: 'Project' };
+
+    it('is absent when the entry has no links (also an empty list or a non-list)', () => {
+      expect(summarize('project', 'p', base, MODIFIED, NOW).relations).toBeUndefined();
+      expect(summarize('project', 'p', { ...base, links: [] }, MODIFIED, NOW)).not.toHaveProperty(
+        'relations',
+      );
+      expect(
+        summarize('project', 'p', { ...base, links: 'nope' }, MODIFIED, NOW),
+      ).not.toHaveProperty('relations');
+      expect(summarize('project', 'p', { ...base, links: null }, MODIFIED, NOW)).not.toHaveProperty(
+        'relations',
+      );
+    });
+
+    it('lists the links in file order with rel filled in (default related)', () => {
+      const out = summarize(
+        'project',
+        'p',
+        {
+          ...base,
+          links: [
+            { dataset: 'task', slug: 'a', rel: 'child' },
+            { dataset: 'kb', slug: 'b' },
+            { dataset: 'feature', slug: 'c', rel: 'depends-on' },
+          ],
+        },
+        MODIFIED,
+        NOW,
+      );
+      expect(out.relations).toEqual([
+        { dataset: 'task', slug: 'a', rel: 'child' },
+        { dataset: 'kb', slug: 'b', rel: 'related' },
+        { dataset: 'feature', slug: 'c', rel: 'depends-on' },
+      ]);
+    });
+
+    it('skips items that do not parse (bad dataset, rel, slug, extra key, non-object)', () => {
+      const out = summarize(
+        'project',
+        'p',
+        {
+          ...base,
+          links: [
+            { dataset: 'context', slug: 'a', rel: 'child' },
+            { dataset: 'task', slug: 'Bad Slug', rel: 'child' },
+            { dataset: 'task', slug: 'x', rel: 'owns' },
+            { dataset: 'task', slug: 'y', rel: 'child', notes: 'extra' },
+            'task/z',
+            null,
+            { dataset: 'task', slug: 'ok', rel: 'child' },
+          ],
+        },
+        MODIFIED,
+        NOW,
+      );
+      expect(out.relations).toEqual([{ dataset: 'task', slug: 'ok', rel: 'child' }]);
+    });
+
+    it('is absent when every item is bad', () => {
+      const out = summarize('task', 't', { ...base, links: [{ dataset: 'nope' }] }, MODIFIED, NOW);
+      expect(out).not.toHaveProperty('relations');
+    });
+
+    it('is only read for okf datasets (a context links[] is not a relation list)', () => {
+      const links = [{ dataset: 'kb', slug: 'ctxman' }];
+      expect(summarize('skill', 's', { ...base, links }, MODIFIED, NOW)).not.toHaveProperty(
+        'relations',
+      );
+      expect(
+        summarize('context', 'c', { name: 'c', description: 'd', links }, MODIFIED, NOW),
+      ).not.toHaveProperty('relations');
+    });
+
+    it('never sets invalid (the caller attaches the entry index issues)', () => {
+      expect(
+        summarize('task', 't', { name: 't', state: 'bogus' }, MODIFIED, NOW),
+      ).not.toHaveProperty('invalid');
+    });
+  });
+
   describe('skill', () => {
     it('has no freshness-by-stale_after or lifecycle', () => {
       const out = summarize(

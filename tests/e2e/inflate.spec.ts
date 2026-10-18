@@ -2,7 +2,7 @@
 // the New recipe dialog and the delete / discard dialogs. Every test that saves works on its own copy of the seed
 // recipe (created through the API and removed afterwards); the seed itself is only read. Assertions on persisted
 // data read the YAML file in the data copy, never only the rendered page.
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -12,9 +12,11 @@ import {
   SEED_RECIPE,
   createRecipeCopy,
   dataExists,
+  dataPath,
   deleteRecipeQuietly,
   modKey,
   readRecipeYaml,
+  settleDevReload,
   typeIntoMonaco,
   uniqueName,
 } from './helpers.ts';
@@ -1065,5 +1067,171 @@ test.describe('switching, deleting and history', () => {
       `/recipe/${second}`,
     );
     await expect(page.getByTestId('inflate-view-preview')).toBeChecked();
+  });
+});
+
+test.describe('All tab', () => {
+  const DATASETS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project', 'skill', 'reference'];
+
+  test('Add items has an All tab: summed count, rows of several datasets, filter, add', async ({
+    page,
+    request,
+  }) => {
+    const name = await newCopy(request);
+    await openInflate(page, name);
+    for (const ds of ['all', ...DATASETS]) {
+      await expect(page.getByTestId(`inflate-tab-${ds}`)).toContainText(/\d+$/);
+    }
+    const counts = await Promise.all(
+      DATASETS.map(async (ds) => {
+        const text = await page.getByTestId(`inflate-tab-${ds}`).innerText();
+        return Number(/(\d+)$/.exec(text)?.[1]);
+      }),
+    );
+    const total = counts.reduce((a, b) => a + b, 0);
+    await expect(page.getByTestId('inflate-tab-all')).toContainText(new RegExp(`${total}$`));
+
+    await page.getByTestId('inflate-tab-all').click();
+    await expect(page).toHaveURL(/[?&]dataset=all(&|$)/);
+    await expect(page.getByTestId('inflate-result-count')).toHaveText(`${total} of ${total}`);
+    const datasets = async () =>
+      new Set(
+        await page
+          .getByTestId('inflate-result')
+          .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.dataset)),
+      );
+    await expect.poll(async () => (await datasets()).size).toBeGreaterThan(4);
+    await expect(
+      page.locator('[data-testid="inflate-result"] .ck-badge--ds').first(),
+    ).toBeVisible();
+
+    await page.getByTestId('inflate-filter-q').fill('okf-format');
+    const result = page.locator('[data-testid="inflate-result"][data-slug="okf-format"]');
+    await expect(result).toHaveAttribute('data-dataset', 'kb');
+    await result.getByTestId('inflate-add').click();
+    await expect(result).toHaveAttribute('data-added', 'true');
+    await expect(segmentRow(page, 'kb/okf-format')).toContainText('ad hoc');
+    await saveRecipe(page);
+    expect(readRecipeYaml(name).items).toContainEqual({ dataset: 'kb', slug: 'okf-format' });
+  });
+
+  test('an entry whose file fails its schema is flagged and dimmed', async ({ page, request }) => {
+    const slug = uniqueName('e2e-invalid-idea');
+    const dir = dataPath(`idea/${slug}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/index.md`, '# Index\n');
+    writeFileSync(
+      `${dir}/main.md`,
+      `---\ntype: Idea\nname: ${slug}\ndescription: An idea with a state that does not exist\nstate: done\n---\n\n# Bad\n`,
+    );
+    try {
+      await settleDevReload();
+      const name = await newCopy(request);
+      await openInflate(page, name, `&dataset=all&q=${slug}`);
+      const row = page.locator(`[data-testid="inflate-result"][data-slug="${slug}"]`);
+      await expect(row).toHaveCount(1);
+      await expect(row).toHaveAttribute('data-invalid', '');
+      await expect(row.getByTestId('inflate-invalid')).toContainText('invalid');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      await settleDevReload();
+    }
+  });
+});
+
+test.describe('Unsaved changes survive a reload (no native prompt)', () => {
+  /** Counts native dialogs; a `beforeunload` handler would raise one on reload. */
+  function watchDialogs(page: Page): { count: () => number } {
+    let count = 0;
+    page.on('dialog', (dialog) => {
+      count++;
+      void dialog.dismiss();
+    });
+    return { count: () => count };
+  }
+  const blocksUnload = (page: Page) =>
+    page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+
+  test('a reload restores the draft with a banner; Discard goes back to the saved recipe', async ({
+    page,
+    request,
+  }) => {
+    const name = await newCopy(request);
+    const saved = readRecipeYaml(name);
+    const dialogs = watchDialogs(page);
+    await openInflate(page, name);
+    await expect(segmentRow(page, 'kb/ctxman')).toBeVisible();
+    await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
+
+    await page.getByTestId('inflate-description').fill('Edited but not saved');
+    await page.getByTestId('inflate-filter-q').fill('okf-format');
+    await page
+      .locator('[data-testid="inflate-result"][data-slug="okf-format"]')
+      .getByTestId('inflate-add')
+      .click();
+    await expect(segmentRow(page, 'kb/okf-format')).toBeVisible();
+    await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
+    expect(await blocksUnload(page)).toBe(false);
+
+    await page.reload();
+    const banner = page.getByTestId('inflate-draft-restored');
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+    await expect(banner).toContainText('Restored unsaved changes from earlier.');
+    await expect(banner).not.toHaveAttribute('data-stale', /.*/);
+    expect(dialogs.count()).toBe(0);
+    await expect(page.getByTestId('inflate-description')).toHaveValue('Edited but not saved');
+    await expect(segmentRow(page, 'kb/okf-format')).toBeVisible();
+    await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
+    // nothing was written; the draft outlives another reload
+    expect(readRecipeYaml(name).description).toBe(saved.description);
+    await page.reload();
+    await expect(page.getByTestId('inflate-draft-restored')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('inflate-draft-discard').click();
+    await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
+    await expect(page.getByTestId('inflate-description')).toHaveValue(String(saved.description));
+    await expect(segmentRow(page, 'kb/okf-format')).toHaveCount(0);
+    await expect(page.getByTestId('inflate-status')).toHaveText('No changes');
+    await page.reload();
+    await expect(page.getByTestId('inflate-description')).toHaveValue(String(saved.description));
+    await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
+    expect(dialogs.count()).toBe(0);
+  });
+
+  test('a draft of a file that changed on disk is restored with the stale warning; Save clears it', async ({
+    page,
+    request,
+  }) => {
+    const name = await newCopy(request);
+    await openInflate(page, name);
+    await expect(segmentRow(page, 'kb/ctxman')).toBeVisible();
+    await page.getByTestId('inflate-description').fill('Draft text');
+    await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
+
+    // the file changes behind the draft's back
+    const current = (
+      (await (await request.get(`${API}/recipe/${name}`)).json()) as { recipe: RecipeBody }
+    ).recipe;
+    const put = await request.put(`${API}/recipe/${name}`, {
+      data: { ...current, description: 'changed elsewhere' },
+    });
+    expect(put.status()).toBe(200);
+
+    await page.reload();
+    const banner = page.getByTestId('inflate-draft-restored');
+    await expect(banner).toHaveAttribute('data-stale', 'true', { timeout: 15_000 });
+    await expect(banner).toContainText('the file changed on disk since');
+    await expect(page.getByTestId('inflate-description')).toHaveValue('Draft text');
+
+    await saveRecipe(page);
+    await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
+    expect(readRecipeYaml(name).description).toBe('Draft text');
+    await page.reload();
+    await expect(page.getByTestId('inflate-description')).toHaveValue('Draft text');
+    await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
   });
 });

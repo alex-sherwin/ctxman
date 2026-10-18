@@ -2,7 +2,9 @@
 // (`import type`); `summarize` runs in SSR (src/lib/entries.ts) and scripts/tests.
 import { datasetDef, entryUrl, isReferenceType, OWNERS } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
-import type { ContextInput, ContextLink } from '../datasets/schemas.ts';
+import { entryLinkSchema } from '../datasets/schemas.ts';
+import type { ContextInput, ContextLink, EntryLink } from '../datasets/schemas.ts';
+import type { Issue } from './context-io.ts';
 import { isInflateTarget } from './inflate/catalog.ts';
 import type { InflateTarget } from './inflate/catalog.ts';
 import { classifyRemoteUri } from './remote-uri.ts';
@@ -47,6 +49,16 @@ export interface EntrySummary {
   itemCount?: number;
   /** '/kb/foo' */
   url: string;
+  /**
+   * okf + skill: the entry file fails its dataset schema (or has unparseable YAML / a wrong `name`). Present only
+   * then; the entry is still listed, with the file as it is on disk. Set by `entries.ts` from the entry index.
+   */
+  invalid?: Issue[];
+  /**
+   * okf only: the structured relations of the entry (`links` in main.md frontmatter, `rel` filled in), file order.
+   * Present only when there is at least one valid item (malformed items are skipped).
+   */
+  relations?: EntryLink[];
 }
 
 /** One searchable document: one per markdown file in an okf bundle, plus skills, references, contexts. */
@@ -76,6 +88,17 @@ export type ContextDoc = Omit<ContextInput, 'links'> & { links: ContextLink[] };
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/** The items of `data.links` that parse as an entry relation, one by one (bad items are skipped), file order. */
+function relationsOf(links: unknown): EntryLink[] {
+  if (!Array.isArray(links)) return [];
+  const out: EntryLink[] = [];
+  for (const item of links) {
+    const parsed = entryLinkSchema.safeParse(item);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
 }
 
 /**
@@ -124,6 +147,8 @@ export function summarize(
     if (typeof data.status === 'string' && OKF_STATUS_VALUES.includes(data.status)) {
       summary.okfStatus = data.status as OkfStatus;
     }
+    const relations = relationsOf(data.links);
+    if (relations.length > 0) summary.relations = relations;
   }
 
   if (dataset === 'reference') {

@@ -1,0 +1,15 @@
+---
+import type { Issue } from '../lib/context-io.ts';
+
+// "invalid" marker for an okf / skill entry whose file fails its schema (EntrySummary.invalid); the title carries
+// the first issue. Used by EntryTable, EntryMiniList and InvalidBanner.
+interface Props {
+  issues: readonly Issue[];
+}
+
+const { issues } = Astro.props;
+const first = issues[0];
+const hint = first === undefined ? 'The entry file is invalid' : first.path === '' ? first.message : `${first.path}: ${first.message}`;
+---
+
+<span class="ck-badge ck-badge--danger" title={hint} data-testid="invalid-badge">invalid</span>

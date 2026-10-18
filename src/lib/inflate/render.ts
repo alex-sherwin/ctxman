@@ -2,7 +2,10 @@
 // the gathered file contents into ONE markdown document and a JSON manifest (plans/INFLATE_SPEC.md §6.3).
 // With `ctx.output` (a working directory, plans/INFLATE_V2_SPEC.md §9) the same document is rendered with paths
 // relative to the directory and the directory map / primary / repositories / skills sections; without it the
-// output is the v1 document, byte for byte. Never import from the browser island.
+// output is the single document with absolute paths. Brief quality (plans/ROUND3_SPEC.md §H): the entry
+// description is printed when the body lacks it, empty template sections are dropped, markdown blocks nest
+// under their group, links that do not resolve become `unresolved-link` warnings. Never import from the
+// browser island.
 import { OKF_DATASET_IDS, OWNER_LABELS, stateLabel } from '../../datasets/registry.ts';
 import { maskMarkdownCode, parseFrontmatterLoose, splitFrontmatter } from '../okf.ts';
 import { classifyRemoteUri } from '../remote-uri.ts';
@@ -29,16 +32,20 @@ import type { FileRole, MaterialView } from './material-plan.ts';
 import { normalizeText } from './recipe.ts';
 import {
   alignRows,
+  dropEmptySections,
   fenced,
+  firstHeadingText,
   guidance,
   headingText,
   inlineCode,
+  nestHeadings,
   rewriteLinks,
   shQuote,
   shiftHeadings,
   stripLeadingTitle,
   truncateText,
 } from './markdown.ts';
+import type { UnresolvedReason } from './markdown.ts';
 import type { EntryRef, ItemContent, PlanContent } from './pipeline.ts';
 
 export interface ManifestSegment {
@@ -161,6 +168,8 @@ interface Env {
   root: string;
   /** Set when rendering for a working directory. */
   dir?: DirEnv;
+  /** Collector for `unresolved-link` warnings found while rendering (one list per renderPlan call). */
+  warnings: InflateWarning[];
 }
 
 const identity = (abs: string): string => abs;
@@ -181,16 +190,41 @@ interface BodyArgs {
   options: Partial<InflateOptions>;
   files: ReadonlyMap<string, string>;
   targets: Readonly<Record<string, EntryRef | null>>;
+  /** Segment key of the item the file belongs to (`unresolved-link` warnings are filed under it). */
+  key: string;
+  warnings: InflateWarning[];
 }
 
-/** frontmatter dropped → leading title dropped → headings shifted → links made absolute → trimmed. */
+const UNRESOLVED_WHY: Record<UnresolvedReason, string> = {
+  'no-entry': 'no such entry',
+  'no-file': 'no such file in the bundle',
+  escapes: 'points outside the bundle',
+  malformed: 'malformed ctxman: link',
+};
+
+/**
+ * frontmatter dropped → leading title dropped → empty sections dropped → headings shifted → links made
+ * absolute (unresolved ones reported) → trimmed.
+ */
 function renderBody(a: BodyArgs): string {
   const text = a.text.replace(/\r\n?/g, '\n');
   let body = splitFrontmatter(text)?.body ?? text;
   body = stripLeadingTitle(body, a.title);
+  body = dropEmptySections(body);
   if (flag(a.options, 'shiftHeadings')) body = shiftHeadings(body, a.base);
   if (flag(a.options, 'rewriteLinks')) {
-    body = rewriteLinks(body, { fromRel: a.fromRel, files: a.files, targets: a.targets });
+    body = rewriteLinks(body, {
+      fromRel: a.fromRel,
+      files: a.files,
+      targets: a.targets,
+      onUnresolved: (destination, reason) => {
+        a.warnings.push({
+          code: 'unresolved-link',
+          key: a.key,
+          message: `${a.key}/${a.fromRel}: link "${destination}" does not resolve (${UNRESOLVED_WHY[reason]})`,
+        });
+      },
+    });
   }
   return body.trim();
 }
@@ -334,6 +368,9 @@ function renderItem(seg: ItemSegment, env: Env): string {
 
 // ---- okf
 
+/** Lower case, whitespace collapsed: how the description is looked for in a rendered body. */
+const squash = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase();
+
 function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): string[] {
   const options = seg.options;
   const files = new Map((ic.files ?? []).map((f) => [f.rel, env.pathOf(f.abs)] as const));
@@ -341,20 +378,34 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
   const main = ic.texts?.['main.md'];
   const out: string[] = [];
   const concepts = ic.concepts ?? [];
+  const body = (rel: string, text: string, title: string, base: number): string =>
+    renderBody({
+      text,
+      fromRel: rel,
+      title,
+      base,
+      options,
+      files,
+      targets,
+      key: seg.key,
+      warnings: env.warnings,
+    });
 
+  const mainBody =
+    main !== undefined && main !== null ? body('main.md', main, seg.title, level + 1) : '';
+  // The description is the one line that says what the entry is: print it unless the frontmatter block or
+  // the body already carries it.
+  const description = (seg.meta?.description ?? '').trim();
+  if (
+    !flag(options, 'includeFrontmatter') &&
+    description !== '' &&
+    !squash(mainBody).includes(squash(description))
+  ) {
+    out.push(description);
+  }
   if (main !== undefined && main !== null) {
     out.push(frontmatterBlock(main, options));
-    out.push(
-      renderBody({
-        text: main,
-        fromRel: 'main.md',
-        title: seg.title,
-        base: level + 1,
-        options,
-        files,
-        targets,
-      }),
-    );
+    out.push(mainBody);
   }
 
   if (seg.mode === 'inline-main') {
@@ -370,7 +421,7 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
   const section = (heading: string, rel: string, text: string, title: string): void => {
     out.push(headingText(level + 1, heading));
     out.push(`${inlineCode(rel)} · ${inlineCode(files.get(rel) ?? rel)}`);
-    out.push(renderBody({ text, fromRel: rel, title, base: level + 2, options, files, targets }));
+    out.push(body(rel, text, title, level + 2));
   };
   for (const rel of concepts) {
     const text = ic.texts?.[rel];
@@ -407,6 +458,8 @@ function skillInlineBody(seg: ItemSegment, ic: ItemContent, level: number, env: 
         options,
         files,
         targets: env.targets,
+        key: seg.key,
+        warnings: env.warnings,
       }),
     );
   }
@@ -602,8 +655,14 @@ function renderSegment(
     }
     case 'section-intro':
       return { text: `## ${segment.title}`, title: segment.title };
-    case 'markdown':
-      return { text: trimBlankLines(normalizeText(segment.body)), title: `Markdown ${segment.id}` };
+    case 'markdown': {
+      // Nested under the group like the items there (## when ungrouped, ### inside a group).
+      const body = trimBlankLines(normalizeText(segment.body));
+      return {
+        text: nestHeadings(body, segment.group === null ? 2 : 3),
+        title: firstHeadingText(body) ?? `Markdown ${segment.id}`,
+      };
+    }
     case 'item':
       return { text: renderItem(segment, env), title: segment.title };
   }
@@ -781,8 +840,8 @@ function skillsSection(dir: DirEnv, env: Env): string {
 const warningKey = (w: InflateWarning): string => `${w.code}\u0000${w.key ?? ''}\u0000${w.message}`;
 
 /**
- * Renders the plan. Without `ctx.output` this is the v1 document (absolute paths, byte-identical to v1); with
- * it, the working-directory document of plans/INFLATE_V2_SPEC.md §9 (paths relative to `output.dir` for every
+ * Renders the plan. Without `ctx.output` this is the single document with absolute paths; with it, the
+ * working-directory document of plans/INFLATE_V2_SPEC.md §9 (paths relative to `output.dir` for every
  * mounted item).
  */
 export function renderPlan(
@@ -819,6 +878,7 @@ export function renderPlan(
             ]),
           ),
     root: output === undefined ? 'the project root' : 'this directory',
+    warnings: [],
     ...(dirEnv === undefined ? {} : { dir: dirEnv }),
   };
 
@@ -867,6 +927,13 @@ export function renderPlan(
       .join('\n\n') + '\n';
   const bytes = byteLength(markdown);
 
+  // Warnings found while rendering (unresolved links), deduped like every other stage.
+  const renderedWarnings: InflateWarning[] = [];
+  for (const w of env.warnings) {
+    if (!renderedWarnings.some((seen) => warningKey(seen) === warningKey(w)))
+      renderedWarnings.push(w);
+  }
+
   const manifestSegments: ManifestSegment[] = rendered.map(({ segment, text, title }) => {
     const entry: ManifestSegment = {
       key: segment.key,
@@ -878,7 +945,7 @@ export function renderPlan(
       bytes: text === '' ? 0 : byteLength(text),
       warnings: [
         ...segment.warnings,
-        ...content.warnings.filter(
+        ...[...content.warnings, ...renderedWarnings].filter(
           (w) =>
             w.key === segment.key && !segment.warnings.some((s) => warningKey(s) === warningKey(w)),
         ),
@@ -915,7 +982,7 @@ export function renderPlan(
     else counts.missing++;
   }
 
-  const renderWarnings: InflateWarning[] = [];
+  const renderWarnings: InflateWarning[] = [...renderedWarnings];
   if (bytes > LARGE_OUTPUT_BYTES) {
     renderWarnings.push({
       code: 'large-output',

@@ -18,6 +18,11 @@ const staleEntries = DATASETS.flatMap((d) => all[d.id])
   .filter((e) => e.stale)
   .sort((a, b) => (a.staleAfter ?? '').localeCompare(b.staleAfter ?? '') || a.slug.localeCompare(b.slug));
 
+// okf / skill entries whose file fails its schema (EntrySummary.invalid): listed here until they are fixed.
+const invalidEntries = DATASETS.flatMap((d) => all[d.id])
+  .filter((e) => e.invalid !== undefined)
+  .sort((a, b) => a.dataset.localeCompare(b.dataset) || a.slug.localeCompare(b.slug));
+
 const RECENT_LIMIT = 20;
 const recent = OKF_DATASET_IDS.flatMap((id) => all[id])
   .sort((a, b) => b.lastModified.localeCompare(a.lastModified) || a.slug.localeCompare(b.slug))
@@ -60,6 +65,18 @@ const recipeMeta = (r: EntrySummary): string =>
       }
     </Panel>
     <div class="cx-dash__side">
+      {
+        invalidEntries.length > 0 && (
+          <Panel
+            title="Invalid files"
+            count={invalidEntries.length}
+            id="h-invalid"
+            testid="dashboard-invalid"
+          >
+            <EntryMiniList entries={invalidEntries} />
+          </Panel>
+        )
+      }
       <Panel title="Stale" count={staleEntries.length} id="h-stale" testid="dashboard-stale">
         {
           staleEntries.length > 0 ? (

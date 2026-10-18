@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  checkFileLinks,
+  checkFrontmatterLinks,
   checkLinks,
   classifyHref,
   extractLinks,
@@ -7,6 +11,8 @@ import {
   resolveBundleHref,
   rewriteRenderedHtml,
 } from '../../src/lib/links.ts';
+import { sortFindings } from '../../src/lib/findings.ts';
+import { walkFiles } from '../../src/lib/bundles.ts';
 import {
   byRule,
   ruleIds,
@@ -230,6 +236,192 @@ describe('checkLinks', () => {
   });
 });
 
+/** A tree with every kind of link finding, relation findings included. */
+function linkFixture(): Record<string, string> {
+  return {
+    ...validKbBundle('demo'),
+    'feature/exists/main.md':
+      '---\ntype: Feature\nname: exists\ndescription: d\nstate: pending\n---\n',
+    'kb/demo/concepts/bad.md': [
+      '---',
+      'type: Concept',
+      '---',
+      '[broken](/concepts/missing.md) [escape](../../outside.md)',
+      '[good](ctxman:feature/exists) [dangling](ctxman:feature/gone) [bad](ctxman:nope/x)',
+    ].join('\n'),
+    'task/rel/main.md': [
+      '---',
+      'type: Task',
+      'name: rel',
+      'description: d',
+      'state: pending',
+      'links:',
+      '  - dataset: feature',
+      '    slug: exists',
+      '    rel: depends-on',
+      '  - dataset: kb',
+      '    slug: gone',
+      '---',
+      '[broken](./missing.md)',
+    ].join('\n'),
+    'skill/s/SKILL.md': '---\nname: s\ndescription: d\n---\n[bad](references/b.md)\n',
+  };
+}
+
+describe('checkFileLinks', () => {
+  it('reports exactly what checkLinks reports, file by file', async () => {
+    const dir = tmp.make(linkFixture());
+    const expected = (await checkLinks(dir)).findings;
+    expect(expected.length).toBeGreaterThan(6);
+    const actual: ReturnType<typeof checkFileLinks> = [];
+    for (const [dataset, names] of [
+      ['kb', ['demo']],
+      ['task', ['rel']],
+      ['feature', ['exists']],
+      ['skill', ['s']],
+    ] as const) {
+      for (const name of names) {
+        const root = path.join(dir, dataset, name);
+        for (const relPath of (await walkFiles(root)).filter((f) => f.endsWith('.md'))) {
+          const source = readFileSync(path.join(root, ...relPath.split('/')), 'utf8');
+          actual.push(...checkFileLinks({ dataset, name, relPath, source, dataDir: dir }));
+        }
+      }
+    }
+    expect(sortFindings(actual)).toEqual(expected);
+  });
+
+  it('works on unsaved text: file path, frontmatter-relative lines, and the bundle on disk', () => {
+    const dir = tmp.make({ ...validKbBundle('demo') });
+    const source = '---\ntype: Concept\n---\n\n[ok](/main.md) [no](/concepts/nope.md)\n';
+    expect(
+      checkFileLinks({
+        dataset: 'kb',
+        name: 'demo',
+        relPath: 'concepts/new.md',
+        source,
+        dataDir: dir,
+      }),
+    ).toEqual([
+      {
+        severity: 'error',
+        rule: 'links/broken',
+        file: 'kb/demo/concepts/new.md',
+        line: 5,
+        message: 'broken link "/concepts/nope.md": concepts/nope.md does not exist in the bundle',
+      },
+    ]);
+  });
+
+  it('runs the relation checks for an okf main.md only', () => {
+    const dir = tmp.make();
+    const source =
+      '---\ntype: Task\nname: t\ndescription: d\nstate: pending\nlinks:\n  - dataset: kb\n    slug: gone\n---\n';
+    const rules = (relPath: string, dataset: 'task' | 'skill' = 'task') =>
+      checkFileLinks({ dataset, name: 't', relPath, source, dataDir: dir }).map((f) => f.rule);
+    expect(rules('main.md')).toEqual(['links/relation-target']);
+    expect(rules('concepts/x.md')).toEqual([]);
+    expect(rules('main.md', 'skill')).toEqual([]);
+  });
+});
+
+describe('checkFrontmatterLinks', () => {
+  const entry = (links: string[], extra = ''): string =>
+    `---\ntype: Task\nname: t\ndescription: d\nstate: pending\n${extra}links:\n${links.join('\n')}\n---\n# T\n`;
+  const link = (dataset: string, slug: string, rel?: string): string =>
+    `  - dataset: ${dataset}\n    slug: ${slug}${rel ? `\n    rel: ${rel}` : ''}`;
+  const run = (source: string, dir: string, dataset: 'task' | 'kb' = 'task', name = 't') =>
+    checkFrontmatterLinks({ dataset, name, source, dataDir: dir });
+
+  it('passes links whose targets exist (any dataset, any rel)', () => {
+    const dir = tmp.make({
+      ...validDataTree(),
+      'reference/ref.yaml': 'name: ref\ndescription: d\ntype: local-repo\npath: /x\nowner: me\n',
+    });
+    const source = entry([
+      link('kb', 'demo', 'related'),
+      link('task', 'do-it', 'child'),
+      link('skill', 'my-skill', 'depends-on'),
+      link('reference', 'ref'),
+    ]);
+    expect(run(source, dir)).toEqual([]);
+  });
+
+  it('warns links/relation-target on the line of the links: key, once per missing target', () => {
+    const dir = tmp.make(validDataTree());
+    const source = entry(
+      [link('kb', 'demo'), link('feature', 'gone', 'child'), link('reference', 'nope')],
+      'tags: [a]\n',
+    );
+    const findings = run(source, dir);
+    expect(findings).toEqual([
+      {
+        severity: 'warning',
+        rule: 'links/relation-target',
+        file: 'task/t/main.md',
+        line: 7,
+        message: 'relation target feature/gone does not exist',
+      },
+      {
+        severity: 'warning',
+        rule: 'links/relation-target',
+        file: 'task/t/main.md',
+        line: 7,
+        message: 'relation target reference/nope does not exist',
+      },
+    ]);
+    // the key line really is the `links:` line of the file
+    expect(source.split('\n')[6]).toBe('links:');
+  });
+
+  it('errors links/relation-self for a link to the entry itself, and does not also warn', () => {
+    const dir = tmp.make();
+    const findings = run(entry([link('task', 't', 'related'), link('task', 't', 'child')]), dir);
+    expect(findings).toEqual([
+      {
+        severity: 'error',
+        rule: 'links/relation-self',
+        file: 'task/t/main.md',
+        line: 6,
+        message: 'an entry cannot link to itself',
+      },
+    ]);
+    // same slug in another dataset is a different target
+    expect(run(entry([link('kb', 't')]), tmp.make(validKbBundle('t')))).toEqual([]);
+  });
+
+  it('skips malformed items, a missing or non-array links key, and unparseable frontmatter', () => {
+    const dir = tmp.make();
+    const malformed = entry([
+      '  - dataset: nope\n    slug: x',
+      '  - dataset: kb\n    slug: Bad Slug',
+      '  - dataset: kb\n    slug: x\n    rel: parent',
+      '  - plain string',
+    ]);
+    expect(run(malformed, dir)).toEqual([]);
+    expect(run('---\ntype: Task\nname: t\n---\n', dir)).toEqual([]);
+    expect(run('---\ntype: Task\nlinks: nope\n---\n', dir)).toEqual([]);
+    expect(run('---\ntype: [oops\nlinks:\n---\n', dir)).toEqual([]);
+    expect(run('# no frontmatter\n', dir)).toEqual([]);
+  });
+
+  it('is part of checkLinks for every okf main.md (and not for concepts or skills)', async () => {
+    const dir = tmp.make({
+      ...validDataTree(),
+      'task/rel/main.md': entry([link('kb', 'gone'), link('task', 'rel')]),
+      'kb/demo/concepts/two.md':
+        '---\ntype: Concept\nlinks:\n  - dataset: kb\n    slug: gone\n---\n',
+    });
+    const { findings } = await checkLinks(dir);
+    expect(findings.map((f) => `${f.rule} ${f.file}`)).toEqual([
+      'links/relation-self task/rel/main.md',
+      'links/relation-target task/rel/main.md',
+    ]);
+    expect(byRule(findings, 'links/relation-self')[0]?.severity).toBe('error');
+    expect(byRule(findings, 'links/relation-target')[0]?.severity).toBe('warning');
+  });
+});
+
 describe('rewriteRenderedHtml', () => {
   const ctx = { dataset: 'kb', slug: 'ctxman', fromRelPath: 'main.md' } as const;
   const html = (href: string) => `<p><a href="${href}">x</a></p>`;
@@ -290,5 +482,125 @@ describe('rewriteRenderedHtml', () => {
 
   it('does not misinterpret $ patterns in rewritten URLs', () => {
     expect(rewriteRenderedHtml(html('/a$&amp;b.md'), ctx)).toBe(html('/kb/ctxman/doc/a$&amp;b'));
+  });
+});
+
+describe('rewriteRenderedHtml: broken target marking (with dataDir)', () => {
+  const kbCtx = { dataset: 'kb', slug: 'demo', fromRelPath: 'main.md' } as const;
+  const tag = (attrs: string) => `<p><a ${attrs}>x</a></p>`;
+  const setup = () =>
+    tmp.make({
+      ...validKbBundle('demo'),
+      'feature/exists/main.md':
+        '---\ntype: Feature\nname: exists\ndescription: d\nstate: pending\n---\n',
+      'skill/s/SKILL.md': '---\nname: s\ndescription: d\n---\n',
+      'skill/s/references/a.md': '# A\n',
+    });
+
+  it('leaves everything alone without dataDir (existing behaviour)', () => {
+    expect(rewriteRenderedHtml(tag('href="ctxman:feature/gone"'), kbCtx)).toBe(
+      tag('href="/feature/gone"'),
+    );
+    expect(rewriteRenderedHtml(tag('href="/concepts/nope.md"'), kbCtx)).toBe(
+      tag('href="/kb/demo/doc/concepts/nope"'),
+    );
+  });
+
+  it('marks a ctxman: link to a missing entry and keeps the rewritten href', () => {
+    const dataDir = setup();
+    expect(rewriteRenderedHtml(tag('href="ctxman:feature/gone#a"'), { ...kbCtx, dataDir })).toBe(
+      tag('href="/feature/gone#a" class="cx-link--broken" title="Missing: feature/gone"'),
+    );
+    expect(rewriteRenderedHtml(tag('href="ctxman:feature/exists"'), { ...kbCtx, dataDir })).toBe(
+      tag('href="/feature/exists"'),
+    );
+    expect(
+      rewriteRenderedHtml(tag('href="ctxman:reference/nope"'), { ...kbCtx, dataDir }),
+    ).toContain('title="Missing: reference/nope"');
+  });
+
+  it('marks a malformed ctxman: link and leaves its href unchanged', () => {
+    const dataDir = setup();
+    for (const href of ['ctxman:nope/x', 'ctxman:kb/Bad_Slug', 'ctxman:kb']) {
+      expect(rewriteRenderedHtml(tag(`href="${href}"`), { ...kbCtx, dataDir }), href).toBe(
+        tag(`href="${href}" class="cx-link--broken" title="Invalid ctxman: link"`),
+      );
+    }
+  });
+
+  it('marks a missing bundle file (rewritten to its route) but not an existing one', () => {
+    const dataDir = setup();
+    expect(rewriteRenderedHtml(tag('href="/concepts/nope.md#h"'), { ...kbCtx, dataDir })).toBe(
+      tag(
+        'href="/kb/demo/doc/concepts/nope#h" class="cx-link--broken" title="Missing file: concepts/nope.md"',
+      ),
+    );
+    expect(rewriteRenderedHtml(tag('href="/concepts/one.md"'), { ...kbCtx, dataDir })).toBe(
+      tag('href="/kb/demo/doc/concepts/one"'),
+    );
+    // resolved against the file being rendered, and non-md targets are checked too
+    const sub = { ...kbCtx, fromRelPath: 'concepts/one.md', dataDir };
+    expect(rewriteRenderedHtml(tag('href="../main.md"'), sub)).toBe(tag('href="/kb/demo"'));
+    expect(rewriteRenderedHtml(tag('href="missing.json"'), sub)).toBe(
+      tag(
+        'href="missing.json" class="cx-link--broken" title="Missing file: concepts/missing.json"',
+      ),
+    );
+  });
+
+  it('marks a bundle target that leaves the bundle', () => {
+    const dataDir = setup();
+    expect(rewriteRenderedHtml(tag('href="../../escape.md"'), { ...kbCtx, dataDir })).toBe(
+      tag('href="../../escape.md" class="cx-link--broken" title="Points outside the bundle"'),
+    );
+  });
+
+  it('checks skill bundle targets without rewriting them', () => {
+    const dataDir = setup();
+    const skill = { dataset: 'skill', slug: 's', fromRelPath: 'SKILL.md', dataDir } as const;
+    expect(rewriteRenderedHtml(tag('href="references/a.md"'), skill)).toBe(
+      tag('href="references/a.md"'),
+    );
+    expect(rewriteRenderedHtml(tag('href="references/b.md"'), skill)).toBe(
+      tag('href="references/b.md" class="cx-link--broken" title="Missing file: references/b.md"'),
+    );
+  });
+
+  it('does not check bundle targets for datasets without a bundle directory (context notes, recipes)', () => {
+    const dataDir = setup();
+    for (const dataset of ['context', 'recipe'] as const) {
+      const ctx = { dataset, slug: 'c', fromRelPath: '', dataDir };
+      expect(rewriteRenderedHtml(tag('href="some/where.md"'), ctx)).toBe(
+        tag('href="some/where.md"'),
+      );
+      expect(rewriteRenderedHtml(tag('href="ctxman:kb/gone"'), ctx)).toContain('cx-link--broken');
+      expect(rewriteRenderedHtml(tag('href="ctxman:kb/demo"'), ctx)).toBe(tag('href="/kb/demo"'));
+    }
+  });
+
+  it('merges into an existing class, replaces an existing title, keeps other attributes', () => {
+    const dataDir = setup();
+    const ctx = { ...kbCtx, dataDir };
+    expect(
+      rewriteRenderedHtml('<a class="btn primary" href="ctxman:kb/gone" title="Old">x</a>', ctx),
+    ).toBe('<a class="btn primary cx-link--broken" href="/kb/gone" title="Missing: kb/gone">x</a>');
+    expect(rewriteRenderedHtml("<a href='ctxman:kb/gone' class='k'>x</a>", ctx)).toBe(
+      '<a href="/kb/gone" class="k cx-link--broken" title="Missing: kb/gone">x</a>',
+    );
+    // already marked: not added twice
+    expect(rewriteRenderedHtml('<a href="ctxman:kb/gone" class="cx-link--broken">x</a>', ctx)).toBe(
+      '<a href="/kb/gone" class="cx-link--broken" title="Missing: kb/gone">x</a>',
+    );
+  });
+
+  it('never marks external links, anchors or tags without an href', () => {
+    const dataDir = setup();
+    const ctx = { ...kbCtx, dataDir };
+    expect(rewriteRenderedHtml(tag('href="#top"'), ctx)).toBe(tag('href="#top"'));
+    expect(rewriteRenderedHtml(tag('href="mailto:a@b.c"'), ctx)).toBe(tag('href="mailto:a@b.c"'));
+    expect(rewriteRenderedHtml(tag('href="https://example.com/x.md"'), ctx)).not.toContain(
+      'cx-link--broken',
+    );
+    expect(rewriteRenderedHtml('<a name="x">x</a>', ctx)).toBe('<a name="x">x</a>');
   });
 });

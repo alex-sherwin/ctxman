@@ -1,0 +1,73 @@
+---
+import type { DatasetId } from '../datasets/registry.ts';
+import type { RelationRow as Row } from '../lib/entries.ts';
+import { datasetDef } from '../datasets/registry.ts';
+import RelationRow from './RelationRow.astro';
+
+// "Links to" and "Linked from" (ROUND3_SPEC §E.2): the relations of one entry, from the relation graph (frontmatter
+// `links` plus body `ctxman:` mentions). An okf page (canEdit) can add (`+ Link`) and remove frontmatter links; the
+// buttons carry `data-entry-action` and start disabled until the EntryTools island enables them. A reference page
+// shows "Linked from" only (showLinksTo false).
+interface Props {
+  dataset: DatasetId;
+  linksTo: readonly Row[];
+  linkedFrom: readonly Row[];
+  canEdit: boolean;
+  /** False for reference entries (they have no outgoing links). */
+  showLinksTo?: boolean;
+}
+
+const { dataset, linksTo, linkedFrom, canEdit, showLinksTo = true } = Astro.props;
+const ownFile = datasetDef(dataset).entryFile;
+// Body mentions of the entry itself are relative to its own entry file; those of a linking entry to that one's.
+const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
+---
+
+{
+  showLinksTo && (
+    <section class="cx-panel" aria-labelledby="h-links-to" data-testid="detail-links-to">
+      <h2 class="cx-panel__title" id="h-links-to">
+        Links to <span class="cx-panel__count">{linksTo.length}</span>
+        {canEdit && (
+          <span class="cx-panel__actions">
+            <button
+              type="button"
+              class="ck-button ck-button--ghost ck-button--sm"
+              disabled
+              data-entry-action="add-relation"
+              data-testid="relation-add"
+            >
+              <span class="ck-button__label">+ Link</span>
+            </button>
+          </span>
+        )}
+      </h2>
+      {linksTo.length > 0 ? (
+        <ul class="cx-minilist">
+          {linksTo.map((row) => (
+            <RelationRow row={row} entryFile={ownFile} removable={canEdit && row.source === 'frontmatter'} />
+          ))}
+        </ul>
+      ) : (
+        <p class="cx-relrow__empty">
+          No links yet.
+          {canEdit && <> Use <strong>+ Link</strong> or type <code>[[</code> in the editor.</>}
+        </p>
+      )}
+    </section>
+  )
+}
+<section class="cx-panel" aria-labelledby="h-linked-from" data-testid="detail-linked-from">
+  <h2 class="cx-panel__title" id="h-linked-from">
+    Linked from <span class="cx-panel__count">{linkedFrom.length}</span>
+  </h2>
+  {linkedFrom.length > 0 ? (
+    <ul class="cx-minilist">
+      {linkedFrom.map((row) => (
+        <RelationRow row={row} entryFile={fileOfSource(row)} />
+      ))}
+    </ul>
+  ) : (
+    <p class="cx-relrow__empty">Nothing links here yet.</p>
+  )}
+</section>

@@ -1,19 +1,29 @@
-// "Add items" part of the Sources pane (INFLATE_SPEC §9.3): find any linkable entry and add it to the
-// recipe as an ad hoc item. Same approach as the Forge Discover pane: rows come from the shared
-// `$entries` cache and are filtered client-side with `filterEntries`.
+// "Add items" part of the Sources pane (INFLATE_SPEC §9.3, ROUND3_SPEC §E.8): find any linkable entry (or search
+// all datasets at once, the "All" tab) and add it to the recipe as an ad hoc item. Same approach as the Forge
+// Discover pane: rows come from the shared `$entries` cache and are filtered client-side (`$adhoc`).
 import { useStore } from '@nanostores/react';
 import type { Key } from 'react-aria-components';
 import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import { filterEntries } from '../../lib/entry-filter.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
-import { $entries, ensureEntries } from '../../stores/entries.ts';
-import type { EntriesState } from '../../stores/entries.ts';
-import { $inflateUrl, $working, addItem, setDataset, setQuery } from '../../stores/inflate.ts';
+import { isDiscoverDataset } from '../../lib/url-state.ts';
+import type { DiscoverDataset } from '../../lib/url-state.ts';
+import { discoverTabCount } from '../../stores/discover.ts';
+import { $entries, ensureAllEntries, ensureEntries } from '../../stores/entries.ts';
+import {
+  $adhoc,
+  $inflateUrl,
+  $working,
+  ADHOC_CAP,
+  addItem,
+  setDataset,
+  setQuery,
+} from '../../stores/inflate.ts';
 import {
   Badge,
   Button,
   ButtonLink,
+  DatasetBadge,
   GridList,
   GridListItem,
   SearchField,
@@ -23,9 +33,7 @@ import {
   TabPanel,
   Tabs,
 } from '../kit/index.ts';
-
-/** Rows rendered per dataset; the filter narrows the rest. */
-const RESULT_CAP = 200;
+import { invalidTitle } from '../forge/link-label.ts';
 
 const keyOf = (e: { dataset: string; slug: string }): string => `${e.dataset}/${e.slug}`;
 
@@ -34,9 +42,11 @@ interface RowProps {
   id: string;
   entry: EntrySummary;
   added: boolean;
+  /** The "All" tab: the dataset is not implied by the tab, so the row says it. */
+  showDataset: boolean;
 }
 
-function ResultRow({ id, entry, added }: RowProps) {
+function ResultRow({ id, entry, added, showDataset }: RowProps) {
   const title = entry.title ?? entry.name;
   return (
     <GridListItem
@@ -45,14 +55,24 @@ function ResultRow({ id, entry, added }: RowProps) {
       className="cx-discover__item"
       data-testid="inflate-result"
       data-slug={entry.slug}
+      data-dataset={entry.dataset}
       data-added={added || undefined}
+      data-invalid={entry.invalid ? '' : undefined}
     >
       <div className="cx-discover__main">
         <div className="cx-row cx-discover__line">
           <span className="cx-discover__title cx-truncate">{title}</span>
           <code className="cx-discover__slug">{entry.slug}</code>
+          {showDataset && <DatasetBadge dataset={entry.dataset} />}
           {entry.refType && <Badge tone="muted">{entry.refType}</Badge>}
           {entry.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
+          {entry.invalid && (
+            <span data-testid="inflate-invalid">
+              <Badge tone="danger" title={invalidTitle(entry)}>
+                invalid
+              </Badge>
+            </span>
+          )}
           {entry.stale && <Badge tone="warn">stale</Badge>}
         </div>
         <p className="cx-discover__desc cx-truncate">{entry.description}</p>
@@ -84,38 +104,35 @@ function ResultRow({ id, entry, added }: RowProps) {
   );
 }
 
-function ResultsPanel({ dataset }: { dataset: LinkableDatasetId }) {
+function ResultsPanel({ dataset }: { dataset: DiscoverDataset }) {
   const url = useStore($inflateUrl);
-  const entries = useStore($entries, { keys: [dataset] });
+  const view = useStore($adhoc);
   const working = useStore($working);
-  const def = datasetDef(dataset);
+  const isAll = dataset === 'all';
+  const def = isAll ? null : datasetDef(dataset);
+  const plural = def?.plural ?? 'entries';
 
-  const state = entries[dataset];
-  const all = state?.entries ?? [];
-  const matched = filterEntries(all, { q: url.q, sort: 'modified' });
-  const items = matched.slice(0, RESULT_CAP);
   const added = new Set((working?.items ?? []).map(keyOf));
-  const status = state?.status ?? 'loading';
 
   const onAdd = (key: Key) => {
     const k = String(key);
     if (added.has(k)) return;
-    const entry = items.find((e) => keyOf(e) === k);
-    if (entry !== undefined) addItem(dataset, entry.slug);
+    const entry = view.items.find((e) => keyOf(e) === k);
+    if (entry !== undefined) addItem(entry.dataset as LinkableDatasetId, entry.slug);
   };
 
   const emptyText =
-    status === 'loading'
+    view.status === 'loading'
       ? 'Loading…'
-      : all.length === 0
-        ? `No ${def.plural} yet.`
+      : view.total === 0
+        ? `No ${plural} yet.`
         : 'No entries match this filter.';
 
   return (
     <>
       <div className="cx-forge__toolbar">
         <SearchField
-          aria-label={`Filter ${def.plural}`}
+          aria-label={`Filter ${plural}`}
           value={url.q}
           onChange={setQuery}
           size="sm"
@@ -123,23 +140,34 @@ function ResultsPanel({ dataset }: { dataset: LinkableDatasetId }) {
           placeholder="Filter…"
         />
         <div className="cx-forge__count" role="status" data-testid="inflate-result-count">
-          {matched.length} of {all.length}
-          {matched.length > RESULT_CAP &&
-            ` · Showing ${RESULT_CAP} of ${matched.length} — refine the filter.`}
+          {view.matched} of {view.total}
+          {view.matched > ADHOC_CAP &&
+            ` · Showing ${ADHOC_CAP} of ${view.matched} — refine the filter.`}
         </div>
       </div>
+      {isAll && view.status === 'error' && view.items.length > 0 && (
+        <div className="cx-discover__error cx-discover__notice" role="alert">
+          <span>{view.error ?? "Couldn't load some entries"}.</span>
+          <Button size="sm" onPress={() => ensureAllEntries()}>
+            Retry
+          </Button>
+        </div>
+      )}
       <GridList
-        aria-label={`${def.label} results`}
-        items={items}
-        dependencies={[added]}
+        aria-label={`${def?.label ?? 'All'} results`}
+        items={view.items}
+        dependencies={[added, isAll]}
         onAction={onAdd}
         emptyText={emptyText}
         renderEmptyState={
-          status === 'error'
+          view.status === 'error'
             ? () => (
                 <div className="ck-gridlist__empty cx-discover__error" role="alert">
                   <span>Couldn't load entries.</span>
-                  <Button size="sm" onPress={() => ensureEntries(dataset)}>
+                  <Button
+                    size="sm"
+                    onPress={() => (isAll ? ensureAllEntries() : ensureEntries(dataset))}
+                  >
                     Retry
                   </Button>
                 </div>
@@ -149,17 +177,17 @@ function ResultsPanel({ dataset }: { dataset: LinkableDatasetId }) {
         data-testid="inflate-results"
         className="cx-discover cx-adhoc__results"
       >
-        {(entry) => <ResultRow id={keyOf(entry)} entry={entry} added={added.has(keyOf(entry))} />}
+        {(entry) => (
+          <ResultRow
+            id={keyOf(entry)}
+            entry={entry}
+            added={added.has(keyOf(entry))}
+            showDataset={isAll}
+          />
+        )}
       </GridList>
     </>
   );
-}
-
-/** Tab count: `null` (dimmed ellipsis) while the first load is in flight, nothing after an error. */
-function tabCount(state: EntriesState | undefined): number | null | undefined {
-  if (state === undefined || (state.status === 'loading' && state.entries.length === 0))
-    return null;
-  return state.status === 'error' ? undefined : state.entries.length;
 }
 
 export function AdhocDiscover() {
@@ -170,25 +198,31 @@ export function AdhocDiscover() {
       <h3 className="cx-label">Add items</h3>
       <Tabs
         selectedKey={url.dataset}
-        onSelectionChange={(key) => setDataset(String(key) as LinkableDatasetId)}
+        onSelectionChange={(key) => {
+          const next = String(key);
+          if (isDiscoverDataset(next)) setDataset(next);
+        }}
         className="cx-adhoc__tabs"
       >
         <TabList aria-label="Datasets" className="cx-forge__tablist">
-          {LINKABLE_DATASETS.map((id) => {
-            const state = entries[id];
-            return (
-              <Tab
-                key={id}
-                id={id}
-                dataset={id}
-                count={tabCount(state)}
-                data-testid={`inflate-tab-${id}`}
-              >
-                {datasetDef(id).navLabel}
-              </Tab>
-            );
-          })}
+          <Tab id="all" count={discoverTabCount(entries, 'all')} data-testid="inflate-tab-all">
+            All
+          </Tab>
+          {LINKABLE_DATASETS.map((id) => (
+            <Tab
+              key={id}
+              id={id}
+              dataset={id}
+              count={discoverTabCount(entries, id)}
+              data-testid={`inflate-tab-${id}`}
+            >
+              {datasetDef(id).navLabel}
+            </Tab>
+          ))}
         </TabList>
+        <TabPanel id="all">
+          <ResultsPanel dataset="all" />
+        </TabPanel>
         {LINKABLE_DATASETS.map((id) => (
           <TabPanel key={id} id={id}>
             <ResultsPanel dataset={id} />

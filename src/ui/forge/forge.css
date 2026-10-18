@@ -111,8 +111,11 @@
     flex: 1;
     min-height: 0;
   }
+  /* tabs wrap onto a second row instead of scrolling sideways (the "All" tab + nine datasets are wider than the pane) */
   .cx-forge__tablist {
     flex: none;
+    flex-wrap: wrap;
+    overflow: visible;
     padding: 0 var(--sp-3);
     background: var(--bg-subtle);
   }
@@ -127,6 +130,7 @@
   }
   .cx-discover__item {
     display: flex;
+    flex: none; /* the list is a scrolling flex column: a long list (the All tab) must scroll, not squash its rows */
     align-items: center;
     gap: var(--sp-3);
   }
@@ -163,6 +167,12 @@
   .cx-discover__item[data-added] .cx-discover__title {
     color: var(--fg-muted);
   }
+  /* an entry whose file fails its schema: dimmed text, the "invalid" badge stays at full strength */
+  .cx-discover__item[data-invalid] .cx-discover__title,
+  .cx-discover__item[data-invalid] .cx-discover__slug,
+  .cx-discover__item[data-invalid] .cx-discover__desc {
+    opacity: 0.6;
+  }
   .cx-discover__hint {
     flex: none;
     margin: var(--sp-2) var(--sp-4) 0;
@@ -177,6 +187,36 @@
     align-items: center;
     gap: var(--sp-3);
     color: var(--danger-fg);
+  }
+  /* the "All" tab lists the rows that did load and says what did not */
+  .cx-discover__notice {
+    flex: none;
+    padding: var(--sp-1) var(--sp-4);
+    font-size: var(--fs-sm);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ---------- restored draft (ROUND3_SPEC §G), shared with the Inflate island ---------- */
+  .cx-draftbanner {
+    display: flex;
+    align-items: center;
+    flex: none;
+    gap: var(--sp-3);
+    padding: var(--sp-1) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--info-fg);
+    background: var(--info-bg);
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+  }
+  .cx-draftbanner[data-stale] {
+    color: var(--warn-fg);
+    background: var(--warn-bg);
+    border-left-color: var(--warn-fg);
+  }
+  .cx-draftbanner__text {
+    flex: 1;
+    min-width: 0;
   }
 
   /* ---------- H.5 context pane ---------- */

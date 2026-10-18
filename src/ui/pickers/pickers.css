@@ -1,0 +1,38 @@
+/* EntryPicker (src/ui/pickers): the "choose an entry" dialog. Imported by src/styles/global.css. The rows reuse
+   the Discover pane's `cx-discover__*` classes (forge.css). */
+@layer cx-app {
+  .cx-picker {
+    width: min(720px, 92vw);
+  }
+  .cx-picker__body {
+    gap: var(--sp-3);
+  }
+  .cx-picker__toolbar {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    gap: var(--sp-2);
+  }
+  .cx-picker__list {
+    flex: 1;
+    min-height: 120px;
+    max-height: min(48dvh, 440px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg-subtle);
+  }
+  .cx-picker__item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+  .cx-picker__error {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex: none;
+    color: var(--danger-fg);
+    font-size: var(--fs-sm);
+  }
+}

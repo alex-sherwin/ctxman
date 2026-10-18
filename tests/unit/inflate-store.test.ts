@@ -1,3 +1,4 @@
+import { cleanStores } from 'nanostores';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DatasetId } from '../../src/datasets/registry.ts';
 import { LINKABLE_DATASETS } from '../../src/datasets/registry.ts';
@@ -6,6 +7,7 @@ import type { EntrySummary } from '../../src/lib/entry-summary.ts';
 import { $entries } from '../../src/stores/entries.ts';
 import type { EntriesState } from '../../src/stores/entries.ts';
 import {
+  $adhoc,
   $baseline,
   $contextDocs,
   $dirty,
@@ -37,6 +39,7 @@ import {
   setContextFile,
   setDefaultDir,
   setDefaultMaterial,
+  setDataset,
   setDefaultMode,
   setDescription,
   setExcluded,
@@ -930,5 +933,266 @@ describe('format helpers', () => {
       'A recipe with this name already exists',
     );
     expect(recipeNameProblem('fresh', new Set(['taken']))).toBeNull();
+  });
+});
+
+describe('"Add items" tabs', () => {
+  let unbind: () => void = () => {};
+  beforeEach(() => {
+    vi.stubGlobal('location', { pathname: '/inflate', search: '?recipe=demo', hash: '' });
+    vi.stubGlobal('history', { state: null, replaceState: vi.fn(), pushState: vi.fn() });
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => {})); // loads that were not seeded never answer
+    const map: Partial<Record<DatasetId, EntriesState>> = {};
+    for (const ds of LINKABLE_DATASETS) map[ds] = ready();
+    map.kb = ready(
+      summary('kb', 'k1', { lastModified: '2026-01-02T00:00:00.000Z' }),
+      summary('kb', 'k2', { lastModified: '2026-01-01T00:00:00.000Z' }),
+    );
+    map.task = ready(
+      summary('task', 't1', {
+        lastModified: '2026-01-03T00:00:00.000Z',
+        invalid: [{ path: 'state', message: 'bad state' }],
+      }),
+    );
+    $entries.set(map);
+    unbind = $adhoc.listen(() => {});
+    $inflateUrl.set({
+      recipe: 'demo',
+      view: 'compose',
+      dataset: 'kb',
+      q: '',
+      job: null,
+      paths: 'relative',
+    });
+  });
+  afterEach(() => {
+    unbind();
+    cleanStores($inflateUrl);
+  });
+
+  it('a dataset tab lists that dataset, filtered by q', () => {
+    expect($adhoc.get().items.map((e) => e.slug)).toEqual(['k1', 'k2']);
+    $inflateUrl.setKey('q', 'k2');
+    const view = $adhoc.get();
+    expect(view.items.map((e) => e.slug)).toEqual(['k2']);
+    expect(view.matched).toBe(1);
+    expect(view.total).toBe(2);
+  });
+
+  it('the All tab merges every linkable dataset (newest first) and filters across them', () => {
+    $inflateUrl.setKey('dataset', 'all');
+    let view = $adhoc.get();
+    expect(view.status).toBe('ready');
+    expect(view.items.map((e) => `${e.dataset}/${e.slug}`)).toEqual(['task/t1', 'kb/k1', 'kb/k2']);
+    expect(view.total).toBe(3);
+    expect(view.items[0]?.invalid).toEqual([{ path: 'state', message: 'bad state' }]);
+    $inflateUrl.setKey('q', 'description');
+    expect($adhoc.get().matched).toBe(3);
+    $inflateUrl.setKey('q', 't1');
+    view = $adhoc.get();
+    expect(view.items.map((e) => e.slug)).toEqual(['t1']);
+  });
+
+  it('the All tab is loading until every dataset answered; a failed one is named', () => {
+    $inflateUrl.setKey('dataset', 'all');
+    $entries.setKey('bug', { status: 'loading', entries: [] });
+    expect($adhoc.get().status).toBe('loading');
+    expect($adhoc.get().items).toHaveLength(3);
+    $entries.setKey('bug', { status: 'error', entries: [], error: 'HTTP 500' });
+    expect($adhoc.get().status).toBe('error');
+    expect($adhoc.get().error).toContain('bug');
+  });
+
+  it('setDataset(all) pushes dataset=all and keeps the other params; a dataset tab drops it again', () => {
+    setDataset('all');
+    expect($inflateUrl.get().dataset).toBe('all');
+    const pushed = (
+      history.pushState as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.map((c) => String(c[2]));
+    expect(pushed).toEqual(['/inflate?recipe=demo&dataset=all']);
+    setDataset('kb'); // the default: not written
+    expect(
+      (history.pushState as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)?.[2],
+    ).toBe('/inflate?recipe=demo');
+  });
+});
+
+describe('drafts (localStorage) and the missing beforeunload prompt', () => {
+  type Inflate = typeof import('../../src/stores/inflate.ts');
+  const KEY = 'ctxman:draft:inflate:demo';
+  const json = (status: number, body?: unknown): Response =>
+    new Response(body === undefined ? null : JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  let store: Map<string, string>;
+  let listeners: string[];
+  let inflate: Inflate;
+  let putBodies: RecipeData[];
+  let disk: { recipe: RecipeData; lastModified: string };
+
+  /** A draft as draft-backup stores it. */
+  const stored = (working: unknown, base: string, savedAt = Date.now()): string =>
+    JSON.stringify({ text: JSON.stringify(working), base, savedAt });
+
+  beforeEach(async () => {
+    store = new Map();
+    listeners = [];
+    putBodies = [];
+    disk = { recipe: structuredClone(base), lastModified: 'T1' };
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
+    vi.stubGlobal('location', { pathname: '/inflate', search: '?recipe=demo', hash: '' });
+    vi.stubGlobal('history', { state: null, replaceState: vi.fn(), pushState: vi.fn() });
+    vi.stubGlobal('window', {
+      addEventListener: (type: string) => void listeners.push(type),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.startsWith('/api/entries')) return json(200, { entries: [] });
+        if (url.startsWith('/api/context/'))
+          return json(404, { error: 'not-found', message: 'no' });
+        if (url.startsWith('/api/inflate/render')) {
+          return json(200, { markdown: '# demo\n', manifest: { bytes: 7, segments: [] } });
+        }
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as RecipeData;
+          putBodies.push(body);
+          disk = { recipe: body, lastModified: 'T2' };
+          return json(200, disk);
+        }
+        if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+        return json(200, disk);
+      }),
+    );
+    vi.resetModules();
+    inflate = await import('../../src/stores/inflate.ts');
+  });
+
+  afterEach(() => {
+    inflate.$working.set(null); // stops the debounced render of the discarded module instance
+    cleanStores(inflate.$inflateUrl);
+  });
+
+  /** Mount the URL store (as the island does) and wait for the recipe to load. */
+  async function mount(): Promise<void> {
+    inflate.$inflateUrl.listen(() => {});
+    await vi.waitFor(() => expect(inflate.$recipeLoad.get().status).toBe('ready'));
+  }
+
+  it('registers no beforeunload listener (only popstate and keydown)', async () => {
+    await mount();
+    expect(listeners.sort()).toEqual(['keydown', 'popstate']);
+  });
+
+  it('saves the working copy on every change and clears it once the copy is clean again', async () => {
+    await mount();
+    expect(store.size).toBe(0);
+    inflate.setDescription('Changed');
+    const draft = JSON.parse(store.get(KEY) ?? 'null') as { text: string; base: string };
+    expect(draft.base).toBe('T1');
+    expect(JSON.parse(draft.text).description).toBe('Changed');
+    inflate.setDescription(base.description);
+    expect(store.has(KEY)).toBe(false);
+  });
+
+  it('restores a fresh draft after a reload: working copy, dirty, banner not stale', async () => {
+    store.set(
+      KEY,
+      stored({ ...base, description: 'Edited before the reload', layout: 'flat' }, 'T1'),
+    );
+    await mount();
+    expect(inflate.$working.get()?.description).toBe('Edited before the reload');
+    expect(inflate.$working.get()?.layout).toBe('flat');
+    expect(inflate.$baseline.get()?.description).toBe('Demo recipe');
+    expect(inflate.$dirty.get()).toBe(true);
+    expect(inflate.$draftRestored.get()).toEqual({ stale: false });
+    expect(store.has(KEY)).toBe(true);
+  });
+
+  it('restores a draft whose file changed on disk with the stale warning, and keeps its base', async () => {
+    store.set(KEY, stored({ ...base, description: 'Old edit' }, 'T0'));
+    await mount();
+    expect(inflate.$working.get()?.description).toBe('Old edit');
+    expect(inflate.$draftRestored.get()).toEqual({ stale: true });
+    inflate.setDescription('Old edit, continued');
+    expect(JSON.parse(store.get(KEY) ?? '{}').base).toBe('T0');
+  });
+
+  it.each([
+    ['not JSON', 'this is not json {'],
+    ['a wrong shape', JSON.stringify({ name: 'demo', description: 'd', target: 'nope' })],
+    ['another recipe name', JSON.stringify({ ...base, name: 'other' })],
+    ['a copy equal to the saved recipe', JSON.stringify(base)],
+  ])('drops a draft that is %s', async (_label, text) => {
+    store.set(KEY, JSON.stringify({ text, base: 'T1', savedAt: Date.now() }));
+    await mount();
+    expect(inflate.$working.get()).toEqual(base);
+    expect(inflate.$draftRestored.get()).toBeNull();
+    expect(inflate.$dirty.get()).toBe(false);
+    expect(store.has(KEY)).toBe(false);
+  });
+
+  it('drops a draft older than 14 days', async () => {
+    store.set(KEY, stored({ ...base, description: 'Ancient' }, 'T1', Date.now() - 15 * 86_400_000));
+    await mount();
+    expect(inflate.$working.get()?.description).toBe('Demo recipe');
+    expect(store.has(KEY)).toBe(false);
+  });
+
+  it('revert (the banner Discard) clears the draft and hides the banner', async () => {
+    store.set(KEY, stored({ ...base, description: 'Edited' }, 'T1'));
+    await mount();
+    inflate.revert();
+    expect(inflate.$working.get()).toEqual(base);
+    expect(inflate.$draftRestored.get()).toBeNull();
+    expect(store.has(KEY)).toBe(false);
+  });
+
+  it('save clears the draft and adopts the new lastModified as the base of later edits', async () => {
+    store.set(KEY, stored({ ...base, description: 'Edited' }, 'T0'));
+    await mount();
+    await inflate.save();
+    expect(putBodies).toHaveLength(1);
+    expect(inflate.$baselineModified.get()).toBe('T2');
+    expect(inflate.$draftRestored.get()).toBeNull();
+    expect(inflate.$dirty.get()).toBe(false);
+    expect(store.has(KEY)).toBe(false);
+    inflate.setDescription('Next edit');
+    expect(JSON.parse(store.get(KEY) ?? '{}').base).toBe('T2');
+  });
+
+  it('deleting the recipe clears its draft', async () => {
+    store.set(KEY, stored({ ...base, description: 'Edited' }, 'T1'));
+    await mount();
+    await inflate.deleteRecipe();
+    expect(store.has(KEY)).toBe(false);
+    expect(inflate.$working.get()).toBeNull();
+    expect(inflate.$draftRestored.get()).toBeNull();
+  });
+
+  it('a freshly created recipe never restores a draft of the same name', async () => {
+    await mount();
+    store.set(KEY, stored({ ...base, description: 'Left over' }, 'T1'));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => json(201, { recipe: base, lastModified: 'T3' })),
+    );
+    const result = await inflate.createRecipe({
+      name: 'demo',
+      description: 'Demo recipe',
+      target: 'claude-code',
+    });
+    expect(result.ok).toBe(true);
+    expect(inflate.$working.get()).toEqual(base);
+    expect(inflate.$draftRestored.get()).toBeNull();
+    expect(store.has(KEY)).toBe(false);
   });
 });

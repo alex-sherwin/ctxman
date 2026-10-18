@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import {
   BUG_STATES,
+  ENTRY_RELS,
   FEATURE_STATES,
   IDEA_STATES,
   LINKABLE_DATASETS,
@@ -91,11 +92,35 @@ const okfConceptShape = {
 /** Any non-reserved OKF concept file (not index.md / log.md). */
 export const okfConceptSchema = z.looseObject(okfConceptShape);
 
+/**
+ * One structured relation of an okf entry (main.md frontmatter `links`); `from` is the entry that declares it.
+ * `rel`: `child` = this entry contains the target (projects), `related` symmetric, `depends-on` = this needs the
+ * target first.
+ */
+export const entryLinkSchema = z.strictObject({
+  dataset: z.enum(LINKABLE_DATASETS),
+  slug: nameSchema,
+  /** Absent in hand-written files = 'related'. ctxman always writes it. */
+  rel: z.enum(ENTRY_RELS).default('related'),
+});
+/** Array-level refine (NOT object-level: the kb/rca schema is `.extend`ed per lifecycle dataset): one link per target. */
+export const entryLinksSchema = z.array(entryLinkSchema).superRefine((links, ctx) => {
+  const seen = new Set<string>();
+  links.forEach((link, index) => {
+    const key = `${link.dataset}/${link.slug}`;
+    if (seen.has(key)) {
+      ctx.addIssue({ code: 'custom', path: [index], message: `duplicate link ${key}` });
+    }
+    seen.add(key);
+  });
+});
+
 /** Bundle entry concept main.md for kb / rca (no lifecycle). */
 export const okfEntrySchema = z.looseObject({
   ...okfConceptShape,
   name: nameSchema,
   description: z.string().trim().min(1),
+  links: entryLinksSchema.optional(),
 });
 
 export const kbSchema = okfEntrySchema;
@@ -435,6 +460,10 @@ export type SkillData = z.infer<typeof skillSchema>;
 export type ReferenceData = z.infer<typeof referenceSchema>;
 /** Input shape (before defaults): what API bodies carry. */
 export type ReferenceInput = z.input<typeof referenceSchema>;
+/** A structured relation of an okf entry; `rel` is always present after parsing (default 'related'). */
+export type EntryLink = z.infer<typeof entryLinkSchema>;
+/** Input shape (before the `rel` default): what API clients send. */
+export type EntryLinkInput = z.input<typeof entryLinkSchema>;
 export type ContextLink = z.infer<typeof contextLinkSchema>;
 export type ContextData = z.infer<typeof contextSchema>;
 /** Input shape (before defaults) — what API clients send and what context-io writes. */

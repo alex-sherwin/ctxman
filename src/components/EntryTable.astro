@@ -5,9 +5,10 @@ import { TARGETS } from '../lib/inflate/catalog.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
 import type { ListSort } from '../lib/url-state.ts';
 import Freshness from './Freshness.astro';
+import InvalidBadge from './InvalidBadge.astro';
 import OkfStatusBadge from './OkfStatusBadge.astro';
 import StaleBadge from './StaleBadge.astro';
-import StateBadge from './StateBadge.astro';
+import StateSelect from './StateSelect.astro';
 
 interface Props {
   def: DatasetDef;
@@ -89,6 +90,7 @@ const MAX_TAGS = 4;
                       <a class="cx-table__title cx-rowlink__main" href={e.url}>
                         {e.title ?? e.name}
                       </a>
+                      {e.invalid && <>{" "}<InvalidBadge issues={e.invalid} /></>}
                       {e.stale && <>{" "}<StaleBadge since={e.staleAfter} /></>}
                       {(e.okfStatus === "draft" || e.okfStatus === "deprecated") && <>{" "}<OkfStatusBadge status={e.okfStatus} /></>}
                       {e.title !== undefined && e.title !== e.name && (
@@ -105,7 +107,11 @@ const MAX_TAGS = 4;
                     </td>
                   );
                 case 'state':
-                  return <td class="ck-table__td">{e.state && <StateBadge dataset={e.dataset} state={e.state} />}</td>;
+                  return (
+                    <td class="ck-table__td cx-table__td--state">
+                      <StateSelect dataset={e.dataset} slug={e.slug} title={e.title ?? e.name} state={e.state} />
+                    </td>
+                  );
                 case 'tags':
                   return (
                     <td class="ck-table__td">

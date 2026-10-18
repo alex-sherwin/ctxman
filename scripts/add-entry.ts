@@ -3,26 +3,21 @@
 //          [--type local-repo|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
 //          [--owner me|not-me] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, rmdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { parseArgs } from 'node:util';
 import {
   DATASET_IDS,
-  datasetDef,
   entryUrl,
   isDatasetId,
-  isOkfDatasetId,
   isReferenceType,
   OWNERS,
   REFERENCE_TYPES,
 } from '../src/datasets/registry.ts';
-import type { DatasetId, Owner } from '../src/datasets/registry.ts';
-import { DATASET_SCHEMAS } from '../src/datasets/schemas.ts';
+import type { Owner } from '../src/datasets/registry.ts';
 import { resolveDataDir } from '../src/lib/data-dir.ts';
-import { entryAbsPath, entryFileRelPath } from '../src/lib/freshness.ts';
-import { parseFrontmatter, validateOkfFile } from '../src/lib/okf.ts';
+import { EntryCreateError, writePlannedEntry } from '../src/lib/entry-create.ts';
+import { entryFileRelPath } from '../src/lib/freshness.ts';
 import {
   GIT_URI_MESSAGE,
   SKILL_URI_MESSAGE,
@@ -31,7 +26,6 @@ import {
 } from '../src/lib/remote-uri.ts';
 import { planNewEntry } from '../src/lib/templates.ts';
 import type { PlannedFile } from '../src/lib/templates.ts';
-import { parseYaml } from '../src/lib/yaml.ts';
 import { EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, writeError, writeJson, writeLine } from './cli.ts';
 
 const USAGE = `Usage: node scripts/add-entry.ts <dataset> <name> [options]
@@ -68,44 +62,6 @@ function finish(code: number, error?: string): void {
 function displayPath(dataDir: string, relPath: string): string {
   const usesDefault = dataDir === path.resolve(process.cwd(), 'data');
   return usesDefault ? `data/${relPath}` : path.join(dataDir, ...relPath.split('/'));
-}
-
-function problemsOf(
-  dataset: DatasetId,
-  name: string,
-  planned: PlannedFile,
-  source: string,
-): string[] {
-  const def = datasetDef(dataset);
-  const fail = (message: string): string[] => [`${planned.relPath}: ${message}`];
-  const schemaProblems = (data: unknown): string[] => {
-    const result = DATASET_SCHEMAS[dataset].safeParse(data);
-    const issues = result.success
-      ? []
-      : result.error.issues.map(
-          (i) => `${planned.relPath}: ${i.path.map(String).join('.') || '(root)'}: ${i.message}`,
-        );
-    const given = (data as { name?: unknown } | null)?.name;
-    if (result.success && given !== name)
-      issues.push(`${planned.relPath}: name must equal "${name}"`);
-    return issues;
-  };
-
-  if (def.kind === 'okf' && isOkfDatasetId(dataset)) {
-    const relPath = planned.relPath.slice(`${dataset}/${name}/`.length);
-    return validateOkfFile({ dataset, bundle: name, relPath, source, file: planned.relPath })
-      .filter((f) => f.severity === 'error')
-      .map((f) => `${f.file}: ${f.rule}: ${f.message}`);
-  }
-  if (def.kind === 'skill') {
-    const parsed = parseFrontmatter(source);
-    return parsed.ok ? schemaProblems(parsed.doc.data) : fail(parsed.error);
-  }
-  try {
-    return schemaProblems(parseYaml(source));
-  } catch (error) {
-    return fail((error as Error).message);
-  }
 }
 
 async function main(): Promise<void> {
@@ -206,46 +162,17 @@ async function main(): Promise<void> {
     return finish(EXIT_USAGE, (error as Error).message);
   }
 
-  const target = entryAbsPath(dataset, name, dataDir);
-  if (existsSync(target)) {
-    const rel =
-      datasetDef(dataset).kind === 'data' ? `${dataset}/${name}.yaml` : `${dataset}/${name}`;
-    return finish(EXIT_FINDINGS, `${displayPath(dataDir, rel)} already exists`);
-  }
-
-  // Write (never overwriting), then re-read and validate; undo everything on failure.
-  const written: string[] = [];
-  const rollback = async (): Promise<void> => {
-    for (const abs of written) await unlink(abs).catch(() => undefined);
-    if (datasetDef(dataset).kind !== 'data') await rmdir(target).catch(() => undefined);
-  };
+  // Write (never overwriting), then re-read and validate; the helper undoes everything on failure.
   try {
-    for (const file of planned) {
-      const abs = path.join(dataDir, ...file.relPath.split('/'));
-      await mkdir(path.dirname(abs), { recursive: true });
-      await writeFile(abs, file.content, { encoding: 'utf8', flag: 'wx' });
-      written.push(abs);
-    }
-    const problems: string[] = [];
-    for (const file of planned) {
-      const source = await readFile(path.join(dataDir, ...file.relPath.split('/')), 'utf8');
-      problems.push(...problemsOf(dataset, name, file, source));
-    }
-    if (problems.length > 0) {
-      await rollback();
-      return finish(
-        EXIT_FINDINGS,
-        `generated files failed validation:\n  ${problems.join('\n  ')}`,
-      );
-    }
+    await writePlannedEntry(dataset, name, planned, dataDir);
   } catch (error) {
-    await rollback();
-    const code = (error as NodeJS.ErrnoException).code;
+    if (!(error instanceof EntryCreateError)) throw error;
+    // `invalid` / `io` messages are already the texts this script prints ("generated files failed validation:…").
     return finish(
       EXIT_FINDINGS,
-      code === 'EEXIST'
-        ? `${displayPath(dataDir, planned[0]?.relPath ?? name)} already exists`
-        : `could not write the entry: ${(error as Error).message}`,
+      error.code === 'exists'
+        ? `${displayPath(dataDir, error.relPath ?? name)} already exists`
+        : error.message,
     );
   }
 

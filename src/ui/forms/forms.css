@@ -1,4 +1,4 @@
-/* DataForm island (src/ui/forms): create / edit a reference, context or recipe. Imported by src/styles/global.css. */
+/* DataForm and NewEntryForm islands (src/ui/forms). Imported by src/styles/global.css. */
 @layer cx-app {
   .cx-dform {
     display: flex;
@@ -60,5 +60,21 @@
   }
   .cx-dform__footer .ck-button--danger {
     margin-left: auto;
+  }
+
+  /* NewEntryForm (round 3): state + project side by side, tags and problem text. */
+  .cx-nform__row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--sp-3);
+    align-items: start;
+  }
+  .cx-nform__tags {
+    min-width: 0;
+  }
+  .cx-nform__problem {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
   }
 }

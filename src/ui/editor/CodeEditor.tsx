@@ -31,6 +31,10 @@ export interface CodeMarker {
 export interface CodeEditorApi {
   focus(): void;
   revealPosition(line: number, column: number): void;
+  /** Replaces the primary selection (or inserts at the cursor), keeps it undoable as one step, focuses the editor. */
+  insertText(text: string): void;
+  /** The text of the primary selection (`''` when it is empty). */
+  selectedText(): string;
 }
 
 export interface CodeEditorProps {
@@ -60,6 +64,12 @@ export interface CodeEditorProps {
   /** Cmd/Ctrl+S inside the editor (a per-instance Monaco action). */
   onSave?: () => void;
   onReady?: (api: CodeEditorApi) => void;
+  /**
+   * When given, a per-instance Monaco action "Insert link to entry…" (Ctrl/Cmd+Alt+K, context menu) calls it;
+   * the caller opens its EntryPicker and finishes with `api.insertText(markdownLink(...))`. Not for read-only
+   * editors (the action has a `!editorReadonly` precondition).
+   */
+  onInsertLink?: () => void;
   /** Id of external help/issue text, set as `aria-describedby` on the root. */
   describedBy?: string;
 }
@@ -96,6 +106,7 @@ export function CodeEditor({
   schemaDataset,
   onSave,
   onReady,
+  onInsertLink,
   describedBy,
 }: CodeEditorProps) {
   const reactId = useId();
@@ -115,14 +126,36 @@ export function CodeEditor({
   // Latest callbacks for Monaco event handlers. Refs are written in an effect, never during render.
   const onSaveRef = useRef(onSave);
   const onReadyRef = useRef(onReady);
+  const onInsertLinkRef = useRef(onInsertLink);
   const limitsRef = useRef({ minPx, maxPx });
   useEffect(() => {
     onSaveRef.current = onSave;
     onReadyRef.current = onReady;
+    onInsertLinkRef.current = onInsertLink;
     limitsRef.current = { minPx, maxPx };
   });
 
   const hasError = markers?.some((m) => m.severity === 'error') ?? false;
+  const hasInsertLink = onInsertLink !== undefined;
+
+  // "Insert link to entry…" (Mod+Alt+K): added while a callback is given, disposed otherwise. Monaco binds
+  // Ctrl/Cmd+Shift+K to "delete line", hence Alt. Per-instance addAction like Save.
+  useEffect(() => {
+    if (!mounted || !hasInsertLink) return;
+    const { editor: ed, monaco } = mounted;
+    const action = ed.addAction({
+      id: 'ctxman.insertLink',
+      label: 'Insert link to entry…',
+      precondition: '!editorReadonly',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyK],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.5,
+      run: () => {
+        onInsertLinkRef.current?.();
+      },
+    });
+    return () => action.dispose();
+  }, [mounted, hasInsertLink]);
 
   // Sync markers (external system) whenever they change or the editor becomes ready. Never sets state.
   useEffect(() => {
@@ -221,6 +254,19 @@ export function CodeEditor({
         ed.revealPositionInCenter({ lineNumber: line, column });
         ed.setPosition({ lineNumber: line, column });
         ed.focus();
+      },
+      insertText: (text) => {
+        const selection = ed.getSelection();
+        if (selection === null || ed.getOption(monaco.editor.EditorOption.readOnly)) return;
+        ed.pushUndoStop();
+        ed.executeEdits('ctxman', [{ range: selection, text, forceMoveMarkers: true }]);
+        ed.pushUndoStop();
+        ed.focus();
+      },
+      selectedText: () => {
+        const selection = ed.getSelection();
+        const model = ed.getModel();
+        return selection === null || model === null ? '' : model.getValueInRange(selection);
       },
     });
   };

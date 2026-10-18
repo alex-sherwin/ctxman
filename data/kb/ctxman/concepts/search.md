@@ -14,9 +14,9 @@ Search is a full-screen modal available on every page. It queries every dataset 
 
 ## What is indexed
 
-`GET /api/search-index.json` returns `{ generatedAt, docs }`. Documents are built on the server:
+`GET /api/search-index.json` returns `{ generatedAt, docs }`. Documents are built on the server from the content collections, so they follow the dev server's file watching (about a second after a write) and a built server shows new entries in search only after a rebuild:
 
-* One document per markdown file in every OKF bundle (`main.md`, concepts, `index.md`, `log.md`).
+* One document per markdown file in every OKF bundle (`main.md` and the concepts). A bundle's `index.md` and `log.md` are left out: they are navigation and history, not knowledge.
 * One document per skill, from the `SKILL.md` body.
 * One document per reference, context and recipe, made from their field values flattened to text, so data records are searchable by their fields. A recipe's text is its description, target and layout, the listed contexts and ad hoc item keys, the preamble and the markdown blocks; its page is `/recipe/<slug>`.
 

@@ -1,21 +1,7 @@
-// Tools page (UI_SPEC §I, ROUND2_UI_SPEC §I): run the allowlisted check scripts and scaffold an entry with the add
-// script. A successful add opens the new entry: contexts / recipes at once, okf / skill / reference entries once
-// `/api/entries` lists them (the dev server also reloads the page ~0.7 s after such a write; the saved run resumes).
+// Tools page (UI_SPEC §I, ROUND3_SPEC §E.7): run the allowlisted check scripts, and the "New entry" panel that picks a
+// dataset and links to its create form at /new/<ds> (nothing is created on this page; the forms are covered by
+// forms.spec.ts). The `add` script stays allowlisted for the CLI and the API specs.
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
-import { dataExists, readDataText, uniqueName } from './helpers.ts';
-
-const RUN_KEY = 'ctxman:tools:last-run';
-
-async function fillAddForm(
-  page: Page,
-  name: string,
-  description = 'Created by the e2e suite',
-): Promise<void> {
-  await page.getByTestId('tools-add-name').fill(name);
-  await page.getByTestId('tools-add-title').fill('E2E entry');
-  await page.getByTestId('tools-add-description').fill(description);
-}
 
 test.describe('checks', () => {
   test('the check scripts are listed with a Run button each', async ({ page }) => {
@@ -25,7 +11,7 @@ test.describe('checks', () => {
       await expect(page.getByTestId(`tools-script-${name}`)).toBeVisible();
       await expect(page.getByTestId(`tools-run-${name}`)).toBeEnabled();
     }
-    // `add` is not a check: it lives in the Add entry panel.
+    // `add` is not a check: entries are created in the forms linked from the New entry panel.
     await expect(page.getByTestId('tools-script-add')).toHaveCount(0);
   });
 
@@ -35,9 +21,20 @@ test.describe('checks', () => {
     await expect(page.getByTestId('tools-exit-code')).toHaveText('exit 0');
     await expect(page.getByTestId('tools-stdout')).toContainText('All checks: OK');
   });
+
+  test('the last run survives a page reload', async ({ page }) => {
+    await page.goto('/tools');
+    await page.getByTestId('tools-run-check-okf').click();
+    await expect(page.getByTestId('tools-exit-code')).toHaveText('exit 0');
+    await page.reload();
+    await expect(page.getByTestId('tools-exit-code')).toHaveText('exit 0');
+    await expect(page.getByTestId('tools-script-check-okf')).toContainText('exit 0');
+    await page.getByTestId('tools-output-clear').click();
+    await expect(page.getByTestId('tools-output-status')).toHaveText('Run a check to see output.');
+  });
 });
 
-test.describe('add entry', () => {
+test.describe('new entry panel', () => {
   test('?add=task preselects the dataset; ?add=bug preselects another', async ({ page }) => {
     await page.goto('/tools?add=task');
     await expect(page.getByTestId('tools-add-dataset')).toContainText('Tasks');
@@ -55,134 +52,44 @@ test.describe('add entry', () => {
     await expect(page).toHaveURL(/[?&]add=kb(&|$)/);
   });
 
-  test('creates an idea and opens it once the entry is listed (surviving the dev reload)', async ({
+  test('there is no create form here: a link to /new/<ds> and the CLI hint instead', async ({
     page,
   }) => {
-    const name = uniqueName('e2e-idea');
-    await page.goto('/tools?add=idea');
-    await expect(page.getByTestId('tools-add-dataset')).toContainText('Ideas');
-    await fillAddForm(page, name);
-    await page.getByTestId('tools-add-submit').click();
-
-    // The result panel appears first, with the "Opening…" status while the entry is not listed yet.
-    await expect(page.getByTestId('tools-add-path')).toHaveText(`idea/${name}/main.md`);
-    await expect(page.getByTestId('tools-add-opening')).toBeVisible();
-
-    await expect(page).toHaveURL(new RegExp(`/idea/${name}$`), { timeout: 15_000 });
-    await expect(page.getByTestId('detail-slug')).toHaveText(name);
-    await expect(page.getByTestId('detail-content')).toContainText('Created by the e2e suite');
-    expect(dataExists(`idea/${name}/main.md`)).toBe(true);
-    expect(readDataText(`idea/${name}/main.md`)).toContain(`name: ${name}`);
-  });
-
-  test('coming back to /tools shows the result and does not navigate again', async ({ page }) => {
-    const name = uniqueName('e2e-task');
     await page.goto('/tools?add=task');
-    await fillAddForm(page, name);
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page).toHaveURL(new RegExp(`/task/${name}$`), { timeout: 15_000 });
-
-    await page.goto('/tools?add=task');
-    await expect(page.getByTestId('tools-add-path')).toHaveText(`task/${name}/main.md`);
-    await expect(page.getByTestId('tools-add-opening')).toHaveCount(0);
-    await page.waitForTimeout(1500); // a resumed follow would have navigated by now
-    await expect(page).toHaveURL(/\/tools\?add=task$/);
-    // The link in the result panel still works.
-    await page.getByTestId('tools-add-open').click();
-    await expect(page).toHaveURL(new RegExp(`/task/${name}$`));
-  });
-
-  test('creating a context opens it at once', async ({ page, request }) => {
-    const name = uniqueName('e2e-ctx');
-    await page.goto('/tools?add=context');
-    await expect(page.getByTestId('tools-add-dataset')).toContainText('Contexts');
-    await fillAddForm(page, name);
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page).toHaveURL(new RegExp(`/context/${name}$`), { timeout: 15_000 });
-    await expect(page.getByTestId('detail-slug')).toHaveText(name);
-    expect(dataExists(`context/${name}.yaml`)).toBe(true);
-    await request.delete(`/api/context/${name}`);
-  });
-
-  test('creating a recipe opens it at once', async ({ page, request }) => {
-    const name = uniqueName('e2e-recipe');
-    await page.goto('/tools?add=recipe');
-    await expect(page.getByTestId('tools-add-dataset')).toContainText('Inflate recipes');
-    await fillAddForm(page, name);
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page).toHaveURL(new RegExp(`/recipe/${name}$`), { timeout: 15_000 });
-    await expect(page.getByTestId('detail-slug')).toHaveText(name);
-    await request.delete(`/api/recipe/${name}`);
-  });
-
-  test('adding the same name again exits non-zero with "already exists" and does not navigate', async ({
-    page,
-  }) => {
-    const name = uniqueName('e2e-idea');
-    await page.goto('/tools?add=idea');
-    await fillAddForm(page, name, 'First try');
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page).toHaveURL(new RegExp(`/idea/${name}$`), { timeout: 15_000 });
-    expect(dataExists(`idea/${name}/main.md`)).toBe(true);
-
-    await page.goto('/tools?add=idea');
-    await fillAddForm(page, name, 'First try');
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page.getByTestId('tools-exit-code')).toHaveText(/^exit [1-9]\d*$/);
-    await expect(page.getByTestId('tools-stderr')).toContainText('already exists');
-    await expect(page.getByTestId('tools-add-opening')).toHaveCount(0);
-    await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(/\/tools\?add=idea$/);
-  });
-
-  test('an entry that never gets listed keeps the result panel and explains', async ({ page }) => {
-    const name = uniqueName('e2e-idea');
-    // The built-server case: the snapshot never lists the new entry.
-    await page.route('**/api/entries?dataset=idea', (route) =>
-      route.fulfill({ json: { entries: [] } }),
-    );
-    await page.goto('/tools?add=idea');
-    await fillAddForm(page, name);
-    await page.getByTestId('tools-add-submit').click();
-    await expect(page.getByTestId('tools-add-path')).toHaveText(`idea/${name}/main.md`);
-    await expect(page.getByTestId('tools-add-follow-timeout')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('tools-add-opening')).toHaveCount(0);
-    await expect(page.getByTestId('tools-add-open')).toHaveAttribute('href', `/idea/${name}`);
-    await expect(page).toHaveURL(/\/tools\?add=idea$/);
-  });
-
-  test('a saved follow resumes after a plain reload; an expired one is dropped', async ({
-    page,
-  }) => {
-    // `kb/ctxman` is a seed entry that is already listed, so the resumed follow navigates at once.
-    const run = (followUntil: number) => ({
-      status: 'done',
-      script: 'add',
-      code: 0,
-      stdout: '',
-      stderr: '',
-      durationMs: 1,
-      created: { dataset: 'kb', slug: 'ctxman', path: 'kb/ctxman/main.md', url: '/kb/ctxman' },
-      follow: true,
-      followUntil,
-    });
-    await page.goto('/tools');
     await expect(page.getByTestId('tools-add')).toBeVisible();
-    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
-      RUN_KEY,
-      JSON.stringify(run(Date.now() - 1000)),
-    ] as const);
-    await page.reload();
-    await expect(page.getByTestId('tools-add-path')).toHaveText('kb/ctxman/main.md');
-    await expect(page.getByTestId('tools-add-opening')).toHaveCount(0);
-    await page.waitForTimeout(1000);
-    await expect(page).toHaveURL(/\/tools$/);
+    await expect(page.getByTestId('tools-add-form')).toHaveCount(0);
+    await expect(page.getByTestId('tools-add-name')).toHaveCount(0);
+    await expect(page.getByTestId('tools-add-submit')).toHaveCount(0);
+    await expect(page.getByTestId('tools-add-open-form')).toHaveAttribute('href', '/new/task');
+    await expect(page.getByTestId('tools-add-open-form')).toContainText('New task form');
+    await expect(page.getByTestId('tools-add-cli')).toHaveText('pnpm run add:task <name>');
+  });
 
-    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
-      RUN_KEY,
-      JSON.stringify(run(Date.now() + 60_000)),
-    ] as const);
-    await page.reload();
-    await expect(page).toHaveURL(/\/kb\/ctxman$/, { timeout: 15_000 });
+  test('the link follows the dataset select, for the yaml datasets too', async ({ page }) => {
+    await page.goto('/tools?add=task');
+    await page.getByTestId('tools-add-dataset').click();
+    await page.getByRole('option', { name: /References/ }).click();
+    await expect(page.getByTestId('tools-add-open-form')).toHaveAttribute('href', '/new/reference');
+    await expect(page.getByTestId('tools-add-open-form')).toContainText('New reference form');
+    await expect(page.getByTestId('tools-add-cli')).toHaveText('pnpm run add:reference <name>');
+    await expect(page).toHaveURL(/[?&]add=reference(&|$)/);
+  });
+
+  test('without a dataset the link is disabled; #add-entry lands on the panel', async ({
+    page,
+  }) => {
+    await page.goto('/tools#add-entry');
+    await expect(page.getByTestId('tools-add')).toBeVisible();
+    await expect(page.getByTestId('tools-add-open-form')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('tools-add-open-form')).not.toHaveAttribute('href', /.+/);
+    await expect(page.getByTestId('tools-add-cli')).toHaveText('pnpm run add:<dataset> <name>');
+  });
+
+  test('the link opens the create form of the dataset', async ({ page }) => {
+    await page.goto('/tools?add=idea');
+    await page.getByTestId('tools-add-open-form').click();
+    await expect(page).toHaveURL(/\/new\/idea$/);
+    await expect(page.getByTestId('new-entry-form')).toBeVisible();
+    await expect(page.getByTestId('new-submit')).toHaveText('Create idea');
   });
 });

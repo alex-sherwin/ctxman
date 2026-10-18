@@ -3,6 +3,8 @@
 // Mounted by src/pages/inflate.astro with client:only="react".
 import { useStore } from '@nanostores/react';
 import {
+  $dirty,
+  $draftRestored,
   $inflateUrl,
   $newRecipePrefill,
   $pendingSwitch,
@@ -12,8 +14,10 @@ import {
   cancelSwitch,
   confirmSwitch,
   retryLoad,
+  revert,
   selectRecipe,
 } from '../../stores/inflate.ts';
+import { DraftBanner } from '../forge/DraftBanner.tsx';
 import { Button, ConfirmDialog, EmptyState, Spinner } from '../kit/index.ts';
 import { CompositionPane } from './CompositionPane.tsx';
 import { NewRecipeDialog } from './NewRecipeDialog.tsx';
@@ -38,6 +42,14 @@ function DiscardDialog() {
       Switching recipe discards the edits you have not saved.
     </ConfirmDialog>
   );
+}
+
+/** The working copy came back from a saved draft (a reload, a dev reload): say so, offer Discard. */
+function DraftNotice() {
+  const restored = useStore($draftRestored);
+  const dirty = useStore($dirty);
+  if (restored === null || !dirty) return null;
+  return <DraftBanner testIdPrefix="inflate" stale={restored.stale} onDiscard={revert} />;
 }
 
 /** What the body shows while no recipe is loaded (loading, not found, error, nothing selected). */
@@ -139,6 +151,7 @@ export default function Inflate({ outDir }: { outDir: string }) {
   return (
     <div className="cx-inflate" data-testid="inflate">
       <RecipeBar />
+      <DraftNotice />
       <div className="cx-inflate__body" data-view={working ? view : 'compose'}>
         <Body outDir={outDir} />
       </div>

@@ -8,6 +8,10 @@ tags: [testing, forge, e2e]
 generated:
   by: claude-code/ctxman-seed
   at: 2026-10-17T11:25:00Z
+links:
+  - dataset: feature
+    slug: context-forge
+    rel: depends-on
 ---
 
 # Forge end-to-end coverage

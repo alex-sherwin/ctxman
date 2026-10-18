@@ -36,6 +36,15 @@ Warnings include a `main.md` whose `type` differs from the registry value, a mis
 
 Checked in every OKF bundle and every skill folder. A bundle-root link (`/x.md`) or relative link (`./x.md`) to a missing file is an error, as is a link that escapes the bundle. External URLs and in-page anchors are skipped. A `ctxman:` link with bad syntax is an error; one that points at a missing entry is a warning, because entries may be deleted while links lag behind.
 
+The structured `links` of an okf `main.md` (see [Relations](/concepts/relations.md)) get two more rules, reported on the line of the `links:` key:
+
+| Rule id | Severity | Fires when |
+| --- | --- | --- |
+| `links/relation-target` | warning | A frontmatter link points at an entry that does not exist (`relation target <dataset>/<slug> does not exist`) |
+| `links/relation-self` | error | An entry links to itself (`an entry cannot link to itself`) |
+
+A malformed link item or a duplicate target is not reported here: it fails the dataset schema (`okf/entry-schema` in `check:okf`, `collections/schema` in `check:collections`). The same file-level link findings (`links/broken`, `links/escapes-bundle`, `links/ctxman-invalid`, `links/ctxman-target`, and the two relation rules for a `main.md`) come back as `warnings` from `PUT /api/doc/...`, so a save from the browser shows what the CLI would say.
+
 ## Collection rules (`check:collections`)
 
 Reports every schema violation at once instead of stopping at the first, which is what `astro sync` does. It also checks that names equal folder or file stems, that skills have a `SKILL.md`, that context link targets exist (warning), and flags stray files and unknown top-level folders under `data/`. Recipes (`data/recipe/*.yaml`) are validated against the recipe schema like every other dataset.
@@ -85,3 +94,4 @@ Change a yaml dataset in this order: `schemas.ts`, `arktypes.ts` (a parity test 
 * [Adding entries](/concepts/adding-entries.md) produces files that already pass them.
 * [Context inflate](/concepts/context-inflate.md) explains the recipes these rules check.
 * [Editing](/concepts/editing.md) explains why a document saved from the browser may carry warnings.
+* [Relations](/concepts/relations.md) explains the `links` field the two relation rules check.

@@ -137,40 +137,19 @@
     }
   }
 
-  /* ---------- I.5 add entry form ---------- */
+  /* ---------- I.5 new entry panel (dataset + link to /new/<ds>) ---------- */
   .cx-addform {
     padding: var(--sp-3) var(--sp-4);
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-2) var(--sp-3);
     align-items: start;
   }
   .cx-addform__actions {
-    grid-column: 1 / -1;
     display: flex;
-    justify-content: flex-end;
-  }
-  .cx-addform__result {
-    margin: 0 var(--sp-4) var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    flex-wrap: wrap;
-    background: var(--success-bg);
-    color: var(--success-fg);
-    border-left: 2px solid var(--success-fg);
-  }
-  .cx-addform__result code {
-    color: var(--fg);
-  }
-  .cx-addform__opening {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
+    justify-content: flex-start;
   }
   .cx-addform__note {
-    margin: 0 var(--sp-4) var(--sp-3);
     font-size: var(--fs-xs);
   }
 }

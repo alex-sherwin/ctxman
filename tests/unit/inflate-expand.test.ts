@@ -543,7 +543,7 @@ describe('expandRecipe: modes and options', () => {
     expect(modes(cc)).toEqual([
       'kb/a=inline-main',
       'kb/b=inline-main',
-      'task/t=summary',
+      'task/t=inline-main',
       'skill/s=install',
       'reference/lr=describe',
       'reference/rr=describe',

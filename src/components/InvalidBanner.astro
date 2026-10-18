@@ -1,0 +1,50 @@
+---
+import type { Issue } from '../lib/context-io.ts';
+import { withParams } from '../lib/url-state.ts';
+import InvalidBadge from './InvalidBadge.astro';
+
+// Detail pages of an okf / skill entry whose file fails its schema: lists the issues. The page still shows the file
+// as it is on disk (ROUND3_SPEC §A3), so the fix is one click away in the editor.
+interface Props {
+  issues: readonly Issue[];
+  /** Offer the "Edit file" link (`?edit=1`, the markdown editor). */
+  editable?: boolean;
+}
+
+const { issues, editable = true } = Astro.props;
+---
+
+<div class="cx-invalid" role="alert" data-testid="invalid-banner">
+  <p class="cx-invalid__title">
+    <InvalidBadge issues={issues} />
+    This entry's file is invalid
+  </p>
+  <ul class="cx-invalid__list">
+    {
+      issues.map((issue) => (
+        <li>
+          {issue.path !== '' && (
+            <>
+              <code>{issue.path}</code>{' '}
+            </>
+          )}
+          {issue.message}
+        </li>
+      ))
+    }
+  </ul>
+  <p class="cx-invalid__hint">
+    Lists and this page show the file as it is on disk; fix it in the editor.
+    {
+      editable && (
+        <a
+          class="ck-button ck-button--secondary ck-button--sm"
+          href={withParams(Astro.url.pathname, { edit: '1' })}
+          data-testid="invalid-fix"
+        >
+          <span class="ck-button__label">Edit file</span>
+        </a>
+      )
+    }
+  </p>
+</div>

@@ -1,73 +1,30 @@
-// "Add entry" panel of the Tools page (UI_SPEC §I.5): scaffolds a dataset entry through the allowlisted
-// `add` script. Field values are component-local drafts; the chosen dataset is URL state (`?add=`). After a
-// successful add the store opens the new entry (ROUND2_UI_SPEC §I); the result panel shows "Opening…" meanwhile.
+// "New entry" panel of the Tools page (UI_SPEC §I.5, ROUND3_SPEC §E.7): every dataset is created in its own form at
+// /new/<ds>, so this panel only picks the dataset (URL state `?add=`) and links to that form; the CLI twin
+// (`pnpm run add:<ds> <name>`) is shown as a hint. Nothing is created here.
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
-import type { FormEvent } from 'react';
-import { Form } from 'react-aria-components';
-import { DATASETS } from '../../datasets/registry.ts';
+import { DATASETS, getDataset } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
-import { nameProblem } from '../../lib/names.ts';
-import { $addDataset, $run, clearRun, runScript, setAddDataset } from '../../stores/tools.ts';
-import { Button, ButtonLink, Spinner } from '../kit/Button.tsx';
-import { TextField } from '../kit/Field.tsx';
+import { $addDataset, setAddDataset } from '../../stores/tools.ts';
+import { ButtonLink } from '../kit/Button.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
 
 export function AddEntryForm() {
   const dataset = useStore($addDataset);
-  const run = useStore($run);
-  const [name, setName] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [attempted, setAttempted] = useState(false);
-
-  const running = run.status === 'running';
-  const created = run.status === 'done' && run.script === 'add' ? run.created : undefined;
-
-  function resetForm() {
-    setName('');
-    setTitle('');
-    setDescription('');
-    setAttempted(false);
-    clearRun();
-  }
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setAttempted(true);
-    if (running || dataset === null || nameProblem(name) !== null || description.trim() === '') {
-      return;
-    }
-    const body: { dataset: DatasetId; name: string; description: string; title?: string } = {
-      dataset,
-      name,
-      description: description.trim(),
-    };
-    if (title.trim() !== '') body.title = title.trim();
-    await runScript('add', body);
-  }
+  const def = dataset === null ? undefined : getDataset(dataset);
 
   return (
     <section id="add-entry" className="cx-panel" aria-labelledby="h-add" data-testid="tools-add">
       <h2 className="cx-panel__title" id="h-add">
-        Add entry
+        New entry
       </h2>
-      <Form
-        className="cx-addform"
-        validationBehavior="aria"
-        onSubmit={onSubmit}
-        data-testid="tools-add-form"
-      >
+      <div className="cx-addform">
         <Select
           label="Dataset"
           value={dataset}
           onChange={(key) => {
             if (key !== null) setAddDataset(String(key) as DatasetId);
           }}
-          isRequired
-          isInvalid={attempted && dataset === null}
-          errorMessage="Required"
           triggerTestId="tools-add-dataset"
           placeholder="Choose a dataset…"
         >
@@ -78,78 +35,23 @@ export function AddEntryForm() {
             </ListBoxItem>
           ))}
         </Select>
-        <TextField
-          label="Name"
-          name="name"
-          mono
-          isRequired
-          value={name}
-          onChange={setName}
-          validate={(v) => (v === '' ? (attempted ? 'Required' : null) : nameProblem(v))}
-          description="Kebab-case; becomes the folder/file name and slug."
-          inputTestId="tools-add-name"
-        />
-        <TextField
-          label="Title"
-          name="title"
-          value={title}
-          onChange={setTitle}
-          description="Optional human title."
-          inputTestId="tools-add-title"
-        />
-        <TextField
-          label="Description"
-          name="description"
-          isRequired
-          value={description}
-          onChange={setDescription}
-          validate={(v) => (v.trim() === '' && attempted ? 'Required' : null)}
-          inputTestId="tools-add-description"
-        />
         <div className="cx-addform__actions">
-          <Button
-            type="submit"
+          <ButtonLink
             variant="primary"
-            isPending={running && run.script === 'add'}
-            isDisabled={running}
-            data-testid="tools-add-submit"
+            href={dataset === null ? undefined : `/new/${dataset}`}
+            isDisabled={dataset === null}
+            data-testid="tools-add-open-form"
           >
-            Create entry
-          </Button>
-        </div>
-      </Form>
-      {created && (
-        <div className="cx-addform__result" role="status" data-testid="tools-add-result">
-          Created <code data-testid="tools-add-path">{created.path}</code>
-          {run.follow === true && (
-            <span className="cx-addform__opening" data-testid="tools-add-opening">
-              <Spinner label="Opening…" /> Opening…
-            </span>
-          )}
-          <ButtonLink size="sm" variant="secondary" href={created.url} data-testid="tools-add-open">
-            Open entry
+            Open the New {def?.singular ?? 'entry'} form
           </ButtonLink>
-          {created.dataset === 'context' && (
-            <ButtonLink size="sm" variant="secondary" href={`/forge?context=${created.slug}`}>
-              Open in Forge
-            </ButtonLink>
-          )}
-          {created.dataset === 'recipe' && (
-            <ButtonLink size="sm" variant="secondary" href={`/inflate?recipe=${created.slug}`}>
-              Open in Inflate
-            </ButtonLink>
-          )}
-          <Button size="sm" variant="ghost" onPress={resetForm}>
-            Add another
-          </Button>
         </div>
-      )}
-      {created && run.followTimedOut === true && (
-        <p className="cx-addform__note cx-subtle" data-testid="tools-add-follow-timeout">
-          Couldn&apos;t confirm the new entry yet — use Open entry above. A built server lists new
-          entries only after a rebuild.
+        <p className="cx-addform__note cx-subtle">
+          From a terminal:{' '}
+          <code data-testid="tools-add-cli">
+            pnpm run add:{dataset ?? '<dataset>'} &lt;name&gt;
+          </code>
         </p>
-      )}
+      </div>
     </section>
   );
 }

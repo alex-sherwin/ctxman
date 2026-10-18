@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterEntries, stateCounts, tagCounts } from '../../src/lib/entry-filter.ts';
+import { filterEntries, mergeEntries, stateCounts, tagCounts } from '../../src/lib/entry-filter.ts';
 import type { EntrySummary } from '../../src/lib/entry-summary.ts';
 
 function entry(over: Partial<EntrySummary> & Pick<EntrySummary, 'slug'>): EntrySummary {
@@ -70,6 +70,36 @@ describe('filterEntries', () => {
     const copy = [...ENTRIES];
     filterEntries(ENTRIES, { sort: 'name' });
     expect(ENTRIES).toEqual(copy);
+  });
+
+  describe('keys', () => {
+    const keys = new Set(['task/forge-e2e-coverage', 'task/write-agents-md', 'kb/not-here']);
+
+    it('restricts to the listed dataset/slug keys', () => {
+      expect(slugs(filterEntries(ENTRIES, { keys }))).toEqual([
+        'forge-e2e-coverage',
+        'write-agents-md',
+      ]);
+    });
+
+    it('null, undefined and absent mean no restriction; an empty set matches nothing', () => {
+      expect(filterEntries(ENTRIES, { keys: null })).toHaveLength(ENTRIES.length);
+      expect(filterEntries(ENTRIES, { keys: undefined })).toHaveLength(ENTRIES.length);
+      expect(filterEntries(ENTRIES, { keys: new Set() })).toEqual([]);
+    });
+
+    it('matches the dataset too (a task slug does not match a kb key)', () => {
+      expect(filterEntries(ENTRIES, { keys: new Set(['kb/write-agents-md']) })).toEqual([]);
+    });
+
+    it('combines with the other filters (AND)', () => {
+      expect(slugs(filterEntries(ENTRIES, { keys, states: ['pending'] }))).toEqual([
+        'forge-e2e-coverage',
+      ]);
+      expect(slugs(filterEntries(ENTRIES, { keys, q: 'agents', sort: 'name' }))).toEqual([
+        'write-agents-md',
+      ]);
+    });
   });
 
   describe('q', () => {
@@ -271,5 +301,55 @@ describe('stateCounts', () => {
       'wont-do': 1,
     });
     expect(stateCounts([])).toEqual({});
+  });
+});
+
+describe('mergeEntries', () => {
+  const kb1 = entry({ dataset: 'kb', slug: 'k1', url: '/kb/k1' });
+  const kb2 = entry({ dataset: 'kb', slug: 'k2', url: '/kb/k2' });
+  const task1 = entry({ slug: 't1' });
+  const ref1 = entry({ dataset: 'reference', slug: 'r1', url: '/reference/r1' });
+  const map = {
+    kb: { status: 'ready', entries: [kb1, kb2] },
+    task: { status: 'ready', entries: [task1] },
+    reference: { status: 'loading', entries: [ref1] },
+  };
+
+  it('concatenates the datasets in the given order, each dataset in its own order', () => {
+    expect(mergeEntries(map, ['task', 'kb']).map((e) => e.slug)).toEqual(['t1', 'k1', 'k2']);
+    expect(mergeEntries(map, ['kb', 'reference', 'task']).map((e) => e.slug)).toEqual([
+      'k1',
+      'k2',
+      'r1',
+      't1',
+    ]);
+  });
+
+  it('skips datasets missing from the map and repeated datasets', () => {
+    expect(mergeEntries(map, ['bug', 'kb', 'kb', 'skill']).map((e) => e.slug)).toEqual([
+      'k1',
+      'k2',
+    ]);
+    expect(mergeEntries({}, ['kb'])).toEqual([]);
+    expect(mergeEntries(map, [])).toEqual([]);
+  });
+
+  it('keeps the entries themselves (no copies) and does not touch the input', () => {
+    const merged = mergeEntries(map, ['kb']);
+    expect(merged[0]).toBe(kb1);
+    expect(map.kb.entries).toEqual([kb1, kb2]);
+  });
+
+  it('feeds filterEntries and tagCounts like any entry list', () => {
+    const tagged = {
+      kb: { entries: [entry({ dataset: 'kb', slug: 'a', tags: ['x'] })] },
+      task: { entries: [entry({ slug: 'b', tags: ['x', 'y'] })] },
+    };
+    const merged = mergeEntries(tagged, ['kb', 'task']);
+    expect(tagCounts(merged)).toEqual([
+      { tag: 'x', count: 2 },
+      { tag: 'y', count: 1 },
+    ]);
+    expect(slugs(filterEntries(merged, { tags: ['y'] }))).toEqual(['b']);
   });
 });

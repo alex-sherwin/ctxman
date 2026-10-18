@@ -1,8 +1,9 @@
-// Markdown editing in place (ROUND2_UI_SPEC §F.1, §G.1): the DocEditor island next to the SSR preview of an okf entry
-// (Preview | Edit toggle, Monaco, explicit Save with Cmd/Ctrl+S, conflict dialog, validation warnings) and the
-// "Open in IDE" button handled by src/scripts/shell.ts. The entry is created per run through the add script (the
-// same one `pnpm run add:kb` runs, via /api/scripts/add) and removed afterwards; every assertion about what was
-// saved reads the file in the e2e data copy.
+// Markdown editing in place (ROUND2_UI_SPEC §F.1, §G.1; ROUND3_SPEC §E-§G): the DocEditor island next to the SSR
+// preview of an okf entry (Preview | Edit toggle, Monaco, explicit Save with Cmd/Ctrl+S, conflict dialog,
+// validation + link warnings, entry-link completion and the "Insert link…" picker, drafts kept in localStorage
+// with NO native beforeunload prompt) and the "Open in IDE" button handled by src/scripts/shell.ts. The entry is
+// created per run through the add script (the same one `pnpm run add:kb` runs, via /api/scripts/add) and removed
+// afterwards; every assertion about what was saved reads the file in the e2e data copy.
 //
 // Facts this spec relies on (from the island authors): Monaco in Playwright's "Desktop Chrome" profile reports a
 // Windows user agent, so its shortcuts are Control+a / Control+s even on macOS; a 409 always logs a browser console
@@ -113,6 +114,23 @@ async function typeAtEnd(page: Page, text: string): Promise<void> {
   await page.getByTestId('doc-editor').locator('.monaco-editor textarea').focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.type(text);
+}
+
+/**
+ * Pastes `text` at the very end of the file: a synthetic paste event inserts it verbatim (typing would open the
+ * link completion on `](`). Not `pasteIntoMonaco` from helpers.ts, which moves with ControlOrMeta+End (see typeAtEnd).
+ */
+async function pasteAtEnd(page: Page, text: string): Promise<void> {
+  const textarea = page.getByTestId('doc-editor').locator('.monaco-editor textarea');
+  await textarea.focus();
+  await page.keyboard.press('Control+End');
+  await textarea.evaluate((el, value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    el.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, text);
 }
 
 /** Cmd/Ctrl+S inside Monaco (Control: see the file header). */
@@ -319,6 +337,265 @@ test.describe('edit mode', () => {
     await expect(list).toBeVisible();
     await expect(list).toContainText(body.warnings[0]?.message ?? '');
     await expectPreviewShows(page, 'After save.');
+  });
+});
+
+/** localStorage key of the draft of `kb/<name>/main.md` (src/stores/doc-editor.ts `docKey` + draft-backup.ts). */
+const MAIN_DRAFT_KEY = `ctxman:draft:doc:kb/${name}/main.md`;
+
+/** The persisted draft of main.md (null when none): what an unsaved reload would bring back. */
+async function storedDraft(page: Page): Promise<{ text: string; base: string } | null> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as { text: string; base: string });
+  }, MAIN_DRAFT_KEY);
+}
+
+/** What the editor shows at the end of the file (the cursor is there after `typeAtEnd`; Monaco renders only that part). */
+const viewLines = (page: Page) => page.getByTestId('doc-editor').locator('.view-lines');
+
+/** Collects every native dialog (a `beforeunload` prompt would show up here) and dismisses it. */
+function trackDialogs(page: Page): string[] {
+  const seen: string[] = [];
+  page.on('dialog', (dialog) => {
+    seen.push(`${dialog.type()}: ${dialog.message()}`);
+    void dialog.dismiss();
+  });
+  return seen;
+}
+
+test.describe('entry links in the editor', () => {
+  test('"Insert link…" opens the picker; picking inserts a ctxman link at the cursor and returns the focus', async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nSee ');
+    await page.getByTestId('doc-insert-link').click();
+    await expect(page.getByTestId('link-picker')).toBeVisible();
+    await page.getByTestId('link-picker-search').fill('okf-format');
+    await expect(page.getByTestId('link-picker-row')).toHaveCount(1);
+    await page.getByTestId('link-picker-pick').click();
+    await expect(page.getByTestId('link-picker')).toHaveCount(0);
+
+    await expect(viewLines(page)).toContainText('See [OKF format](ctxman:kb/okf-format)');
+    // the editor has the focus again: a Space types a space instead of pressing the toolbar button again
+    await expect(page.getByTestId('doc-editor').locator('.monaco-editor textarea')).toBeFocused();
+    await page.keyboard.press('Space');
+    await page.keyboard.type('and more');
+    await expect(page.getByTestId('link-picker')).toHaveCount(0);
+    await expect(viewLines(page)).toContainText('(ctxman:kb/okf-format) and more');
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    expect(errors).toEqual([]);
+  });
+
+  test('a selection becomes the link text', async ({ page }) => {
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nselected words');
+    await page.keyboard.press('Shift+Control+ArrowLeft');
+    await page.keyboard.press('Shift+Control+ArrowLeft');
+    await page.getByTestId('doc-insert-link').click();
+    await page.getByTestId('link-picker-search').fill('okf-format');
+    await page.getByTestId('link-picker-pick').click();
+    await expect(viewLines(page)).toContainText('[selected words](ctxman:kb/okf-format)');
+  });
+
+  test('Mod+Alt+K opens the picker; Esc closes it and the focus is back in the editor', async ({
+    page,
+  }) => {
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, ' ');
+    // Control: Monaco in the "Desktop Chrome" profile reports a Windows user agent (see the file header)
+    await page.keyboard.press('Control+Alt+k');
+    await expect(page.getByTestId('link-picker')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('link-picker')).toHaveCount(0);
+    await expect(page.getByTestId('doc-editor').locator('.monaco-editor textarea')).toBeFocused();
+    // Esc inside the picker must not leave edit mode
+    await expect(page).toHaveURL(/edit=1/);
+  });
+
+  test('`[[` and `](` complete entries; `ctxman:` completes a target', async ({ page }) => {
+    await openEditor(page, `/kb/${name}`);
+    const suggest = page.locator('.monaco-editor .suggest-widget.visible');
+
+    await typeAtEnd(page, '\n\n[[Write');
+    await expect(suggest).toBeVisible();
+    await expect(suggest).toContainText('Write AGENTS.md');
+    await page.keyboard.press('Enter');
+    await expect(viewLines(page)).toContainText('[Write AGENTS.md](ctxman:task/write-agents-md)');
+
+    await page.keyboard.type('\n\n[a](');
+    await expect(suggest).toBeVisible();
+    await expect(suggest).toContainText('okf-format');
+    // the destination kind inserts `ctxman:<ds>/<slug>` and the closing paren
+    await page.keyboard.type('okf-f');
+    await page.keyboard.press('Enter');
+    await expect(viewLines(page)).toContainText('[a](ctxman:kb/okf-format)');
+
+    await page.keyboard.type('\n\nsee ctxman:');
+    await expect(suggest).toBeVisible();
+    await expect(suggest).toContainText('okf-format');
+    await page.keyboard.press('Escape');
+    await expect(suggest).toHaveCount(0);
+    await expect(page).toHaveURL(/edit=1/);
+  });
+
+  test('saving broken links succeeds with warnings; the preview marks the links broken', async ({
+    page,
+  }) => {
+    await openEditor(page, `/kb/${name}`);
+    await pasteAtEnd(
+      page,
+      '\n\nLinks gone wrong: [a](./e2e-missing-note.md) and [b](ctxman:idea/e2e-nope).\n',
+    );
+    const reloaded = nextPageLoad(page);
+    const put = page.waitForResponse(
+      (r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/doc/kb/${name}/main.md`),
+    );
+    await pressSave(page);
+    const response = await put;
+    expect(response.status()).toBe(200);
+    // link findings come back as `error` severity but are warnings: the save is never blocked
+    const body = (await response.json()) as { warnings: { rule: string; severity: string }[] };
+    expect(body.warnings.map((w) => w.rule).sort()).toEqual([
+      'links/broken',
+      'links/ctxman-target',
+    ]);
+    expect(readDataText(MAIN)).toContain('ctxman:idea/e2e-nope');
+
+    await reloaded;
+    await expect(page.getByTestId('doc-status')).toHaveText('Saved · 2 warnings');
+    const list = page.getByTestId('doc-warnings');
+    await expect(list).toContainText('links/broken');
+    await expect(list).toContainText('links/ctxman-target');
+    await expect(list.locator('li')).toHaveCount(2);
+    // the preview renders from the content layer, which can lag the dev reload by ~1 s (settle reload)
+    await expect(page.locator('[data-testid="detail-content"] a.cx-link--broken')).toHaveCount(2, {
+      timeout: 15_000,
+    });
+  });
+});
+
+test.describe('drafts survive a reload (no native prompt)', () => {
+  test('a dirty editor reloads without a dialog and offers the draft back; Discard drops it', async ({
+    page,
+  }) => {
+    const dialogs = trackDialogs(page);
+    const errors: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nDRAFT-LINE-ONE');
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    await expect
+      .poll(async () => (await storedDraft(page))?.text ?? '')
+      .toContain('DRAFT-LINE-ONE');
+
+    await page.reload();
+    await expect(page.getByTestId('doc-editor').locator('.monaco-editor')).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(dialogs).toEqual([]);
+    const banner = page.getByTestId('doc-draft-restored');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('Restored unsaved changes');
+    await expect(banner).not.toHaveAttribute('data-stale', /.*/);
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    await page.getByTestId('doc-editor').locator('.monaco-editor textarea').focus();
+    await page.keyboard.press('Control+End');
+    await expect(viewLines(page)).toContainText('DRAFT-LINE-ONE');
+
+    await page.getByTestId('doc-draft-discard').click();
+    await expect(banner).toHaveCount(0);
+    await expect(viewLines(page)).not.toContainText('DRAFT-LINE-ONE');
+    await expect(page.getByTestId('doc-save')).toBeDisabled();
+    expect(await storedDraft(page)).toBeNull();
+    expect(readDataText(MAIN)).not.toContain('DRAFT-LINE-ONE');
+    expect(dialogs).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('a draft whose file changed on disk is restored with a warning; saving overwrites the disk text', async ({
+    page,
+  }) => {
+    // the dev reload that follows the on-disk edit is held back; the reload below is explicit
+    await page.routeWebSocket(/.*/, () => {});
+    const dialogs = trackDialogs(page);
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nSTALE-DRAFT-LINE');
+    await expect
+      .poll(async () => (await storedDraft(page))?.text ?? '')
+      .toContain('STALE-DRAFT-LINE');
+
+    await new Promise((resolve) => setTimeout(resolve, 50)); // the mtime must differ from the loaded one
+    writeFileSync(dataPath(MAIN), `${readDataText(MAIN)}\nDISK-EDIT-LINE\n`);
+    await page.reload();
+
+    const banner = page.getByTestId('doc-draft-restored');
+    await expect(banner).toBeVisible({ timeout: 30_000 });
+    await expect(banner).toHaveAttribute('data-stale', 'true');
+    await expect(banner).toContainText('the file changed on disk since');
+    expect(dialogs).toEqual([]);
+    await page.getByTestId('doc-editor').locator('.monaco-editor textarea').focus();
+    await page.keyboard.press('Control+End');
+    await expect(viewLines(page)).toContainText('STALE-DRAFT-LINE');
+    await expect(viewLines(page)).not.toContainText('DISK-EDIT-LINE');
+
+    // Discard shows the version that is on disk now
+    await page.getByTestId('doc-draft-discard').click();
+    await expect(banner).toHaveCount(0);
+    await expect(viewLines(page)).toContainText('DISK-EDIT-LINE');
+    expect(await storedDraft(page)).toBeNull();
+  });
+
+  test('a preview with a stored draft offers "Resume editing"; Cancel + Discard removes the offer', async ({
+    page,
+  }) => {
+    const dialogs = trackDialogs(page);
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nRESUME-DRAFT-LINE');
+    await expect
+      .poll(async () => (await storedDraft(page))?.text ?? '')
+      .toContain('RESUME-DRAFT-LINE');
+
+    await page.goto(`/kb/${name}`);
+    expect(dialogs).toEqual([]);
+    const available = page.getByTestId('doc-draft-available');
+    await expect(available).toBeVisible({ timeout: 30_000 });
+    await expect(available).toContainText('Unsaved changes to this file');
+    await expect(page.getByTestId('doc-draft-restored')).toHaveCount(0);
+
+    await page.getByTestId('doc-draft-resume').click();
+    await expect(page).toHaveURL(/edit=1/);
+    await expect(page.getByTestId('doc-draft-restored')).toBeVisible({ timeout: 30_000 });
+    await expect(available).toHaveCount(0);
+
+    await page.getByTestId('doc-cancel').click();
+    await page.getByTestId('doc-discard-dialog').getByRole('button', { name: 'Discard' }).click();
+    await expect(page).not.toHaveURL(/edit=1/);
+    await expect(available).toHaveCount(0);
+    expect(await storedDraft(page)).toBeNull();
+  });
+
+  test('a saved draft is gone: the reloaded page has no draft offer', async ({ page }) => {
+    await openEditor(page, `/kb/${name}`);
+    await typeAtEnd(page, '\n\nSAVED-DRAFT-LINE');
+    await expect
+      .poll(async () => (await storedDraft(page))?.text ?? '')
+      .toContain('SAVED-DRAFT-LINE');
+    const reloaded = nextPageLoad(page);
+    await pressSave(page);
+    await expect(page).not.toHaveURL(/edit=1/);
+    expect(await storedDraft(page)).toBeNull();
+    await reloaded;
+    await expect(page.getByTestId('doc-status')).toBeVisible();
+    await expect(page.getByTestId('doc-draft-available')).toHaveCount(0);
+    expect(readDataText(MAIN)).toContain('SAVED-DRAFT-LINE');
   });
 });
 

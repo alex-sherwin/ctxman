@@ -5,10 +5,14 @@ import BackRefs from './BackRefs.astro';
 import FileTree from './FileTree.astro';
 import IdeOpenButton from './IdeOpenButton.astro';
 import MetaPanel from './MetaPanel.astro';
+import RelationPanels from './RelationPanels.astro';
 
-// The details column of an entry page (`/<ds>/<slug>`): Open in IDE (okf + skill), the metadata panel, the file
-// tree (okf + skill) and the "Linked from contexts" list (not for context / recipe). It sits LEFT of the content on
-// okf + skill pages (`cx-detail--doc`) and RIGHT of it on reference / context / recipe pages.
+// The details column of an entry page (`/<ds>/<slug>`): Open in IDE (okf + skill), the metadata panel (with the
+// Details `Edit` button for okf + skill), the file tree (okf + skill, with `+ New concept` for okf), the relation
+// panels (Links to / Linked from; reference: Linked from only) and the "Linked from contexts" list (not for
+// context / recipe). It sits LEFT of the content on okf + skill pages (`cx-detail--doc`) and RIGHT of it on
+// reference / context / recipe pages. A project lists its `child` links in the Children panel (main column), so
+// "Links to" leaves them out.
 interface Props {
   dataset: DatasetId;
   slug: string;
@@ -16,6 +20,13 @@ interface Props {
 }
 
 const { dataset, slug, detail } = Astro.props;
+const relations = 'relations' in detail ? detail.relations : undefined;
+const linksTo =
+  relations === undefined
+    ? []
+    : dataset === 'project'
+      ? relations.linksTo.filter((row) => row.rel !== 'child')
+      : relations.linksTo;
 ---
 
 <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
@@ -34,6 +45,7 @@ const { dataset, slug, detail } = Astro.props;
     data={detail.data}
     lastModified={detail.summary.lastModified}
     file={detail.fileRelPath}
+    editable={detail.kind === 'okf' || detail.kind === 'skill'}
   />
   {
     (detail.kind === 'okf' || detail.kind === 'skill') && (
@@ -42,6 +54,18 @@ const { dataset, slug, detail } = Astro.props;
         slug={slug}
         files={detail.files}
         current={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+        canCreate={detail.kind === 'okf'}
+      />
+    )
+  }
+  {
+    relations && (
+      <RelationPanels
+        dataset={dataset}
+        linksTo={linksTo}
+        linkedFrom={relations.linkedFrom}
+        canEdit={detail.kind === 'okf'}
+        showLinksTo={detail.kind !== 'reference'}
       />
     )
   }

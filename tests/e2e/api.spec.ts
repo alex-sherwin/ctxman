@@ -44,6 +44,47 @@ test.describe('entries and search index', () => {
     expect((await errorOf(unknown)).error).toBe('bad-dataset');
   });
 
+  test('GET /api/entries?dataset=project carries the structured relations of a project', async ({
+    request,
+  }) => {
+    const response = await request.get(`${API}/entries?dataset=project`);
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as {
+      entries: {
+        slug: string;
+        invalid?: unknown;
+        relations?: { dataset: string; slug: string; rel: string }[];
+      }[];
+    };
+    const v1 = body.entries.find((e) => e.slug === 'ctxman-v1');
+    expect(v1?.invalid).toBeUndefined();
+    const children = v1?.relations?.filter((r) => r.rel === 'child') ?? [];
+    expect(children).toHaveLength(11);
+    expect(children.map((r) => `${r.dataset}/${r.slug}`)).toEqual(
+      expect.arrayContaining([
+        'task/write-agents-md',
+        'feature/context-forge',
+        'bug/forge-reorder-focus',
+      ]),
+    );
+    expect(
+      v1?.relations?.filter((r) => r.rel === 'related').map((r) => `${r.dataset}/${r.slug}`),
+    ).toEqual(expect.arrayContaining(['kb/ctxman', 'idea/context-inflate']));
+    // Entries without links carry no `relations` key at all.
+    const tasks = (await (await request.get(`${API}/entries?dataset=task`)).json()) as {
+      entries: Record<string, unknown>[];
+    };
+    for (const task of tasks.entries) {
+      expect(task).not.toHaveProperty('invalid');
+    }
+    const coverage = tasks.entries.find((e) => e.slug === 'forge-e2e-coverage');
+    expect(coverage?.relations).toEqual([
+      { dataset: 'feature', slug: 'context-forge', rel: 'depends-on' },
+    ]);
+    const plain = tasks.entries.find((e) => e.slug === 'write-agents-md');
+    expect(plain).not.toHaveProperty('relations');
+  });
+
   test('GET /api/entries?dataset=context reports link counts', async ({ request }) => {
     const response = await request.get(`${API}/entries?dataset=context`);
     expect(response.status()).toBe(200);
@@ -60,7 +101,9 @@ test.describe('entries and search index', () => {
       docs: Record<string, unknown>[];
     };
     expect(Number.isNaN(Date.parse(body.generatedAt))).toBe(false);
-    expect(body.docs.length).toBeGreaterThan(50);
+    // index.md and log.md of every bundle are not searchable (UX-22): about 52 docs remain.
+    expect(body.docs.length).toBeGreaterThan(40);
+    expect(body.docs.filter((d) => /\/(?:index|log)$/.test(d.id as string))).toEqual([]);
     for (const doc of body.docs.slice(0, 25)) {
       expect(typeof doc.id).toBe('string');
       expect(typeof doc.dataset).toBe('string');

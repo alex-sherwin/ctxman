@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DATASET_IDS,
   DATASETS,
+  ENTRY_REL_INVERSE_LABELS,
+  ENTRY_REL_LABELS,
+  ENTRY_RELS,
   LINKABLE_DATASETS,
   NAME_MAX_LENGTH,
   OKF_DATASET_IDS,
@@ -10,6 +13,7 @@ import {
   entryUrl,
   getDataset,
   isDatasetId,
+  isEntryRel,
   isLinkableDatasetId,
   isOkfDatasetId,
   isReferenceType,
@@ -181,5 +185,25 @@ describe('dataset registry', () => {
     expect(docUrl('kb', 'x', 'concepts/y.md')).toBe('/kb/x/doc/concepts/y');
     expect(docUrl('kb', 'x', 'concepts/y')).toBe('/kb/x/doc/concepts/y');
     expect(docUrl('rca', 'x', 'index.md')).toBe('/rca/x/doc/index');
+  });
+
+  it('lists the entry relation kinds and labels both directions of each', () => {
+    expect([...ENTRY_RELS]).toEqual(['child', 'related', 'depends-on']);
+    expect(Object.keys(ENTRY_REL_LABELS).sort()).toEqual([...ENTRY_RELS].sort());
+    expect(Object.keys(ENTRY_REL_INVERSE_LABELS).sort()).toEqual([...ENTRY_RELS].sort());
+    for (const rel of ENTRY_RELS) {
+      expect(ENTRY_REL_LABELS[rel], rel).not.toBe('');
+      expect(ENTRY_REL_INVERSE_LABELS[rel], rel).not.toBe('');
+    }
+    expect(ENTRY_REL_LABELS['depends-on']).toBe('Depends on');
+    expect(ENTRY_REL_INVERSE_LABELS['depends-on']).toBe('Required by');
+    expect(ENTRY_REL_INVERSE_LABELS.child).toBe('Parent');
+  });
+
+  it('isEntryRel accepts only the three relation kinds', () => {
+    for (const rel of ENTRY_RELS) expect(isEntryRel(rel), rel).toBe(true);
+    for (const bad of ['parent', 'mentions', '', 'Child', 'constructor', null, undefined, 1]) {
+      expect(isEntryRel(bad), String(bad)).toBe(false);
+    }
   });
 });

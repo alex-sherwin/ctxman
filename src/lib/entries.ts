@@ -1,14 +1,18 @@
 // SERVER-ASTRO: everything pages and API routes read from the datasets (PLAN §E.21, §H).
-// Collections (astro:content) provide parsed entries + rendered HTML; the filesystem provides
-// freshness and bundle file lists; contexts are ALWAYS read through context-io.ts (fs + zod), never
+// okf + skill entries (frontmatter, summaries, lists, relations, invalid files) come from the entry index on disk
+// (entry-index.ts, ROUND3_SPEC §A3); collections (astro:content) only provide their rendered HTML (when they hold
+// the entry and its body matches the disk), the `docs` collection and the reference entries; the filesystem
+// provides bundle file lists; contexts are ALWAYS read through context-io.ts (fs + zod), never
 // getCollection('context') (PLAN §A.2: that collection has no watcher and exists only for validation);
 // recipes likewise go through recipe-io.ts, never getCollection('recipe').
 // Never import this module from scripts, tests or browser islands.
 import { getCollection, getEntry } from 'astro:content';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   DATASET_IDS,
+  ENTRY_REL_INVERSE_LABELS,
+  ENTRY_REL_LABELS,
   OKF_DATASET_IDS,
   datasetDef,
   entryUrl,
@@ -16,6 +20,7 @@ import {
   isValidName,
 } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, OkfDatasetId } from '../datasets/registry.ts';
+import { DATASET_SCHEMAS } from '../datasets/schemas.ts';
 import type {
   ContextData,
   DocData,
@@ -29,13 +34,18 @@ import type { BundleFile } from './bundles.ts';
 import { backRefs, ContextIoError, listContexts, readContext } from './context-io.ts';
 import type { ContextRecord } from './context-io.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { getEntryIndex } from './entry-index.ts';
+import type { EntryIndex, IndexedEntry } from './entry-index.ts';
 import { summarize } from './entry-summary.ts';
 import type { EntrySummary, SearchDoc } from './entry-summary.ts';
 import { entryAbsPath, entryFileRelPath, lastModifiedOf } from './freshness.ts';
 import { itemKey } from './inflate/catalog.ts';
 import { rewriteRenderedHtml } from './links.ts';
 import { renderMarkdown } from './markdown.ts';
+import { parseFrontmatterLoose, splitFrontmatter } from './okf.ts';
 import { listRecipes, readRecipe, RecipeIoError } from './recipe-io.ts';
+import { buildRelationGraph, linkedFrom, linksTo } from './relations.ts';
+import type { OutRel, RelationEdge, RelationGraph } from './relations.ts';
 import {
   contextToSearchDoc,
   okfDocToSearchDoc,
@@ -80,15 +90,63 @@ export interface RecipeItemRef {
   missing: boolean;
 }
 
+/** One line of a relation panel: an outgoing edge ("Links to"), an incoming one ("Linked from") or a child/parent. */
+export interface RelationRow {
+  /** The OTHER entry: `dataset/slug`. */
+  key: string;
+  dataset: LinkableDatasetId;
+  slug: string;
+  rel: OutRel;
+  /** `ENTRY_REL_LABELS` (outgoing), `ENTRY_REL_INVERSE_LABELS` (incoming), 'Mentions' / 'Mentioned by'. */
+  label: string;
+  /** The other entry's `title`, else its slug. */
+  title: string;
+  /** Lifecycle datasets only; the raw value (may not be a registry state when the other file is invalid). */
+  state?: string;
+  /** The other entry does not exist (dangling link): `title` is the slug. */
+  missing: boolean;
+  source: 'frontmatter' | 'body';
+  /** Body mentions: bundle-relative files the link appears in (first occurrence first); [] for frontmatter rows. */
+  files: string[];
+}
+
+/** What a detail page shows about an entry's relations (okf, skill, reference; never context / recipe). */
+export interface EntryRelations {
+  /** Outgoing edges: frontmatter `links` in file order (every rel, `child` included), then mentions. [] for reference. */
+  linksTo: RelationRow[];
+  /** Incoming edges, ordered Parent (child), Required by, Related, Mentioned by; then by key. */
+  linkedFrom: RelationRow[];
+  /** Project entries only: the `child` targets in file order (the same rows as the `child` ones of `linksTo`). */
+  children?: RelationRow[];
+  /** Entries declaring a `child` edge to this one (the incoming `child` rows of `linkedFrom`). */
+  parents: RelationRow[];
+}
+
 export type EntryDetail = {
   summary: EntrySummary;
   backRefs: BackRef[];
   /** Data-dir-relative posix path of the entry's own file: 'kb/foo/main.md' | 'reference/foo.yaml'. */
   fileRelPath: string;
 } & (
-  | { kind: 'okf'; data: OkfEntry; html: string; files: BundleFile[] }
-  | { kind: 'skill'; data: SkillData; html: string; files: BundleFile[] }
-  | { kind: 'reference'; data: ReferenceData }
+  | {
+      kind: 'okf';
+      data: OkfEntry;
+      html: string;
+      files: BundleFile[];
+      relations: EntryRelations;
+      /** ISO mtime of main.md itself (the `ifUnmodifiedSince` base of the frontmatter PATCH). */
+      fileModified: string;
+    }
+  | {
+      kind: 'skill';
+      data: SkillData;
+      html: string;
+      files: BundleFile[];
+      relations: EntryRelations;
+      /** ISO mtime of SKILL.md itself. */
+      fileModified: string;
+    }
+  | { kind: 'reference'; data: ReferenceData; relations: EntryRelations }
   | { kind: 'context'; data: ContextData; links: ResolvedLink[] }
   | {
       kind: 'recipe';
@@ -140,9 +198,162 @@ async function safeContexts(): Promise<ContextRecord[]> {
   return (await listContexts()).items;
 }
 
-/** Rendered HTML of a collection entry (the loader's own render), falling back to the runtime renderer. */
-async function htmlOf(entry: RawEntry): Promise<string> {
-  return entry.rendered?.html ?? (await renderMarkdown(entry.body ?? ''));
+/** Line endings and surrounding whitespace do not make two markdown bodies different. */
+function sameBody(a: string | undefined, b: string): boolean {
+  const norm = (text: string): string => text.replace(/\r\n?/g, '\n').trim();
+  return a !== undefined && norm(a) === norm(b);
+}
+
+/**
+ * Rendered HTML of `body`, which is the markdown currently on disk: the collection's own render (`entry.rendered`)
+ * when the collection holds the entry AND its body equals the disk body; otherwise (entry not loaded yet, invalid
+ * file, or the content layer still lags behind a write) the runtime renderer, the same Sätteri pipeline.
+ */
+async function htmlFor(entry: RawEntry | undefined, body: string): Promise<string> {
+  if (entry?.rendered !== undefined && sameBody(entry.body, body)) return entry.rendered.html;
+  return renderMarkdown(body);
+}
+
+/** Frontmatter + body of a markdown file read from disk; bad YAML gives empty data and the raw body. */
+function parseDiskMarkdown(source: string): { data: Record<string, unknown>; body: string } {
+  try {
+    const doc = parseFrontmatterLoose(source);
+    return { data: doc.data, body: doc.body };
+  } catch {
+    return { data: {}, body: splitFrontmatter(source)?.body ?? source };
+  }
+}
+
+/** The summary of an indexed okf / skill entry: freshness from the index, `invalid` when its file has issues. */
+function summaryOf(entry: IndexedEntry, nowMs: number): EntrySummary {
+  const summary = summarize(entry.dataset, entry.slug, entry.data, entry.lastModified, nowMs);
+  if (entry.issues.length > 0) summary.invalid = entry.issues;
+  return summary;
+}
+
+// ---------------------------------------------------------------- relations
+
+const GRAPHS = new WeakMap<object, RelationGraph>();
+
+function graphOf(index: EntryIndex): RelationGraph {
+  let graph = GRAPHS.get(index.entries);
+  if (graph === undefined) {
+    graph = buildRelationGraph(index.entries);
+    GRAPHS.set(index.entries, graph);
+  }
+  return graph;
+}
+
+/**
+ * The relation graph of the entry index (frontmatter `links` + body mentions). Memoized on the identity of
+ * `index.entries`, which the entry index keeps from build to build while no entry changed.
+ */
+export async function getRelationGraph(dataDir: string = resolveDataDir()): Promise<RelationGraph> {
+  return graphOf(await getEntryIndex(dataDir));
+}
+
+/** What a link target contributes to a row: existence, raw `title` (non-blank only) and lifecycle `state`. */
+interface TargetInfo {
+  missing: boolean;
+  title?: string;
+  state?: string;
+}
+
+function infoOfIndexed(entry: IndexedEntry): TargetInfo {
+  const info: TargetInfo = { missing: false };
+  const title = nonEmpty(entry.data.title);
+  if (title !== undefined) info.title = title;
+  const state = datasetDef(entry.dataset).states === undefined ? undefined : entry.data.state;
+  if (typeof state === 'string' && state !== '') info.state = state;
+  return info;
+}
+
+/** okf + skill targets come from the entry index; a reference is a file plus its collection entry. */
+async function targetInfo(
+  index: EntryIndex,
+  dataDir: string,
+  dataset: LinkableDatasetId,
+  slug: string,
+): Promise<TargetInfo> {
+  const indexed = index.byKey.get(`${dataset}/${slug}`);
+  if (indexed !== undefined) return infoOfIndexed(indexed);
+  if (dataset !== 'reference') return { missing: true };
+  const abs = path.join(dataDir, ...entryFileRelPath(dataset, slug).split('/'));
+  if (!(await exists(abs))) return { missing: true };
+  const title = nonEmpty((await loadEntry('reference', slug))?.data.title);
+  return title === undefined ? { missing: false } : { missing: false, title };
+}
+
+function splitKey(key: string): { dataset: LinkableDatasetId; slug: string } {
+  const at = key.indexOf('/');
+  return { dataset: key.slice(0, at) as LinkableDatasetId, slug: key.slice(at + 1) };
+}
+
+/** Rows for `edges`; `side` picks the entry shown (`to` of an outgoing edge, `from` of an incoming one). */
+function rowsOf(
+  edges: readonly RelationEdge[],
+  side: 'to' | 'from',
+  infos: ReadonlyMap<string, TargetInfo>,
+): RelationRow[] {
+  return edges.map((edge): RelationRow => {
+    const key = edge[side];
+    const { dataset, slug } = splitKey(key);
+    const info = infos.get(key);
+    const row: RelationRow = {
+      key,
+      dataset,
+      slug,
+      rel: edge.rel,
+      label:
+        edge.rel === 'mentions'
+          ? side === 'to'
+            ? 'Mentions'
+            : 'Mentioned by'
+          : side === 'to'
+            ? ENTRY_REL_LABELS[edge.rel]
+            : ENTRY_REL_INVERSE_LABELS[edge.rel],
+      title: info?.title ?? slug,
+      missing: info?.missing ?? true,
+      source: edge.source,
+      files: [...edge.files],
+    };
+    if (info?.state !== undefined) row.state = info.state;
+    return row;
+  });
+}
+
+/** The relations of one entry for its detail page (titles, states and `missing` marks resolved). */
+async function relationsFor(
+  index: EntryIndex,
+  dataDir: string,
+  dataset: DatasetId,
+  slug: string,
+): Promise<EntryRelations> {
+  const graph = graphOf(index);
+  const key = `${dataset}/${slug}`;
+  const out = linksTo(graph, key);
+  const incoming = linkedFrom(graph, key);
+  const keys = new Set<string>([...out.map((e) => e.to), ...incoming.map((e) => e.from)]);
+  const infos = new Map<string, TargetInfo>(
+    await Promise.all(
+      [...keys].map(async (k): Promise<[string, TargetInfo]> => {
+        const target = splitKey(k);
+        return [k, await targetInfo(index, dataDir, target.dataset, target.slug)];
+      }),
+    ),
+  );
+  const linksToRows = rowsOf(out, 'to', infos);
+  const relations: EntryRelations = {
+    linksTo: linksToRows,
+    linkedFrom: rowsOf(incoming, 'from', infos),
+    parents: rowsOf(
+      incoming.filter((e) => e.rel === 'child'),
+      'from',
+      infos,
+    ),
+  };
+  if (dataset === 'project') relations.children = linksToRows.filter((row) => row.rel === 'child');
+  return relations;
 }
 
 // ---------------------------------------------------------------- listings
@@ -161,6 +372,15 @@ export async function listEntries(
     return (await listRecipes()).items.map((record) =>
       summarize('recipe', record.slug, record.recipe, new Date(record.lastModified), nowMs),
     );
+  }
+  const kind = datasetDef(dataset).kind;
+  if (kind === 'okf' || kind === 'skill') {
+    // From the entry index on disk: an edit shows on the very next request and an invalid file is listed
+    // (with its issues) instead of vanishing from the collection.
+    return (await getEntryIndex()).entries
+      .filter((entry) => entry.dataset === dataset)
+      .map((entry) => summaryOf(entry, nowMs))
+      .sort((a, b) => compareText(a.slug, b.slug));
   }
   const entries = await loadCollection(dataset);
   const summaries = await Promise.all(
@@ -204,34 +424,30 @@ async function exists(abs: string): Promise<boolean> {
 async function resolveLinks(
   contextSlug: string,
   context: ContextData,
+  index: EntryIndex,
   dataDir: string,
 ): Promise<ResolvedLink[]> {
   return Promise.all(
     context.links.map(async (link): Promise<ResolvedLink> => {
-      const abs = path.join(dataDir, ...entryFileRelPath(link.dataset, link.slug).split('/'));
-      const missing = !(await exists(abs));
+      const info = await targetInfo(index, dataDir, link.dataset, link.slug);
       const resolved: ResolvedLink = {
         dataset: link.dataset,
         slug: link.slug,
         url: entryUrl(link.dataset, link.slug),
-        missing,
+        missing: info.missing,
       };
-      if (!missing) {
-        const target = await loadEntry(link.dataset, link.slug);
-        const title = nonEmpty(target?.data.title);
-        if (title !== undefined) resolved.title = title;
-        const state =
-          datasetDef(link.dataset).states === undefined ? undefined : target?.data.state;
-        if (typeof state === 'string' && state !== '') resolved.state = state;
-      }
+      if (info.title !== undefined) resolved.title = info.title;
+      if (info.state !== undefined) resolved.state = info.state;
       const notes = nonEmpty(link.notes);
       if (notes !== undefined) {
         resolved.notes = notes;
-        // dataset 'context' is not a bundle dataset: only ctxman: links and external links are rewritten.
+        // dataset 'context' is not a bundle dataset: only ctxman: links and external links are rewritten
+        // (a ctxman: link to a missing entry is marked broken).
         resolved.notesHtml = rewriteRenderedHtml(await renderMarkdown(notes), {
           dataset: 'context',
           slug: contextSlug,
           fromRelPath: '',
+          dataDir,
         });
       }
       return resolved;
@@ -240,17 +456,19 @@ async function resolveLinks(
 }
 
 /** Markdown (preamble, blocks) rendered like context notes: only ctxman: and external links are rewritten. */
-async function recipeHtml(slug: string, markdown: string): Promise<string> {
+async function recipeHtml(slug: string, markdown: string, dataDir: string): Promise<string> {
   return rewriteRenderedHtml(await renderMarkdown(markdown), {
     dataset: 'recipe',
     slug,
     fromRelPath: '',
+    dataDir,
   });
 }
 
 async function resolveRecipe(
   slug: string,
   recipe: RecipeData,
+  index: EntryIndex,
   dataDir: string,
 ): Promise<{
   contexts: RecipeContextRef[];
@@ -278,30 +496,27 @@ async function resolveRecipe(
   );
   const items = await Promise.all(
     recipe.items.map(async (item): Promise<RecipeItemRef> => {
-      const abs = path.join(dataDir, ...entryFileRelPath(item.dataset, item.slug).split('/'));
+      const info = await targetInfo(index, dataDir, item.dataset, item.slug);
       const ref: RecipeItemRef = {
         key: itemKey(item.dataset, item.slug),
         dataset: item.dataset,
         slug: item.slug,
         url: entryUrl(item.dataset, item.slug),
-        missing: !(await exists(abs)),
+        missing: info.missing,
       };
-      if (!ref.missing) {
-        const title = nonEmpty((await loadEntry(item.dataset, item.slug))?.data.title);
-        if (title !== undefined) ref.title = title;
-      }
+      if (info.title !== undefined) ref.title = info.title;
       return ref;
     }),
   );
   const blocks = await Promise.all(
     recipe.markdown.map(async (block) => ({
       id: block.id,
-      html: await recipeHtml(slug, block.body),
+      html: await recipeHtml(slug, block.body, dataDir),
     })),
   );
   const out: Awaited<ReturnType<typeof resolveRecipe>> = { contexts, items, blocks };
   const preamble = nonEmpty(recipe.preamble);
-  if (preamble !== undefined) out.preambleHtml = await recipeHtml(slug, preamble);
+  if (preamble !== undefined) out.preambleHtml = await recipeHtml(slug, preamble, dataDir);
   return out;
 }
 
@@ -329,7 +544,7 @@ export async function getEntryDetail(
       backRefs: [],
       fileRelPath,
       data: record.context,
-      links: await resolveLinks(slug, record.context, dataDir),
+      links: await resolveLinks(slug, record.context, await getEntryIndex(dataDir), dataDir),
     };
   }
 
@@ -347,41 +562,61 @@ export async function getEntryDetail(
       backRefs: [],
       fileRelPath,
       data: record.recipe,
-      ...(await resolveRecipe(slug, record.recipe, dataDir)),
+      ...(await resolveRecipe(slug, record.recipe, await getEntryIndex(dataDir), dataDir)),
     };
   }
 
-  // Check the disk first: getEntry() logs a warning for every miss, and a 404 probe is routine.
+  const index = await getEntryIndex(dataDir);
+  const kind = datasetDef(dataset).kind;
+
+  if (kind === 'okf' || kind === 'skill') {
+    // The entry index is the source of truth (disk): an invalid file still opens, flagged by `summary.invalid`.
+    const indexed = index.byKey.get(`${dataset}/${slug}`);
+    if (indexed === undefined) return null;
+    const entryFile = datasetDef(dataset).entryFile;
+    // Only a valid entry can be in the collection; an unknown id would log a warning for nothing.
+    const collectionEntry =
+      indexed.issues.length === 0
+        ? await loadEntry(dataset as CollectionDatasetId, slug)
+        : undefined;
+    const html = rewriteRenderedHtml(await htmlFor(collectionEntry, indexed.body), {
+      dataset,
+      slug,
+      fromRelPath: entryFile,
+      dataDir,
+    });
+    // A valid file gets the schema's output (defaults, coerced dates) like the collection used to give.
+    const parsed =
+      indexed.issues.length === 0 ? DATASET_SCHEMAS[indexed.dataset].safeParse(indexed.data) : null;
+    const data = (parsed?.success === true ? parsed.data : indexed.data) as Record<string, unknown>;
+    const base = {
+      summary: summaryOf(indexed, nowMs),
+      backRefs: backRefs(await safeContexts(), dataset, slug),
+      fileRelPath,
+      html,
+      files: await listBundleFiles(indexed.dataset, slug, dataDir),
+      relations: await relationsFor(index, dataDir, dataset, slug),
+      fileModified: indexed.fileModified,
+    };
+    return kind === 'okf'
+      ? { ...base, kind: 'okf', data: data as OkfEntry }
+      : { ...base, kind: 'skill', data: data as SkillData };
+  }
+
+  // reference: a yaml file served by its collection. Check the disk first: getEntry() logs a warning for every
+  // miss, and a 404 probe is routine.
   if (!(await exists(path.join(dataDir, ...fileRelPath.split('/'))))) return null;
-  const entry = await loadEntry(dataset, slug);
+  const entry = await loadEntry(dataset as CollectionDatasetId, slug);
   if (entry === undefined) return null;
   const lastModified = await lastModifiedOf(entryAbsPath(dataset, slug, dataDir));
-  const summary = summarize(dataset, slug, entry.data, lastModified, nowMs);
-  const refs = backRefs(await safeContexts(), dataset, slug);
-  const base = { summary, backRefs: refs, fileRelPath };
-
-  switch (datasetDef(dataset).kind) {
-    case 'okf': {
-      const html = rewriteRenderedHtml(await htmlOf(entry), {
-        dataset,
-        slug,
-        fromRelPath: 'main.md',
-      });
-      const files = await listBundleFiles(dataset as OkfDatasetId, slug, dataDir);
-      return { ...base, kind: 'okf', data: entry.data as OkfEntry, html, files };
-    }
-    case 'skill': {
-      const html = rewriteRenderedHtml(await htmlOf(entry), {
-        dataset,
-        slug,
-        fromRelPath: 'SKILL.md',
-      });
-      const files = await listBundleFiles('skill', slug, dataDir);
-      return { ...base, kind: 'skill', data: entry.data as SkillData, html, files };
-    }
-    default:
-      return { ...base, kind: 'reference', data: entry.data as ReferenceData };
-  }
+  return {
+    kind: 'reference',
+    summary: summarize(dataset, slug, entry.data, lastModified, nowMs),
+    backRefs: backRefs(await safeContexts(), dataset, slug),
+    fileRelPath,
+    data: entry.data as ReferenceData,
+    relations: await relationsFor(index, dataDir, dataset, slug),
+  };
 }
 
 /**
@@ -404,34 +639,37 @@ export async function getDocDetail(
   const abs = safeJoin(bundleDir, relPath);
   if (abs === null) return null;
 
-  if (!(await exists(abs)) || !(await exists(path.join(bundleDir, 'main.md')))) return null;
-  const doc = await loadDoc(`${dataset}/${slug}/${docPath}`);
-  const bundleEntry = await loadEntry(dataset, slug);
-  if (doc === undefined || bundleEntry === undefined) return null;
+  if (!(await exists(abs))) return null;
+  // The bundle is the entry index's (disk): an entry with an invalid main.md still has its pages.
+  const bundleEntry = (await getEntryIndex(dataDir)).byKey.get(`${dataset}/${slug}`);
+  if (bundleEntry === undefined) return null;
 
+  // The file as it is on disk. The `docs` collection supplies the rendered HTML when it holds this file with the
+  // same body; a file the content layer has not picked up yet (a new concept) or an older version is rendered here.
+  const disk = parseDiskMarkdown(await readFile(abs, 'utf8'));
+  const collectionDoc = await loadDoc(`${dataset}/${slug}/${docPath}`);
   const lastModified = await lastModifiedOf(abs);
-  const entry = summarize(
-    dataset,
-    slug,
-    bundleEntry.data,
-    await lastModifiedOf(entryAbsPath(dataset, slug, dataDir)),
-    nowMs,
-  );
+  const entry = summaryOf(bundleEntry, nowMs);
   const title = okfDocToSearchDoc({
     dataset,
     slug,
     relPath,
-    data: doc.data,
-    body: doc.body ?? '',
+    data: disk.data,
+    body: disk.body,
     entryTitle: entry.title ?? entry.name,
   }).title;
 
   return {
     entry,
     relPath,
-    data: doc.data as DocData,
+    data: disk.data as DocData,
     title,
-    html: rewriteRenderedHtml(await htmlOf(doc), { dataset, slug, fromRelPath: relPath }),
+    html: rewriteRenderedHtml(await htmlFor(collectionDoc, disk.body), {
+      dataset,
+      slug,
+      fromRelPath: relPath,
+      dataDir,
+    }),
     lastModified: lastModified.toISOString(),
     files: await listBundleFiles(dataset, slug, dataDir),
     backRefs: backRefs(await safeContexts(), dataset, slug),
@@ -471,6 +709,9 @@ export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: S
     const [dataset, slug, ...rest] = doc.id.split('/');
     if (dataset === undefined || slug === undefined || rest.length === 0) continue;
     if (!okfIds.includes(dataset) || !isOkfDatasetId(dataset)) continue;
+    // index.md and log.md are navigation and history, not knowledge: they stay out of search (UX-22).
+    const last = rest[rest.length - 1];
+    if (last === 'index' || last === 'log') continue;
     const relPath = `${rest.join('/')}.md`;
     if (relPath === 'main.md') continue;
     docs.push(

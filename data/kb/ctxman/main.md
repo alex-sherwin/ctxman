@@ -15,6 +15,10 @@ generated:
   by: claude-code/ctxman-seed
   at: 2026-10-17T09:30:00Z
 status: stable
+links:
+  - dataset: feature
+    slug: entry-relations
+    rel: related
 ---
 
 # ctxman
@@ -31,14 +35,15 @@ It runs on a Node backend with API routes and can run local scripts. It is never
 * **Contexts**: `context` records that link to any of the above without copying it.
 * **Recipes**: `recipe` records that turn contexts and extra items into one ready-to-use document for Claude Code, Codex or a generic agent.
 
-Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes. Entries are normally edited in your IDE (the UI follows along); markdown files, references, contexts and recipes can also be edited in the browser, see [Editing](/concepts/editing.md).
+Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes. Entries point at each other with typed [relations](/concepts/relations.md) (a project owns its children, a task can depend on another), and every entry page shows what it links to and what links to it. Entries are normally edited in your IDE (the UI follows along); markdown files, references, contexts and recipes can also be edited in the browser, see [Editing](/concepts/editing.md).
 
 ## How an agent should use it
 
 1. Find the relevant context (or build one in the [context forge](/concepts/context-forge.md)). A context lists links plus optional notes that narrow what the agent should read.
 2. Follow each link to the underlying entry. Contexts are pointers, so the entry is always the current version.
-3. To hand a whole session brief to an agent, compose a recipe in [context inflate](/concepts/context-inflate.md) and generate its document.
-4. When you learn something durable, record it as a new entry with the [add scripts](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
+3. Connect entries with typed [relations](/concepts/relations.md) (a project lists its tasks as children, a task can depend on another) and add any entry to a context from its page.
+4. To hand a whole session brief to an agent, compose a recipe in [context inflate](/concepts/context-inflate.md) and generate its document.
+5. When you learn something durable, record it as a new entry with the [add scripts or the create forms](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
 
 The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for working on ctxman itself.
 
@@ -46,6 +51,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 
 * [Architecture](/concepts/architecture.md) - stack, layout and layering.
 * [Datasets](/concepts/datasets.md) - the eleven datasets and link syntax.
+* [Relations](/concepts/relations.md) - typed links between entries, projects and their children, and how the UI edits them.
 * [Context forge](/concepts/context-forge.md) - building and editing contexts.
 * [Context inflate](/concepts/context-inflate.md) - recipes and the generated session document.
 * [Search](/concepts/search.md) - global fuzzy search.
@@ -53,7 +59,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [Adding entries](/concepts/adding-entries.md) - scaffold and author new entries.
 * [Compliance checks](/concepts/compliance-checks.md) - OKF, link and collection checks.
 * [Runtime modes](/concepts/runtime-modes.md) - dev server versus built server.
-* [Editing](/concepts/editing.md) - editing in the browser: the Save model, markdown editor and popups, forms, Open in IDE, JSON Schemas.
+* [Editing](/concepts/editing.md) - editing in the browser: the Save model, drafts, markdown editor with link completion, Details dialog and forms, Open in IDE, JSON Schemas.
 
 ## Quick facts
 

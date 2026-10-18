@@ -99,13 +99,16 @@ export interface ListParams {
   /** `reference` only. */
   type: ReferenceType | null;
   sort: ListSort;
+  /** `project=<slug>`: only the children of `project/<slug>` (its `child` relations; any dataset). null = no filter. */
+  project: string | null;
 }
 
-/** `/[dataset]?q=&state=&tag=&sort=&type=`. Unknown / not-applicable values are ignored (not errors). */
+/** `/[dataset]?q=&state=&tag=&sort=&type=&project=`. Unknown / not-applicable values are ignored (not errors). */
 export function parseListParams(params: URLSearchParams, dataset: DatasetId): ListParams {
   const stateIds = new Set<string>((getDataset(dataset)?.states ?? []).map((s) => s.id));
   const rawType = params.get('type');
   const rawSort = params.get('sort');
+  const rawProject = params.get('project');
   const sort: ListSort =
     rawSort === 'name' ? 'name' : rawSort === 'state' && stateIds.size > 0 ? 'state' : 'modified';
   return {
@@ -114,6 +117,7 @@ export function parseListParams(params: URLSearchParams, dataset: DatasetId): Li
     tags: readList(params, 'tag'),
     type: dataset === 'reference' && isReferenceType(rawType) ? rawType : null,
     sort,
+    project: rawProject !== null && isValidName(rawProject) ? rawProject : null,
   };
 }
 
@@ -137,25 +141,42 @@ export function parseSearchUrl(params: URLSearchParams): SearchUrl {
   };
 }
 
+// ---------------------------------------------------------------- discovery tabs (forge + inflate)
+
+/** A Discover tab: one linkable dataset, or `all` (every linkable dataset merged; no state chips). */
+export type DiscoverDataset = LinkableDatasetId | 'all';
+
+export function isDiscoverDataset(value: unknown): value is DiscoverDataset {
+  return value === 'all' || isLinkableDatasetId(value);
+}
+
+// ---------------------------------------------------------------- new entry form
+
+/** `/new/<dataset>?parent=<project slug>` prefills "Part of project". Invalid / absent = null. */
+export function parseNewEntryUrl(params: URLSearchParams): { parent: string | null } {
+  const parent = params.get('parent');
+  return { parent: parent !== null && isValidName(parent) ? parent : null };
+}
+
 // ---------------------------------------------------------------- forge (UI_SPEC §H.1)
 
 export interface ForgeUrl {
   /** Context slug, or 'new'. null = nothing selected (also for an invalid slug). */
   context: string | null;
   /** Discovery tab. Invalid → 'kb'. */
-  dataset: LinkableDatasetId;
+  dataset: DiscoverDataset;
   q: string;
-  /** Only state ids of the selected dataset's lifecycle ([] for datasets without one). */
+  /** Only state ids of the selected dataset's lifecycle ([] for datasets without one and for `all`). */
   states: string[];
   tags: string[];
 }
 
-export const FORGE_DEFAULT_DATASET: LinkableDatasetId = 'kb';
+export const FORGE_DEFAULT_DATASET = 'kb' satisfies DiscoverDataset;
 
 export function parseForgeUrl(params: URLSearchParams): ForgeUrl {
   const rawContext = params.get('context');
   const rawDataset = params.get('dataset');
-  const dataset: LinkableDatasetId = isLinkableDatasetId(rawDataset)
+  const dataset: DiscoverDataset = isDiscoverDataset(rawDataset)
     ? rawDataset
     : FORGE_DEFAULT_DATASET;
   const stateIds = new Set<string>((getDataset(dataset)?.states ?? []).map((s) => s.id));
@@ -222,7 +243,7 @@ export interface InflateUrl {
   recipe: string | null;
   view: InflateView;
   /** Ad hoc discovery tab. Invalid → 'kb'. */
-  dataset: LinkableDatasetId;
+  dataset: DiscoverDataset;
   q: string;
   /** Run view: the job being watched (`job=<uuid>`). null unless `view=run` and the id is well formed. */
   job: string | null;
@@ -230,7 +251,7 @@ export interface InflateUrl {
   paths: InflatePaths;
 }
 
-export const INFLATE_DEFAULT_DATASET: LinkableDatasetId = 'kb';
+export const INFLATE_DEFAULT_DATASET = 'kb' satisfies DiscoverDataset;
 
 export function parseInflateUrl(params: URLSearchParams): InflateUrl {
   const rawRecipe = params.get('recipe');
@@ -241,7 +262,7 @@ export function parseInflateUrl(params: URLSearchParams): InflateUrl {
   return {
     recipe: rawRecipe !== null && isValidName(rawRecipe) ? rawRecipe : null,
     view,
-    dataset: isLinkableDatasetId(rawDataset) ? rawDataset : INFLATE_DEFAULT_DATASET,
+    dataset: isDiscoverDataset(rawDataset) ? rawDataset : INFLATE_DEFAULT_DATASET,
     q: params.get('q') ?? '',
     job: view === 'run' && rawJob !== null && JOB_ID.test(rawJob) ? rawJob : null,
     paths: params.get('paths') === 'absolute' ? 'absolute' : 'relative',

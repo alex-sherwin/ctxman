@@ -3,18 +3,20 @@ import { LINKABLE_DATASETS } from '../../src/datasets/registry.ts';
 import type { EntrySummary } from '../../src/lib/entry-summary.ts';
 import {
   $entries,
+  compareEntries,
   ensureAllEntries,
   ensureEntries,
   findEntry,
+  loadAllEntries,
   waitForEntry,
 } from '../../src/stores/entries.ts';
 
-const entry = (dataset: string, slug: string): EntrySummary =>
+const entry = (dataset: string, slug: string, title: string = slug): EntrySummary =>
   ({
     dataset,
     slug,
     name: slug,
-    title: slug,
+    title,
     url: `/${dataset}/${slug}`,
   }) as unknown as EntrySummary;
 
@@ -154,5 +156,103 @@ describe('waitForEntry', () => {
     await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect($entries.get().kb?.entries.map((e) => e.slug)).toEqual(['a', 'b']);
+  });
+});
+
+describe('compareEntries', () => {
+  it('orders by registry dataset order, then title (name when untitled), then slug', () => {
+    const untitled = { ...entry('kb', 'zeta'), title: undefined } as EntrySummary;
+    const sorted = [
+      entry('task', 'a', 'Alpha'),
+      entry('kb', 'two', 'Gamma'),
+      untitled,
+      entry('kb', 'one', 'Beta'),
+      entry('kb', 'one-b', 'Beta'),
+      entry('skill', 's', 'Skill'),
+      entry('rca', 'r', 'Rca'),
+    ].sort(compareEntries);
+    expect(sorted.map((e) => `${e.dataset}/${e.slug}`)).toEqual([
+      'kb/one',
+      'kb/one-b',
+      'kb/two',
+      'kb/zeta',
+      'rca/r',
+      'task/a',
+      'skill/s',
+    ]);
+  });
+});
+
+describe('loadAllEntries', () => {
+  it('loads every linkable dataset once and returns one list: dataset order, then title', async () => {
+    const { calls } = stubFetch((ds) =>
+      ds === 'kb'
+        ? [entry('kb', 'b', 'Second'), entry('kb', 'a', 'First')]
+        : ds === 'task'
+          ? [entry('task', 'z', 'Zed')]
+          : [],
+    );
+    const all = await loadAllEntries();
+    expect(all.map((e) => `${e.dataset}/${e.slug}`)).toEqual(['kb/a', 'kb/b', 'task/z']);
+    expect(calls.map((c) => c.dataset).sort()).toEqual([...LINKABLE_DATASETS].sort());
+
+    // everything is ready now: the next call answers from the cache without another request
+    await expect(loadAllEntries()).resolves.toHaveLength(3);
+    expect(calls).toHaveLength(LINKABLE_DATASETS.length);
+  });
+
+  it('only waits for and returns the given datasets', async () => {
+    const { calls } = stubFetch((ds) => [entry(ds, 'one')]);
+    const some = await loadAllEntries(['bug', 'idea']);
+    expect(some.map((e) => e.dataset)).toEqual(['idea', 'bug']);
+    expect(calls.map((c) => c.dataset).sort()).toEqual(['bug', 'idea']);
+  });
+
+  it('settles when a dataset fails and skips its entries', async () => {
+    stubFetch((ds) =>
+      ds === 'rca' ? 500 : ds === 'bug' ? new Error('offline') : [entry(ds, 'x')],
+    );
+    const all = await loadAllEntries();
+    const datasets = all.map((e) => e.dataset);
+    expect(datasets).not.toContain('rca');
+    expect(datasets).not.toContain('bug');
+    expect(datasets).toHaveLength(LINKABLE_DATASETS.length - 2);
+    expect($entries.get().rca?.status).toBe('error');
+  });
+
+  it('resolves at the timeout with the entries of the datasets that are ready', async () => {
+    vi.useFakeTimers();
+    let release: (() => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const ds = new URL(String(input), 'http://ctxman.invalid').searchParams.get('dataset');
+        if (ds === 'task') {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return new Response(JSON.stringify({ entries: [entry(ds ?? '', 'x')] }), { status: 200 });
+      }),
+    );
+    let settled = false;
+    const result = loadAllEntries(['kb', 'task'], 3000).then((all) => {
+      settled = true;
+      return all;
+    });
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await result).map((e) => e.dataset)).toEqual(['kb']);
+    release?.(); // let the stalled request finish so later tests start clean
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it('resolves before the timeout as soon as the last dataset arrives', async () => {
+    vi.useFakeTimers();
+    stubFetch((ds) => [entry(ds, 'x')]);
+    const result = loadAllEntries(['kb', 'task'], 3000);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(result).resolves.toHaveLength(2);
   });
 });

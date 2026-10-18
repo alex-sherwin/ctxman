@@ -1,4 +1,4 @@
-// Tools island root (UI_SPEC §I): check scripts, the Add Entry form and the terminal-styled output.
+// Tools island root (UI_SPEC §I): check scripts, the New entry links and the terminal-styled output.
 // Mounted by src/pages/tools.astro with client:only="react". Imports kit files directly (not the barrel)
 // so the Tools bundle does not pull in Monaco.
 import { useEffect } from 'react';

@@ -276,15 +276,15 @@ describe('modes (spec 4.2)', () => {
   });
 });
 
-describe('defaultModeFor (spec 4.3)', () => {
+describe('defaultModeFor (spec 4.3, ROUND3 §H.1: every okf kind is inline-main)', () => {
   const table: Record<ItemKind, [ModeId, ModeId, ModeId]> = {
     kb: ['inline-main', 'inline-main', 'inline-main'],
     rca: ['inline-main', 'inline-main', 'inline-main'],
-    idea: ['summary', 'summary', 'summary'],
-    task: ['summary', 'summary', 'summary'],
-    bug: ['summary', 'summary', 'summary'],
-    feature: ['summary', 'summary', 'summary'],
-    project: ['summary', 'summary', 'summary'],
+    idea: ['inline-main', 'inline-main', 'inline-main'],
+    task: ['inline-main', 'inline-main', 'inline-main'],
+    bug: ['inline-main', 'inline-main', 'inline-main'],
+    feature: ['inline-main', 'inline-main', 'inline-main'],
+    project: ['inline-main', 'inline-main', 'inline-main'],
     skill: ['install', 'install', 'pointer'],
     'local-repo': ['describe', 'describe', 'describe'],
     'remote-repo': ['describe', 'describe', 'describe'],

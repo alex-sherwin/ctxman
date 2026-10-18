@@ -47,6 +47,7 @@ const DETAIL_ROUTES = [
   { path: '/skill/okf-authoring', testId: 'detail-files' },
   { path: '/reference/astro-docs', testId: 'reference-fields' },
   { path: '/task/write-agents-md', testId: 'detail-content' },
+  { path: '/project/ctxman-v1', testId: 'children-panel' },
 ] as const;
 
 for (const route of DETAIL_ROUTES) {
@@ -69,13 +70,23 @@ for (const route of ['/kb/ctxman', '/kb/ctxman/doc/concepts/datasets', '/skill/o
   });
 }
 
-// yaml datasets: the create form (D6) exists only for reference, context and recipe.
+// yaml datasets keep the DataForm island (D6): reference, context and recipe.
 for (const ds of ['reference', 'context', 'recipe']) {
   test(`/new/${ds} returns 200 and mounts the DataForm island`, async ({ page }) => {
     const response = await page.goto(`/new/${ds}`);
     expect(response?.status()).toBe(200);
     await expect(page.getByTestId('dform')).toBeVisible();
     await expect(page.getByTestId('dform-field-name')).toBeVisible();
+  });
+}
+
+// okf + skill: the create form of round 3 (NewEntryForm island).
+for (const ds of ['task', 'skill']) {
+  test(`/new/${ds} returns 200 and mounts the NewEntryForm island`, async ({ page }) => {
+    const response = await page.goto(`/new/${ds}`);
+    expect(response?.status()).toBe(200);
+    await expect(page.getByTestId('new-entry-form')).toBeVisible();
+    await expect(page.getByTestId('new-name')).toBeVisible();
   });
 }
 

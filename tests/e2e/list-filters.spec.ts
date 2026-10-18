@@ -1,8 +1,10 @@
 // Dataset list filters: chips, text, sort and clear all live in the URL (UI_SPEC §E). The filter form is
 // a plain GET form enhanced by a script: every chip / sort change is a real navigation, so history works.
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { chipOf } from './helpers.ts';
+import { settleAfter } from './dev-reload.ts';
+import { API, chipOf, dataPath, settleDevReload, uniqueName } from './helpers.ts';
 
 /** `data-slug` of every rendered row, in display order. */
 async function rowSlugs(page: Page): Promise<string[]> {
@@ -118,4 +120,159 @@ test('the reference list marks remote-skill entries with a git / archive badge',
     page.locator(`[data-testid="list-row"][data-slug="${slug}"] [data-testid="uri-kind-badge"]`);
   await expect(badge('ksa-modding')).toHaveText('archive');
   await expect(badge('anthropic-skills')).toHaveText('git');
+});
+
+/**
+ * Resolves once the state select under `scope` shows "Saved". The status only lives until the page reloads (the dev
+ * server does it about 0.7 s after the write), so it is polled on every animation frame.
+ */
+async function savedStatus(page: Page, scope: string): Promise<void> {
+  await page.waitForFunction(
+    (selector) =>
+      document.querySelector(`${selector} [data-testid="state-select-status"]`)?.textContent ===
+      'Saved',
+    scope,
+    { polling: 'raf', timeout: 10_000 },
+  );
+}
+
+test.describe('state select and invalid files (own e2e tasks)', () => {
+  test.describe.configure({ mode: 'serial' });
+  const pending = uniqueName('e2e-lf-pending');
+  const broken = uniqueName('e2e-lf-broken');
+
+  test.beforeAll(async ({ browser, playwright, baseURL }) => {
+    await settleAfter(browser, baseURL, async () => {
+      const request = await playwright.request.newContext({ baseURL });
+      try {
+        for (const [name, title] of [
+          [pending, 'E2E list filter pending'],
+          [broken, 'E2E list filter broken'],
+        ] as const) {
+          const created = await request.post(`${API}/entry/task`, {
+            data: {
+              name,
+              title,
+              description: 'Created by the list-filters spec.',
+              state: 'pending',
+            },
+          });
+          expect(created.status()).toBe(201);
+        }
+      } finally {
+        await request.dispose();
+      }
+      // an invalid file: `done` is not a task state (written by hand, like a mistake in an editor)
+      const file = dataPath(`task/${broken}/main.md`);
+      writeFileSync(file, readFileSync(file, 'utf8').replace('state: pending', 'state: done'));
+    });
+  });
+
+  test.afterAll(async ({ browser, baseURL }) => {
+    await settleAfter(browser, baseURL, async () => {
+      for (const name of [pending, broken]) {
+        rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('a list row state select PATCHes the state and keeps ?state= and ?sort=', async ({
+    page,
+  }) => {
+    await page.goto('/task?state=pending&sort=name');
+    const row = page.locator(`[data-testid="list-row"][data-slug="${pending}"]`);
+    const select = row.getByTestId('state-select');
+    await expect(select).toHaveValue('pending');
+    await select.selectOption('in-progress');
+    await savedStatus(page, `[data-testid="list-row"][data-slug="${pending}"]`);
+
+    // the page loads again (dev reload or the script's fallback): the filter no longer matches the task
+    await expect(row).toHaveCount(0, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/task\?state=pending&sort=name$/);
+    await expect(page.getByTestId('list-chip-state-pending')).toBeChecked();
+    expect(readFileSync(dataPath(`task/${pending}/main.md`), 'utf8')).toContain(
+      'state: in-progress',
+    );
+
+    await page.goto('/task?state=in-progress');
+    await expect(
+      page.locator(`[data-testid="list-row"][data-slug="${pending}"]`).getByTestId('state-select'),
+    ).toHaveValue('in-progress');
+    await settleDevReload();
+  });
+
+  test('the detail header select changes the state; the Details panel follows after the reload', async ({
+    page,
+  }) => {
+    await page.goto(`/task/${pending}`);
+    await expect(page.getByTestId('state-select')).toHaveValue('in-progress');
+    // the island shows the saved message when it mounts: change the state after that, like a user would
+    await expect(page.getByTestId('meta-edit')).toBeEnabled();
+    await page.getByTestId('state-select').selectOption('complete');
+    await savedStatus(page, '.cx-statesel');
+    await expect(page.getByTestId('detail-meta').locator('.ck-badge--state')).toHaveText(
+      'Complete',
+      {
+        timeout: 15_000,
+      },
+    );
+    await expect(page.getByTestId('state-select')).toHaveValue('complete');
+    await expect(page.getByTestId('entry-status')).toHaveText('State set to Complete');
+  });
+
+  test('a rejected state change goes back to the old value and shows the message', async ({
+    page,
+  }) => {
+    await page.goto(`/task/${pending}`);
+    await page.route(`**/api/entry/task/${pending}`, (route) =>
+      route.request().method() === 'PATCH'
+        ? route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'conflict', message: 'Changed on disk' }),
+          })
+        : route.continue(),
+    );
+    await page.getByTestId('state-select').selectOption('pending');
+    await expect(page.getByTestId('state-select-status')).toHaveText('Changed on disk');
+    await expect(page.getByTestId('state-select-status')).toHaveAttribute('data-kind', 'error');
+    await expect(page.getByTestId('state-select')).toHaveValue('complete');
+    await expect(page.getByTestId('state-select')).toBeEnabled();
+  });
+
+  test('an invalid file is flagged in the list, on the dashboard and on its page, and can be repaired', async ({
+    page,
+  }) => {
+    await page.goto('/task');
+    const row = page.locator(`[data-testid="list-row"][data-slug="${broken}"]`);
+    await expect(row.getByTestId('invalid-badge')).toBeVisible();
+    await expect(row.getByTestId('invalid-badge')).toHaveAttribute('title', /state/);
+    await expect(row.getByTestId('state-select').locator('option:checked')).toHaveText(
+      'done (invalid)',
+    );
+    // the healthy rows carry no badge
+    await expect(
+      page.locator(`[data-testid="list-row"][data-slug="${pending}"]`).getByTestId('invalid-badge'),
+    ).toHaveCount(0);
+
+    await page.goto('/');
+    await expect(page.getByTestId('dashboard-invalid')).toContainText('E2E list filter broken');
+
+    await page.goto(`/task/${broken}`);
+    const banner = page.getByTestId('invalid-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("This entry's file is invalid");
+    await expect(banner).toContainText('state');
+    await expect(page.getByTestId('invalid-fix')).toHaveAttribute('href', `/task/${broken}?edit=1`);
+    await expect(page.getByTestId('state-select').locator('option:checked')).toHaveText(
+      'done (invalid)',
+    );
+
+    // choosing a real state repairs the file
+    await page.getByTestId('state-select').selectOption('pending');
+    await savedStatus(page, '.cx-statesel');
+    await expect(page.getByTestId('invalid-banner')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId('state-select')).toHaveValue('pending');
+    expect(readFileSync(dataPath(`task/${broken}/main.md`), 'utf8')).toContain('state: pending');
+  });
 });

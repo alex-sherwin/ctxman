@@ -108,14 +108,23 @@ Expansion is a pure function (`src/lib/inflate/expand.ts`) shared by the server 
 9. Material and material options resolve the same way (built-in, `defaults[kind]`, override); an invalid one falls back with a `material-invalid` warning.
 10. `output.primary` is checked after expansion: it must be an included remote-repo item with material `clone` or a local-repo item with material `symlink`, otherwise a `primary-invalid` warning is added and the recipe has no primary.
 
+## Brief quality
+
+The inline modes shape each entry body so the document is a usable brief and not a pile of template headings:
+
+* **Defaults**: every okf kind (kb, rca, idea, task, bug, feature, project) defaults to `inline-main`. Use `summary` or `pointer` per kind or per item when a short brief is wanted.
+* **Description**: an inline okf item (`inline-main` or `inline-bundle`) prints its frontmatter `description` ahead of the body when the description is not already part of the body (compared ignoring case and whitespace). The same text is what `summary` shows.
+* **Empty sections dropped**: an ATX heading with nothing under it (end of text, or a heading of the same or a higher level next) is removed, repeatedly, so the empty `## Steps` of a fresh task disappears together with sections that only held empty subsections. Code blocks are never touched.
+* **Markdown blocks** nest under their group: `###` inside a context group, `##` outside one, a block whose shallowest heading is above that level is shifted down to it, deeper headings are left alone. The manifest titles a block by its first heading, else `Markdown <id>`.
+* **Unresolved links**: with `rewriteLinks`, a bundle link to a file the bundle does not have, a link that leaves the bundle, a `ctxman:` link whose entry does not exist and a malformed `ctxman:` link are left as written and add an `unresolved-link` warning naming the item, file and destination. The warnings are de-duplicated like the others.
+
 ## Include modes
 
 Which modes exist depends on the item kind. The first mode of a family is not necessarily the default; see the default column.
 
 | Item kind | Modes (option ids) | Default (claude-code, codex / generic) |
 | --- | --- | --- |
-| `kb`, `rca` | `inline-main`, `inline-bundle`, `summary`, `pointer` | `inline-main` |
-| `idea`, `task`, `bug`, `feature`, `project` | the same four | `summary` |
+| `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | `inline-main`, `inline-bundle`, `summary`, `pointer` | `inline-main` |
 | `skill` | `install`, `inline`, `pointer` | `install` / `pointer` |
 | reference `local-repo` | `describe`, `tree` | `describe` |
 | reference `remote-repo` | `describe`, `clone` | `describe` |
@@ -125,7 +134,7 @@ What each mode writes:
 
 | Mode | Output |
 | --- | --- |
-| `inline-main` | The entry's `main.md` body, plus a line listing the bundle's other concept files by relative path. |
+| `inline-main` | The entry's `main.md` body, plus a line listing the bundle's other concept files by relative path. The entry's `description` is printed first when the body does not already contain it, so a task or project whose template body is empty still says what it is. |
 | `inline-bundle` | `main.md`, then every concept file under its own heading, in `index.md` order, then non-markdown files as a path list. |
 | `summary` | Meta line plus the description. |
 | `pointer` | One line with the description and the path to read. |
@@ -213,6 +222,8 @@ Everything an agent needs to work on ctxman itself.
 
 > **From context `ctxman-dev`:** Start here.
 
+What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.
+
 ...the entry body, headings shifted below the item heading...
 
 ## Additional items
@@ -236,7 +247,7 @@ Details:
 * Context notes become `> **From context ...:**` blockquotes ahead of the item body.
 * Resolved links: with `rewriteLinks`, `/concepts/x.md`, relative `./x.md` and `ctxman:` links become file paths (the link text stays), so the agent can open them directly. Links inside code are untouched and unresolvable targets are left as written.
 * Shell commands quote every value, fenced blocks grow their fence when the content contains backticks, and `.ctxman/` is the scratch directory for clones and downloads inside the project (keep it out of version control).
-* The manifest returned with the document lists every segment with key, kind, mode, options, `via`, source path, bytes and status (`included`, `excluded`, `missing`, `invalid`), plus counts, contexts, total bytes and de-duplicated warnings. Warning codes: `context-missing`, `context-invalid`, `item-missing`, `item-invalid`, `mode-invalid`, `override-stale`, `path-missing`, `file-unreadable` and `large-output` (over 512 KB), and for working directories `material-invalid`, `primary-invalid`, `dest-collision`, `source-missing`, `tool-missing`, `manifest-unreadable`, `manifest-other-recipe` and `context-file-edited`. With a directory the manifest also has `output` (`dir`, `contextFile`, `primary`) and each placed item has `material` and `dest`.
+* The manifest returned with the document lists every segment with key, kind, mode, options, `via`, source path, bytes and status (`included`, `excluded`, `missing`, `invalid`), plus counts, contexts, total bytes and de-duplicated warnings. Warning codes: `context-missing`, `context-invalid`, `item-missing`, `item-invalid`, `mode-invalid`, `override-stale`, `path-missing`, `file-unreadable`, `unresolved-link` and `large-output` (over 512 KB), and for working directories `material-invalid`, `primary-invalid`, `dest-collision`, `source-missing`, `tool-missing`, `manifest-unreadable`, `manifest-other-recipe` and `context-file-edited`. With a directory the manifest also has `output` (`dir`, `contextFile`, `primary`) and each placed item has `material` and `dest`.
 
 ### LLM_CONTEXT.md (working directory)
 
@@ -387,7 +398,9 @@ One React island with three views, selected by the URL parameter `view`:
 * **Preview**. Renders the real document through the server about 400 ms after the last edit, with Copy, Download .md and the manifest table (with a Material column when a directory is set). With a directory it shows the relative document of the dry run (`paths=relative`, default) and a button that opens the Run view; `paths=absolute` shows the single-document render and the "Write to path" box.
 * **Run**. Run settings on the left (run overrides, the directory, context file, primary and a material select per included item), the plan on the right (status line, blocking problems, warnings, the step list, the **Run** button); after starting, the job progress replaces the plan (status, **Cancel**, one row per step with its action, duration and collapsible output, and at the end the directory with "Open in IDE", "Copy path" and "Back to plan").
 
-URL parameters: `recipe` (a recipe name, or `new` for the create dialog), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc discovery tab), `q` (its text filter), `job` (the job being watched; only kept with `view=run`) and `paths` (`absolute`; relative is the default and omitted). Save with the button or Cmd/Ctrl+S; unsaved edits are guarded when you switch recipes or leave. A recipe's own page at `/recipe/<name>` shows its composition read-only (including the output directory, a Material column and the primary marker) with an "Open in Inflate" button.
+The ad hoc discovery list has the same tabs as the Forge, **All** first (`dataset=all`: entries of every linkable dataset together, with a dataset badge on each row). Unsaved edits of the working recipe are kept as a draft in `localStorage` (14 days) and restored after a reload with a "Restored unsaved changes" banner and a Discard button (a recipe changed on disk meanwhile is restored with a warning); there is no native leave prompt, and switching recipes still asks first. A never-saved `new` recipe is not persisted. The markdown block and preamble editors complete `ctxman:` links like every markdown editor (see [Editing](/concepts/editing.md)).
+
+URL parameters: `recipe` (a recipe name, or `new` for the create dialog), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc discovery tab, a linkable dataset or `all`), `q` (its text filter), `job` (the job being watched; only kept with `view=run`) and `paths` (`absolute`; relative is the default and omitted). Save with the button or Cmd/Ctrl+S; unsaved edits are guarded when you switch recipes or leave. A recipe's own page at `/recipe/<name>` shows its composition read-only (including the output directory, a Material column and the primary marker) with an "Open in Inflate" button.
 
 ## Code map
 

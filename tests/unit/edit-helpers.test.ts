@@ -1,24 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getJson, sendJson } from '../../src/ui/edit/api.ts';
-import { clearDraft, loadDraft, saveDraft } from '../../src/ui/edit/draft-backup.ts';
+import {
+  DRAFT_TTL_MS,
+  clearDraft,
+  hasDraft,
+  loadDraft,
+  saveDraft,
+} from '../../src/ui/edit/draft-backup.ts';
 import { rememberSave, takeSave } from '../../src/ui/edit/last-save.ts';
 import { statusText } from '../../src/ui/edit/status.ts';
+import { splitTagInput, tagInputProblem } from '../../src/ui/edit/tag-input.ts';
 
-/** A minimal in-memory `sessionStorage`; `broken` makes every access throw (private window). */
-function stubSession(broken = false): Map<string, string> {
+/** A minimal in-memory Storage under `name`; `broken` makes every access throw (private window). */
+function stubStorage(name: 'sessionStorage' | 'localStorage', broken = false): Map<string, string> {
   const data = new Map<string, string>();
   const fail = () => {
     throw new Error('SecurityError');
   };
-  vi.stubGlobal('sessionStorage', {
+  vi.stubGlobal(name, {
     getItem: (k: string) => (broken ? fail() : (data.get(k) ?? null)),
     setItem: (k: string, v: string) => (broken ? fail() : void data.set(k, v)),
     removeItem: (k: string) => (broken ? fail() : void data.delete(k)),
   });
   return data;
 }
+const stubSession = (broken = false) => stubStorage('sessionStorage', broken);
+const stubLocal = (broken = false) => stubStorage('localStorage', broken);
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -129,41 +139,124 @@ describe('getJson / sendJson', () => {
   });
 });
 
-describe('draft-backup', () => {
-  it('round-trips a draft under ctxman:draft:<key> and clears it', () => {
-    const data = stubSession();
+describe('draft-backup (localStorage, 14-day TTL)', () => {
+  it('round-trips a draft under ctxman:draft:<key>, stamped with savedAt, and clears it', () => {
+    const data = stubLocal();
     expect(loadDraft('doc:kb/x/main.md')).toBeNull();
+    expect(hasDraft('doc:kb/x/main.md')).toBe(false);
     saveDraft('doc:kb/x/main.md', { text: 'edited', base: '2026-01-01T00:00:00.000Z' });
     expect([...data.keys()]).toEqual(['ctxman:draft:doc:kb/x/main.md']);
+    const stored = JSON.parse(data.get('ctxman:draft:doc:kb/x/main.md') ?? 'null');
+    expect(stored).toMatchObject({ text: 'edited', base: '2026-01-01T00:00:00.000Z' });
+    expect(typeof stored.savedAt).toBe('number');
+    // loadDraft returns only { text, base }
     expect(loadDraft('doc:kb/x/main.md')).toEqual({
       text: 'edited',
       base: '2026-01-01T00:00:00.000Z',
     });
+    expect(hasDraft('doc:kb/x/main.md')).toBe(true);
     clearDraft('doc:kb/x/main.md');
     expect(loadDraft('doc:kb/x/main.md')).toBeNull();
+    expect(hasDraft('doc:kb/x/main.md')).toBe(false);
     expect(data.size).toBe(0);
   });
 
+  it('does not touch sessionStorage', () => {
+    const session = stubSession();
+    stubLocal();
+    saveDraft('k', { text: 't', base: 'b' });
+    expect(session.size).toBe(0);
+  });
+
+  it('keeps a draft for 14 days, then drops it (and removes it) on the next read', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    const data = stubLocal();
+    saveDraft('k', { text: 't', base: 'b' });
+
+    vi.setSystemTime(Date.now() + DRAFT_TTL_MS);
+    expect(hasDraft('k')).toBe(true); // exactly 14 days is still fresh
+    vi.setSystemTime(Date.now() + 1);
+    expect(loadDraft('k')).toBeNull();
+    expect(data.has('ctxman:draft:k')).toBe(false);
+    expect(DRAFT_TTL_MS).toBe(14 * 24 * 60 * 60 * 1000);
+  });
+
+  it('hasDraft also removes an expired draft', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-01T00:00:00Z'));
+    const data = stubLocal();
+    saveDraft('k', { text: 't', base: 'b' });
+    vi.setSystemTime(Date.now() + DRAFT_TTL_MS + 1000);
+    expect(hasDraft('k')).toBe(false);
+    expect(data.size).toBe(0);
+  });
+
+  it('treats a value without savedAt as fresh', () => {
+    const data = stubLocal();
+    data.set('ctxman:draft:old', JSON.stringify({ text: 'kept', base: 'T0' }));
+    expect(loadDraft('old')).toEqual({ text: 'kept', base: 'T0' });
+    expect(hasDraft('old')).toBe(true);
+  });
+
   it('ignores corrupt or foreign values', () => {
-    const data = stubSession();
+    const data = stubLocal();
     data.set('ctxman:draft:a', 'not json');
     data.set('ctxman:draft:b', JSON.stringify({ text: 1, base: 'x' }));
     data.set('ctxman:draft:c', JSON.stringify(null));
-    expect(loadDraft('a')).toBeNull();
-    expect(loadDraft('b')).toBeNull();
-    expect(loadDraft('c')).toBeNull();
+    data.set('ctxman:draft:d', JSON.stringify({ text: 'x' }));
+    for (const key of ['a', 'b', 'c', 'd']) {
+      expect(loadDraft(key)).toBeNull();
+      expect(hasDraft(key)).toBe(false);
+    }
   });
 
   it('never throws when storage is unavailable', () => {
-    stubSession(true);
+    stubLocal(true);
     expect(() => saveDraft('k', { text: 't', base: 'b' })).not.toThrow();
     expect(loadDraft('k')).toBeNull();
+    expect(hasDraft('k')).toBe(false);
     expect(() => clearDraft('k')).not.toThrow();
   });
 
-  it('is a no-op without sessionStorage at all', () => {
+  it('is a no-op without localStorage at all', () => {
     expect(() => saveDraft('k', { text: 't', base: 'b' })).not.toThrow();
     expect(loadDraft('k')).toBeNull();
+    expect(hasDraft('k')).toBe(false);
+  });
+});
+
+describe('splitTagInput / tagInputProblem (UX-26)', () => {
+  it('splits on commas and whitespace; the last token waits for a separator', () => {
+    expect(splitTagInput('a, b c', [], false)).toEqual({ add: ['a', 'b'], rest: 'c' });
+    expect(splitTagInput('a, b c ', [], false)).toEqual({ add: ['a', 'b', 'c'], rest: '' });
+    expect(splitTagInput('stardew,skill,', [], false)).toEqual({
+      add: ['stardew', 'skill'],
+      rest: '',
+    });
+    expect(splitTagInput('typing', [], false)).toEqual({ add: [], rest: 'typing' });
+    expect(splitTagInput('', [], false)).toEqual({ add: [], rest: '' });
+    expect(splitTagInput(' , ', [], false)).toEqual({ add: [], rest: '' });
+  });
+
+  it('final (Enter, blur) commits the pending token too', () => {
+    expect(splitTagInput('a, b c', [], true)).toEqual({ add: ['a', 'b', 'c'], rest: '' });
+    expect(splitTagInput('pending', [], true)).toEqual({ add: ['pending'], rest: '' });
+  });
+
+  it('normalizes (lowercase) and skips duplicates and existing tags', () => {
+    expect(splitTagInput('Alpha alpha beta', ['beta'], true)).toEqual({ add: ['alpha'], rest: '' });
+  });
+
+  it('keeps invalid tokens in the input instead of dropping them', () => {
+    expect(splitTagInput('ok, Bad_Tag, fine', [], true)).toEqual({
+      add: ['ok', 'fine'],
+      rest: 'Bad_Tag',
+    });
+    expect(splitTagInput('Bad_Tag next', [], false)).toEqual({ add: [], rest: 'Bad_Tag next' });
+    expect(tagInputProblem('Bad_Tag next')).toBe('Lowercase letters, digits and hyphens');
+    expect(tagInputProblem('fine next')).toBeNull();
+    expect(tagInputProblem('')).toBeNull();
   });
 });
 

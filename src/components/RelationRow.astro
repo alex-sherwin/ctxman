@@ -1,0 +1,85 @@
+---
+import { entryUrl } from '../datasets/registry.ts';
+import type { RelationRow } from '../lib/entries.ts';
+import DatasetBadge from './DatasetBadge.astro';
+import StateBadge from './StateBadge.astro';
+
+// One line of the "Links to" / "Linked from" panels (RelationPanels.astro): the other entry (badge, title link,
+// state), the relation label, where a body mention sits, and for editable frontmatter rows a remove button
+// (`data-entry-action="remove-relation"`, enabled by the EntryTools island).
+interface Props {
+  row: RelationRow;
+  /** Frontmatter rows of an entry whose links the page can edit get the remove button. */
+  removable?: boolean;
+  /** The file mentions are relative to for the "in <file>" hint: the entry file of the entry that holds the link. */
+  entryFile: string;
+}
+
+const { row, removable = false, entryFile } = Astro.props;
+const inFiles = row.source === 'body' ? row.files.filter((f) => f !== entryFile) : [];
+const title = row.title;
+---
+
+<li
+  class="cx-minilist__row cx-rowlink cx-relrow"
+  data-testid="relation-row"
+  data-key={row.key}
+  data-rel={row.rel}
+  data-source={row.source}
+  data-missing={row.missing ? '' : undefined}
+>
+  <span class="cx-relrow__line">
+    <DatasetBadge dataset={row.dataset} />
+    {
+      row.missing ? (
+        <span class="cx-minilist__title cx-relrow__title cx-truncate" title={row.key}>
+          {title}
+        </span>
+      ) : (
+        <a
+          class="cx-minilist__title cx-rowlink__main cx-relrow__title cx-truncate"
+          href={entryUrl(row.dataset, row.slug)}
+        >
+          {title}
+        </a>
+      )
+    }
+  </span>
+  <span class="cx-relrow__end">
+    {row.state !== undefined && <StateBadge dataset={row.dataset} state={row.state} />}
+    {row.missing && <span class="ck-badge ck-badge--danger" data-testid="relation-missing">missing</span>}
+    {
+      removable && (
+        <button
+          type="button"
+          class="ck-button ck-button--ghost ck-button--sm cx-relrow__remove"
+          disabled
+          data-entry-action="remove-relation"
+          data-key={row.key}
+          data-rel={row.rel}
+          data-title={title}
+          aria-label={`Remove link to ${title}`}
+          data-testid="relation-remove"
+        >
+          <span class="ck-button__label" aria-hidden="true">×</span>
+        </button>
+      )
+    }
+  </span>
+  <span class="cx-relrow__note">
+    <span class="cx-relrow__rel" data-testid="relation-label">{row.label}</span>
+    {
+      inFiles.length > 0 && (
+        <span class="cx-relrow__in">
+          in{' '}
+          {inFiles.map((file, i) => (
+            <>
+              {i > 0 && ', '}
+              <code>{file}</code>
+            </>
+          ))}
+        </span>
+      )
+    }
+  </span>
+</li>

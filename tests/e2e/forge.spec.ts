@@ -1,10 +1,22 @@
-// Context Forge (UI_SPEC §H, ROUND2_UI_SPEC §D): New context dialog, Discover + add and its tab counts, the
-// links list (kit OrderedList: drag and drop by mouse and keyboard, up / down fallback), notes in Monaco,
-// save / reorder / reload, the context Select, YAML view validation and delete. Contexts are created per test through the API so tests stay independent;
+// Context Forge (UI_SPEC §H, ROUND2_UI_SPEC §D, ROUND3_SPEC §E.8 / §G): New context dialog, Discover + add and its
+// tab counts, the All tab and "Add with children", invalid entries, the links list (kit OrderedList: drag and drop
+// by mouse and keyboard, up / down fallback), notes in Monaco, save / reorder / reload, the context Select, YAML
+// view validation, delete, and the draft that survives a reload (no native beforeunload prompt). Contexts are
+// created per test through the API so tests stay independent;
 // every assertion on persisted data reads the YAML file or the API, not the rendered page alone.
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { API, dataExists, modKey, pasteIntoMonaco, readYaml, typeIntoMonaco } from './helpers.ts';
+import {
+  API,
+  dataExists,
+  dataPath,
+  modKey,
+  pasteIntoMonaco,
+  readYaml,
+  settleDevReload,
+  typeIntoMonaco,
+} from './helpers.ts';
 
 interface SavedLink {
   dataset: string;
@@ -247,9 +259,18 @@ test.describe('Discover tab counts', () => {
 
   test('every tab shows its count on load, without a click', async ({ page, request }) => {
     await page.goto('/forge');
-    for (const ds of DATASETS) {
+    for (const ds of ['all', ...DATASETS]) {
       await expect(page.getByTestId(`forge-tab-${ds}`)).toContainText(/\d+$/);
     }
+    // All = the sum of the dataset tabs
+    const counts = await Promise.all(
+      DATASETS.map(async (ds) => {
+        const text = await page.getByTestId(`forge-tab-${ds}`).innerText();
+        return Number(/(\d+)$/.exec(text)?.[1]);
+      }),
+    );
+    const total = counts.reduce((a, b) => a + b, 0);
+    await expect(page.getByTestId('forge-tab-all')).toContainText(new RegExp(`${total}$`));
     for (const ds of ['kb', 'reference']) {
       const api = await request.get(`${API}/entries?dataset=${ds}`);
       const { entries } = (await api.json()) as { entries: unknown[] };
@@ -266,7 +287,8 @@ test.describe('Discover tab counts', () => {
     });
     await page.goto('/forge');
     await expect(page.getByTestId('forge-tab-kb')).toBeVisible();
-    await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(DATASETS.length);
+    // every dataset tab plus the All tab
+    await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(DATASETS.length + 1);
     await expect(page.getByTestId('forge-tab-kb')).toContainText(/\d+$/);
     await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(0);
   });
@@ -529,4 +551,318 @@ test('deleting a context asks first, then removes it', async ({ page, request })
   await expect.poll(() => dataExists(`context/${name}.yaml`)).toBe(false);
   const gone = await request.get(`${API}/context/${name}`);
   expect(gone.status()).toBe(404);
+});
+
+/** Opens /forge on context `name` (plus extra query text) and waits until it is loaded. */
+async function openContext(page: Page, name: string, query = ''): Promise<void> {
+  await page.goto(`/forge?context=${name}${query}`);
+  await expect(page.getByTestId('forge-context-name')).toHaveValue(name);
+}
+
+/** The `child` relations of a seed entry, as `dataset:slug` in file order (from the entries API). */
+async function childKeysOf(
+  request: APIRequestContext,
+  dataset: string,
+  slug: string,
+): Promise<string[]> {
+  const response = await request.get(`${API}/entries?dataset=${dataset}`);
+  const { entries } = (await response.json()) as {
+    entries: { slug: string; relations?: { dataset: string; slug: string; rel: string }[] }[];
+  };
+  const entry = entries.find((e) => e.slug === slug);
+  return (entry?.relations ?? [])
+    .filter((r) => r.rel === 'child')
+    .map((r) => `${r.dataset}:${r.slug}`);
+}
+
+test.describe('All tab', () => {
+  test('lists rows of several datasets, filters across them and adds from it', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name);
+    await openContext(page, name);
+    await page.getByTestId('forge-tab-all').click();
+    await expect(page).toHaveURL(/[?&]dataset=all(&|$)/);
+
+    // rows of more than one dataset, each saying which; no per-lifecycle state chips on the merged list
+    const datasets = async () =>
+      new Set(
+        await page
+          .getByTestId('forge-result')
+          .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.dataset)),
+      );
+    await expect.poll(async () => (await datasets()).size).toBeGreaterThan(4);
+    for (const ds of ['kb', 'task', 'skill']) expect(await datasets()).toContain(ds);
+    await expect(page.locator('[data-testid="forge-result"] .ck-badge--ds').first()).toBeVisible();
+    await expect(page.getByTestId('forge-state-chips')).toHaveCount(0);
+    await expect(page.getByTestId('forge-tag-chips')).toBeVisible();
+
+    // the filter spans datasets: "agents" matches a task and a kb / idea entry
+    await page.getByTestId('forge-filter-q').fill('agents');
+    await expect(page).toHaveURL(/[?&]q=agents(&|$)/);
+    await expect
+      .poll(async () => (await datasets()).has('task') && (await datasets()).size >= 2)
+      .toBe(true);
+
+    // add from the merged list
+    const row = page.locator(
+      '[data-testid="forge-result"][data-dataset="task"][data-slug="write-agents-md"]',
+    );
+    await row.getByTestId('forge-add').click();
+    await expect(
+      page.locator('[data-testid="forge-link"][data-key="task:write-agents-md"]'),
+    ).toBeVisible();
+    await expect(row).toHaveAttribute('data-added', 'true');
+    await page.getByTestId('forge-save').click();
+    await expect(page.getByTestId('forge-status')).toContainText('Saved');
+    await expect.poll(() => savedKeys(name)).toEqual(['task:write-agents-md']);
+  });
+
+  test('the All tab is URL state: it survives a reload and the back button', async ({ page }) => {
+    await page.goto('/forge?dataset=all&q=forge');
+    await expect(page.getByTestId('forge-filter-q')).toHaveValue('forge');
+    await expect(page.getByTestId('forge-tab-all')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => page.getByTestId('forge-result').count()).toBeGreaterThan(1);
+    await page.getByTestId('forge-tab-task').click();
+    await expect(page).toHaveURL(/[?&]dataset=task(&|$)/);
+    await page.goBack();
+    await expect(page).toHaveURL(/[?&]dataset=all(&|$)/);
+    await expect(page.getByTestId('forge-tab-all')).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+test.describe('Add with children', () => {
+  test('a project is added together with its children, in file order', async ({
+    page,
+    request,
+  }) => {
+    const children = await childKeysOf(request, 'project', 'ctxman-v1');
+    expect(children.length).toBeGreaterThanOrEqual(10);
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name);
+    await openContext(page, name, '&dataset=all');
+
+    await page.getByTestId('forge-filter-q').fill('ctxman-v1');
+    const row = page.locator('[data-testid="forge-result"][data-slug="ctxman-v1"]');
+    await expect(row).toHaveCount(1);
+    await expect(row.getByTestId('forge-add-children')).toContainText(
+      new RegExp(`add with ${children.length} children`, 'i'),
+    );
+    await row.getByTestId('forge-add-children').click();
+    await expect(page.getByTestId('forge-link')).toHaveCount(children.length + 1);
+    expect(await linkKeys(page)).toEqual(['project:ctxman-v1', ...children]);
+    // everything is linked: no children button left, the row is marked added
+    await expect(row.getByTestId('forge-add-children')).toHaveCount(0);
+    await expect(row).toHaveAttribute('data-added', 'true');
+
+    await page.getByTestId('forge-save').click();
+    await expect(page.getByTestId('forge-status')).toContainText('Saved');
+    await expect.poll(() => savedKeys(name)).toEqual(['project:ctxman-v1', ...children]);
+  });
+
+  test('children that are already linked are skipped and not counted', async ({
+    page,
+    request,
+  }) => {
+    const children = await childKeysOf(request, 'project', 'ctxman-v1');
+    const linked = children[2] ?? '';
+    const [dataset, slug] = linked.split(':');
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name, [{ dataset: dataset ?? '', slug: slug ?? '' }]);
+    await openContext(page, name, '&dataset=project');
+
+    const row = page.locator('[data-testid="forge-result"][data-slug="ctxman-v1"]');
+    await expect(row.getByTestId('forge-add-children')).toContainText(
+      new RegExp(`add with ${children.length - 1} children`, 'i'),
+    );
+    await row.getByTestId('forge-add-children').click();
+    // the pre-linked child keeps its place, the project and the other children follow
+    const expected = [linked, 'project:ctxman-v1', ...children.filter((k) => k !== linked)];
+    await expect(page.getByTestId('forge-link')).toHaveCount(expected.length);
+    expect(await linkKeys(page)).toEqual(expected);
+  });
+
+  test('an already added project offers only its missing children', async ({ page, request }) => {
+    const children = await childKeysOf(request, 'project', 'ctxman-v1');
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name, [{ dataset: 'project', slug: 'ctxman-v1' }]);
+    await openContext(page, name, '&dataset=project');
+    const row = page.locator('[data-testid="forge-result"][data-slug="ctxman-v1"]');
+    await expect(row).toHaveAttribute('data-added', 'true');
+    await expect(row.getByTestId('forge-add-children')).toContainText(
+      new RegExp(`\\+ add ${children.length} children`, 'i'),
+    );
+    await row.getByTestId('forge-add-children').click();
+    await expect(page.getByTestId('forge-link')).toHaveCount(children.length + 1);
+    expect(await linkKeys(page)).toEqual(['project:ctxman-v1', ...children]);
+  });
+
+  test('an entry without children has no such button', async ({ page, request }) => {
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name);
+    await openContext(page, name, '&dataset=task');
+    await expect(page.getByTestId('forge-result').first()).toBeVisible();
+    await expect(page.getByTestId('forge-add-children')).toHaveCount(0);
+  });
+});
+
+test.describe('Invalid entries', () => {
+  test('an entry whose file fails its schema is listed, flagged and dimmed', async ({
+    page,
+    request,
+  }) => {
+    const slug = uniqueName('e2e-invalid-idea');
+    const dir = dataPath(`idea/${slug}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/index.md`, '# Index\n');
+    writeFileSync(
+      `${dir}/main.md`,
+      `---\ntype: Idea\nname: ${slug}\ndescription: An idea with a state that does not exist\nstate: done\n---\n\n# Bad\n`,
+    );
+    try {
+      await settleDevReload();
+      const name = uniqueName('e2e-ctx');
+      await createContextViaApi(request, name);
+      await openContext(page, name, `&dataset=all&q=${slug}`);
+      const row = page.locator(`[data-testid="forge-result"][data-slug="${slug}"]`);
+      await expect(row).toHaveCount(1);
+      await expect(row).toHaveAttribute('data-invalid', '');
+      await expect(row.getByTestId('forge-invalid')).toContainText('invalid');
+      await expect(row.getByTestId('forge-invalid').locator('.ck-badge')).toHaveAttribute(
+        'title',
+        /state/,
+      );
+      // still addable: the link row carries the flag too
+      await row.getByTestId('forge-add').click();
+      const link = page.locator(`[data-testid="forge-link"][data-key="idea:${slug}"]`);
+      await expect(link).toBeVisible();
+      await expect(link).toContainText('invalid');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      await settleDevReload();
+    }
+  });
+});
+
+test.describe('Unsaved changes survive a reload (no native prompt)', () => {
+  /** Counts native dialogs and reports whether a `beforeunload` handler asks to block the unload. */
+  function watchDialogs(page: Page): { count: () => number } {
+    let count = 0;
+    page.on('dialog', (dialog) => {
+      count++;
+      void dialog.dismiss();
+    });
+    return { count: () => count };
+  }
+  const blocksUnload = (page: Page) =>
+    page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+
+  test('a reload restores the draft with a banner; Discard goes back to the saved context', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name, [{ dataset: 'kb', slug: 'ctxman' }]);
+    const dialogs = watchDialogs(page);
+    await openContext(page, name);
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+
+    await addFromDiscover(page, 'task', 'write-agents-md');
+    await page.getByTestId('forge-context-description').fill('Edited but not saved');
+    await expect(page.getByTestId('forge-status')).toContainText('Unsaved');
+    expect(await blocksUnload(page)).toBe(false);
+
+    await page.reload();
+    await expect(page.getByTestId('forge-draft-restored')).toBeVisible();
+    await expect(page.getByTestId('forge-draft-restored')).toContainText(
+      'Restored unsaved changes from earlier.',
+    );
+    await expect(page.getByTestId('forge-draft-restored')).not.toHaveAttribute('data-stale', /.*/);
+    expect(dialogs.count()).toBe(0);
+    expect(await linkKeys(page)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    await expect(page.getByTestId('forge-context-description')).toHaveValue('Edited but not saved');
+    await expect(page.getByTestId('forge-status')).toContainText('Unsaved');
+
+    // nothing was written to disk, and the draft outlives a second reload
+    expect(savedContext(name).description).toBe(`E2E context ${name}`);
+    expect(savedKeys(name)).toEqual(['kb:ctxman']);
+    await page.reload();
+    await expect(page.getByTestId('forge-draft-restored')).toBeVisible();
+    await expect(page.getByTestId('forge-link')).toHaveCount(2);
+
+    await page.getByTestId('forge-draft-discard').click();
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+    expect(await linkKeys(page)).toEqual(['kb:ctxman']);
+    await expect(page.getByTestId('forge-context-description')).toHaveValue(`E2E context ${name}`);
+    await expect(page.getByTestId('forge-status')).toHaveText('No changes');
+    await page.reload();
+    await expect(page.getByTestId('forge-context-name')).toHaveValue(name);
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+    expect(await linkKeys(page)).toEqual(['kb:ctxman']);
+    expect(dialogs.count()).toBe(0);
+  });
+
+  test('a draft of a file that changed on disk is restored with the stale warning; Save clears it', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-ctx');
+    await createContextViaApi(request, name, [{ dataset: 'kb', slug: 'ctxman' }]);
+    await openContext(page, name);
+    await addFromDiscover(page, 'task', 'write-agents-md');
+
+    // the file changes behind the draft's back
+    const put = await request.put(`${API}/context/${name}`, {
+      data: {
+        name,
+        description: 'changed elsewhere',
+        tags: [],
+        links: [{ dataset: 'kb', slug: 'ctxman' }],
+      },
+    });
+    expect(put.status()).toBe(200);
+
+    await page.reload();
+    const banner = page.getByTestId('forge-draft-restored');
+    await expect(banner).toHaveAttribute('data-stale', 'true');
+    await expect(banner).toContainText('the file changed on disk since');
+    expect(await linkKeys(page)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    // still stale after another reload: the warning is about the draft's base, not about this visit
+    await page.reload();
+    await expect(page.getByTestId('forge-draft-restored')).toHaveAttribute('data-stale', 'true');
+
+    // saving overwrites the file, clears the draft and the banner
+    await page.getByTestId('forge-save').click();
+    await expect(page.getByTestId('forge-status')).toContainText('Saved');
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+    await expect.poll(() => savedKeys(name)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    await page.reload();
+    await expect(page.getByTestId('forge-link')).toHaveCount(2);
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+  });
+
+  test('the in-app discard dialog still guards a context switch', async ({ page, request }) => {
+    const a = uniqueName('e2e-ctx');
+    const b = uniqueName('e2e-ctx');
+    await createContextViaApi(request, a);
+    await createContextViaApi(request, b);
+    await openContext(page, a);
+    await page.getByTestId('forge-context-description').fill('Unsaved');
+    await page.getByTestId('forge-context-select').click();
+    await page.getByRole('option', { name: b, exact: true }).click();
+    const dialog = page.getByTestId('forge-discard-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByTestId('forge-context-name')).toHaveValue(b);
+    // discarded for good: coming back to `a` finds no draft
+    await openContext(page, a);
+    await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
+    await expect(page.getByTestId('forge-context-description')).toHaveValue(`E2E context ${a}`);
+  });
 });

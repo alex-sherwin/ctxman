@@ -14,15 +14,18 @@ interface Props {
   entries: EntrySummary[];
   /** Entries matching the filters. */
   shown: number;
+  /** `project=<slug>` is active: the project's title (undefined = the project does not exist). */
+  projectTitle?: string | undefined;
 }
 
-const { def, params, entries, shown } = Astro.props;
+const { def, params, entries, shown, projectTitle } = Astro.props;
 const lifecycle = def.states !== undefined;
 const anyActive =
   params.q.trim() !== '' ||
   params.states.length > 0 ||
   params.tags.length > 0 ||
   params.type !== null ||
+  params.project !== null ||
   params.sort !== 'modified';
 
 const stateTotals = countStates(entries);
@@ -104,6 +107,23 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
       >{shown} of {entries.length}</output
     >
   </div>
+  {
+    params.project !== null && (
+      <fieldset class="cx-filters__facet">
+        <legend class="cx-filters__legend">Project</legend>
+        <div class="ck-chip-group">
+          <ChipCheckbox
+            name="project"
+            value={params.project}
+            label={projectTitle ?? `${params.project} (missing)`}
+            checked
+            id="f-project"
+            testid="list-project-chip"
+          />
+        </div>
+      </fieldset>
+    )
+  }
   {
     def.states && (
       <fieldset class="cx-filters__facet">

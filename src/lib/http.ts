@@ -4,6 +4,7 @@
 import { ContextIoError } from './context-io.ts';
 import type { Issue } from './context-io.ts';
 import { DocIoError } from './doc-io.ts';
+import { EntryIoError } from './entry-io.ts';
 import { RecipeIoError } from './recipe-io.ts';
 import { ReferenceIoError } from './reference-io.ts';
 
@@ -115,7 +116,14 @@ export async function readJson(
 
 /** The slice of `ContextIoError` / `RecipeIoError` / `ReferenceIoError` the shared mapper reads (same shape). */
 interface IoErrorLike {
-  code: 'not-found' | 'exists' | 'invalid' | 'bad-slug' | 'name-mismatch' | 'parse';
+  code:
+    | 'not-found'
+    | 'exists'
+    | 'invalid'
+    | 'bad-slug'
+    | 'name-mismatch'
+    | 'parse'
+    | 'invalid-file';
   message: string;
   issues: Issue[];
 }
@@ -136,6 +144,8 @@ function ioErrorResponse(error: IoErrorLike, mode: 'read' | 'write'): Response {
       return apiError(409, 'exists', error.message);
     case 'name-mismatch':
       return apiError(400, 'name-mismatch', error.message, issues);
+    case 'invalid-file':
+      return apiError(422, 'invalid-file', error.message, issues);
     case 'invalid':
     case 'parse':
       return mode === 'read'
@@ -163,9 +173,9 @@ export function referenceErrorResponse(error: unknown, mode: 'read' | 'write'): 
 }
 
 /**
- * Maps a doc-io failure to its API response (ROUND2_BACKEND_SPEC §A.4): bad-dataset / bad-slug / bad-path /
- * invalid 400, not-found 404, conflict 409 (body carries the CURRENT `lastModified`), too-large 413,
- * not-text 422; anything that is not a `DocIoError` is a 500.
+ * Maps a doc-io failure to its API response (ROUND2_BACKEND_SPEC §A.4, ROUND3_SPEC §D.3): bad-dataset / bad-slug /
+ * bad-path / invalid 400, not-found 404, conflict and exists 409 (conflict carries the CURRENT `lastModified`),
+ * too-large 413, not-text 422; anything that is not a `DocIoError` is a 500.
  */
 export function docErrorResponse(error: unknown): Response {
   if (!(error instanceof DocIoError)) return internalError(error);
@@ -183,9 +193,40 @@ export function docErrorResponse(error: unknown): Response {
         { error: 'conflict', message: error.message, lastModified: error.lastModified },
         409,
       );
+    case 'exists':
+      return apiError(409, 'exists', error.message);
     case 'too-large':
       return apiError(413, 'too-large', error.message);
     case 'not-text':
       return apiError(422, 'not-text', error.message);
+  }
+}
+
+/**
+ * Maps an entry-io failure to its API response (ROUND3_SPEC §D.1, §D.2): bad-dataset / bad-slug 400, invalid 400
+ * (issues), not-found 404, conflict 409 (body carries the CURRENT `lastModified`), exists 409, invalid-file 422
+ * (issues); anything that is not an `EntryIoError` (an `EntryCreateError` of a failed template self-check, an IO
+ * error) is a 500.
+ */
+export function entryErrorResponse(error: unknown): Response {
+  if (!(error instanceof EntryIoError)) return internalError(error);
+  const issues = error.issues.length > 0 ? error.issues : undefined;
+  switch (error.code) {
+    case 'bad-dataset':
+    case 'bad-slug':
+      return apiError(400, error.code, error.message);
+    case 'invalid':
+      return apiError(400, 'invalid', error.message, error.issues);
+    case 'not-found':
+      return apiError(404, 'not-found', error.message);
+    case 'conflict':
+      return json(
+        { error: 'conflict', message: error.message, lastModified: error.lastModified },
+        409,
+      );
+    case 'exists':
+      return apiError(409, 'exists', error.message);
+    case 'invalid-file':
+      return apiError(422, 'invalid-file', error.message, issues ?? []);
   }
 }

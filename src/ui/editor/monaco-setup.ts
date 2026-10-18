@@ -12,6 +12,7 @@ import JsonWorker from 'monaco-editor/language/json/json.worker?worker';
 import { configureMonacoYaml } from 'monaco-yaml';
 import YamlWorker from 'monaco-yaml/yaml.worker?worker';
 import { CTXMAN_CYBER_THEME } from '../kit/monaco-theme.ts';
+import { registerLinkCompletion } from './link-completion.ts';
 import { YAML_SCHEMAS } from './yaml-schemas.ts';
 
 /** Name of the registered Monaco theme (pass to `<Editor theme>`). */
@@ -26,6 +27,8 @@ self.MonacoEnvironment = {
 };
 loader.config({ monaco });
 monaco.editor.defineTheme(MONACO_THEME, CTXMAN_CYBER_THEME);
+// `ctxman:` / `](` / `[[` / Ctrl+Space link suggestions in every markdown model (ROUND3_SPEC §F.2).
+registerLinkCompletion(monaco);
 
 /**
  * monaco-worker-manager 2.0.1 (monaco-yaml's worker manager, unmaintained since 2022) still calls the pre-0.5x

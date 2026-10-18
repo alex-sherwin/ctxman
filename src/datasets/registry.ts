@@ -82,6 +82,25 @@ export interface StateDef {
 const states = (ids: readonly LifecycleStateId[]): readonly StateDef[] =>
   ids.map((id) => ({ id, label: STATE_LABELS[id], group: STATE_GROUPS[id] }));
 
+/** Structured relation kinds of an okf entry's frontmatter `links` (from = the entry that declares it). */
+export const ENTRY_RELS = ['child', 'related', 'depends-on'] as const;
+export type EntryRel = (typeof ENTRY_RELS)[number];
+export const ENTRY_REL_LABELS: Readonly<Record<EntryRel, string>> = {
+  child: 'Child',
+  related: 'Related',
+  'depends-on': 'Depends on',
+};
+/** What the TARGET's page calls an incoming edge. */
+export const ENTRY_REL_INVERSE_LABELS: Readonly<Record<EntryRel, string>> = {
+  child: 'Parent',
+  related: 'Related',
+  'depends-on': 'Required by',
+};
+
+export function isEntryRel(value: unknown): value is EntryRel {
+  return typeof value === 'string' && (ENTRY_RELS as readonly string[]).includes(value);
+}
+
 export const REFERENCE_TYPES = ['local-repo', 'remote-repo', 'remote-skill'] as const;
 export type ReferenceType = (typeof REFERENCE_TYPES)[number];
 export const REFERENCE_TYPE_LABELS: Readonly<Record<ReferenceType, string>> = {

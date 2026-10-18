@@ -1,11 +1,13 @@
-// Removable tags + an "add tag" input with the Forge rules (normalize, TAG_PATTERN, no duplicates),
+// Removable tags + an "add tags" input with the Forge rules (normalize, TAG_PATTERN, no duplicates),
 // extracted from the Forge's ContextPane `AddTagInput` so the DataForm shares it (ROUND2_UI_SPEC §C.2).
+// Typed text is split on commas and whitespace (`a, b c` = three tags): a tag is added as soon as a separator
+// follows it, and the pending text is committed on Enter and on blur (ROUND3_SPEC UX-26, see tag-input.ts).
 // Controlled: the caller owns the list. Browser-only; kit parts imported by file.
 import { useState } from 'react';
-import { normalizeTag, tagProblem } from '../../lib/names.ts';
 import { TextField } from '../kit/Field.tsx';
 import { Tag, TagGroup } from '../kit/TagGroup.tsx';
 import { cx } from '../kit/utils.ts';
+import { splitTagInput, tagInputProblem } from './tag-input.ts';
 
 export interface TagEditorProps {
   tags: readonly string[];
@@ -25,13 +27,13 @@ export function TagEditor({
   className,
 }: TagEditorProps) {
   const [draft, setDraft] = useState('');
-  const normalized = normalizeTag(draft);
-  const problem = tagProblem(normalized);
+  const problem = tagInputProblem(draft);
 
-  function add() {
-    if (normalized === '' || problem !== null) return;
-    if (!tags.includes(normalized)) onChange([...tags, normalized]);
-    setDraft('');
+  /** Add the finished tokens of `text`; what is invalid or (unless `final`) unfinished stays in the input. */
+  function commit(text: string, final: boolean) {
+    const { add, rest } = splitTagInput(text, tags, final);
+    if (add.length > 0) onChange([...tags, ...add]);
+    setDraft(rest);
   }
 
   return (
@@ -52,15 +54,20 @@ export function TagEditor({
         aria-label="Add tag"
         size="sm"
         mono
-        placeholder="add tag, Enter"
+        placeholder="add tags"
         value={draft}
-        onChange={setDraft}
+        onChange={(text) => commit(text, false)}
+        onBlur={() => commit(draft, true)}
         isInvalid={problem !== null}
         errorMessage={problem ?? undefined}
         onKeyDown={(e) => {
-          if (e.key !== 'Enter') return;
+          if (e.key !== 'Enter') {
+            // react-aria stops every key that a custom onKeyDown does not release (Esc would not close a dialog)
+            e.continuePropagation();
+            return;
+          }
           e.preventDefault();
-          add();
+          commit(draft, true);
         }}
         inputTestId={`${testIdPrefix}-add-tag`}
       />

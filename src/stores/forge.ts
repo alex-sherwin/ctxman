@@ -1,9 +1,12 @@
 // Forge state (UI_SPEC §H.2, §H.6, §H.7). URL-synced stores follow UI_SPEC §0.3: `onMount($forgeUrl)` reads
-// `location.search` and registers the popstate / beforeunload / keydown listeners; actions are plain
+// `location.search` and registers the popstate / keydown listeners; actions are plain
 // functions that `.set()` stores and call `history.pushState/replaceState` themselves; popstate re-reads the
 // URL and never writes history. Imported only by the client:only Forge island.
+// Unsaved work is not guarded by a native `beforeunload` prompt (ROUND3_SPEC §G): the working copy is written to
+// localStorage on every change (`forge:<slug>`) and restored on the next load, with a banner.
 import { atom, computed, map, onMount } from 'nanostores';
 import type { LinkableDatasetId } from '../datasets/registry.ts';
+import { contextSchema } from '../datasets/schemas.ts';
 import { filterEntries, stateCounts, tagCounts } from '../lib/entry-filter.ts';
 import type { ContextDoc, EntrySummary } from '../lib/entry-summary.ts';
 import { parseContextYaml, sameContext, serializeContext } from '../lib/context-yaml.ts';
@@ -11,7 +14,10 @@ import type { YamlIssue } from '../lib/context-yaml.ts';
 import { reorderKeys } from '../lib/reorder.ts';
 import type { DropPosition } from '../lib/reorder.ts';
 import { parseForgeUrl, withParams } from '../lib/url-state.ts';
-import type { ForgeUrl, ParamPatchValue } from '../lib/url-state.ts';
+import type { DiscoverDataset, ForgeUrl, ParamPatchValue } from '../lib/url-state.ts';
+import { clearDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
+import { discoverSource } from './discover.ts';
+import type { EntriesMap } from './discover.ts';
 import { $entries, ensureAllEntries, ensureEntries, invalidateEntries } from './entries.ts';
 
 export type { ForgeUrl };
@@ -55,6 +61,14 @@ export const $view = atom<ForgeView>('form');
 export const $baseline = atom<ContextDoc | null>(null);
 /** Editable copy. Only ever replaced (immutable updates), never mutated. */
 export const $working = atom<ContextDoc | null>(null);
+/** `lastModified` of the file behind `$baseline` (GET / PUT / POST response): the base of a saved draft. */
+export const $baselineModified = atom<string | null>(null);
+/**
+ * Non-null while the working copy was restored from a saved draft (ROUND3_SPEC §G); `stale` = the file changed on
+ * disk since the draft was started. Cleared by save, revert, delete, a context switch and by editing back to the
+ * saved state.
+ */
+export const $draftRestored = atom<{ stale: boolean } | null>(null);
 export const $contextLoad = atom<ContextLoad>({ status: 'none' });
 export const $saveStatus = atom<SaveStatus>({ kind: 'idle' });
 export const $dirty = computed(
@@ -122,44 +136,59 @@ export interface DiscoverView {
   error?: string;
   /** Matching entries (newest first), capped at `DISCOVER_CAP`. */
   items: EntrySummary[];
-  /** Entries in the dataset. */
+  /** Entries in the tab (the dataset, or every linkable dataset for `all`). */
   total: number;
   /** Entries matching the current filters (before the cap). */
   matched: number;
   stateCounts: Record<string, number>;
-  /** Tags of the whole dataset: count desc, then tag asc. */
+  /** Tags of the whole tab: count desc, then tag asc. */
   tagCounts: { tag: string; count: number }[];
 }
 
-const EMPTY_DISCOVER: DiscoverView = {
-  status: 'loading',
-  items: [],
-  total: 0,
-  matched: 0,
-  stateCounts: {},
-  tagCounts: [],
-};
-
 export const $discover = computed([$entries, $forgeUrl], (entries, url): DiscoverView => {
-  const state = entries[url.dataset];
-  if (state === undefined) return EMPTY_DISCOVER;
-  const matched = filterEntries(state.entries, {
+  const source = discoverSource(entries, url.dataset);
+  const matched = filterEntries(source.entries, {
     q: url.q,
     states: url.states,
     tags: url.tags,
     sort: 'modified',
   });
   const view: DiscoverView = {
-    status: state.status,
+    status: source.status,
     items: matched.slice(0, DISCOVER_CAP),
-    total: state.entries.length,
+    total: source.entries.length,
     matched: matched.length,
-    stateCounts: stateCounts(state.entries),
-    tagCounts: tagCounts(state.entries),
+    // the "All" tab spans lifecycles that share no state ids: no state chips there
+    stateCounts: url.dataset === 'all' ? {} : stateCounts(source.entries),
+    tagCounts: tagCounts(source.entries),
   };
-  if (state.error !== undefined) view.error = state.error;
+  if (source.error !== undefined) view.error = source.error;
   return view;
 });
+
+/** Start loading what a Discover tab shows (every linkable dataset for `all`). */
+function ensureDiscover(dataset: DiscoverDataset): void {
+  if (dataset === 'all') ensureAllEntries();
+  else ensureEntries(dataset);
+}
+
+/**
+ * The children of `entry` (its `child` relations, file order) that can be added to a context right now: the
+ * target exists in the entries cache (a dangling relation would only add a "missing" link) and is not linked yet.
+ */
+export function addableChildren(
+  entry: EntrySummary,
+  entries: EntriesMap,
+  linked: ReadonlySet<string>,
+): { dataset: LinkableDatasetId; slug: string }[] {
+  const out: { dataset: LinkableDatasetId; slug: string }[] = [];
+  for (const rel of entry.relations ?? []) {
+    if (rel.rel !== 'child' || linked.has(linkKey(rel))) continue;
+    if (!entries[rel.dataset]?.entries.some((e) => e.slug === rel.slug)) continue;
+    out.push({ dataset: rel.dataset, slug: rel.slug });
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------- URL plumbing
 
@@ -225,7 +254,64 @@ function applyUrl(): void {
   const { url, view } = readLocation();
   $forgeUrl.set(url);
   applyView(view);
-  ensureEntries(url.dataset);
+  ensureDiscover(url.dataset);
+}
+
+// ---------------------------------------------------------------- drafts (ROUND3_SPEC §G)
+
+/** localStorage key (prefixed `ctxman:draft:` by draft-backup) of the draft of context `slug`. */
+export const draftKey = (slug: string): string => `forge:${slug}`;
+
+/** Set while `adopt` swaps the stores, so its own `$working.set` neither clears nor rewrites the stored draft. */
+let draftSuspended = false;
+/** `base` written with the next draft: the one a restored draft came with (so a stale warning survives another reload). */
+let draftBase: string | null = null;
+
+/** Mirror the working copy into storage: dirty -> save the draft, clean -> clear it. */
+function syncDraft(): void {
+  if (draftSuspended) return;
+  const working = $working.get();
+  const baseline = $baseline.get();
+  if (working === null || baseline === null) return;
+  const key = draftKey(baseline.name);
+  if (sameContext(working, baseline)) {
+    clearDraft(key);
+    $draftRestored.set(null);
+    return;
+  }
+  saveDraft(key, {
+    text: JSON.stringify(working),
+    base: draftBase ?? $baselineModified.get() ?? '',
+  });
+}
+
+/**
+ * The stored draft of `doc` as a working copy, or null. Anything unusable (not JSON, fails `contextSchema`, other
+ * `name`, equal to the saved context) is removed.
+ */
+function readDraft(doc: ContextDoc): { working: ContextDoc; base: string } | null {
+  const key = draftKey(doc.name);
+  const draft = loadDraft(key);
+  if (draft === null) return null;
+  let working: ContextDoc | null = null;
+  try {
+    const parsed = contextSchema.safeParse(JSON.parse(draft.text));
+    if (parsed.success && parsed.data.name === doc.name) working = parsed.data;
+  } catch {
+    // not JSON: dropped below
+  }
+  if (working === null || sameContext(working, doc)) {
+    clearDraft(key);
+    return null;
+  }
+  return { working, base: draft.base };
+}
+
+/** Forget the stored draft of context `name` and hide the banner (save, revert / Discard, delete). */
+function dropDraft(name: string): void {
+  clearDraft(draftKey(name));
+  draftBase = null;
+  $draftRestored.set(null);
 }
 
 // ---------------------------------------------------------------- loading / adopting a context
@@ -234,18 +320,37 @@ let loadSeq = 0;
 
 const clone = <T>(value: T): T => structuredClone(value);
 
-/** Make `doc` the loaded context: baseline and working copy are independent deep copies. */
-function adopt(doc: ContextDoc): void {
-  $baseline.set(clone(doc));
-  $working.set(clone(doc));
-  $yamlDraft.set($view.get() === 'yaml' ? serializeContext(doc) : null);
-  for (const dataset of new Set(doc.links.map((l) => l.dataset))) ensureEntries(dataset);
+/**
+ * Make `doc` the loaded context: baseline and working copy are independent deep copies. With `restore`, a saved
+ * draft of this context replaces the working copy (banner on; `stale` when `lastModified` is not the draft's base).
+ */
+function adopt(doc: ContextDoc, lastModified: string | null, restore: boolean): void {
+  const draft = restore ? readDraft(doc) : null;
+  if (!restore) clearDraft(draftKey(doc.name));
+  const working = draft === null ? clone(doc) : draft.working;
+  draftSuspended = true;
+  try {
+    $baseline.set(clone(doc));
+    $baselineModified.set(lastModified);
+    $working.set(working);
+  } finally {
+    draftSuspended = false;
+  }
+  draftBase = draft === null ? null : draft.base;
+  $draftRestored.set(draft === null ? null : { stale: draft.base !== lastModified });
+  $yamlDraft.set($view.get() === 'yaml' ? serializeContext(working) : null);
+  for (const dataset of new Set([...doc.links, ...working.links].map((l) => l.dataset))) {
+    ensureEntries(dataset);
+  }
 }
 
 function clearContext(): void {
   loadSeq++;
   $baseline.set(null);
+  $baselineModified.set(null);
   $working.set(null);
+  $draftRestored.set(null);
+  draftBase = null;
   $yamlDraft.set(null);
   $contextLoad.set({ status: 'none' });
 }
@@ -273,7 +378,10 @@ export async function loadContext(slug: string): Promise<void> {
   }
   const seq = ++loadSeq;
   $baseline.set(null);
+  $baselineModified.set(null);
   $working.set(null);
+  $draftRestored.set(null);
+  draftBase = null;
   $yamlDraft.set(null);
   $contextLoad.set({ status: 'loading' });
   try {
@@ -290,9 +398,9 @@ export async function loadContext(slug: string): Promise<void> {
       $contextLoad.set({ status: 'error', message: (await messageOf(res)).message });
       return;
     }
-    const body = (await res.json()) as { context: ContextDoc };
+    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
     if (seq !== loadSeq) return;
-    adopt(body.context);
+    adopt(body.context, body.lastModified ?? null, true);
     $contextLoad.set({ status: 'ready' });
   } catch (error) {
     if (seq === loadSeq) $contextLoad.set({ status: 'error', message: errorText(error) });
@@ -315,12 +423,12 @@ export function retryLoad(): void {
 
 // ---------------------------------------------------------------- Discover actions
 
-export function setDataset(dataset: LinkableDatasetId): void {
+export function setDataset(dataset: DiscoverDataset): void {
   const cur = $forgeUrl.get();
   if (dataset === cur.dataset) return;
   flushQuery();
   $forgeUrl.set({ ...cur, dataset, states: [], tags: [] });
-  ensureEntries(dataset);
+  ensureDiscover(dataset);
   history.pushState(null, '', hrefWith({ dataset, state: null, tag: null }));
 }
 
@@ -403,10 +511,26 @@ function commitWorking(next: ContextDoc): void {
 }
 
 export function addLink(dataset: LinkableDatasetId, slug: string): void {
+  addLinks([{ dataset, slug }]);
+}
+
+/**
+ * Append `keys` in the given order as ONE edit, skipping links that are already present (and repeats within
+ * `keys`). "Add with children" passes the entry first, then its children in file order.
+ */
+export function addLinks(keys: readonly { dataset: LinkableDatasetId; slug: string }[]): void {
   const w = $working.get();
   if (w === null || $yamlInvalid.get()) return;
-  if (w.links.some((l) => l.dataset === dataset && l.slug === slug)) return;
-  commitWorking({ ...w, links: [...w.links, { dataset, slug }] });
+  const seen = new Set(w.links.map(linkKey));
+  const added: ContextDoc['links'] = [];
+  for (const { dataset, slug } of keys) {
+    const key = linkKey({ dataset, slug });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    added.push({ dataset, slug });
+  }
+  if (added.length === 0) return;
+  commitWorking({ ...w, links: [...w.links, ...added] });
 }
 
 export function removeLink(key: string): void {
@@ -522,6 +646,7 @@ export function setYamlDraft(text: string): void {
 export function revert(): void {
   const baseline = $baseline.get();
   if (baseline === null) return;
+  dropDraft(baseline.name);
   $saveStatus.set({ kind: 'idle' });
   $working.set(clone(baseline));
   if ($view.get() === 'yaml') $yamlDraft.set(serializeContext(baseline));
@@ -551,13 +676,16 @@ export async function save(): Promise<void> {
       $saveStatus.set(status);
       return;
     }
-    const body = (await res.json()) as { context: ContextDoc };
+    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
     $baseline.set(clone(body.context));
+    $baselineModified.set(body.lastModified ?? null);
     // Keep keystrokes made while the request was in flight: only adopt the response if nothing changed.
     if ($working.get() === working) {
       $working.set(clone(body.context));
       if ($view.get() === 'yaml') $yamlDraft.set(serializeContext(body.context));
     }
+    dropDraft(body.context.name);
+    syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
     $saveStatus.set({ kind: 'saved', at: Date.now() });
     invalidateEntries('context');
   } catch (error) {
@@ -577,6 +705,7 @@ export async function deleteContext(): Promise<void> {
       $saveStatus.set({ kind: 'error', message: (await messageOf(res)).message });
       return;
     }
+    dropDraft(baseline.name);
     clearContext();
     invalidateEntries('context');
     history.replaceState(history.state, '', hrefWith({ context: null }));
@@ -607,9 +736,9 @@ export async function createContext(input: {
       return { ok: false, field: 'name', message: 'A context with this name already exists.' };
     }
     if (!res.ok) return { ok: false, message: (await messageOf(res)).message };
-    const body = (await res.json()) as { context: ContextDoc };
+    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
     loadSeq++;
-    adopt(body.context);
+    adopt(body.context, body.lastModified ?? null, false);
     $contextLoad.set({ status: 'ready' });
     $saveStatus.set({ kind: 'idle' });
     $newContextPrefill.set('');
@@ -652,13 +781,6 @@ export function saveIfDirty(): void {
   if ($dirty.get() && !$yamlInvalid.get()) void save();
 }
 
-function onBeforeUnload(e: BeforeUnloadEvent): void {
-  if ($dirty.get() || $yamlInvalid.get()) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
-}
-
 function onKeyDown(e: KeyboardEvent): void {
   // A Monaco editor action (Cmd/Ctrl+S inside an editor) has already handled and prevented the key.
   if (e.defaultPrevented) return;
@@ -676,15 +798,17 @@ onMount($forgeUrl, () => {
   ensureEntries('context');
   syncContext();
   window.addEventListener('popstate', onPopState);
-  window.addEventListener('beforeunload', onBeforeUnload);
   // Capture phase: the kit OrderedList (RAC GridList) stops key events that start inside a row, so a bubbling
   // `window` listener never sees Cmd/Ctrl+S from a row input or notes editor. A Monaco save action that also
   // fires is harmless: `save()` ignores a second call while one is in flight.
   window.addEventListener('keydown', onKeyDown, true);
+  // The working copy follows into localStorage (no native beforeunload prompt: a reload, a closed tab and a dev
+  // reload all find the draft again).
+  const stopDrafting = $working.listen(syncDraft);
   return () => {
     window.removeEventListener('popstate', onPopState);
-    window.removeEventListener('beforeunload', onBeforeUnload);
     window.removeEventListener('keydown', onKeyDown, true);
+    stopDrafting();
     flushQuery();
   };
 });

@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ContextIoError } from '../../src/lib/context-io.ts';
 import { DocIoError } from '../../src/lib/doc-io.ts';
+import { EntryIoError } from '../../src/lib/entry-io.ts';
 import {
   apiError,
   checkOrigin,
   contextErrorResponse,
   docErrorResponse,
+  entryErrorResponse,
   json,
   methodNotAllowed,
   noContent,
@@ -179,6 +181,8 @@ describe('contextErrorResponse', () => {
       ['invalid', 'write', 400, 'invalid'],
       ['invalid', 'read', 422, 'invalid-file'],
       ['parse', 'read', 422, 'invalid-file'],
+      ['invalid-file', 'write', 422, 'invalid-file'],
+      ['invalid-file', 'read', 422, 'invalid-file'],
     ];
     for (const [code, mode, status, error] of cases) {
       const res = contextErrorResponse(new ContextIoError(code, 'msg', issues), mode);
@@ -313,6 +317,7 @@ describe('docErrorResponse', () => {
       ['invalid', 400, 'invalid'],
       ['not-found', 404, 'not-found'],
       ['conflict', 409, 'conflict'],
+      ['exists', 409, 'exists'],
       ['too-large', 413, 'too-large'],
       ['not-text', 422, 'not-text'],
     ];
@@ -343,6 +348,63 @@ describe('docErrorResponse', () => {
   it('turns anything else into a logged 500', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const res = docErrorResponse(new Error('boom'));
+    expect(res.status).toBe(500);
+    expect(await body(res)).toEqual({ error: 'internal', message: 'boom' });
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe('entryErrorResponse', () => {
+  const body = async (res: Response): Promise<Record<string, unknown>> =>
+    (await res.json()) as Record<string, unknown>;
+
+  it('maps EntryIoError codes to the ROUND3 §D.1 / §D.2 statuses', async () => {
+    const cases: [EntryIoError['code'], number, string][] = [
+      ['bad-dataset', 400, 'bad-dataset'],
+      ['bad-slug', 400, 'bad-slug'],
+      ['invalid', 400, 'invalid'],
+      ['not-found', 404, 'not-found'],
+      ['conflict', 409, 'conflict'],
+      ['exists', 409, 'exists'],
+      ['invalid-file', 422, 'invalid-file'],
+    ];
+    for (const [code, status, error] of cases) {
+      const res = entryErrorResponse(new EntryIoError(code, 'msg'));
+      expect(res.status, code).toBe(status);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(await body(res), code).toMatchObject({ error, message: 'msg' });
+    }
+  });
+
+  it('invalid and invalid-file carry issues (an array); conflict carries the current lastModified', async () => {
+    const issues = [{ path: 'stale_after', message: 'bad date' }];
+    expect(await body(entryErrorResponse(new EntryIoError('invalid', 'm', issues)))).toEqual({
+      error: 'invalid',
+      message: 'm',
+      issues,
+    });
+    expect(await body(entryErrorResponse(new EntryIoError('invalid', 'm')))).toEqual({
+      error: 'invalid',
+      message: 'm',
+      issues: [],
+    });
+    expect(
+      await body(entryErrorResponse(new EntryIoError('invalid-file', 'm', issues))),
+    ).toMatchObject({
+      issues,
+    });
+    const conflict = new EntryIoError('conflict', 'changed');
+    conflict.lastModified = '2026-10-17T12:00:00.000Z';
+    expect(await body(entryErrorResponse(conflict))).toEqual({
+      error: 'conflict',
+      message: 'changed',
+      lastModified: '2026-10-17T12:00:00.000Z',
+    });
+  });
+
+  it('turns anything else (a failed template self-check, an IO error) into a logged 500', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = entryErrorResponse(new Error('boom'));
     expect(res.status).toBe(500);
     expect(await body(res)).toEqual({ error: 'internal', message: 'boom' });
     expect(spy).toHaveBeenCalled();

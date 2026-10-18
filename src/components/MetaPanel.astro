@@ -34,9 +34,11 @@ interface Props {
   file: string;
   /** Sub-doc pages: link back to the bundle's entry. */
   bundle?: { url: string; title: string };
+  /** okf + skill entry pages: an `Edit` button in the panel title opens the EntryTools Details dialog. */
+  editable?: boolean;
 }
 
-const { dataset, kind, data, lastModified, file, bundle } = Astro.props;
+const { dataset, kind, data, lastModified, file, bundle, editable = false } = Astro.props;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
@@ -121,7 +123,24 @@ const filePath = `data/${file}`;
 ---
 
 <section class="cx-panel cx-meta" aria-labelledby="h-meta" data-testid="detail-meta">
-  <h2 class="cx-panel__title" id="h-meta">Details</h2>
+  <h2 class="cx-panel__title" id="h-meta">
+    Details
+    {
+      editable && (
+        <span class="cx-panel__actions">
+          <button
+            type="button"
+            class="ck-button ck-button--ghost ck-button--sm"
+            disabled
+            data-entry-action="frontmatter"
+            data-testid="meta-edit"
+          >
+            <span class="ck-button__label">Edit</span>
+          </button>
+        </span>
+      )
+    }
+  </h2>
   <dl class="cx-meta__list">
     {
       bundle && (

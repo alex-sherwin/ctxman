@@ -1,0 +1,156 @@
+/* EntryTools island (src/ui/entry): the status line and the dialogs of the detail-page tools (Edit details, relation
+   picker extras, Add to context, Build context, New concept). Imported by src/styles/global.css. */
+@layer cx-app {
+  /* ---------- status line (header actions) ---------- */
+  .cx-entry__status {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--success-fg);
+  }
+  .cx-entry__status:empty {
+    display: none;
+  }
+
+  /* ---------- shared dialog form layout ---------- */
+  .cx-entrydlg__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    min-width: 0;
+  }
+  .cx-entrydlg__error {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+
+  /* ---------- Edit details ---------- */
+  .cx-fm {
+    width: min(560px, 92vw);
+  }
+  .cx-fm__keys {
+    display: contents;
+  }
+  .cx-fm__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    min-width: 0;
+  }
+  .cx-fm__loading {
+    display: grid;
+    place-items: center;
+    min-height: 160px;
+  }
+  .cx-fm__loaderror {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  .cx-fm__tags {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .cx-fm__stale {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--sp-4);
+  }
+  .cx-fm__stale-input {
+    flex: 1 1 200px;
+  }
+  .cx-fm__stale-actions {
+    display: flex;
+    gap: var(--sp-2);
+    /* line up with the input (below the field label) */
+    margin-top: calc(var(--fs-xs) * var(--lh) + var(--sp-1));
+  }
+  .cx-fm__conflict {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+    border: 1px solid var(--danger);
+    border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+  .cx-fm__conflict > span {
+    flex: 1 1 260px;
+  }
+  .cx-fm__problems {
+    margin: 0;
+    padding-left: var(--sp-6);
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  /* status on the left of the footer, Save / Cancel on the right (like the markdown popups) */
+  .cx-fm .cx-savebar {
+    flex: 1;
+  }
+  .cx-fm .cx-savebar__status {
+    order: -1;
+    margin-right: auto;
+  }
+
+  /* ---------- relation picker extras (above the EntryPicker list) ---------- */
+  .cx-relpick {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    flex: none;
+  }
+  .cx-relpick > .ck-select {
+    max-width: 240px;
+  }
+  .cx-relpick__error {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+
+  /* ---------- Add to context / Build context / New concept ---------- */
+  .cx-a2c,
+  .cx-bctx,
+  .cx-nc {
+    width: min(520px, 92vw);
+  }
+  .cx-bctx__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .cx-bctx__legend {
+    padding: 0;
+    margin-bottom: var(--sp-2);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+  }
+  .cx-bctx__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cx-bctx__key {
+    margin-left: var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-nc__path {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+}

@@ -1,7 +1,9 @@
 // Detail pages (UI_SPEC §F, ROUND2_UI_SPEC §G): rendered markdown, rewritten links, the two-column okf layout,
 // file tree, back-references, context pages (links in context order) and clickable list rows.
+import { appendFileSync, rmSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { API } from './helpers.ts';
+import { settleAfter } from './dev-reload.ts';
+import { API, dataPath, uniqueName } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
   test('/kb/ctxman renders the entry markdown, metadata and file tree', async ({ page }) => {
@@ -292,5 +294,150 @@ test.describe('clickable rows', () => {
       .locator('li.cx-rowlink', { has: page.locator('a[href="/context/ctxman-dev"]') });
     await ref.locator('.cx-backref__notes').click({ force: true });
     await expect(page).toHaveURL(/\/context\/ctxman-dev$/);
+  });
+});
+
+test.describe('relation panels, header state and tool buttons (ROUND3_SPEC §E)', () => {
+  test('a task page shows its parent, the state select and the Details / Files buttons', async ({
+    page,
+  }) => {
+    await page.goto('/task/write-agents-md');
+    await expect(page.getByTestId('state-select')).toHaveValue('complete');
+    await expect(page.getByTestId('detail-parent')).toHaveText('Part of ctxman v1');
+    await expect(page.getByTestId('detail-parent')).toHaveAttribute('href', '/project/ctxman-v1');
+    const linkedFrom = page
+      .getByTestId('detail-linked-from')
+      .locator('[data-testid="relation-row"][data-key="project/ctxman-v1"]');
+    await expect(linkedFrom).toContainText('Parent');
+    // the SSR buttons start disabled; the EntryTools island enables them
+    for (const id of ['meta-edit', 'files-new-concept', 'entry-add-to-context', 'relation-add']) {
+      await expect(page.getByTestId(id), id).toBeEnabled();
+    }
+    // mentions of the body are listed under "Links to", with the other entries' states
+    await expect(
+      page
+        .getByTestId('detail-links-to')
+        .locator('[data-testid="relation-row"][data-key="kb/ctxman"]'),
+    ).toContainText('Mentions');
+    // a task is not a project: no Children panel
+    await expect(page.getByTestId('children-panel')).toHaveCount(0);
+  });
+
+  test('the project page lists its eleven children in file order with a remove button each', async ({
+    page,
+  }) => {
+    await page.goto('/project/ctxman-v1');
+    const rows = page.getByTestId('children-row');
+    await expect(rows).toHaveCount(11);
+    expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute('data-key')))).toEqual([
+      'feature/global-search',
+      'feature/context-forge',
+      'feature/tools-runner',
+      'task/write-agents-md',
+      'task/forge-e2e-coverage',
+      'task/seed-sample-data',
+      'task/windows-smoke-test',
+      'bug/forge-reorder-focus',
+      'bug/stale-badge-timezone',
+      'idea/okf-graph-view',
+      'feature/entry-relations',
+    ]);
+    await expect(page.getByTestId('children-remove')).toHaveCount(11);
+    await expect(page.getByTestId('children-add')).toBeEnabled();
+    await expect(page.getByTestId('entry-build-context')).toBeEnabled();
+    await expect(page.getByTestId('children-progress')).toHaveText(/^\d+ of 11 done$/);
+    // "Links to" keeps the non-child links (related), the children are in their own panel
+    const related = page.getByTestId('detail-links-to').getByTestId('relation-row');
+    await expect(related).toHaveCount(4);
+    expect(
+      await related.evaluateAll((els) => els.map((el) => el.getAttribute('data-rel'))),
+    ).toEqual(['related', 'related', 'related', 'related']);
+    // "View tasks of this project" is the list filter
+    await expect(page.getByTestId('children-view-task')).toHaveAccessibleName(
+      'View tasks of this project',
+    );
+    await page.getByTestId('children-view-task').click();
+    await expect(page).toHaveURL(/\/task\?project=ctxman-v1$/);
+    await expect(page.getByTestId('list-row')).toHaveCount(4);
+    await expect(page.getByTestId('list-project-chip')).toBeChecked();
+  });
+
+  test('reference, skill and context pages get the panels and buttons that fit them', async ({
+    page,
+  }) => {
+    // reference: Linked from only, Add to context, no Details edit (its own form edits it)
+    await page.goto('/reference/astro-docs');
+    await expect(page.getByTestId('detail-linked-from')).toBeVisible();
+    await expect(page.getByTestId('detail-links-to')).toHaveCount(0);
+    await expect(page.getByTestId('entry-add-to-context')).toBeEnabled();
+    await expect(page.getByTestId('meta-edit')).toHaveCount(0);
+    await expect(page.getByTestId('state-select')).toHaveCount(0);
+
+    // skill: Details edit, no concepts / frontmatter links
+    await page.goto('/skill/okf-authoring');
+    await expect(page.getByTestId('meta-edit')).toBeEnabled();
+    await expect(page.getByTestId('files-new-concept')).toHaveCount(0);
+    await expect(page.getByTestId('relation-add')).toHaveCount(0);
+
+    // context: none of it
+    await page.goto('/context/ctxman-dev');
+    await expect(page.getByTestId('detail-content')).toBeVisible();
+    for (const id of ['entry-add-to-context', 'detail-linked-from', 'meta-edit', 'entry-status']) {
+      await expect(page.getByTestId(id), id).toHaveCount(0);
+    }
+  });
+});
+
+test.describe('broken links', () => {
+  const name = uniqueName('e2e-detail-broken');
+
+  test.beforeAll(async ({ browser, playwright, baseURL }) => {
+    await settleAfter(browser, baseURL, async () => {
+      const request = await playwright.request.newContext({ baseURL });
+      try {
+        const created = await request.post(`${API}/entry/kb`, {
+          data: { name, title: 'E2E broken links', description: 'Links that do not resolve.' },
+        });
+        expect(created.status()).toBe(201);
+      } finally {
+        await request.dispose();
+      }
+      appendFileSync(
+        dataPath(`kb/${name}/main.md`),
+        '\nSee [ghost](ctxman:task/e2e-no-such-task), [file](./concepts/e2e-nope.md) and [fine](ctxman:kb/ctxman).\n',
+      );
+    });
+  });
+
+  test.afterAll(async ({ browser, baseURL }) => {
+    await settleAfter(browser, baseURL, async () => {
+      rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
+    });
+  });
+
+  test('links to missing entries and files render dashed with a reason; valid ones do not', async ({
+    page,
+  }) => {
+    await page.goto(`/kb/${name}`);
+    const broken = page.locator('.cx-prose a.cx-link--broken');
+    await expect(broken).toHaveCount(2);
+    await expect(broken.nth(0)).toHaveAttribute('title', 'Missing: task/e2e-no-such-task');
+    await expect(broken.nth(1)).toHaveAttribute('title', 'Missing file: concepts/e2e-nope.md');
+    for (const link of await broken.all()) {
+      const style = await link.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { decoration: cs.textDecorationStyle, cursor: cs.cursor };
+      });
+      expect(style).toEqual({ decoration: 'dashed', cursor: 'help' });
+    }
+    await expect(page.locator('.cx-prose a', { hasText: 'fine' })).not.toHaveClass(
+      /cx-link--broken/,
+    );
+    // the dangling ctxman: link also shows as a missing row under "Links to"
+    const missing = page
+      .getByTestId('detail-links-to')
+      .locator('[data-testid="relation-row"][data-key="task/e2e-no-such-task"]');
+    await expect(missing).toBeVisible();
+    await expect(missing.getByTestId('relation-missing')).toHaveText('missing');
   });
 });
