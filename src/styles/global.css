@@ -21,6 +21,7 @@
 @import './app.css'; /* @layer cx-app: shell, pages, astro components */
 @import '../ui/search/search.css'; /* @layer cx-app (P6) */
 @import '../ui/forge/forge.css'; /* @layer cx-app (P7) */
+@import '../ui/inflate/inflate.css'; /* @layer cx-app (Inflate) */
 @import '../ui/tools/tools.css'; /* @layer cx-app (P7) */
 @import './prose.css'; /* @layer cx-prose */
 
@@ -180,6 +181,10 @@
   [data-ds='context'] {
     --ds-c: var(--ds-context);
     --ds-fg: var(--ds-context-fg);
+  }
+  [data-ds='recipe'] {
+    --ds-c: var(--ds-recipe);
+    --ds-fg: var(--ds-recipe-fg);
   }
 
   /* lifecycle state groups: neutral=chrome outline, active=cyan ("blue" role), done=green, closed=dim chrome */

@@ -29,6 +29,7 @@ It runs on a Node backend with API routes and can run local scripts. It is never
 * **Work**: `idea`, `task`, `bug`, `feature` and `project` entries, each with a lifecycle state.
 * **Agent material**: `skill` folders that follow the agentskills.io format, and `reference` records that point at things outside this repo.
 * **Contexts**: `context` records that link to any of the above without copying it.
+* **Recipes**: `recipe` records that turn contexts and extra items into one ready-to-use document for Claude Code, Codex or a generic agent.
 
 Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes.
 
@@ -36,15 +37,17 @@ Every entry is a folder or file under `data/`. There is no database. See [Datase
 
 1. Find the relevant context (or build one in the [context forge](/concepts/context-forge.md)). A context lists links plus optional notes that narrow what the agent should read.
 2. Follow each link to the underlying entry. Contexts are pointers, so the entry is always the current version.
-3. When you learn something durable, record it as a new entry with the [add scripts](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
+3. To hand a whole session brief to an agent, compose a recipe in [context inflate](/concepts/context-inflate.md) and generate its document.
+4. When you learn something durable, record it as a new entry with the [add scripts](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
 
 The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for working on ctxman itself.
 
 ## Concept map
 
 * [Architecture](/concepts/architecture.md) - stack, layout and layering.
-* [Datasets](/concepts/datasets.md) - the ten datasets and link syntax.
+* [Datasets](/concepts/datasets.md) - the eleven datasets and link syntax.
 * [Context forge](/concepts/context-forge.md) - building and editing contexts.
+* [Context inflate](/concepts/context-inflate.md) - recipes and the generated session document.
 * [Search](/concepts/search.md) - global fuzzy search.
 * [Routes and API](/concepts/routes-and-api.md) - pages, URL parameters, endpoints.
 * [Adding entries](/concepts/adding-entries.md) - scaffold and author new entries.
@@ -60,6 +63,6 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 | Data directory | `./data`, overridable with the `CTXMAN_DATA_DIR` environment variable |
 | Scripts | TypeScript run directly by Node 24, no transpile step |
 
-## Not built yet
+## Context inflate
 
-A "context inflate" tool is planned: select several contexts, add instructions, and prepare every linked item for Claude Code or Codex. It does not exist yet; the design notes live in the idea [context-inflate](ctxman:idea/context-inflate). The delivery plan is the project [ctxman-v1](ctxman:project/ctxman-v1).
+The tool at `/inflate` expands selected contexts, extra items and your own instructions into one markdown document plus a manifest, with a target-specific header and include mode per item. It reads the linked entries when you generate, so contexts stay evergreen. The saved compositions are `recipe` entries. Details are in [Context inflate](/concepts/context-inflate.md); the origin is the idea [context-inflate](ctxman:idea/context-inflate) and the delivery plan is the project [ctxman-v1](ctxman:project/ctxman-v1).

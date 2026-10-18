@@ -126,12 +126,34 @@ export function planNewEntry(
       return [
         {
           relPath: `${dataset}/${name}.yaml`,
-          content:
-            dataset === 'reference'
-              ? stringifyYaml(referenceDoc(name, description, opts))
-              : stringifyYaml({ name, description, links: [] }),
+          content: stringifyYaml(dataDoc(dataset, name, description, opts)),
         },
       ];
+  }
+}
+
+/** Starter document of a yaml dataset (reference, context, recipe). */
+function dataDoc(
+  dataset: DatasetId,
+  name: string,
+  description: string,
+  opts: NewEntryOptions,
+): Record<string, unknown> {
+  switch (dataset) {
+    case 'reference':
+      return referenceDoc(name, description, opts);
+    case 'recipe':
+      // Equals serializeRecipe() of the parsed result (src/lib/inflate/recipe.ts).
+      return {
+        name,
+        description,
+        target: 'claude-code',
+        layout: 'grouped',
+        contexts: [],
+        items: [],
+      };
+    default:
+      return { name, description, links: [] };
   }
 }
 

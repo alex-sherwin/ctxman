@@ -3,6 +3,7 @@
 // No astro:* imports, so it is unit-testable (tests/unit/http.test.ts).
 import { ContextIoError } from './context-io.ts';
 import type { Issue } from './context-io.ts';
+import { RecipeIoError } from './recipe-io.ts';
 
 /** Statuses that must not carry a body (a `Response` with a body and one of these throws). */
 const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([101, 204, 205, 304]);
@@ -110,12 +111,18 @@ export async function readJson(
   }
 }
 
+/** The slice of `ContextIoError` / `RecipeIoError` the shared mapper reads (the two classes have the same shape). */
+interface IoErrorLike {
+  code: 'not-found' | 'exists' | 'invalid' | 'bad-slug' | 'name-mismatch' | 'parse';
+  message: string;
+  issues: Issue[];
+}
+
 /**
- * Maps a context-io failure to its API response (PLAN §G). `read` (GET): a file that exists but fails
- * parsing/schema is 422 `invalid-file`; `write` (POST/PUT): schema problems are 400 `invalid`.
+ * Maps a context-io / recipe-io failure to its API response (PLAN §G). `read` (GET): a file that exists
+ * but fails parsing/schema is 422 `invalid-file`; `write` (POST/PUT): schema problems are 400 `invalid`.
  */
-export function contextErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
-  if (!(error instanceof ContextIoError)) return internalError(error);
+function ioErrorResponse(error: IoErrorLike, mode: 'read' | 'write'): Response {
   const issues = error.issues.length > 0 ? error.issues : undefined;
   switch (error.code) {
     case 'bad-slug':
@@ -132,4 +139,16 @@ export function contextErrorResponse(error: unknown, mode: 'read' | 'write'): Re
         ? apiError(422, 'invalid-file', error.message, issues)
         : apiError(400, 'invalid', error.message, issues ?? []);
   }
+}
+
+/** Maps a context-io failure to its API response; anything that is not a `ContextIoError` is a 500. */
+export function contextErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
+  if (!(error instanceof ContextIoError)) return internalError(error);
+  return ioErrorResponse(error, mode);
+}
+
+/** Maps a recipe-io failure to its API response (same table as contexts); anything else is a 500. */
+export function recipeErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
+  if (!(error instanceof RecipeIoError)) return internalError(error);
+  return ioErrorResponse(error, mode);
 }

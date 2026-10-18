@@ -9,8 +9,8 @@ describe('checkCollections', () => {
   it('passes a clean data tree and counts every collection file', async () => {
     const result = await checkCollections(tmp.make(validDataTree()));
     expect(result.findings).toEqual([]);
-    // kb: 4 md; task: 2 md; skill: SKILL.md; reference + context yaml
-    expect(result.filesChecked).toBe(9);
+    // kb: 4 md; task: 2 md; skill: SKILL.md; reference + context + recipe yaml
+    expect(result.filesChecked).toBe(10);
   });
 
   it('treats a missing or empty data dir as clean', async () => {
@@ -143,5 +143,108 @@ describe('checkCollections', () => {
         file: 'misc',
       }),
     ]);
+  });
+
+  describe('recipes', () => {
+    const recipe = (body: string) => `name: r\ndescription: d\n${body}`;
+
+    it('recipe yaml: schema errors, name vs stem, stray non-.yaml files', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'recipe/bad-mode.yaml':
+          'name: bad-mode\ndescription: d\noverrides:\n  - key: kb/demo\n    mode: install\n',
+        'recipe/other-name.yaml': 'name: someone-else\ndescription: d\n',
+        'recipe/old.yml': 'name: old\n',
+        'recipe/broken.yaml': 'name: [oops\n',
+        'recipe/dup.yaml': 'name: dup\ndescription: d\ncontexts: [a, a]\n',
+        'recipe/.hidden.yaml': 'ignored',
+      });
+      const { findings } = await checkCollections(dir);
+      const summary = findings.map((f) => `${f.file} ${f.rule}`);
+      expect(summary).toContain('recipe/bad-mode.yaml collections/schema');
+      expect(summary).toContain('recipe/other-name.yaml collections/name-mismatch');
+      expect(summary).toContain('recipe/old.yml collections/stray-file');
+      expect(summary).toContain('recipe/broken.yaml collections/schema');
+      expect(summary).toContain('recipe/dup.yaml collections/schema');
+      expect(summary.filter((s) => s.startsWith('recipe/brief.yaml'))).toEqual([]);
+      expect(findings.some((f) => f.file.includes('.hidden'))).toBe(false);
+    });
+
+    it('collections/recipe-context-missing: a listed context file does not exist', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'recipe/r.yaml': recipe('contexts:\n  - ctx\n  - gone\n'),
+      });
+      const { findings } = await checkCollections(dir);
+      expect(findings.map((f) => [f.file, f.rule, f.severity, f.message])).toEqual([
+        [
+          'recipe/r.yaml',
+          'collections/recipe-context-missing',
+          'warning',
+          'context gone does not exist',
+        ],
+      ]);
+    });
+
+    it('collections/recipe-item-missing: an ad hoc item does not exist', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'recipe/r.yaml': recipe(
+          'items:\n  - dataset: kb\n    slug: demo\n  - dataset: kb\n    slug: gone\n  - dataset: reference\n    slug: nope\n',
+        ),
+      });
+      const { findings } = await checkCollections(dir);
+      expect(findings.map((f) => [f.rule, f.message])).toEqual([
+        ['collections/recipe-item-missing', 'item kb/gone does not exist'],
+        ['collections/recipe-item-missing', 'item reference/nope does not exist'],
+      ]);
+    });
+
+    it('collections/recipe-override-stale: an override matches no reachable item', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'recipe/r.yaml': recipe(
+          'contexts:\n  - ctx\nitems:\n  - dataset: skill\n    slug: my-skill\noverrides:\n  - key: kb/demo\n    exclude: true\n  - key: skill/my-skill\n    mode: pointer\n  - key: task/not-linked\n    exclude: true\n',
+        ),
+      });
+      const { findings } = await checkCollections(dir);
+      expect(findings.map((f) => [f.rule, f.severity, f.message])).toEqual([
+        [
+          'collections/recipe-override-stale',
+          'warning',
+          'override task/not-linked matches no item of this recipe',
+        ],
+      ]);
+    });
+
+    it('collections/recipe-order-stale: valid keys are contexts, reachable items, blocks and sec:extra', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'recipe/r.yaml': recipe(
+          'contexts:\n  - ctx\nmarkdown:\n  - id: b1\n    body: hi\norder:\n  - md:b1\n  - sec:extra\n  - ctx:ctx\n  - task/do-it\n  - md:b9\n  - ctx:other\n  - kb/gone\n',
+        ),
+      });
+      const { findings } = await checkCollections(dir);
+      expect(findings.map((f) => [f.rule, f.message])).toEqual([
+        ['collections/recipe-order-stale', 'order key ctx:other matches nothing in this recipe'],
+        ['collections/recipe-order-stale', 'order key kb/gone matches nothing in this recipe'],
+        ['collections/recipe-order-stale', 'order key md:b9 matches nothing in this recipe'],
+      ]);
+    });
+
+    it('stale checks are skipped while a listed context is missing or invalid', async () => {
+      const dir = tmp.make({
+        ...validDataTree(),
+        'context/broken.yaml': 'name: broken\ndescription: ""\n',
+        'recipe/missing.yaml':
+          'name: missing\ndescription: d\ncontexts: [gone]\noverrides:\n  - key: kb/x\n    exclude: true\norder: [kb/x]\n',
+        'recipe/invalid.yaml':
+          'name: invalid\ndescription: d\ncontexts: [broken]\noverrides:\n  - key: kb/x\n    exclude: true\norder: [kb/x]\n',
+      });
+      const { findings } = await checkCollections(dir);
+      expect(
+        findings.filter((f) => f.file.startsWith('recipe/')).map((f) => [f.file, f.rule]),
+      ).toEqual([['recipe/missing.yaml', 'collections/recipe-context-missing']]);
+    });
   });
 });

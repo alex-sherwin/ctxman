@@ -1,0 +1,902 @@
+// Inflate state (INFLATE_SPEC §9.2). Same structure as src/stores/forge.ts: `onMount($inflateUrl)` reads
+// `location.search` and registers the popstate / beforeunload / keydown listeners; actions are plain
+// functions that `.set()` stores and call `history.pushState/replaceState` themselves; popstate re-reads the
+// URL and never writes history. The composition shown in the UI is the PURE `expandRecipe` run over the
+// cached `/api/entries` + `/api/context/:slug` data (instant feedback); the server re-expands for the real
+// render (`POST /api/inflate/render`, debounced). Imported only by the client:only Inflate island.
+import { atom, computed, map, onMount } from 'nanostores';
+import { LINKABLE_DATASETS } from '../datasets/registry.ts';
+import type { DatasetId, LinkableDatasetId } from '../datasets/registry.ts';
+import type { InflateOptionsInput, RecipeData, RecipeOverride } from '../datasets/schemas.ts';
+import {
+  baseOptionValue,
+  defaultModeFor,
+  isModeFor,
+  mdKey,
+  nextBlockId,
+} from '../lib/inflate/catalog.ts';
+import type {
+  InflateLayout,
+  InflateTarget,
+  ItemKind,
+  ModeId,
+  OptionId,
+} from '../lib/inflate/catalog.ts';
+import { expandRecipe, itemMetaFromSummary } from '../lib/inflate/expand.ts';
+import type {
+  ContextLike,
+  ContextLookup,
+  ExpandLookup,
+  ExpandedPlan,
+  ItemSegment,
+} from '../lib/inflate/expand.ts';
+import { sameRecipe } from '../lib/inflate/recipe.ts';
+// Type-only: erased at build time, nothing of the NODE renderer reaches the browser bundle.
+import type { InflateResult } from '../lib/inflate/render.ts';
+import { parseInflateUrl, withParams } from '../lib/url-state.ts';
+import type { InflateUrl, InflateView, ParamPatchValue } from '../lib/url-state.ts';
+import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
+import type { EntriesState } from './entries.ts';
+import type { Issue, SaveStatus } from './forge.ts';
+
+export type { InflateUrl, InflateView };
+export type { Issue, SaveStatus };
+
+export type RecipeLoad = {
+  status: 'none' | 'loading' | 'ready' | 'not-found' | 'error';
+  message?: string;
+};
+export type RenderState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  result: InflateResult | null;
+  message?: string;
+};
+export type WriteStatus = {
+  kind: 'idle' | 'writing' | 'written' | 'error';
+  message?: string;
+  path?: string;
+  bytes?: number;
+};
+
+/** Ids whose entries the island needs: every linkable dataset, plus the context and recipe lists. */
+const SOURCE_DATASETS: readonly DatasetId[] = [...LINKABLE_DATASETS, 'context', 'recipe'];
+
+/** Debounce between an edit and the server render. */
+export const RENDER_DEBOUNCE_MS = 400;
+
+// ---------------------------------------------------------------- stores
+
+export const $inflateUrl = map<InflateUrl>({ recipe: null, view: 'compose', dataset: 'kb', q: '' });
+
+/** Last loaded / saved server copy. */
+export const $baseline = atom<RecipeData | null>(null);
+/** Editable copy. Only ever replaced (immutable updates), never mutated. */
+export const $working = atom<RecipeData | null>(null);
+export const $recipeLoad = atom<RecipeLoad>({ status: 'none' });
+export const $saveStatus = atom<SaveStatus>({ kind: 'idle' });
+export const $dirty = computed(
+  [$working, $baseline],
+  (w, b) => w !== null && b !== null && !sameRecipe(w, b),
+);
+
+/** Contexts used by the working recipe, fetched once (refetched by `reloadSources`). */
+export const $contextDocs = map<Record<string, ContextLookup>>({});
+
+/** The composition: the working recipe expanded over the browser caches. */
+export const $plan = computed(
+  [$working, $contextDocs, $entries],
+  (w, docs, entries): ExpandedPlan | null =>
+    w === null ? null : expandRecipe(w, browserLookup(docs, entries)),
+);
+
+export const $render = atom<RenderState>({ status: 'idle', result: null });
+/** Bytes of each segment in the last server render, by segment key. */
+export const $segmentBytes = computed($render, (r): ReadonlyMap<string, number> => {
+  const out = new Map<string, number>();
+  for (const s of r.result?.manifest.segments ?? []) out.set(s.key, s.bytes);
+  return out;
+});
+
+/** User-typed output path; null = the default path (`<out dir>/<recipe>.md`). */
+export const $writePath = atom<string | null>(null);
+export const $writeStatus = atom<WriteStatus>({ kind: 'idle' });
+/** Markdown block that was just inserted: its disclosure starts expanded. */
+export const $lastAddedBlock = atom<string | null>(null);
+/** Set while the "discard changes?" dialog waits for an answer (the recipe the user wanted to switch to). */
+export const $pendingSwitch = atom<{ next: string | null } | null>(null);
+export const $newRecipePrefill = atom<string>('');
+
+// ---------------------------------------------------------------- browser lookup (§5.5)
+
+export function browserLookup(
+  docs: Readonly<Record<string, ContextLookup>>,
+  entries: Readonly<Partial<Record<DatasetId, EntriesState>>>,
+): ExpandLookup {
+  return {
+    context: (slug) => docs[slug] ?? { status: 'loading' },
+    item: (dataset, slug) => {
+      const state = entries[dataset];
+      // Stale-while-revalidate: a refetch keeps the previous rows, so only an empty cache is "loading".
+      if (state === undefined || (state.status === 'loading' && state.entries.length === 0)) {
+        return { status: 'loading' };
+      }
+      if (state.status === 'error') return { status: 'invalid', message: "Couldn't load entries" };
+      const summary = state.entries.find((e) => e.slug === slug);
+      return summary === undefined
+        ? { status: 'missing' }
+        : { status: 'ready', meta: itemMetaFromSummary(summary) };
+    },
+  };
+}
+
+function currentLookup(): ExpandLookup {
+  return browserLookup($contextDocs.get(), $entries.get());
+}
+
+// ---------------------------------------------------------------- URL plumbing
+
+const URL_DEFAULTS = { dataset: 'kb', view: 'compose' };
+const NEW_RECIPE_STATE = { ctxmanInflateNew: true };
+
+/** `pathname?search#hash` of the current location with `patch` applied (unrelated params kept). */
+function hrefWith(patch: Record<string, ParamPatchValue>): string {
+  return withParams(`${location.pathname}${location.search}${location.hash}`, patch, URL_DEFAULTS);
+}
+
+/** The URL that matches the stores (used to restore the URL after a cancelled popstate). */
+function hrefFromStores(): string {
+  const u = $inflateUrl.get();
+  return withParams(
+    location.pathname,
+    { recipe: u.recipe, view: u.view, dataset: u.dataset, q: u.q },
+    URL_DEFAULTS,
+  );
+}
+
+function replaceUrl(patch: Record<string, ParamPatchValue>): void {
+  history.replaceState(history.state, '', hrefWith(patch));
+}
+
+function readLocation(): InflateUrl {
+  return parseInflateUrl(new URLSearchParams(location.search));
+}
+
+/** One debounce handle for `q` writes. */
+let queryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelQueryTimer(): void {
+  if (queryTimer !== undefined) clearTimeout(queryTimer);
+  queryTimer = undefined;
+}
+
+/** Write a pending `q` to the URL now (before a pushState, on unmount). */
+export function flushQuery(): void {
+  if (queryTimer === undefined) return;
+  cancelQueryTimer();
+  replaceUrl({ q: $inflateUrl.get().q });
+}
+
+/** Re-read `location` into the stores (mount and popstate). Never writes history. */
+function applyUrl(): void {
+  cancelQueryTimer();
+  const url = readLocation();
+  $inflateUrl.set(url);
+  ensureEntries(url.dataset);
+}
+
+// ---------------------------------------------------------------- helpers
+
+const clone = <T>(value: T): T => structuredClone(value);
+
+const errorText = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+async function messageOf(res: Response): Promise<{ message: string; issues?: Issue[] }> {
+  try {
+    const body = (await res.json()) as { message?: unknown; issues?: unknown };
+    const out: { message: string; issues?: Issue[] } = {
+      message: typeof body.message === 'string' ? body.message : `HTTP ${res.status}`,
+    };
+    if (Array.isArray(body.issues)) out.issues = body.issues as Issue[];
+    return out;
+  } catch {
+    return { message: `HTTP ${res.status}` };
+  }
+}
+
+/** `message` plus the first few issues (`path: message`) on one line. */
+async function describeFailure(res: Response): Promise<string> {
+  const { message, issues } = await messageOf(res);
+  const detail = (issues ?? [])
+    .slice(0, 3)
+    .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message));
+  return [message, ...detail].join('; ');
+}
+
+// ---------------------------------------------------------------- contexts used by the recipe
+
+const contextSeq = new Map<string, number>();
+
+async function fetchContext(slug: string): Promise<void> {
+  const seq = (contextSeq.get(slug) ?? 0) + 1;
+  contextSeq.set(slug, seq);
+  const settle = (value: ContextLookup): void => {
+    if (contextSeq.get(slug) === seq) $contextDocs.setKey(slug, value);
+  };
+  try {
+    const res = await fetch(`/api/context/${encodeURIComponent(slug)}`, {
+      headers: { accept: 'application/json' },
+    });
+    if (res.status === 404) {
+      await res.body?.cancel();
+      settle({ status: 'missing' });
+    } else if (res.status === 422) {
+      settle({ status: 'invalid', message: (await messageOf(res)).message });
+    } else if (!res.ok) {
+      await res.body?.cancel();
+      settle({ status: 'invalid', message: `HTTP ${res.status}` });
+    } else {
+      const body = (await res.json()) as { context: ContextLike };
+      settle({ status: 'ready', context: body.context });
+    }
+  } catch (error) {
+    settle({ status: 'invalid', message: errorText(error) });
+  }
+}
+
+/** Fetch `slug` once. No-op when it is cached or in flight. */
+export function ensureContext(slug: string): void {
+  if ($contextDocs.get()[slug] !== undefined) return;
+  $contextDocs.setKey(slug, { status: 'loading' });
+  void fetchContext(slug);
+}
+
+// ---------------------------------------------------------------- server render
+
+let renderTimer: ReturnType<typeof setTimeout> | undefined;
+let renderSeq = 0;
+
+function cancelRenderTimer(): void {
+  if (renderTimer !== undefined) clearTimeout(renderTimer);
+  renderTimer = undefined;
+}
+
+export function scheduleRender(): void {
+  cancelRenderTimer();
+  renderTimer = setTimeout(() => void renderNow(), RENDER_DEBOUNCE_MS);
+}
+
+/** Render the working recipe on the server. A response to an older request is dropped. */
+export async function renderNow(): Promise<void> {
+  cancelRenderTimer();
+  const working = $working.get();
+  const seq = ++renderSeq;
+  if (working === null) {
+    $render.set({ status: 'idle', result: null });
+    return;
+  }
+  $render.set({ status: 'loading', result: $render.get().result });
+  try {
+    const res = await fetch('/api/inflate/render', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(working),
+    });
+    if (seq !== renderSeq) {
+      await res.body?.cancel();
+      return;
+    }
+    if (!res.ok) {
+      const message = await describeFailure(res);
+      if (seq === renderSeq) {
+        $render.set({ status: 'error', result: $render.get().result, message });
+      }
+      return;
+    }
+    const result = (await res.json()) as InflateResult;
+    if (seq === renderSeq) $render.set({ status: 'ready', result });
+  } catch (error) {
+    if (seq === renderSeq) {
+      $render.set({ status: 'error', result: $render.get().result, message: errorText(error) });
+    }
+  }
+}
+
+function onWorkingChange(working: RecipeData | null): void {
+  if (working === null) cancelRenderTimer();
+  else scheduleRender();
+}
+
+// ---------------------------------------------------------------- loading / adopting a recipe
+
+let loadSeq = 0;
+
+/** Forget everything derived from the previous recipe (render, write path, open markdown block). */
+function resetOutputs(): void {
+  cancelRenderTimer();
+  renderSeq++;
+  $render.set({ status: 'idle', result: null });
+  $writePath.set(null);
+  $writeStatus.set({ kind: 'idle' });
+  $lastAddedBlock.set(null);
+}
+
+/** Make `recipe` the loaded one: baseline and working copy are independent deep copies. */
+function adopt(recipe: RecipeData): void {
+  $baseline.set(clone(recipe));
+  $working.set(clone(recipe));
+  for (const slug of recipe.contexts) ensureContext(slug);
+  void renderNow();
+}
+
+function clearRecipe(): void {
+  loadSeq++;
+  $baseline.set(null);
+  $working.set(null);
+  $recipeLoad.set({ status: 'none' });
+  resetOutputs();
+}
+
+export async function loadRecipe(slug: string): Promise<void> {
+  if ($baseline.get()?.name === slug) {
+    $recipeLoad.set({ status: 'ready' });
+    return;
+  }
+  const seq = ++loadSeq;
+  $baseline.set(null);
+  $working.set(null);
+  resetOutputs();
+  $recipeLoad.set({ status: 'loading' });
+  try {
+    const res = await fetch(`/api/recipe/${encodeURIComponent(slug)}`, {
+      headers: { accept: 'application/json' },
+    });
+    if (seq !== loadSeq) {
+      await res.body?.cancel();
+      return;
+    }
+    if (res.status === 404) {
+      await res.body?.cancel(); // an unread body keeps the request "open" (network never idles)
+      $recipeLoad.set({ status: 'not-found' });
+      return;
+    }
+    if (!res.ok) {
+      $recipeLoad.set({ status: 'error', message: (await messageOf(res)).message });
+      return;
+    }
+    const body = (await res.json()) as { recipe: RecipeData };
+    if (seq !== loadSeq) return;
+    adopt(body.recipe);
+    $recipeLoad.set({ status: 'ready' });
+  } catch (error) {
+    if (seq === loadSeq) $recipeLoad.set({ status: 'error', message: errorText(error) });
+  }
+}
+
+/** Bring the loaded recipe in line with `$inflateUrl.recipe`. */
+function syncRecipe(): void {
+  const { recipe } = $inflateUrl.get();
+  if (recipe === null) clearRecipe();
+  else if (recipe !== 'new') void loadRecipe(recipe);
+}
+
+/** Retry button of the error state. */
+export function retryLoad(): void {
+  const { recipe } = $inflateUrl.get();
+  if (recipe === null || recipe === 'new') return;
+  void loadRecipe(recipe);
+}
+
+// ---------------------------------------------------------------- Discover actions (ad hoc items)
+
+export function setDataset(dataset: LinkableDatasetId): void {
+  const cur = $inflateUrl.get();
+  if (dataset === cur.dataset) return;
+  flushQuery();
+  $inflateUrl.set({ ...cur, dataset });
+  ensureEntries(dataset);
+  history.pushState(null, '', hrefWith({ dataset }));
+}
+
+export function setQuery(q: string): void {
+  $inflateUrl.setKey('q', q);
+  cancelQueryTimer();
+  queryTimer = setTimeout(flushQuery, 150);
+}
+
+export function setView(view: InflateView): void {
+  if (view === $inflateUrl.get().view) return;
+  $inflateUrl.setKey('view', view);
+  replaceUrl({ view });
+}
+
+// ---------------------------------------------------------------- recipe selection (dirty guard)
+
+function navigateRecipe(next: string | null): void {
+  flushQuery();
+  $inflateUrl.setKey('recipe', next);
+  history.pushState(next === 'new' ? NEW_RECIPE_STATE : null, '', hrefWith({ recipe: next }));
+  if (next !== 'new') {
+    $saveStatus.set({ kind: 'idle' });
+    syncRecipe();
+  }
+}
+
+/** Pick a recipe, `'new'` (opens the New recipe dialog) or `null`. Guarded when there is unsaved work. */
+export function selectRecipe(next: string | null): void {
+  if (next === $inflateUrl.get().recipe) return;
+  if ($dirty.get()) {
+    $pendingSwitch.set({ next });
+    return;
+  }
+  navigateRecipe(next);
+}
+
+export function confirmSwitch(): void {
+  const pending = $pendingSwitch.get();
+  $pendingSwitch.set(null);
+  if (pending === null) return;
+  revert();
+  navigateRecipe(pending.next);
+}
+
+export function cancelSwitch(): void {
+  $pendingSwitch.set(null);
+}
+
+/** Cancel / Esc / overlay click of the New recipe dialog. */
+export function cancelNewRecipe(): void {
+  $newRecipePrefill.set('');
+  if ($inflateUrl.get().recipe !== 'new') return;
+  if ((history.state as { ctxmanInflateNew?: boolean } | null)?.ctxmanInflateNew) {
+    history.back(); // popstate re-reads the previous URL
+    return;
+  }
+  const previous = $baseline.get()?.name ?? null;
+  history.replaceState(null, '', hrefWith({ recipe: previous }));
+  $inflateUrl.setKey('recipe', previous);
+}
+
+// ---------------------------------------------------------------- editing actions
+
+/** An edit makes an old "Saved" / "Save failed" message stale. */
+function touch(): void {
+  const { kind } = $saveStatus.get();
+  if (kind !== 'idle' && kind !== 'saving') $saveStatus.set({ kind: 'idle' });
+}
+
+function commit(next: RecipeData): void {
+  touch();
+  $working.set(next);
+}
+
+/** Segment keys of the current composition (the order the document will have). */
+function planKeys(): string[] {
+  return ($plan.get()?.segments ?? []).map((s) => s.key);
+}
+
+function itemSegment(key: string): ItemSegment | undefined {
+  for (const s of $plan.get()?.segments ?? []) {
+    if (s.type === 'item' && s.key === key) return s;
+  }
+  return undefined;
+}
+
+/**
+ * Drop `order` keys and overrides that match nothing in the composition. Skipped while any lookup is
+ * still loading (a context or entry list that has not arrived yet would look "stale").
+ */
+function prune(next: RecipeData): RecipeData {
+  const p = expandRecipe(next, currentLookup());
+  if (p.pending) return next;
+  const keys = new Set(p.segments.map((s) => s.key));
+  const items = new Set(p.segments.filter((s) => s.type === 'item').map((s) => s.key));
+  const order = next.order.filter((k) => keys.has(k));
+  const overrides = next.overrides.filter((o) => items.has(o.key));
+  if (order.length === next.order.length && overrides.length === next.overrides.length) return next;
+  return { ...next, order, overrides };
+}
+
+export function setDescription(description: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  commit({ ...w, description });
+}
+
+export function setTarget(target: InflateTarget): void {
+  const w = $working.get();
+  if (w === null || w.target === target) return;
+  commit({ ...w, target });
+}
+
+export function setLayout(layout: InflateLayout): void {
+  const w = $working.get();
+  if (w === null || w.layout === layout) return;
+  commit({ ...w, layout });
+}
+
+/** `''` removes the `preamble` key (keeps revert-equality and the YAML clean). */
+export function setPreamble(preamble: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  if (preamble === '') {
+    const { preamble: _removed, ...rest } = w;
+    commit(rest);
+    return;
+  }
+  commit({ ...w, preamble });
+}
+
+export function toggleContext(slug: string, on: boolean): void {
+  const w = $working.get();
+  if (w === null) return;
+  const has = w.contexts.includes(slug);
+  if (on === has) return;
+  if (on) {
+    ensureContext(slug);
+    commit({ ...w, contexts: [...w.contexts, slug] });
+  } else {
+    commit(prune({ ...w, contexts: w.contexts.filter((c) => c !== slug) }));
+  }
+}
+
+export function addItem(dataset: LinkableDatasetId, slug: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  if (w.items.some((i) => i.dataset === dataset && i.slug === slug)) return;
+  commit({ ...w, items: [...w.items, { dataset, slug }] });
+}
+
+export function removeItem(key: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  commit(prune({ ...w, items: w.items.filter((i) => `${i.dataset}/${i.slug}` !== key) }));
+}
+
+/** An override with nothing left to say is dropped. */
+function cleanOverride(o: RecipeOverride): RecipeOverride | null {
+  const out: RecipeOverride = { key: o.key };
+  if (o.mode !== undefined) out.mode = o.mode;
+  if (o.options !== undefined) {
+    const options: Record<string, unknown> = {};
+    for (const [id, value] of Object.entries(o.options)) {
+      if (value !== undefined) options[id] = value;
+    }
+    if (Object.keys(options).length > 0) out.options = options as InflateOptionsInput;
+  }
+  if (o.exclude === true) out.exclude = true;
+  return out.mode !== undefined || out.options !== undefined || out.exclude === true ? out : null;
+}
+
+/** Apply `edit` to the override of `key` (created when absent), keeping its position in the list. */
+function editOverride(
+  w: RecipeData,
+  key: string,
+  edit: (o: RecipeOverride) => RecipeOverride,
+): RecipeData {
+  const existing = w.overrides.find((o) => o.key === key);
+  const next = cleanOverride(edit(existing ?? { key }));
+  if (existing === undefined) {
+    return next === null ? w : { ...w, overrides: [...w.overrides, next] };
+  }
+  const overrides: RecipeOverride[] = [];
+  for (const o of w.overrides) {
+    if (o.key !== key) overrides.push(o);
+    else if (next !== null) overrides.push(next);
+  }
+  return { ...w, overrides };
+}
+
+/** The mode an item of `kind` gets without an override: the recipe default, else the built-in one. */
+function baseMode(w: RecipeData, kind: ItemKind): ModeId {
+  const recipeDefault = w.defaults[kind]?.mode;
+  return recipeDefault !== undefined && isModeFor(kind, recipeDefault)
+    ? recipeDefault
+    : defaultModeFor(kind, w.target);
+}
+
+export function setExcluded(key: string, on: boolean): void {
+  const w = $working.get();
+  if (w === null) return;
+  commit(
+    editOverride(w, key, (o) => {
+      const { exclude: _removed, ...rest } = o;
+      return on ? { ...rest, exclude: true } : rest;
+    }),
+  );
+}
+
+export function setMode(key: string, mode: ModeId): void {
+  const w = $working.get();
+  const seg = itemSegment(key);
+  if (w === null || seg === undefined || seg.kind === null) return;
+  const same = mode === baseMode(w, seg.kind);
+  commit(
+    editOverride(w, key, (o) => {
+      const { mode: _removed, ...rest } = o;
+      return same ? rest : { ...rest, mode };
+    }),
+  );
+}
+
+export function setOption(key: string, id: OptionId, value: boolean | number | string): void {
+  const w = $working.get();
+  const seg = itemSegment(key);
+  if (w === null || seg === undefined || seg.kind === null || seg.mode === null) return;
+  const base = baseOptionValue(seg.kind, seg.mode, id, seg.slug, w.defaults[seg.kind]?.options);
+  commit(
+    editOverride(w, key, (o) => {
+      const options: Record<string, unknown> = { ...o.options };
+      if (value === base) delete options[id];
+      else options[id] = value;
+      return { ...o, options: options as InflateOptionsInput };
+    }),
+  );
+}
+
+export function setDefaultMode(kind: ItemKind, mode: ModeId | null): void {
+  const w = $working.get();
+  if (w === null) return;
+  const current = w.defaults[kind];
+  const next: { mode?: ModeId; options?: InflateOptionsInput } = {};
+  if (mode !== null && mode !== defaultModeFor(kind, w.target)) next.mode = mode;
+  if (current?.options !== undefined) next.options = current.options;
+  const { [kind]: _removed, ...others } = w.defaults;
+  const defaults: RecipeData['defaults'] =
+    next.mode !== undefined || next.options !== undefined ? { ...others, [kind]: next } : others;
+  commit({ ...w, defaults });
+}
+
+/** Swap `key` with its neighbour in the composition; the whole order becomes explicit. */
+export function moveSegment(key: string, dir: -1 | 1): void {
+  const w = $working.get();
+  if (w === null) return;
+  const keys = planKeys();
+  const from = keys.indexOf(key);
+  const to = from + dir;
+  if (from === -1 || to < 0 || to >= keys.length) return;
+  const moved = keys[from];
+  const other = keys[to];
+  if (moved === undefined || other === undefined) return;
+  keys[from] = other;
+  keys[to] = moved;
+  commit({ ...w, order: keys });
+}
+
+/** Add an empty markdown block right after segment `key` (`null` = at the end). */
+export function insertMarkdownAfter(key: string | null): void {
+  const w = $working.get();
+  if (w === null) return;
+  const id = nextBlockId(w.markdown.map((b) => b.id));
+  const keys = planKeys();
+  const at = key === null ? -1 : keys.indexOf(key);
+  const order =
+    at === -1 ? [...keys, mdKey(id)] : [...keys.slice(0, at + 1), mdKey(id), ...keys.slice(at + 1)];
+  $lastAddedBlock.set(id);
+  commit({ ...w, markdown: [...w.markdown, { id, body: '' }], order });
+}
+
+export function setMarkdownBody(id: string, body: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  commit({ ...w, markdown: w.markdown.map((b) => (b.id === id ? { ...b, body } : b)) });
+}
+
+export function removeMarkdown(id: string): void {
+  const w = $working.get();
+  if (w === null) return;
+  commit(prune({ ...w, markdown: w.markdown.filter((b) => b.id !== id) }));
+}
+
+export function resetOrder(): void {
+  const w = $working.get();
+  if (w === null || w.order.length === 0) return;
+  commit({ ...w, order: [] });
+}
+
+export function pruneStale(): void {
+  const w = $working.get();
+  if (w === null) return;
+  const next = prune(w);
+  if (next !== w) commit(next);
+}
+
+/** Re-fetch every entries list and context the composition reads, then render again. */
+export function reloadSources(): void {
+  for (const ds of SOURCE_DATASETS) invalidateEntries(ds);
+  for (const slug of Object.keys($contextDocs.get())) void fetchContext(slug);
+  void renderNow();
+}
+
+// ---------------------------------------------------------------- save / revert / delete / create
+
+export function revert(): void {
+  const baseline = $baseline.get();
+  if (baseline === null) return;
+  $saveStatus.set({ kind: 'idle' });
+  $working.set(clone(baseline));
+}
+
+export async function save(): Promise<void> {
+  if ($saveStatus.get().kind === 'saving') return;
+  const working = $working.get();
+  const baseline = $baseline.get();
+  if (working === null || baseline === null) return;
+  $saveStatus.set({ kind: 'saving' });
+  try {
+    const res = await fetch(`/api/recipe/${encodeURIComponent(baseline.name)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(working),
+    });
+    if ($baseline.get() !== baseline) {
+      // The user moved to another recipe while this was in flight: only refresh the cache.
+      if (res.ok) invalidateEntries('recipe');
+      return;
+    }
+    if (!res.ok) {
+      const { message, issues } = await messageOf(res);
+      const status: SaveStatus = { kind: 'error', message };
+      if (issues !== undefined) status.issues = issues;
+      $saveStatus.set(status);
+      return;
+    }
+    const body = (await res.json()) as { recipe: RecipeData };
+    $baseline.set(clone(body.recipe));
+    // Keep keystrokes made while the request was in flight; the server copy only replaces a working
+    // copy that still equals what was sent AND differs from the response (never in practice).
+    if ($working.get() === working && !sameRecipe(working, body.recipe)) {
+      $working.set(clone(body.recipe));
+    }
+    $saveStatus.set({ kind: 'saved', at: Date.now() });
+    invalidateEntries('recipe');
+  } catch (error) {
+    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  }
+}
+
+export async function deleteRecipe(): Promise<void> {
+  const baseline = $baseline.get();
+  if (baseline === null) return;
+  try {
+    const res = await fetch(`/api/recipe/${encodeURIComponent(baseline.name)}`, {
+      method: 'DELETE',
+      headers: { accept: 'application/json' },
+    });
+    if (res.status !== 204 && !res.ok) {
+      $saveStatus.set({ kind: 'error', message: (await messageOf(res)).message });
+      return;
+    }
+    clearRecipe();
+    invalidateEntries('recipe');
+    history.replaceState(history.state, '', hrefWith({ recipe: null }));
+    $inflateUrl.setKey('recipe', null);
+    $saveStatus.set({ kind: 'deleted', message: `Deleted ${baseline.name}` });
+  } catch (error) {
+    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  }
+}
+
+export async function createRecipe(input: {
+  name: string;
+  description: string;
+  target: InflateTarget;
+}): Promise<{ ok: true } | { ok: false; field?: 'name'; message: string }> {
+  try {
+    const res = await fetch('/api/recipe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        name: input.name,
+        description: input.description,
+        target: input.target,
+        layout: 'grouped',
+        contexts: [],
+        items: [],
+      }),
+    });
+    if (res.status === 409) {
+      await res.body?.cancel();
+      return { ok: false, field: 'name', message: 'A recipe with this name already exists.' };
+    }
+    if (!res.ok) return { ok: false, message: await describeFailure(res) };
+    const body = (await res.json()) as { recipe: RecipeData };
+    loadSeq++;
+    resetOutputs();
+    adopt(body.recipe);
+    $recipeLoad.set({ status: 'ready' });
+    $saveStatus.set({ kind: 'idle' });
+    $newRecipePrefill.set('');
+    invalidateEntries('recipe');
+    history.replaceState(null, '', hrefWith({ recipe: body.recipe.name }));
+    $inflateUrl.setKey('recipe', body.recipe.name);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: errorText(error) };
+  }
+}
+
+// ---------------------------------------------------------------- write to a file
+
+export function setWritePath(value: string): void {
+  $writePath.set(value);
+}
+
+/** `POST /api/inflate/write` with the working recipe (unsaved edits included). */
+export async function writeOutput(path: string): Promise<void> {
+  const working = $working.get();
+  if (working === null || $writeStatus.get().kind === 'writing') return;
+  $writeStatus.set({ kind: 'writing' });
+  try {
+    const res = await fetch('/api/inflate/write', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ recipe: working, path }),
+    });
+    if (!res.ok) {
+      $writeStatus.set({ kind: 'error', message: await describeFailure(res) });
+      return;
+    }
+    const body = (await res.json()) as { path: string; bytes: number };
+    $writeStatus.set({ kind: 'written', path: body.path, bytes: body.bytes });
+  } catch (error) {
+    $writeStatus.set({ kind: 'error', message: errorText(error) });
+  }
+}
+
+// ---------------------------------------------------------------- browser listeners (registered on mount)
+
+function onPopState(): void {
+  const next = readLocation();
+  const cur = $inflateUrl.get();
+  if (next.recipe !== cur.recipe && $dirty.get()) {
+    const name = $baseline.get()?.name ?? cur.recipe ?? 'this recipe';
+    if (!window.confirm(`Discard unsaved changes to "${name}"?`)) {
+      // Undo the navigation: the same-origin URL of the current state goes back on top of the stack.
+      history.pushState(cur.recipe === 'new' ? NEW_RECIPE_STATE : null, '', hrefFromStores());
+      return;
+    }
+    revert();
+  }
+  applyUrl();
+  syncRecipe();
+}
+
+/** Save only when there is something to save (Cmd/Ctrl+S, editor save actions). */
+export function saveIfDirty(): void {
+  if ($dirty.get()) void save();
+}
+
+function onBeforeUnload(e: BeforeUnloadEvent): void {
+  if ($dirty.get()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+}
+
+function onKeyDown(e: KeyboardEvent): void {
+  // A Monaco editor action (Cmd/Ctrl+S inside an editor) has already handled and prevented the key.
+  if (e.defaultPrevented) return;
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    saveIfDirty();
+  }
+}
+
+onMount($inflateUrl, () => {
+  applyUrl();
+  for (const ds of SOURCE_DATASETS) ensureEntries(ds);
+  syncRecipe();
+  window.addEventListener('popstate', onPopState);
+  window.addEventListener('beforeunload', onBeforeUnload);
+  window.addEventListener('keydown', onKeyDown);
+  const stopWatching = $working.listen(onWorkingChange);
+  return () => {
+    window.removeEventListener('popstate', onPopState);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    window.removeEventListener('keydown', onKeyDown);
+    stopWatching();
+    cancelRenderTimer();
+    flushQuery();
+  };
+});

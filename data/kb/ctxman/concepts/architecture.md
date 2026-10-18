@@ -25,18 +25,19 @@ ctxman is an Astro 7.4.0 site in `output: 'server'` mode with the Node adapter (
 | Scripts | TypeScript executed directly by Node 24 (erasable syntax only, `.ts` extensions in imports) |
 | Tooling | TypeScript 7.1 nightly `tsc`, oxlint, oxfmt, vitest, playwright, pnpm |
 
-There are exactly three React islands, all `client:only="react"`: the search widget, the context forge and the tools runner. Everything else is server-rendered Astro with a little vanilla script.
+There are exactly four React islands, all `client:only="react"`: the search widget, the context forge, the [Context inflate](/concepts/context-inflate.md) tool and the tools runner. Everything else is server-rendered Astro with a little vanilla script.
 
 ## Repository layout
 
 ```text
 data/        all datasets (see datasets concept)
 scripts/     add-entry.ts and the check scripts, run by node
+out/         default output folder of Context inflate (gitignored, not linted or formatted)
 src/
   content.config.ts      one collection per dataset, plus a docs collection
   datasets/registry.ts   single source of truth for dataset ids, states and labels
   datasets/schemas.ts    zod schemas for every dataset
-  lib/                   shared TypeScript modules
+  lib/                   shared TypeScript modules (lib/inflate/ holds the Context inflate pipeline)
   pages/                 routes and API endpoints
   layouts/, components/  Astro layout and server-rendered components
   ui/, stores/           React islands, kit, Monaco editor wrapper, nanostores
@@ -55,6 +56,8 @@ Every module is one of four kinds, named in its header comment, and the kind dec
 * **Server**: no `astro:*` imports, but only server code uses it (`http.ts`, `run-script.ts`, `markdown.ts`). Tests may import it; scripts do not.
 * **Server-Astro**: imports `astro:content` (`entries.ts`). Only pages and API routes may use it; scripts and tests never do.
 
+`src/lib/inflate/` follows the same rules. The catalog (targets, modes, options), the recipe parser and serializer, and the expander are pure, so the Inflate island imports them for instant feedback. The markdown helpers, the renderer and the pipeline are Node-kind modules without filesystem calls of their own (they read through an injected `InflateSources` and import the OKF and link helpers); `fs-sources.ts` and `write.ts` are the only ones that touch the disk, next to `src/lib/recipe-io.ts`. Those Node-kind files must never be imported by an island. There is no barrel file in that folder.
+
 Browser-only code lives in `src/ui` and `src/stores`. The Monaco wrapper in `src/ui/editor` touches `self` when loaded, so only `client:only` islands may import it.
 
 `src/datasets/schemas.ts` imports plain `zod` (not `astro:content`) precisely so Node scripts can validate files with the same schemas Astro uses.
@@ -68,3 +71,4 @@ Browser-only code lives in `src/ui` and `src/stores`. The Monaco wrapper in `src
 * [Datasets](/concepts/datasets.md) for what lives under `data/`.
 * [Routes and API](/concepts/routes-and-api.md) for the pages and endpoints.
 * [Runtime modes](/concepts/runtime-modes.md) for dev versus built behaviour.
+* [Context inflate](/concepts/context-inflate.md) for the recipe pipeline under `src/lib/inflate/`.

@@ -14,6 +14,7 @@
     ".astro",
     "node_modules",
     "data",
+    "out",
     "test-results",
     "playwright-report",
     ".tmp",

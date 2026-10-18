@@ -1,10 +1,10 @@
 ---
 name: ctxman-add-entry
-description: Create a new ctxman dataset entry (kb, rca, idea, task, bug, feature, project, skill, reference or context) with the pnpm add scripts, then fill it in and verify it. Use whenever asked to record an idea, task, bug, feature, project, analysis, note, skill, external reference or context in this repo.
+description: Create a new ctxman dataset entry (kb, rca, idea, task, bug, feature, project, skill, reference, context or recipe) with the pnpm add scripts, then fill it in and verify it. Use whenever asked to record an idea, task, bug, feature, project, analysis, note, skill, external reference, context or Context Inflate recipe in this repo.
 compatibility: Run from the ctxman repository root. Needs Node 24 and pnpm; never use npm.
 metadata:
   author: ctxman
-  version: "1.0"
+  version: "1.1"
 allowed-tools: Read Edit Bash(pnpm run add:*) Bash(pnpm run check:*)
 ---
 
@@ -14,7 +14,7 @@ Every entry is created with a script so its files have the right shape. Use pnpm
 
 ## When to use
 
-Any time the user wants something recorded in ctxman: "add a task for X", "write up this bug", "note this as knowledge", "save a reference to that repo", "make a context for this work".
+Any time the user wants something recorded in ctxman: "add a task for X", "write up this bug", "note this as knowledge", "save a reference to that repo", "make a context for this work", "save a recipe for this session brief".
 
 ## Instructions
 
@@ -32,6 +32,7 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
    | `skill` | an agent skill folder | none |
    | `reference` | a pointer to a local repo, remote repo or remote skill | none |
    | `context` | a reusable set of links to other entries | none |
+   | `recipe` | a saved Context Inflate composition: contexts, extra items, include modes, order and instructions for one agent target | none |
 
 2. **Pick a name**: lowercase letters, digits and single hyphens, at most 64 characters. It becomes the folder or file name and the slug, and cannot be changed later for a context.
 
@@ -43,7 +44,7 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
 
    Other options: `--state <state>` for lifecycle datasets; for references `--type local-repo|remote-repo|remote-skill`, `--path`, `--uri` (git URI such as `git@github.com:org/repo.git` or `https://github.com/org/repo`; a `remote-skill` may instead use an https `.tar.gz`/`.tgz`/`.zip` URL), `--subpath`, `--owner me|not-me`; `--json` for machine-readable output. Do not add a `--` separator before the flags (pnpm 11 forwards it literally and the script rejects it). The script refuses to overwrite anything that already exists. A reference created without `--path` or `--uri` gets a placeholder location (`~/repos/<name>` or `https://github.com/TODO/<name>.git`) that still passes the checks, so pass the real value or replace it afterwards.
 
-4. **Fill in the generated files.** For OKF datasets edit `main.md` sections, set `tags`, and replace the `TODO:` description. For the OKF details load the skill `okf-authoring`.
+4. **Fill in the generated files.** For OKF datasets edit `main.md` sections, set `tags`, and replace the `TODO:` description. For the OKF details load the skill `okf-authoring`. A `recipe` is a YAML file (`data/recipe/<name>.yaml`) that starts with `target: claude-code`, `layout: grouped` and empty `contexts` and `items`; recipes have no lifecycle state (`--state` is refused), so fill in the description and then compose it at `/inflate?recipe=<name>` instead of hand-editing the lists (the schema is strict; the fields are documented in `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman)).
 
 5. **Link related entries** with `ctxman:<dataset>/<slug>`, for example `ctxman:feature/context-forge`.
 
@@ -52,5 +53,5 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
 ## Notes
 
 * The same action is available in the browser at `/tools`.
-* Contexts can also be built interactively at `/forge`.
+* Contexts can also be built interactively at `/forge`; recipes are composed and turned into a markdown document for Claude Code or Codex at `/inflate`.
 * Background on all datasets: [ctxman](ctxman:kb/ctxman).

@@ -5,10 +5,16 @@ import {
   extractHeadings,
   markdownToText,
   okfDocToSearchDoc,
+  recipeToSearchDoc,
   referenceToSearchDoc,
   skillToSearchDoc,
 } from '../../src/lib/search-index.ts';
-import { contextSchema, referenceSchema, skillSchema } from '../../src/datasets/schemas.ts';
+import {
+  contextSchema,
+  recipeSchema,
+  referenceSchema,
+  skillSchema,
+} from '../../src/datasets/schemas.ts';
 
 describe('markdownToText', () => {
   it('drops frontmatter (LF, CRLF, BOM) but keeps a later --- rule out of the way', () => {
@@ -416,5 +422,56 @@ describe('contextToSearchDoc', () => {
       tags: [],
       id: 'context/empty',
     });
+  });
+});
+
+describe('recipeToSearchDoc', () => {
+  it('flattens description, target and layout, contexts, ad hoc items, preamble and blocks', () => {
+    const data = recipeSchema.parse({
+      name: 'ctxman-dev-brief',
+      description: 'Session brief for ctxman',
+      tags: ['ctxman'],
+      target: 'codex',
+      layout: 'flat',
+      preamble: 'Use **pnpm** only.\n',
+      contexts: ['ctxman-dev', 'okf-authoring'],
+      items: [{ dataset: 'skill', slug: 'ctxman-add-entry' }],
+      markdown: [{ id: 'b1', body: '## Ground rules\n\n- keep `AGENTS.md` current\n' }],
+    });
+    expect(recipeToSearchDoc('ctxman-dev-brief', data)).toEqual({
+      id: 'recipe/ctxman-dev-brief',
+      dataset: 'recipe',
+      slug: 'ctxman-dev-brief',
+      path: null,
+      title: 'ctxman-dev-brief',
+      name: 'ctxman-dev-brief',
+      description: 'Session brief for ctxman',
+      tags: ['ctxman'],
+      headings: [],
+      body: [
+        'Session brief for ctxman',
+        'target: Codex · layout: flat',
+        'contexts: ctxman-dev, okf-authoring',
+        'skill/ctxman-add-entry',
+        'Use pnpm only.',
+        'Ground rules keep AGENTS.md current',
+      ].join('\n'),
+      url: '/recipe/ctxman-dev-brief',
+    });
+  });
+
+  it('handles a bare recipe and truncates the body', () => {
+    const bare = recipeToSearchDoc(
+      'bare',
+      recipeSchema.parse({ name: 'bare', description: 'Nothing' }),
+    );
+    expect(bare.body).toBe('Nothing\ntarget: Claude Code · layout: grouped');
+    expect(bare.tags).toEqual([]);
+    const long = recipeSchema.parse({
+      name: 'long',
+      description: 'd',
+      markdown: [{ id: 'b1', body: 'x'.repeat(MAX_BODY_CHARS * 2) }],
+    });
+    expect(recipeToSearchDoc('long', long).body.length).toBeLessThanOrEqual(MAX_BODY_CHARS);
   });
 });

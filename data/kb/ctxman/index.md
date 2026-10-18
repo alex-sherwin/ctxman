@@ -10,12 +10,13 @@ okf_version: "0.2"
 ## Design
 
 * [Architecture](/concepts/architecture.md) - Stack, repository layout and the layering rules that keep scripts, tests and the site sharing one codebase.
-* [Datasets](/concepts/datasets.md) - The ten datasets, their on-disk shape, lifecycle states and the link syntax between entries.
+* [Datasets](/concepts/datasets.md) - The eleven datasets, their on-disk shape, lifecycle states and the link syntax between entries.
 * [Runtime modes](/concepts/runtime-modes.md) - How dev and built servers differ, and why contexts bypass the content layer at runtime.
 
 ## Features
 
 * [Context forge](/concepts/context-forge.md) - How contexts work and how to build one in the forge UI.
+* [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document for Claude Code, Codex or a generic agent: modes, targets, output format, API and write-path safety.
 * [Search](/concepts/search.md) - The global fuzzy search: what is indexed, how it ranks, and its URL parameters.
 * [Routes and API](/concepts/routes-and-api.md) - Every page route, URL parameter and JSON endpoint.
 

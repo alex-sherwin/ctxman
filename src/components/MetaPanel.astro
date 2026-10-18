@@ -2,6 +2,8 @@
 import { getDataset } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { SkillData } from '../datasets/schemas.ts';
+import { INFLATE_LAYOUTS, LAYOUT_LABELS, TARGETS, isInflateTarget } from '../lib/inflate/catalog.ts';
+import type { InflateLayout } from '../lib/inflate/catalog.ts';
 import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
 import { stringifyYaml } from '../lib/yaml.ts';
 import Freshness from './Freshness.astro';
@@ -14,7 +16,7 @@ import { withParams } from '../lib/url-state.ts';
 
 interface Props {
   dataset: DatasetId;
-  kind: 'okf' | 'skill' | 'reference' | 'context';
+  kind: 'okf' | 'skill' | 'reference' | 'context' | 'recipe';
   /** Frontmatter / yaml data of the entry (or of the sub-doc). */
   data: Record<string, unknown>;
   /** ISO mtime of the shown file / entry. */
@@ -45,6 +47,13 @@ const staleAfter =
     : undefined;
 const stale = isStale(staleAfter, Date.now());
 const type = str(data.type);
+
+const recipeTarget =
+  kind === 'recipe' && isInflateTarget(data.target) ? TARGETS[data.target].label : undefined;
+const recipeLayout =
+  kind === 'recipe' && (INFLATE_LAYOUTS as readonly unknown[]).includes(data.layout)
+    ? LAYOUT_LABELS[data.layout as InflateLayout]
+    : undefined;
 
 const generated = isRecord(data.generated) ? data.generated : undefined;
 const generatedBy = str(generated?.by);
@@ -212,6 +221,14 @@ const filePath = `data/${file}`;
       )
     }
     {kind === 'skill' && <SkillMeta data={data as SkillData} />}
+    {
+      recipeTarget && (
+        <MetaRow label="Target">
+          <span class="ck-badge ck-badge--info ck-badge--mono">{recipeTarget}</span>
+        </MetaRow>
+      )
+    }
+    {recipeLayout && <MetaRow label="Layout">{recipeLayout}</MetaRow>}
     <MetaRow label="File">
       <code class="cx-mono">{filePath}</code>
       {" "}

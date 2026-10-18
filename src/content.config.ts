@@ -16,6 +16,7 @@ import {
   kbSchema,
   projectSchema,
   rcaSchema,
+  recipeSchema,
   referenceSchema,
   skillSchema,
   taskSchema,
@@ -31,14 +32,15 @@ const dirNameId = ({ entry }: { entry: string }): string => entry.split('/')[0] 
 const stemId = ({ entry }: { entry: string }): string => entry.replace(/\.ya?ml$/, '');
 
 /**
- * context/*.yaml loader WITHOUT a file watcher. The forge writes these files at runtime; a glob
- * loader would make `astro dev` push a full browser reload ~0.7s after every save. Runtime reads of
- * contexts go through src/lib/context-io.ts (fs); this collection exists for schema validation in
- * `astro sync` / `astro build` / typecheck. NEVER call getCollection('context') in pages/APIs.
+ * <dataset>/*.yaml loader WITHOUT a file watcher, shared by `context` and `recipe`. The Forge and Inflate
+ * write these files at runtime; a glob loader would make `astro dev` push a full browser reload ~0.7s
+ * after every save. Runtime reads go through src/lib/context-io.ts / src/lib/recipe-io.ts (fs); these
+ * collections exist for schema validation in `astro sync` / `astro build` / typecheck.
+ * NEVER call getCollection('context') or getCollection('recipe') in pages/APIs.
  */
-function contextYamlLoader(dir: string): Loader {
+function yamlDirLoader(name: string, dir: string): Loader {
   return {
-    name: 'ctxman-context-yaml',
+    name: `ctxman-${name}-yaml`,
     load: async ({ store, parseData, generateDigest, config }) => {
       store.clear();
       const files = existsSync(dir) ? (await readdir(dir)).filter((f) => f.endsWith('.yaml')) : [];
@@ -86,8 +88,12 @@ export const collections = {
     schema: referenceSchema,
   }),
   context: defineCollection({
-    loader: contextYamlLoader(datasetDir('context', dataDir)),
+    loader: yamlDirLoader('context', datasetDir('context', dataDir)),
     schema: contextSchema,
+  }),
+  recipe: defineCollection({
+    loader: yamlDirLoader('recipe', datasetDir('recipe', dataDir)),
+    schema: recipeSchema,
   }),
   /** Every markdown file in every okf bundle. id = '<dataset>/<bundle>/<path without .md>', e.g. 'kb/ctxman/index'. */
   docs: defineCollection({

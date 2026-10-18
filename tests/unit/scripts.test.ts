@@ -178,6 +178,7 @@ describe('add-entry.ts', () => {
   it.each([
     [['skill', 'my-skill', '--description', 'A skill'], 'skill/my-skill/SKILL.md'],
     [['context', 'my-ctx', '--description', 'Ctx: with colon'], 'context/my-ctx.yaml'],
+    [['recipe', 'my-recipe', '--description', 'Recipe: with colon'], 'recipe/my-recipe.yaml'],
     [
       ['reference', 'my-ref', '--type', 'local-repo', '--path', '/tmp', '--owner', 'me'],
       'reference/my-ref.yaml',

@@ -31,7 +31,12 @@ if (def.id === 'reference') {
   for (const ref of await getCollection('reference')) owners[ref.id] = ref.data.owner;
 }
 
-const newHref = def.id === 'context' ? '/forge?context=new' : `/tools?add=${def.id}#add-entry`;
+const newHref =
+  def.id === 'context'
+    ? '/forge?context=new'
+    : def.id === 'recipe'
+      ? '/inflate?recipe=new'
+      : `/tools?add=${def.id}#add-entry`;
 ---
 
 <Base title={def.label} active={def.id}>

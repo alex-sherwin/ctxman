@@ -1,6 +1,7 @@
 ---
 import { OWNER_LABELS } from '../datasets/registry.ts';
 import type { DatasetDef, Owner } from '../datasets/registry.ts';
+import { TARGETS } from '../lib/inflate/catalog.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
 import type { ListSort } from '../lib/url-state.ts';
 import Freshness from './Freshness.astro';
@@ -18,7 +19,17 @@ interface Props {
 
 const { def, entries, sort, owners = {} } = Astro.props;
 
-type Column = 'entry' | 'desc' | 'state' | 'tags' | 'modified' | 'type' | 'owner' | 'links';
+type Column =
+  | 'entry'
+  | 'desc'
+  | 'state'
+  | 'tags'
+  | 'modified'
+  | 'type'
+  | 'owner'
+  | 'links'
+  | 'target'
+  | 'contexts';
 const LABELS: Record<Column, string> = {
   entry: 'Entry',
   desc: 'Description',
@@ -28,6 +39,8 @@ const LABELS: Record<Column, string> = {
   type: 'Type',
   owner: 'Owner',
   links: 'Links',
+  target: 'Target',
+  contexts: 'Contexts',
 };
 
 const columns: Column[] =
@@ -35,9 +48,11 @@ const columns: Column[] =
     ? ['entry', 'desc', 'type', 'owner', 'modified']
     : def.id === 'context'
       ? ['entry', 'desc', 'links', 'tags', 'modified']
-      : def.states
-        ? ['entry', 'desc', 'state', 'tags', 'modified']
-        : ['entry', 'desc', 'tags', 'modified'];
+      : def.id === 'recipe'
+        ? ['entry', 'desc', 'target', 'contexts', 'tags', 'modified']
+        : def.states
+          ? ['entry', 'desc', 'state', 'tags', 'modified']
+          : ['entry', 'desc', 'tags', 'modified'];
 
 const sorted: Partial<Record<Column, 'ascending' | 'descending'>> =
   sort === 'name'
@@ -122,6 +137,18 @@ const MAX_TAGS = 4;
                   return <td>{OWNER_LABELS[owners[e.slug] as Owner] ?? owners[e.slug] ?? ''}</td>;
                 case 'links':
                   return <td class="cx-mono">{e.linkCount ?? 0}</td>;
+                case 'target':
+                  return (
+                    <td>
+                      {e.recipeTarget && (
+                        <span class="ck-badge ck-badge--info ck-badge--mono" data-testid="recipe-target-badge">
+                          {TARGETS[e.recipeTarget].label}
+                        </span>
+                      )}
+                    </td>
+                  );
+                case 'contexts':
+                  return <td class="cx-mono">{e.contextCount ?? 0}</td>;
                 case 'modified':
                   return (
                     <td>

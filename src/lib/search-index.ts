@@ -2,8 +2,9 @@
 // (src/lib/entries.ts) feeds these with collection data + raw markdown bodies; they never touch fs.
 import { OWNER_LABELS, REFERENCE_TYPE_LABELS, docUrl, entryUrl } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
-import type { ContextData, ReferenceData, SkillData } from '../datasets/schemas.ts';
+import type { ContextData, RecipeData, ReferenceData, SkillData } from '../datasets/schemas.ts';
 import type { SearchDoc } from './entry-summary.ts';
+import { TARGETS, itemKey } from './inflate/catalog.ts';
 import { classifyRemoteUri } from './remote-uri.ts';
 
 /** Upper bound for a doc `body` (keeps the JSON index and the in-browser Fuse index small). */
@@ -289,5 +290,33 @@ export function contextToSearchDoc(slug: string, data: ContextData): SearchDoc {
     headings: [],
     body: truncate(lines.join('\n'), MAX_BODY_CHARS),
     url: entryUrl('context', slug),
+  };
+}
+
+/**
+ * A recipe: the body is its description, target and layout, listed contexts and ad hoc items, then the
+ * plain text of the preamble and every markdown block.
+ */
+export function recipeToSearchDoc(slug: string, data: RecipeData): SearchDoc {
+  const lines = [
+    data.description,
+    `target: ${TARGETS[data.target].label} · layout: ${data.layout}`,
+    data.contexts.length > 0 ? `contexts: ${data.contexts.join(', ')}` : '',
+    ...data.items.map((item) => itemKey(item.dataset, item.slug)),
+    markdownToText(data.preamble ?? ''),
+    ...data.markdown.map((block) => markdownToText(block.body)),
+  ].filter((line) => line !== '');
+  return {
+    id: `recipe/${slug}`,
+    dataset: 'recipe',
+    slug,
+    path: null,
+    title: data.name,
+    name: data.name,
+    description: data.description,
+    tags: [...data.tags],
+    headings: [],
+    body: truncate(lines.join('\n'), MAX_BODY_CHARS),
+    url: entryUrl('recipe', slug),
   };
 }

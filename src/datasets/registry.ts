@@ -13,6 +13,7 @@ export const DATASET_IDS = [
   'skill',
   'reference',
   'context',
+  'recipe',
 ] as const;
 export type DatasetId = (typeof DATASET_IDS)[number];
 
@@ -22,7 +23,7 @@ export type DatasetKind = 'okf' | 'skill' | 'data';
 export const OKF_DATASET_IDS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const;
 export type OkfDatasetId = (typeof OKF_DATASET_IDS)[number];
 
-/** Datasets a context may link to: everything except context, registry order. */
+/** Datasets a context (or recipe) may link to: everything except context and recipe, registry order. */
 export const LINKABLE_DATASETS = [
   'kb',
   'rca',
@@ -226,6 +227,17 @@ export const DATASETS: readonly DatasetDef[] = [
     kind: 'data',
     entryFile: '.yaml',
     description: 'Reusable, evergreen sets of links to other entries, handed to agent sessions.',
+  },
+  {
+    id: 'recipe',
+    label: 'Inflate recipes',
+    navLabel: 'Recipes',
+    plural: 'recipes',
+    singular: 'recipe',
+    kind: 'data',
+    entryFile: '.yaml',
+    description:
+      'Saved Context Inflate compositions: contexts, extra items, include modes and ordering.',
   },
 ];
 

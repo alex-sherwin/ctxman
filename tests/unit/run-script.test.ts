@@ -73,6 +73,7 @@ describe('buildArgs', () => {
       skill: 'skill/x/SKILL.md',
       reference: 'reference/x.yaml',
       context: 'context/x.yaml',
+      recipe: 'recipe/x.yaml',
     };
     for (const dataset of DATASET_IDS) {
       const r = buildArgs('add', { dataset, name: 'x', description: 'd' });

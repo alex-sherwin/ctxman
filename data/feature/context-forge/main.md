@@ -43,4 +43,4 @@ The context is the main vessel for giving an agent session what it needs. Contex
 - [ ] Keyboard-only reordering keeps focus (open bug: [forge-reorder-focus](ctxman:bug/forge-reorder-focus)).
 - [ ] End-to-end coverage of the whole workflow (task: [forge-e2e-coverage](ctxman:task/forge-e2e-coverage)).
 
-Consumers: the planned tool [context-inflate](ctxman:idea/context-inflate) would read what this feature produces. Search is a separate feature: [global-search](ctxman:feature/global-search).
+Consumers: the Context Inflate tool (`/inflate`, see [context-inflate](ctxman:idea/context-inflate)) reads what this feature produces. Search is a separate feature: [global-search](ctxman:feature/global-search).

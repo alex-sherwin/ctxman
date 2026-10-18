@@ -1,7 +1,7 @@
 ---
 type: Dataset Model
 title: Datasets
-description: The ten datasets, their on-disk shape, lifecycle states and the link syntax between entries.
+description: The eleven datasets, their on-disk shape, lifecycle states and the link syntax between entries.
 tags: [datasets, okf, schema]
 generated:
   by: claude-code/ctxman-seed
@@ -12,7 +12,7 @@ generated:
 
 All data lives under `data/`. Every entry has a required unique `name` (kebab-case, at most 64 characters) and a required `description`. The name equals the folder name or file stem and doubles as the slug and the content collection entry id.
 
-## The ten datasets
+## The eleven datasets
 
 | Dataset | Kind | Entry file | Lifecycle states |
 | --- | --- | --- | --- |
@@ -26,6 +26,7 @@ All data lives under `data/`. Every entry has a required unique `name` (kebab-ca
 | `skill` | agentskills.io folder | `data/skill/<name>/SKILL.md` | none |
 | `reference` | YAML file | `data/reference/<name>.yaml` | none |
 | `context` | YAML file | `data/context/<name>.yaml` | none |
+| `recipe` | YAML file | `data/recipe/<name>.yaml` | none |
 
 State values are stored kebab-case in the files; the UI shows labels such as "in progress" and "won't do".
 
@@ -62,7 +63,11 @@ One pure helper, `src/lib/remote-uri.ts` (`isGitUri`, `isArchiveUri`, `classifyR
 
 ## Contexts
 
-A context aggregates links to the other nine datasets, each with optional markdown notes for the consuming agent. See [Context forge](/concepts/context-forge.md). Contexts never copy the linked content.
+A context aggregates links to the other nine linkable datasets (everything except `context` and `recipe`), each with optional markdown notes for the consuming agent. See [Context forge](/concepts/context-forge.md). Contexts never copy the linked content; [Context inflate](/concepts/context-inflate.md) reads them at generate time.
+
+## Recipes
+
+A recipe is the saved input of the [Context inflate](/concepts/context-inflate.md) tool: which contexts to expand, extra items, how each item is included, the order, injected markdown and a preamble, for one target (`claude-code`, `codex` or `generic`). Like a context it is a pointer file: it stores slugs and settings, never the linked content. Fields: `name`, `description`, `tags`, `target`, `layout`, `preamble`, `contexts`, `items`, `markdown`, `overrides`, `order`, `defaults`. The schema is strict and rejects duplicates and modes that do not fit an item kind. A recipe may list contexts and items of any linkable dataset but is not itself linkable: a context cannot link to a recipe, so recipes do not appear in the Forge or in the Inflate item search (a `ctxman:recipe/<name>` link in markdown still resolves to the recipe page). The name cannot be changed after creation. Recipes are always read and written through `src/lib/recipe-io.ts` (atomic write), never through `getCollection('recipe')`.
 
 ## Links between entries
 

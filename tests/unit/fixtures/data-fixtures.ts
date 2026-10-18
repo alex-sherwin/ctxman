@@ -56,5 +56,6 @@ export function validDataTree(): Record<string, string> {
     'skill/my-skill/references/checklist.md': `# Checklist\n\n- one\n`,
     'reference/repo.yaml': `name: repo\ndescription: A repo.\ntype: local-repo\npath: /tmp/repo\nowner: me\n`,
     'context/ctx.yaml': `name: ctx\ndescription: A context.\nlinks:\n  - dataset: kb\n    slug: demo\n    notes: |\n      Read this.\n  - dataset: task\n    slug: do-it\n`,
+    'recipe/brief.yaml': `name: brief\ndescription: A brief.\ntarget: claude-code\nlayout: grouped\ncontexts:\n  - ctx\nitems:\n  - dataset: skill\n    slug: my-skill\noverrides:\n  - key: kb/demo\n    mode: inline-bundle\norder:\n  - ctx:ctx\n  - kb/demo\n`,
   };
 }

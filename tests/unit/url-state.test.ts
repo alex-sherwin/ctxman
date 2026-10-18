@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   forgeHref,
+  inflateHref,
   parseForgeUrl,
+  parseInflateUrl,
   parseListParams,
   parseSearchUrl,
   parseToolsUrl,
   readList,
   withParams,
 } from '../../src/lib/url-state.ts';
-import type { ForgeUrl } from '../../src/lib/url-state.ts';
+import type { ForgeUrl, InflateUrl } from '../../src/lib/url-state.ts';
 
 const sp = (query: string): URLSearchParams => new URLSearchParams(query);
 
@@ -315,6 +317,61 @@ describe('forgeHref', () => {
     const href = forgeHref(url);
     expect(parseForgeUrl(new URL(href, 'http://h').searchParams)).toEqual(url);
     expect(parseForgeUrl(new URL(forgeHref(base), 'http://h').searchParams)).toEqual(base);
+  });
+});
+
+describe('parseInflateUrl', () => {
+  it('defaults: no recipe, compose view, kb tab, empty q', () => {
+    expect(parseInflateUrl(sp(''))).toEqual({
+      recipe: null,
+      view: 'compose',
+      dataset: 'kb',
+      q: '',
+    });
+  });
+
+  it('reads recipe (slug or new), view, dataset and q', () => {
+    expect(
+      parseInflateUrl(sp('recipe=ctxman-dev-brief&view=preview&dataset=skill&q=ok%20f')),
+    ).toEqual({
+      recipe: 'ctxman-dev-brief',
+      view: 'preview',
+      dataset: 'skill',
+      q: 'ok f',
+    });
+    expect(parseInflateUrl(sp('recipe=new')).recipe).toBe('new');
+  });
+
+  it('invalid recipe -> null, invalid view -> compose, invalid dataset -> kb', () => {
+    for (const bad of ['Bad Slug', '../x', '', 'a--b']) {
+      expect(parseInflateUrl(sp(`recipe=${encodeURIComponent(bad)}`)).recipe, bad).toBeNull();
+    }
+    expect(parseInflateUrl(sp('view=grid')).view).toBe('compose');
+    expect(parseInflateUrl(sp('dataset=context')).dataset).toBe('kb');
+    expect(parseInflateUrl(sp('dataset=recipe')).dataset).toBe('kb');
+    expect(parseInflateUrl(sp('dataset=nope')).dataset).toBe('kb');
+  });
+});
+
+describe('inflateHref', () => {
+  const base: InflateUrl = { recipe: null, view: 'compose', dataset: 'kb', q: '' };
+
+  it('omits defaults', () => {
+    expect(inflateHref(base)).toBe('/inflate');
+  });
+
+  it('writes non-default params in the fixed order recipe, view, dataset, q', () => {
+    expect(inflateHref({ recipe: 'my-recipe', view: 'preview', dataset: 'task', q: 'a b' })).toBe(
+      '/inflate?recipe=my-recipe&view=preview&dataset=task&q=a%20b',
+    );
+    expect(inflateHref({ ...base, recipe: 'new' })).toBe('/inflate?recipe=new');
+    expect(inflateHref({ ...base, dataset: 'rca' }, '/elsewhere')).toBe('/elsewhere?dataset=rca');
+  });
+
+  it('round-trips through parseInflateUrl', () => {
+    const url: InflateUrl = { recipe: 'r-1', view: 'preview', dataset: 'reference', q: 'x & y' };
+    expect(parseInflateUrl(new URL(inflateHref(url), 'http://h').searchParams)).toEqual(url);
+    expect(parseInflateUrl(new URL(inflateHref(base), 'http://h').searchParams)).toEqual(base);
   });
 });
 

@@ -13,6 +13,7 @@ const DATASETS = [
   'skill',
   'reference',
   'context',
+  'recipe',
 ] as const;
 
 test('dashboard renders the shell and dataset navigation', async ({ page }) => {
@@ -22,6 +23,7 @@ test('dashboard renders the shell and dataset navigation', async ({ page }) => {
   const nav = page.getByTestId('primary-nav');
   for (const ds of DATASETS) await expect(nav.getByTestId(`nav-${ds}`)).toHaveCount(1);
   await expect(nav.getByTestId('nav-forge')).toHaveCount(1);
+  await expect(nav.getByTestId('nav-inflate')).toHaveCount(1);
   await expect(nav.getByTestId('nav-tools')).toHaveCount(1);
   await expect(page.getByTestId('dashboard-cards')).toBeVisible();
   await expect(page.getByTestId('footer-data-dir')).toHaveText(E2E_DATA_DIR);
@@ -63,6 +65,14 @@ test('/forge returns 200 and mounts the Forge island', async ({ page }) => {
   await expect(page.getByTestId('forge')).toBeVisible();
   await expect(page.getByTestId('forge-discover')).toBeVisible();
   await expect(page.getByTestId('forge-context')).toBeVisible();
+});
+
+test('/inflate returns 200 and mounts the Inflate island', async ({ page }) => {
+  const response = await page.goto('/inflate');
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('inflate')).toBeVisible();
+  await expect(page.getByTestId('inflate-recipe-select')).toBeVisible();
+  await expect(page.getByTestId('inflate-empty-new')).toBeVisible();
 });
 
 test('/tools returns 200 and mounts the Tools island', async ({ page }) => {

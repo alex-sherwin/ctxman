@@ -21,7 +21,8 @@ links:
   - dataset: idea
     slug: context-inflate
     notes: |
-      Planned and **not built**. Do not implement it unless asked.
+      **Built** as Context Inflate (the `recipe` dataset and the `/inflate` tool). See
+      [Context inflate](ctxman:kb/ctxman) (`concepts/context-inflate.md`) before changing it.
   - dataset: task
     slug: write-agents-md
     notes: |

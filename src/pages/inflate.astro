@@ -1,0 +1,15 @@
+---
+import path from 'node:path';
+import Base from '../layouts/Base.astro';
+import Inflate from '../ui/inflate/Inflate.tsx';
+
+// Default folder of "Write to path" in the Preview (gitignored); absolute, with a trailing separator.
+const outDir = path.join(process.cwd(), 'out') + path.sep;
+---
+
+<Base title="Context Inflate" active="inflate" fill>
+  <h1 class="ck-sr-only">Context Inflate</h1>
+  <Inflate client:only="react" outDir={outDir}>
+    <div slot="fallback" class="cx-island-fallback">Loading Inflate…</div>
+  </Inflate>
+</Base>

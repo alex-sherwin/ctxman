@@ -18,7 +18,7 @@ Always scaffold with the script instead of copying a folder, so the shape and fr
 pnpm run add:<dataset> <name> [--title "..."] [--description "..."] [--state <state>]
 ```
 
-`<dataset>` is any of the ten dataset ids, for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
+`<dataset>` is any of the eleven dataset ids (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `context`, `recipe`), for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
 
 Reference entries also take `--type local-repo|remote-repo|remote-skill`, `--path`, `--uri`, `--subpath` and `--owner me|not-me`. Add `--json` for machine output.
 
@@ -32,8 +32,11 @@ The script validates the name (kebab-case, at most 64 characters) and the state,
 | `skill` | `SKILL.md` with "When to use" and "Instructions" headings |
 | `reference` | `<name>.yaml` |
 | `context` | `<name>.yaml` with an empty `links` list |
+| `recipe` | `<name>.yaml` with target `claude-code`, layout `grouped` and empty `contexts` and `items` lists |
 
 The first state in the dataset's list is the default, so new tasks start as `pending`. Descriptions default to a `TODO:` placeholder; replace it. A new reference also gets placeholder locations (`~/repos/<name>` for `local-repo`, `https://github.com/TODO/<name>.git` for the others) that pass the checks, so replace those too.
+
+Recipes are normally authored in the [Inflate](/concepts/context-inflate.md) UI (`/inflate?recipe=new`), which also offers "Open in Inflate" after creating one on the tools page; `pnpm run add:recipe my-brief --description "..."` creates the same starter file, which you then edit in the UI. Like contexts, recipes have no lifecycle state, so `--state` is refused; `--title` only shapes the default description. The template does not take a target flag: change `target` in the UI or the file.
 
 Starter sections by dataset: kb has Overview and Details; rca has Summary, Timeline, Root cause, Resolution and Prevention; idea has Problem, Proposal and Open questions; task has Goal, Steps and Done when; bug has Symptoms, Reproduction, Expected vs actual, Diagnosis and Fix; feature has Motivation, Requirements, Design and Acceptance criteria; project has Goals, Scope, Milestones and Related.
 

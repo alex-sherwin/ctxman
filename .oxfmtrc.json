@@ -10,6 +10,7 @@
     "public/**",
     "plans/**",
     "data/**",
+    "out/**",
     ".tmp/**",
     ".agents/**",
     ".claude/**",

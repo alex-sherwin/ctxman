@@ -8,7 +8,9 @@ import {
   methodNotAllowed,
   noContent,
   readJson,
+  recipeErrorResponse,
 } from '../../src/lib/http.ts';
+import { RecipeIoError } from '../../src/lib/recipe-io.ts';
 
 const url = new URL('http://127.0.0.1:4321/api/context');
 
@@ -195,6 +197,53 @@ describe('contextErrorResponse', () => {
     const res = contextErrorResponse(new Error('boom'), 'read');
     expect(res.status).toBe(500);
     expect(await body(res)).toEqual({ error: 'internal', message: 'boom' });
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe('recipeErrorResponse', () => {
+  const issues = [{ path: 'name', message: 'bad' }];
+  const body = async (res: Response): Promise<Record<string, unknown>> =>
+    (await res.json()) as Record<string, unknown>;
+
+  it('maps RecipeIoError codes to the same statuses as contexts', async () => {
+    const cases: [
+      ConstructorParameters<typeof RecipeIoError>[0],
+      'read' | 'write',
+      number,
+      string,
+    ][] = [
+      ['bad-slug', 'read', 400, 'bad-slug'],
+      ['not-found', 'read', 404, 'not-found'],
+      ['exists', 'write', 409, 'exists'],
+      ['name-mismatch', 'write', 400, 'name-mismatch'],
+      ['invalid', 'write', 400, 'invalid'],
+      ['invalid', 'read', 422, 'invalid-file'],
+      ['parse', 'read', 422, 'invalid-file'],
+    ];
+    for (const [code, mode, status, error] of cases) {
+      const res = recipeErrorResponse(new RecipeIoError(code, 'msg', issues), mode);
+      expect(res.status).toBe(status);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect((await body(res)).error).toBe(error);
+    }
+  });
+
+  it('includes issues and always an array for write-mode invalid', async () => {
+    const withIssues = await body(
+      recipeErrorResponse(new RecipeIoError('invalid', 'm', issues), 'write'),
+    );
+    expect(withIssues.issues).toEqual(issues);
+    const without = await body(recipeErrorResponse(new RecipeIoError('invalid', 'm'), 'write'));
+    expect(without.issues).toEqual([]);
+  });
+
+  it('turns anything else (including a ContextIoError) into a logged 500', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = recipeErrorResponse(new Error('boom'), 'read');
+    expect(res.status).toBe(500);
+    expect(await body(res)).toEqual({ error: 'internal', message: 'boom' });
+    expect(recipeErrorResponse(new ContextIoError('not-found', 'x'), 'read').status).toBe(500);
     expect(spy).toHaveBeenCalled();
   });
 });

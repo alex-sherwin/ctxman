@@ -30,7 +30,7 @@ In scope for v1:
 
 Out of scope for v1:
 
-* [context-inflate](ctxman:idea/context-inflate): planned after v1, deliberately not built.
+* [context-inflate](ctxman:idea/context-inflate): planned after v1, since built as Context Inflate (`/inflate`, `recipe` dataset).
 * [okf-graph-view](ctxman:idea/okf-graph-view): abandoned.
 * A Windows smoke test ([windows-smoke-test](ctxman:task/windows-smoke-test)): will not do.
 

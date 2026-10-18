@@ -106,3 +106,27 @@ has the following datasets, all datasets entries minimally need a required uniqu
     - skill
     - reference
     - project
+
+
+# additional instructions 1
+
+once done with the iniitial design and impl work, then using a sonnet-5.5 / high subagent add the following initial changes
+
+- make remote skill support a HTTPS URI to a tarball ending in .tar.gz or .zip file in additional to a git repo URI
+
+add the following data items as our first entries
+
+existing REMOTE repo references:
+
+- git@github.com:meow-sci/catcom.git - owned: yes, name: catcom, description: ksa mod for in-game scripting using lua or typescript
+- git@github.com:meow-sci/unscience.git - owned: yes, name: unscience, description: ksa mod for a kitchen sink of various ways to hack the game
+- git@github.com:meow-sci/purrtty.git - owned: yes, name: purrtty, description: ksa mod for in-game terminal emulator
+- git@github.com:meow-sci/gatOS.git - owned: yes, name: gatOS, description: ksa mod for a linux vm integrated with ksa game data and control
+- git@github.com:meow-sci/blasto.git - owned: yes, name: blasto, description: ksa mod for ground landing vfx
+- git@github.com:meow-sci/flexo.git - owned: yes, name: flexo, description: a static site tool which can build ksa parts and subpart asset mods
+
+
+existing REMOTE skill references:
+
+- https://meow.science.fail/ksa-coffer/downloads/ksa-modding-latest.tar.gz
+

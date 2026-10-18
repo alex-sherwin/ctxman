@@ -701,4 +701,115 @@
     padding: var(--sp-3) var(--sp-4);
     font-size: var(--fs-sm);
   }
+
+  /* ---------- Q2 additions: recipes (list columns, dashboard tiles, detail composition) ---------- */
+  /* 11 datasets: one row of tiles from 1440px up (same tile width as the former 10 at 1280px), else 6 + 5 */
+  .cx-dash__tiles {
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+  }
+  @media (max-width: 1439px) {
+    .cx-dash__tiles {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+  }
+  .cx-table__th--target {
+    width: 140px;
+  }
+  .cx-table__th--contexts {
+    width: 90px;
+  }
+
+  /* RecipeComposition (detail page main column): reuses cx-panel + cx-minilist */
+  .cx-recipe {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  .cx-recipe__none {
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  .cx-recipe__name--missing {
+    color: var(--fg-subtle);
+    text-decoration: line-through;
+  }
+  .cx-recipe__body {
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .cx-recipe__block {
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-recipe__block:last-child {
+    border-bottom: 0;
+  }
+  .cx-recipe__block > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--row-h);
+    padding: 0 var(--sp-4);
+    cursor: pointer;
+    list-style: none;
+  }
+  .cx-recipe__block > summary::-webkit-details-marker {
+    display: none;
+  }
+  .cx-recipe__block > summary::before {
+    content: '▸';
+    color: var(--fg-subtle);
+  }
+  .cx-recipe__block[open] > summary::before {
+    content: '▾';
+  }
+  .cx-recipe__block[open] > summary {
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-recipe__table {
+    width: 100%;
+    table-layout: fixed;
+    font-size: var(--fs-sm);
+  }
+  .cx-recipe__table th:nth-child(1) {
+    width: 34%;
+  }
+  .cx-recipe__table th:nth-child(2) {
+    width: 20%;
+  }
+  .cx-recipe__table th:nth-child(4) {
+    width: 96px;
+  }
+  .cx-recipe__table th {
+    height: 24px;
+    padding: 0 var(--sp-4);
+    text-align: left;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-subtle);
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-recipe__table td {
+    height: var(--row-h);
+    padding: var(--sp-1) var(--sp-4);
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border);
+    overflow-wrap: anywhere;
+  }
+  .cx-recipe__table tr:last-child td {
+    border-bottom: 0;
+  }
+  .cx-recipe__order {
+    list-style: decimal;
+    margin: 0;
+    padding: var(--sp-2) var(--sp-4) var(--sp-3) calc(var(--sp-4) + 2em);
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  .cx-recipe__order code {
+    color: var(--fg);
+  }
 }

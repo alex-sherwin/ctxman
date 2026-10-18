@@ -20,7 +20,7 @@ import {
 import type { DatasetId } from '../../src/datasets/registry.ts';
 
 describe('dataset registry', () => {
-  it('lists the 10 datasets in the canonical order', () => {
+  it('lists the 11 datasets in the canonical order', () => {
     expect([...DATASET_IDS]).toEqual([
       'kb',
       'rca',
@@ -32,6 +32,7 @@ describe('dataset registry', () => {
       'skill',
       'reference',
       'context',
+      'recipe',
     ]);
     expect(DATASETS.map((d) => d.id)).toEqual([...DATASET_IDS]);
   });
@@ -48,6 +49,7 @@ describe('dataset registry', () => {
       'Skills',
       'References',
       'Contexts',
+      'Recipes',
     ]);
   });
 
@@ -82,13 +84,22 @@ describe('dataset registry', () => {
     expect(datasetDef('skill')).toMatchObject({ kind: 'skill', entryFile: 'SKILL.md' });
     expect(datasetDef('reference')).toMatchObject({ kind: 'data', entryFile: '.yaml' });
     expect(datasetDef('context')).toMatchObject({ kind: 'data', entryFile: '.yaml' });
+    expect(datasetDef('recipe')).toMatchObject({
+      kind: 'data',
+      entryFile: '.yaml',
+      singular: 'recipe',
+      plural: 'recipes',
+    });
     expect(datasetDef('skill').okfType).toBeUndefined();
   });
 
-  it('LINKABLE_DATASETS is every dataset except context, in registry order', () => {
-    expect([...LINKABLE_DATASETS]).toEqual(DATASET_IDS.filter((id) => id !== 'context'));
+  it('LINKABLE_DATASETS is every dataset except context and recipe, in registry order', () => {
+    expect([...LINKABLE_DATASETS]).toEqual(
+      DATASET_IDS.filter((id) => id !== 'context' && id !== 'recipe'),
+    );
     expect(isLinkableDatasetId('reference')).toBe(true);
     expect(isLinkableDatasetId('context')).toBe(false);
+    expect(isLinkableDatasetId('recipe')).toBe(false);
     expect(isLinkableDatasetId(null)).toBe(false);
   });
 

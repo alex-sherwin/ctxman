@@ -35,7 +35,18 @@ Checked in every OKF bundle and every skill folder. A bundle-root link (`/x.md`)
 
 ## Collection rules (`check:collections`)
 
-Reports every schema violation at once instead of stopping at the first, which is what `astro sync` does. It also checks that names equal folder or file stems, that skills have a `SKILL.md`, that context link targets exist (warning), and flags stray files and unknown top-level folders under `data/`.
+Reports every schema violation at once instead of stopping at the first, which is what `astro sync` does. It also checks that names equal folder or file stems, that skills have a `SKILL.md`, that context link targets exist (warning), and flags stray files and unknown top-level folders under `data/`. Recipes (`data/recipe/*.yaml`) are validated against the recipe schema like every other dataset.
+
+Four warning rules cover what a schema-valid recipe points at (`file` is `recipe/<name>.yaml`). They are warnings, because contexts and entries can be deleted while a recipe lags behind:
+
+| Rule id | Fires when |
+| --- | --- |
+| `collections/recipe-context-missing` | A listed context has no file in `data/context/` |
+| `collections/recipe-item-missing` | An ad hoc item's entry file does not exist |
+| `collections/recipe-override-stale` | An override key matches no item of the recipe (no listed context links it and it is not an ad hoc item) |
+| `collections/recipe-order-stale` | An `order` key matches nothing: not a listed context (`ctx:`), a reachable item, a markdown block (`md:`) or `sec:extra` |
+
+The last two only run when every listed context exists and is schema-valid, because the set of reachable items is unknown otherwise. The Inflate page's "Prune stale" button removes the same leftovers.
 
 ## Typechecking
 
@@ -45,3 +56,4 @@ Reports every schema violation at once instead of stopping at the first, which i
 
 * [Datasets](/concepts/datasets.md) describes the shapes these checks enforce.
 * [Adding entries](/concepts/adding-entries.md) produces files that already pass them.
+* [Context inflate](/concepts/context-inflate.md) explains the recipes these rules check.

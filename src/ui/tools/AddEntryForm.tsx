@@ -133,6 +133,11 @@ export function AddEntryForm() {
               Open in Forge
             </ButtonLink>
           )}
+          {created.dataset === 'recipe' && (
+            <ButtonLink size="sm" variant="secondary" href={`/inflate?recipe=${created.slug}`}>
+              Open in Inflate
+            </ButtonLink>
+          )}
           <Button size="sm" variant="ghost" onPress={resetForm}>
             Add another
           </Button>

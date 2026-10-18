@@ -1,0 +1,198 @@
+---
+import type { RecipeData } from '../datasets/schemas.ts';
+import { ITEM_KINDS, ITEM_KIND_LABELS, OPTION_IDS } from '../lib/inflate/catalog.ts';
+import type { RecipeContextRef, RecipeItemRef } from '../lib/entries.ts';
+import DatasetBadge from './DatasetBadge.astro';
+import Panel from './Panel.astro';
+
+// Read-only view of a recipe's composition (detail page main column). Editing happens in /inflate.
+interface Props {
+  slug: string;
+  data: RecipeData;
+  contexts: RecipeContextRef[];
+  items: RecipeItemRef[];
+  /** `preamble` rendered with the project's markdown pipeline. */
+  preambleHtml?: string | undefined;
+  blocks: { id: string; html: string }[];
+}
+
+const { slug, data, contexts, items, preambleHtml, blocks } = Astro.props;
+
+// Options in catalog order, `k=v` joined by ', '.
+const optionText = (options: Record<string, unknown> | undefined): string =>
+  OPTION_IDS.filter((id) => options?.[id] !== undefined)
+    .map((id) => `${id}=${String(options?.[id])}`)
+    .join(', ');
+
+const defaults = ITEM_KINDS.flatMap((kind) => {
+  const d = data.defaults[kind];
+  return d === undefined || (d.mode === undefined && optionText(d.options) === '')
+    ? []
+    : [{ kind, mode: d.mode, options: optionText(d.options) }];
+});
+---
+
+<section class="cx-recipe" aria-label="Composition" data-testid="recipe-composition" data-slug={slug}>
+  <Panel title="Contexts" count={contexts.length} id="h-rc-contexts" testid="recipe-contexts">
+    {
+      contexts.length > 0 ? (
+        <ul class="cx-minilist">
+          {contexts.map((c) => (
+            <li
+              class="cx-minilist__row"
+              data-testid="recipe-context"
+              data-slug={c.slug}
+              data-missing={c.missing ? 'true' : undefined}
+            >
+              {c.missing ? (
+                <span class="cx-recipe__name cx-recipe__name--missing">{c.slug}</span>
+              ) : (
+                <a class="cx-minilist__title" href={c.url}>
+                  {c.slug}
+                </a>
+              )}
+              <span class="cx-subtle cx-truncate" title={c.description}>
+                {c.description}
+              </span>
+              <span class="cx-mono cx-subtle">
+                {c.linkCount !== undefined ? `${c.linkCount} links` : ''}
+              </span>
+              <span>{c.missing && <span class="ck-badge ck-badge--danger">missing</span>}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="cx-recipe__none">None</p>
+      )
+    }
+  </Panel>
+
+  <Panel title="Ad hoc items" count={items.length} id="h-rc-items" testid="recipe-items">
+    {
+      items.length > 0 ? (
+        <ul class="cx-minilist">
+          {items.map((i) => (
+            <li
+              class="cx-minilist__row"
+              data-testid="recipe-item"
+              data-key={i.key}
+              data-missing={i.missing ? 'true' : undefined}
+            >
+              <DatasetBadge dataset={i.dataset} />
+              {i.missing ? (
+                <span class="cx-recipe__name cx-recipe__name--missing">{i.title ?? i.slug}</span>
+              ) : (
+                <a class="cx-minilist__title cx-truncate" href={i.url}>
+                  {i.title ?? i.slug}
+                </a>
+              )}
+              {i.title !== undefined && i.title !== i.slug ? (
+                <code class="cx-subtle">{i.slug}</code>
+              ) : (
+                <span />
+              )}
+              <span>{i.missing && <span class="ck-badge ck-badge--danger">missing</span>}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="cx-recipe__none">None</p>
+      )
+    }
+  </Panel>
+
+  {
+    preambleHtml !== undefined && (
+      <Panel title="Preamble" id="h-rc-preamble" testid="recipe-preamble">
+        <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={preambleHtml} />
+      </Panel>
+    )
+  }
+
+  <Panel title="Markdown blocks" count={blocks.length} id="h-rc-blocks" testid="recipe-blocks">
+    {
+      blocks.length > 0 ? (
+        blocks.map((b) => (
+          <details class="cx-recipe__block" data-testid="recipe-block" data-id={b.id}>
+            <summary>
+              <code>{b.id}</code>
+            </summary>
+            <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={b.html} />
+          </details>
+        ))
+      ) : (
+        <p class="cx-recipe__none">None</p>
+      )
+    }
+  </Panel>
+
+  <Panel title="Overrides" count={data.overrides.length} id="h-rc-overrides" testid="recipe-overrides">
+    {
+      data.overrides.length > 0 ? (
+        <table class="cx-recipe__table">
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col">Mode</th>
+              <th scope="col">Options</th>
+              <th scope="col">Excluded</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.overrides.map((o) => (
+              <tr data-testid="recipe-override" data-key={o.key}>
+                <td>
+                  <code>{o.key}</code>
+                </td>
+                <td class="cx-mono">{o.mode ?? ''}</td>
+                <td class="cx-mono">{optionText(o.options)}</td>
+                <td>{o.exclude === true && <span class="ck-badge ck-badge--muted">excluded</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p class="cx-recipe__none">None</p>
+      )
+    }
+  </Panel>
+
+  {
+    defaults.length > 0 && (
+      <Panel title="Default modes" count={defaults.length} id="h-rc-defaults" testid="recipe-defaults">
+        <table class="cx-recipe__table">
+          <thead>
+            <tr>
+              <th scope="col">Kind</th>
+              <th scope="col">Mode</th>
+              <th scope="col">Options</th>
+            </tr>
+          </thead>
+          <tbody>
+            {defaults.map((d) => (
+              <tr data-testid="recipe-default" data-kind={d.kind}>
+                <td>{ITEM_KIND_LABELS[d.kind]}</td>
+                <td class="cx-mono">{d.mode ?? ''}</td>
+                <td class="cx-mono">{d.options}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    )
+  }
+
+  {
+    data.order.length > 0 && (
+      <Panel title="Custom order" count={data.order.length} id="h-rc-order" testid="recipe-order">
+        <ol class="cx-recipe__order">
+          {data.order.map((key) => (
+            <li>
+              <code>{key}</code>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+    )
+  }
+</section>

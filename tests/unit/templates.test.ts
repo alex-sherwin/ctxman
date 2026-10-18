@@ -163,6 +163,15 @@ describe('planNewEntry skill, reference, context', () => {
       content: 'name: ctx\ndescription: A context\nlinks: []\n',
     });
   });
+
+  it('recipe: name, description, defaults, empty contexts and items', () => {
+    const [file] = planNewEntry('recipe', 'brief', { now, description: 'A brief' });
+    expect(file).toEqual({
+      relPath: 'recipe/brief.yaml',
+      content:
+        'name: brief\ndescription: A brief\ntarget: claude-code\nlayout: grouped\ncontexts: []\nitems: []\n',
+    });
+  });
 });
 
 describe('planNewEntry validation', () => {

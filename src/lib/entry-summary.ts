@@ -3,6 +3,8 @@
 import { datasetDef, entryUrl, isReferenceType } from '../datasets/registry.ts';
 import type { DatasetId, ReferenceType } from '../datasets/registry.ts';
 import type { ContextInput, ContextLink } from '../datasets/schemas.ts';
+import { isInflateTarget } from './inflate/catalog.ts';
+import type { InflateTarget } from './inflate/catalog.ts';
 import { classifyRemoteUri } from './remote-uri.ts';
 import type { RemoteUriKind } from './remote-uri.ts';
 import { isStale, toYmd } from './time.ts';
@@ -33,6 +35,12 @@ export interface EntrySummary {
   uriKind?: RemoteUriKind;
   /** context only. */
   linkCount?: number;
+  /** recipe only (from `data.target`). */
+  recipeTarget?: InflateTarget;
+  /** recipe only: number of contexts. */
+  contextCount?: number;
+  /** recipe only: number of ad hoc items. */
+  itemCount?: number;
   /** '/kb/foo' */
   url: string;
 }
@@ -122,6 +130,11 @@ export function summarize(
     }
   }
   if (dataset === 'context') summary.linkCount = Array.isArray(data.links) ? data.links.length : 0;
+  if (dataset === 'recipe') {
+    if (isInflateTarget(data.target)) summary.recipeTarget = data.target;
+    summary.contextCount = Array.isArray(data.contexts) ? data.contexts.length : 0;
+    summary.itemCount = Array.isArray(data.items) ? data.items.length : 0;
+  }
 
   return summary;
 }

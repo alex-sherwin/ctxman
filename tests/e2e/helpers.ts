@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from '@playwright/test';
-import type { Locator, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { parse } from 'yaml';
 import { E2E_DATA_DIR } from './paths.ts';
 
@@ -87,4 +87,39 @@ export function chipOf(page: Page, inputTestId: string): Locator {
  */
 export function nextPageLoad(page: Page): Promise<void> {
   return page.waitForEvent('load', { timeout: 10_000 }).then(() => undefined);
+}
+
+/** A name no other test uses (the data copy is shared by the whole run). */
+export function uniqueName(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** The shipped recipe (data/recipe/ctxman-dev-brief.yaml). Read-only in the suite: tests copy it first. */
+export const SEED_RECIPE = 'ctxman-dev-brief';
+
+/** A recipe body as the API returns and accepts it (only the fields the suite reads are typed). */
+export type RecipeBody = Record<string, unknown> & { name: string };
+
+/** GET the seed recipe body. */
+export async function fetchSeedRecipe(request: APIRequestContext): Promise<RecipeBody> {
+  const response = await request.get(`${API}/recipe/${SEED_RECIPE}`);
+  expect(response.status()).toBe(200);
+  return ((await response.json()) as { recipe: RecipeBody }).recipe;
+}
+
+/** Creates recipe `name` as a copy of the seed through `POST /api/recipe` (the seed file is never written). */
+export async function createRecipeCopy(request: APIRequestContext, name: string): Promise<void> {
+  const seed = await fetchSeedRecipe(request);
+  const response = await request.post(`${API}/recipe`, { data: { ...seed, name } });
+  expect(response.status()).toBe(201);
+}
+
+/** Removes a recipe through the API; 404 (already gone) is fine. */
+export async function deleteRecipeQuietly(request: APIRequestContext, name: string): Promise<void> {
+  await request.delete(`${API}/recipe/${name}`);
+}
+
+/** The saved YAML of recipe `name` (`recipe/<name>.yaml` in the data copy). */
+export function readRecipeYaml(name: string): RecipeBody {
+  return readYaml(`recipe/${name}.yaml`) as RecipeBody;
 }

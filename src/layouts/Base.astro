@@ -7,10 +7,10 @@ import { SearchWidget } from '../ui/search/SearchWidget.tsx';
 
 interface Props {
   title: string;
-  /** Full-height app pages (/forge): the page itself scrolls inside `main`, not the window. */
+  /** Full-height app pages (/forge, /inflate): the page itself scrolls inside `main`, not the window. */
   fill?: boolean;
   /** Which header link to mark as the current section. */
-  active?: DatasetId | 'forge' | 'tools' | 'home';
+  active?: DatasetId | 'forge' | 'inflate' | 'tools' | 'home';
 }
 
 const { title, fill = false, active } = Astro.props;

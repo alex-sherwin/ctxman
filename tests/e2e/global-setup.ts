@@ -11,6 +11,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     const page = await browser.newPage();
     await page.goto(baseURL);
     await page.waitForTimeout(2000);
+    // The Inflate island imports Monaco and the react-aria controls, which the dashboard never loads. Vite
+    // optimises those dependencies on their first request and may reload the page: wait for the island here so
+    // no test starts while that is happening (a test that hits it sees "Failed to fetch dynamically imported").
+    await page.goto(new URL('/inflate', baseURL).toString());
+    await page.getByTestId('inflate-recipe-select').waitFor({ state: 'visible', timeout: 60_000 });
   } finally {
     await browser.close();
   }

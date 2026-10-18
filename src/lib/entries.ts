@@ -1,7 +1,8 @@
 // SERVER-ASTRO: everything pages and API routes read from the datasets (PLAN §E.21, §H).
 // Collections (astro:content) provide parsed entries + rendered HTML; the filesystem provides
 // freshness and bundle file lists; contexts are ALWAYS read through context-io.ts (fs + zod), never
-// getCollection('context') (PLAN §A.2: that collection has no watcher and exists only for validation).
+// getCollection('context') (PLAN §A.2: that collection has no watcher and exists only for validation);
+// recipes likewise go through recipe-io.ts, never getCollection('recipe').
 // Never import this module from scripts, tests or browser islands.
 import { getCollection, getEntry } from 'astro:content';
 import { stat } from 'node:fs/promises';
@@ -19,6 +20,7 @@ import type {
   ContextData,
   DocData,
   OkfEntry,
+  RecipeData,
   ReferenceData,
   SkillData,
 } from '../datasets/schemas.ts';
@@ -30,11 +32,14 @@ import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { summarize } from './entry-summary.ts';
 import type { EntrySummary, SearchDoc } from './entry-summary.ts';
 import { entryAbsPath, entryFileRelPath, lastModifiedOf } from './freshness.ts';
+import { itemKey } from './inflate/catalog.ts';
 import { rewriteRenderedHtml } from './links.ts';
 import { renderMarkdown } from './markdown.ts';
+import { listRecipes, readRecipe, RecipeIoError } from './recipe-io.ts';
 import {
   contextToSearchDoc,
   okfDocToSearchDoc,
+  recipeToSearchDoc,
   referenceToSearchDoc,
   skillToSearchDoc,
 } from './search-index.ts';
@@ -55,6 +60,26 @@ export interface ResolvedLink {
   notesHtml?: string;
 }
 
+/** A context listed by a recipe, resolved for the detail page. */
+export interface RecipeContextRef {
+  slug: string;
+  url: string;
+  missing: boolean;
+  description?: string;
+  linkCount?: number;
+}
+
+/** An ad hoc item of a recipe, resolved for the detail page. */
+export interface RecipeItemRef {
+  /** `dataset/slug` */
+  key: string;
+  dataset: LinkableDatasetId;
+  slug: string;
+  url: string;
+  title?: string;
+  missing: boolean;
+}
+
 export type EntryDetail = {
   summary: EntrySummary;
   backRefs: BackRef[];
@@ -65,6 +90,14 @@ export type EntryDetail = {
   | { kind: 'skill'; data: SkillData; html: string; files: BundleFile[] }
   | { kind: 'reference'; data: ReferenceData }
   | { kind: 'context'; data: ContextData; links: ResolvedLink[] }
+  | {
+      kind: 'recipe';
+      data: RecipeData;
+      contexts: RecipeContextRef[];
+      items: RecipeItemRef[];
+      preambleHtml?: string;
+      blocks: { id: string; html: string }[];
+    }
 );
 
 export interface DocDetail {
@@ -81,8 +114,8 @@ export interface DocDetail {
   backRefs: BackRef[];
 }
 
-/** Datasets served by a content collection (everything except context). */
-type CollectionDatasetId = Exclude<DatasetId, 'context'>;
+/** Datasets served by a content collection (everything except the runtime-read yaml datasets context and recipe). */
+type CollectionDatasetId = Exclude<DatasetId, 'context' | 'recipe'>;
 
 /** The slice of a collection entry this module relies on. */
 interface RawEntry {
@@ -122,6 +155,11 @@ export async function listEntries(
   if (dataset === 'context') {
     return (await safeContexts()).map((record) =>
       summarize('context', record.slug, record.context, new Date(record.lastModified), nowMs),
+    );
+  }
+  if (dataset === 'recipe') {
+    return (await listRecipes()).items.map((record) =>
+      summarize('recipe', record.slug, record.recipe, new Date(record.lastModified), nowMs),
     );
   }
   const entries = await loadCollection(dataset);
@@ -201,6 +239,72 @@ async function resolveLinks(
   );
 }
 
+/** Markdown (preamble, blocks) rendered like context notes: only ctxman: and external links are rewritten. */
+async function recipeHtml(slug: string, markdown: string): Promise<string> {
+  return rewriteRenderedHtml(await renderMarkdown(markdown), {
+    dataset: 'recipe',
+    slug,
+    fromRelPath: '',
+  });
+}
+
+async function resolveRecipe(
+  slug: string,
+  recipe: RecipeData,
+  dataDir: string,
+): Promise<{
+  contexts: RecipeContextRef[];
+  items: RecipeItemRef[];
+  preambleHtml?: string;
+  blocks: { id: string; html: string }[];
+}> {
+  const contexts = await Promise.all(
+    recipe.contexts.map(async (contextSlug): Promise<RecipeContextRef> => {
+      const ref: RecipeContextRef = {
+        slug: contextSlug,
+        url: entryUrl('context', contextSlug),
+        missing: false,
+      };
+      try {
+        const record = await readContext(contextSlug, dataDir);
+        ref.description = record.context.description;
+        ref.linkCount = record.context.links.length;
+      } catch (error) {
+        if (!(error instanceof ContextIoError)) throw error;
+        ref.missing = true;
+      }
+      return ref;
+    }),
+  );
+  const items = await Promise.all(
+    recipe.items.map(async (item): Promise<RecipeItemRef> => {
+      const abs = path.join(dataDir, ...entryFileRelPath(item.dataset, item.slug).split('/'));
+      const ref: RecipeItemRef = {
+        key: itemKey(item.dataset, item.slug),
+        dataset: item.dataset,
+        slug: item.slug,
+        url: entryUrl(item.dataset, item.slug),
+        missing: !(await exists(abs)),
+      };
+      if (!ref.missing) {
+        const title = nonEmpty((await loadEntry(item.dataset, item.slug))?.data.title);
+        if (title !== undefined) ref.title = title;
+      }
+      return ref;
+    }),
+  );
+  const blocks = await Promise.all(
+    recipe.markdown.map(async (block) => ({
+      id: block.id,
+      html: await recipeHtml(slug, block.body),
+    })),
+  );
+  const out: Awaited<ReturnType<typeof resolveRecipe>> = { contexts, items, blocks };
+  const preamble = nonEmpty(recipe.preamble);
+  if (preamble !== undefined) out.preambleHtml = await recipeHtml(slug, preamble);
+  return out;
+}
+
 /** Everything the detail page renders; null when the slug is invalid or the entry does not exist. */
 export async function getEntryDetail(
   dataset: DatasetId,
@@ -226,6 +330,24 @@ export async function getEntryDetail(
       fileRelPath,
       data: record.context,
       links: await resolveLinks(slug, record.context, dataDir),
+    };
+  }
+
+  if (dataset === 'recipe') {
+    let record;
+    try {
+      record = await readRecipe(slug, dataDir);
+    } catch (error) {
+      if (error instanceof RecipeIoError) return null;
+      throw error;
+    }
+    return {
+      kind: 'recipe',
+      summary: summarize('recipe', slug, record.recipe, new Date(record.lastModified), nowMs),
+      backRefs: [],
+      fileRelPath,
+      data: record.recipe,
+      ...(await resolveRecipe(slug, record.recipe, dataDir)),
     };
   }
 
@@ -324,7 +446,7 @@ async function loadDoc(id: string): Promise<RawEntry | undefined> {
 
 const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
 
-/** The whole fuse corpus: okf entries + every other okf markdown file + skills + references + contexts. */
+/** The whole fuse corpus: okf entries + every other okf markdown file + skills + references + contexts + recipes. */
 export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: SearchDoc[] }> {
   const docs: SearchDoc[] = [];
 
@@ -371,6 +493,9 @@ export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: S
   }
   for (const record of await safeContexts()) {
     docs.push(contextToSearchDoc(record.slug, record.context));
+  }
+  for (const record of (await listRecipes()).items) {
+    docs.push(recipeToSearchDoc(record.slug, record.recipe));
   }
 
   docs.sort(

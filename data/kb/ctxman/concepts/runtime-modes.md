@@ -1,7 +1,7 @@
 ---
 type: Runtime Behavior
 title: Runtime modes
-description: How the dev server and a built server treat data differently, and why contexts are read from disk at runtime.
+description: How the dev server and a built server treat data differently, and why contexts and recipes are read from disk at runtime.
 tags: [runtime, astro, content-layer]
 sources:
   - id: plan-a2
@@ -24,15 +24,16 @@ This is the primary way to run ctxman. The glob loaders watch the data folders a
 Consequences:
 
 * Writing a `kb/*/main.md` triggers one reload; the add scripts for bundles, skills and references do the same, so the tools page stores its last run in `sessionStorage` and restores it.
-* Contexts are written by the forge at runtime. Using a watching loader for them would reload the page after every save, so `context` uses a custom loader with no file watcher.
+* Contexts are written by the forge at runtime, and recipes by the [Inflate](/concepts/context-inflate.md) tool. Using a watching loader for them would reload the page after every save, so `context` and `recipe` share one custom YAML loader (`yamlDirLoader`) with no file watcher.
+* Generated documents written to `out/` do not reload the browser; that folder is outside the watched data folders and is gitignored.
 
 ## Built server (`pnpm run build`, then `pnpm run start`)
 
-Collections are a snapshot taken at build time. An entry added later is invisible to `getCollection` until the next build. Rebuild after adding entries when running this way.
+Collections are a snapshot taken at build time. An entry added later is invisible to `getCollection` until the next build. Rebuild after adding entries when running this way. Contexts, recipes and generated inflate documents are unaffected, because they are read from the filesystem at request time.
 
 ## Rules that follow
 
-1. Contexts are always read at runtime through `src/lib/context-io.ts` (filesystem plus zod). Never call `getCollection('context')` in a page or API route; that collection exists only so `astro sync` and `astro build` validate the files.
+1. Contexts are always read at runtime through `src/lib/context-io.ts` and recipes through `src/lib/recipe-io.ts` (filesystem plus zod). Never call `getCollection('context')` or `getCollection('recipe')` in a page or API route; those collections exist only so `astro sync` and `astro build` validate the files. Context inflate also reads the linked entries from the filesystem when it generates a document, so its output is always current, even on a built server.
 2. Freshness (last modified) is computed from the filesystem at request time, never from the collection snapshot.
 3. The search index is recomputed per request, which is cheap at local scale.
 

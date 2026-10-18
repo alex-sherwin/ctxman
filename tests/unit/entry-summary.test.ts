@@ -181,6 +181,47 @@ describe('summarize', () => {
     });
   });
 
+  describe('recipe', () => {
+    it('sets recipeTarget, contextCount and itemCount', () => {
+      const out = summarize(
+        'recipe',
+        'brief',
+        {
+          name: 'brief',
+          description: 'A brief',
+          tags: ['x'],
+          target: 'codex',
+          contexts: ['a', 'b'],
+          items: [{ dataset: 'kb', slug: 'c' }],
+        },
+        MODIFIED,
+        NOW,
+      );
+      expect(out).toMatchObject({
+        recipeTarget: 'codex',
+        contextCount: 2,
+        itemCount: 1,
+        url: '/recipe/brief',
+        tags: ['x'],
+      });
+      expect(out.linkCount).toBeUndefined();
+    });
+
+    it('a recipe without arrays or with an unknown target degrades to zero counts', () => {
+      const out = summarize('recipe', 'x', { name: 'x', target: 'vim' }, MODIFIED, NOW);
+      expect(out.recipeTarget).toBeUndefined();
+      expect(out.contextCount).toBe(0);
+      expect(out.itemCount).toBe(0);
+    });
+
+    it('other datasets carry no recipe fields', () => {
+      const out = summarize('context', 'x', { name: 'x' }, MODIFIED, NOW);
+      expect(out.recipeTarget).toBeUndefined();
+      expect(out.contextCount).toBeUndefined();
+      expect(out.itemCount).toBeUndefined();
+    });
+  });
+
   describe('lastModified', () => {
     it('is the ISO string of the date', () => {
       expect(summarize('kb', 'x', {}, new Date(0), NOW).lastModified).toBe(

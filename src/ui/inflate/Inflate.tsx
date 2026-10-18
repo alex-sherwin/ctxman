@@ -1,0 +1,147 @@
+// Context Inflate island root (INFLATE_SPEC §9.3): recipe bar, Sources + Composition (compose view) or the
+// Preview (preview view), plus the two app-level dialogs. Mounted by src/pages/inflate.astro with
+// client:only="react".
+import { useStore } from '@nanostores/react';
+import {
+  $inflateUrl,
+  $newRecipePrefill,
+  $pendingSwitch,
+  $recipeLoad,
+  $saveStatus,
+  $working,
+  cancelSwitch,
+  confirmSwitch,
+  retryLoad,
+  selectRecipe,
+} from '../../stores/inflate.ts';
+import { Button, ConfirmDialog, EmptyState, Spinner } from '../kit/index.ts';
+import { CompositionPane } from './CompositionPane.tsx';
+import { NewRecipeDialog } from './NewRecipeDialog.tsx';
+import { PreviewPane } from './PreviewPane.tsx';
+import { RecipeBar } from './RecipeBar.tsx';
+import { SourcesPane } from './SourcesPane.tsx';
+
+/** "Discard unsaved changes?" shown when the user switches recipe with a dirty working copy. */
+function DiscardDialog() {
+  const pending = useStore($pendingSwitch);
+  return (
+    <ConfirmDialog
+      isOpen={pending !== null}
+      title="Discard unsaved changes?"
+      confirmLabel="Discard"
+      tone="danger"
+      onConfirm={confirmSwitch}
+      onCancel={cancelSwitch}
+      testId="inflate-discard-dialog"
+    >
+      Switching recipe discards the edits you have not saved.
+    </ConfirmDialog>
+  );
+}
+
+/** What the body shows while no recipe is loaded (loading, not found, error, nothing selected). */
+function EmptyBody() {
+  const url = useStore($inflateUrl);
+  const load = useStore($recipeLoad);
+  const status = useStore($saveStatus);
+
+  if (load.status === 'loading') {
+    return (
+      <div className="cx-forge__loading cx-inflate__empty">
+        <Spinner label="Loading recipe" /> Loading recipe…
+      </div>
+    );
+  }
+  if (load.status === 'not-found' && url.recipe !== null && url.recipe !== 'new') {
+    const slug = url.recipe;
+    return (
+      <div className="cx-inflate__empty">
+        <EmptyState
+          title={`No recipe named "${slug}"`}
+          action={
+            <Button
+              variant="primary"
+              onPress={() => {
+                $newRecipePrefill.set(slug);
+                selectRecipe('new');
+              }}
+            >
+              Create {slug}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+  if (load.status === 'error') {
+    return (
+      <div className="cx-inflate__empty">
+        <EmptyState
+          title="Couldn't load this recipe"
+          action={<Button onPress={retryLoad}>Retry</Button>}
+        >
+          {load.message}
+        </EmptyState>
+      </div>
+    );
+  }
+  return (
+    <div className="cx-inflate__empty">
+      <EmptyState
+        title="No recipe selected"
+        action={
+          <>
+            <Button
+              variant="primary"
+              onPress={() => selectRecipe('new')}
+              data-testid="inflate-empty-new"
+            >
+              New recipe
+            </Button>
+            {status.kind === 'deleted' && (
+              <span
+                className="cx-forge__status"
+                role="status"
+                data-kind="saved"
+                data-testid="inflate-status"
+              >
+                {status.message}
+              </span>
+            )}
+          </>
+        }
+      >
+        Pick a recipe or create one. A recipe lists contexts and extra items, how to include each
+        one, and their order.
+      </EmptyState>
+    </div>
+  );
+}
+
+function Body({ outDir }: { outDir: string }) {
+  const working = useStore($working);
+  const { view } = useStore($inflateUrl);
+  if (working === null) return <EmptyBody />;
+  if (view === 'preview') return <PreviewPane outDir={outDir} />;
+  return (
+    <>
+      <SourcesPane />
+      <CompositionPane />
+    </>
+  );
+}
+
+export default function Inflate({ outDir }: { outDir: string }) {
+  const working = useStore($working);
+  const { view } = useStore($inflateUrl);
+  return (
+    <div className="cx-inflate" data-testid="inflate">
+      <RecipeBar />
+      <div className="cx-inflate__body" data-view={working ? view : 'compose'}>
+        <Body outDir={outDir} />
+      </div>
+      <NewRecipeDialog />
+      <DiscardDialog />
+    </div>
+  );
+}

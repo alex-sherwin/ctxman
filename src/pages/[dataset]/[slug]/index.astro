@@ -8,6 +8,7 @@ import Freshness from '../../../components/Freshness.astro';
 import MetaPanel from '../../../components/MetaPanel.astro';
 import OkfStatusBadge from '../../../components/OkfStatusBadge.astro';
 import PageHeader from '../../../components/PageHeader.astro';
+import RecipeComposition from '../../../components/RecipeComposition.astro';
 import ReferenceFields from '../../../components/ReferenceFields.astro';
 import StaleBadge from '../../../components/StaleBadge.astro';
 import StateBadge from '../../../components/StateBadge.astro';
@@ -63,6 +64,17 @@ const title = summary.title ?? summary.name;
           </a>
         )
       }
+      {
+        def.id === 'recipe' && (
+          <a
+            class="ck-button ck-button--primary ck-button--sm"
+            href={`/inflate?recipe=${slug}`}
+            data-testid="detail-open-inflate"
+          >
+            <span class="ck-button__label">Open in Inflate</span>
+          </a>
+        )
+      }
     </Fragment>
   </PageHeader>
 
@@ -90,6 +102,21 @@ const title = summary.title ?? summary.name;
         </article>
       )
     }
+    {
+      detail.kind === 'recipe' && (
+        <article class="cx-detail__main" data-testid="detail-content">
+          <p class="cx-detail__lede">{summary.description}</p>
+          <RecipeComposition
+            slug={slug}
+            data={detail.data}
+            contexts={detail.contexts}
+            items={detail.items}
+            preambleHtml={detail.preambleHtml}
+            blocks={detail.blocks}
+          />
+        </article>
+      )
+    }
     <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
       <MetaPanel
         dataset={def.id}
@@ -108,7 +135,7 @@ const title = summary.title ?? summary.name;
           />
         )
       }
-      {def.id !== 'context' && <BackRefs dataset={def.id} slug={slug} refs={detail.backRefs} />}
+      {def.id !== 'context' && def.id !== 'recipe' && <BackRefs dataset={def.id} slug={slug} refs={detail.backRefs} />}
     </aside>
   </div>
 </Base>

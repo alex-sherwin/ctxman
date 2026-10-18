@@ -1,0 +1,34 @@
+name: ctxman-dev-brief
+description: Session brief for working on ctxman itself, built from the ctxman-dev context plus the add-entry skill.
+tags:
+  - ctxman
+target: claude-code
+layout: grouped
+preamble: |
+  You are working on ctxman, a local-only Astro app. Use pnpm only, never npm.
+
+  Before finishing any change, run `pnpm run test:all`.
+contexts:
+  - ctxman-dev
+items:
+  - dataset: skill
+    slug: ctxman-add-entry
+markdown:
+  - id: b1
+    body: |
+      ## Ground rules
+
+      - Keep `AGENTS.md` current in the same change as the code.
+      - Never call `getCollection('context')` or `getCollection('recipe')` at runtime.
+overrides:
+  - key: kb/ctxman
+    mode: inline-bundle
+  - key: bug/stale-badge-timezone
+    exclude: true
+  - key: reference/astro-docs
+    mode: clone
+    options:
+      sparse: true
+order:
+  - md:b1
+  - ctx:ctxman-dev

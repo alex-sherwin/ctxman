@@ -184,3 +184,40 @@ export function parseToolsUrl(params: URLSearchParams): { add: DatasetId | null 
   const add = params.get('add');
   return { add: isDatasetId(add) ? add : null };
 }
+
+// ---------------------------------------------------------------- inflate (INFLATE_SPEC §9.1)
+
+export const INFLATE_VIEWS = ['compose', 'preview'] as const;
+export type InflateView = (typeof INFLATE_VIEWS)[number];
+
+export interface InflateUrl {
+  /** Recipe slug, or 'new'. null = nothing selected (also for an invalid slug). */
+  recipe: string | null;
+  view: InflateView;
+  /** Ad hoc discovery tab. Invalid → 'kb'. */
+  dataset: LinkableDatasetId;
+  q: string;
+}
+
+export const INFLATE_DEFAULT_DATASET: LinkableDatasetId = 'kb';
+
+export function parseInflateUrl(params: URLSearchParams): InflateUrl {
+  const rawRecipe = params.get('recipe');
+  const rawView = params.get('view');
+  const rawDataset = params.get('dataset');
+  return {
+    recipe: rawRecipe !== null && isValidName(rawRecipe) ? rawRecipe : null,
+    view: rawView === 'preview' ? 'preview' : 'compose',
+    dataset: isLinkableDatasetId(rawDataset) ? rawDataset : INFLATE_DEFAULT_DATASET,
+    q: params.get('q') ?? '',
+  };
+}
+
+/** `/inflate?…` for an InflateUrl; defaults (dataset kb, view compose, empty q, no recipe) are omitted. */
+export function inflateHref(u: InflateUrl, pathname = '/inflate'): string {
+  return withParams(
+    pathname,
+    { recipe: u.recipe, view: u.view, dataset: u.dataset, q: u.q },
+    { dataset: INFLATE_DEFAULT_DATASET, view: 'compose' },
+  );
+}

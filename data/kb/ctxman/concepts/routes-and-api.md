@@ -16,11 +16,13 @@ All routes are server-rendered. Any UI state that selects data lives in the URL,
 
 | Route | Shows |
 | --- | --- |
-| `/` | Dashboard: counts per dataset, recently modified entries, stale entries, contexts |
+| `/` | Dashboard: counts per dataset, recently modified entries, stale entries, contexts, recipes |
 | `/<dataset>` | Filterable list of one dataset |
 | `/<dataset>/<slug>` | Entry detail: rendered content, metadata, file tree, contexts that link here |
 | `/<dataset>/<slug>/doc/<path>` | Another markdown file of the bundle, `.md` dropped from the URL |
+| `/recipe`, `/recipe/<slug>` | The list and detail page of recipes (the generic dataset routes). The detail page shows the composition read-only with an "Open in Inflate" button. |
 | `/forge` | The [context forge](/concepts/context-forge.md) |
+| `/inflate` | [Context inflate](/concepts/context-inflate.md): compose a recipe and generate the markdown document |
 | `/tools` | Run allowlisted check scripts and the add-entry script |
 | `/search` | Redirects to `/?search=1&sq=...&in=...` |
 
@@ -36,7 +38,7 @@ For example, `/kb/ctxman/doc/concepts/search` renders the [search concept](/conc
 | `sort` | `modified` (default), `name` or `state` |
 | `type` | References only: `local-repo`, `remote-repo` or `remote-skill` |
 
-The global search uses a different set (`search`, `sq`, `in`); see [Search](/concepts/search.md). The forge uses `context`, `dataset`, `q`, `state` and `tag`. The tools page uses `add` to preselect a dataset.
+The global search uses a different set (`search`, `sq`, `in`); see [Search](/concepts/search.md). The forge uses `context`, `dataset`, `q`, `state` and `tag`. Inflate uses `recipe` (a name, or `new`), `view` (`compose` or `preview`), `dataset` (the ad hoc item tab) and `q`. The tools page uses `add` to preselect a dataset.
 
 ## JSON endpoints
 
@@ -48,8 +50,14 @@ The global search uses a different set (`search`, `sq`, `in`); see [Search](/con
 | `POST /api/context` | Create a context (409 if it exists) |
 | `PUT /api/context/<slug>` | Replace a context; the name in the body must equal the slug |
 | `DELETE /api/context/<slug>` | Delete a context |
+| `GET /api/recipe/<slug>` | Read one recipe |
+| `POST /api/recipe` | Create a recipe (409 if it exists) |
+| `PUT /api/recipe/<slug>` | Replace a recipe; the name in the body must equal the slug |
+| `DELETE /api/recipe/<slug>` | Delete a recipe |
+| `POST /api/inflate/render` | Render a recipe (saved or not) to `{ markdown, manifest }`; writes nothing |
+| `POST /api/inflate/write` | Render `{ recipe, path }` and write the markdown to an absolute `.md` path |
 | `POST /api/scripts/<name>` | Run an allowlisted script and return its exit code, stdout and stderr |
 
-Every response is JSON with `cache-control: no-store`. Context reads and writes return `{ context, lastModified }`; delete returns 204 with no body. Mutating endpoints accept JSON only (415 otherwise) and reject requests whose `Origin` differs from the server's (403). Errors use a body of `{ error, message, issues? }`: 400 for a bad body, slug or dataset parameter, 404 for a missing context, 409 when a context exists, and 422 when a context file on disk fails its schema. `POST /api/scripts/<name>` answers 200 even when the script exits non-zero (the exit code is in the body) and 404 for a name outside the allowlist. Scripts are started with `process.execPath` and no shell, so they behave the same on macOS, Linux and Windows.
+Every response is JSON with `cache-control: no-store`. Context reads and writes return `{ context, lastModified }` and recipe reads and writes `{ recipe, lastModified }`; delete returns 204 with no body, and creating a recipe also sets `Location: /recipe/<name>`. Mutating endpoints accept JSON only (415 otherwise) and reject requests whose `Origin` differs from the server's (403). Errors use a body of `{ error, message, issues? }`: 400 for a bad body, slug or dataset parameter, 404 for a missing context or recipe, 409 when one exists, and 422 when a context or recipe file on disk fails its schema. The inflate endpoints add 400 `invalid` (the recipe fails its schema; for `write` the issue paths are prefixed `recipe.`), 400 `bad-path` and 400 `write-failed`; the path rules are in [Context inflate](/concepts/context-inflate.md). `POST /api/scripts/<name>` answers 200 even when the script exits non-zero (the exit code is in the body) and 404 for a name outside the allowlist. Scripts are started with `process.execPath` and no shell, so they behave the same on macOS, Linux and Windows.
 
-See also [Architecture](/concepts/architecture.md).
+See also [Architecture](/concepts/architecture.md) and [Context inflate](/concepts/context-inflate.md).

@@ -6,11 +6,13 @@ import path from 'node:path';
 import { DATASET_IDS, OKF_DATASET_IDS } from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, docSchema, skillSchema } from '../datasets/schemas.ts';
+import type { RecipeData } from '../datasets/schemas.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { issueMessage, sortFindings } from './findings.ts';
 import type { Finding, PathIssue } from './findings.ts';
 import { entryFileRelPath } from './freshness.ts';
+import { EXTRA_KEY, ctxKey, itemKey, mdKey } from './inflate/catalog.ts';
 import { parseFrontmatter, parseFrontmatterLoose } from './okf.ts';
 import { parseYaml } from './yaml.ts';
 
@@ -18,6 +20,10 @@ interface Ctx {
   dataDir: string;
   findings: Finding[];
   files: Set<string>;
+  /** Schema-valid contexts: file stem -> keys (`dataset/slug`) of their links. Filled before recipes run. */
+  contextLinks: Map<string, Set<string>>;
+  /** Schema-valid recipes, checked against `contextLinks` once every yaml dataset has been read. */
+  recipes: { file: string; recipe: RecipeData }[];
 }
 
 function add(
@@ -154,9 +160,12 @@ async function checkSkills(ctx: Ctx): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------- reference + context (yaml)
+// ---------------------------------------------------------------- reference + context + recipe (yaml)
 
-async function checkYamlDataset(ctx: Ctx, dataset: 'reference' | 'context'): Promise<void> {
+async function checkYamlDataset(
+  ctx: Ctx,
+  dataset: 'reference' | 'context' | 'recipe',
+): Promise<void> {
   const base = datasetDir(dataset, ctx.dataDir);
   const linkChecks: { file: string; links: { dataset: DatasetId; slug: string }[] }[] = [];
 
@@ -204,7 +213,9 @@ async function checkYamlDataset(ctx: Ctx, dataset: 'reference' | 'context'): Pro
     if (dataset === 'context') {
       const links = (result.data as { links: { dataset: DatasetId; slug: string }[] }).links;
       linkChecks.push({ file: rel, links });
+      ctx.contextLinks.set(stem, new Set(links.map((l) => `${l.dataset}/${l.slug}`)));
     }
+    if (dataset === 'recipe') ctx.recipes.push({ file: rel, recipe: result.data as RecipeData });
   }
 
   for (const { file, links } of linkChecks) {
@@ -226,11 +237,89 @@ async function checkYamlDataset(ctx: Ctx, dataset: 'reference' | 'context'): Pro
   }
 }
 
+// ---------------------------------------------------------------- recipe references
+
+/**
+ * Warnings for what a recipe points at: contexts and ad hoc items that do not exist, and (only when every
+ * listed context exists and is valid, so the reachable set is known) overrides and order keys that match
+ * nothing in the recipe.
+ */
+function checkRecipeReferences(ctx: Ctx): void {
+  for (const { file, recipe } of ctx.recipes) {
+    let allContextsKnown = true;
+    for (const slug of recipe.contexts) {
+      if (ctx.contextLinks.has(slug)) continue;
+      allContextsKnown = false;
+      if (!existsSync(path.join(ctx.dataDir, 'context', `${slug}.yaml`))) {
+        add(
+          ctx,
+          'warning',
+          'collections/recipe-context-missing',
+          file,
+          `context ${slug} does not exist`,
+        );
+      }
+    }
+
+    const reachable = new Set<string>();
+    for (const item of recipe.items) {
+      const key = itemKey(item.dataset, item.slug);
+      reachable.add(key);
+      const target = path.join(
+        ctx.dataDir,
+        ...entryFileRelPath(item.dataset, item.slug).split('/'),
+      );
+      if (!existsSync(target)) {
+        add(ctx, 'warning', 'collections/recipe-item-missing', file, `item ${key} does not exist`);
+      }
+    }
+    if (!allContextsKnown) continue;
+
+    for (const slug of recipe.contexts) {
+      for (const key of ctx.contextLinks.get(slug) ?? []) reachable.add(key);
+    }
+    for (const override of recipe.overrides) {
+      if (!reachable.has(override.key)) {
+        add(
+          ctx,
+          'warning',
+          'collections/recipe-override-stale',
+          file,
+          `override ${override.key} matches no item of this recipe`,
+        );
+      }
+    }
+    const validOrder = new Set<string>([
+      EXTRA_KEY,
+      ...recipe.contexts.map(ctxKey),
+      ...reachable,
+      ...recipe.markdown.map((block) => mdKey(block.id)),
+    ]);
+    for (const key of recipe.order) {
+      if (!validOrder.has(key)) {
+        add(
+          ctx,
+          'warning',
+          'collections/recipe-order-stale',
+          file,
+          `order key ${key} matches nothing in this recipe`,
+        );
+      }
+    }
+  }
+}
+
 /** Validates every data file against its dataset schema; see PLAN.md §E.10 for the rules. */
 export async function checkCollections(
   dataDir: string = resolveDataDir(),
 ): Promise<{ findings: Finding[]; filesChecked: number }> {
-  const ctx: Ctx = { dataDir, findings: [], files: new Set() };
+  const ctx: Ctx = {
+    dataDir,
+    findings: [],
+    files: new Set(),
+    contextLinks: new Map(),
+    recipes: [],
+  };
 
   for (const entry of await dirEntries(dataDir)) {
     if (entry.isDirectory() && !(DATASET_IDS as readonly string[]).includes(entry.name)) {
@@ -248,6 +337,8 @@ export async function checkCollections(
   await checkSkills(ctx);
   await checkYamlDataset(ctx, 'reference');
   await checkYamlDataset(ctx, 'context');
+  await checkYamlDataset(ctx, 'recipe');
+  checkRecipeReferences(ctx);
 
   return { findings: sortFindings(ctx.findings), filesChecked: ctx.files.size };
 }

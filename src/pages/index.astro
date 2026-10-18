@@ -6,6 +6,8 @@ import PageHeader from '../components/PageHeader.astro';
 import Panel from '../components/Panel.astro';
 import { DATASETS, OKF_DATASET_IDS } from '../datasets/registry.ts';
 import { listAllEntries } from '../lib/entries.ts';
+import { TARGETS } from '../lib/inflate/catalog.ts';
+import type { EntrySummary } from '../lib/entry-summary.ts';
 import Base from '../layouts/Base.astro';
 
 const nowMs = Date.now();
@@ -22,6 +24,9 @@ const recent = OKF_DATASET_IDS.flatMap((id) => all[id])
   .slice(0, RECENT_LIMIT);
 
 const contexts = [...all.context].sort((a, b) => a.slug.localeCompare(b.slug));
+const recipes = [...all.recipe].sort((a, b) => a.slug.localeCompare(b.slug));
+const recipeMeta = (r: EntrySummary): string =>
+  `${r.contextCount ?? 0} ctx${r.recipeTarget ? ` · ${TARGETS[r.recipeTarget].label}` : ''}`;
 ---
 
 <Base title="Dashboard" active="home">
@@ -97,6 +102,49 @@ const contexts = [...all.context].sort((a, b) => a.slug.localeCompare(b.slug));
                 href="/forge?context=new"
               >
                 <span class="ck-button__label">New context</span>
+              </a>
+            </EmptyState>
+          )
+        }
+      </Panel>
+      <Panel title="Recipes" count={recipes.length} id="h-recipes" testid="dashboard-recipes">
+        <a
+          slot="actions"
+          class="ck-button ck-button--ghost ck-button--sm"
+          href="/inflate?recipe=new"
+          data-testid="dashboard-recipe-new"
+        >
+          <span class="ck-button__label">New</span>
+        </a>
+        {
+          recipes.length > 0 ? (
+            <ul class="cx-minilist">
+              {recipes.map((r) => (
+                <li class="cx-minilist__row" data-testid="dashboard-recipe" data-slug={r.slug}>
+                  <a class="cx-minilist__title" href={r.url}>
+                    {r.slug}
+                  </a>
+                  <span class="cx-subtle cx-truncate" title={r.description}>
+                    {r.description}
+                  </span>
+                  <span class="cx-mono cx-subtle">{recipeMeta(r)}</span>
+                  <a
+                    class="ck-button ck-button--ghost ck-button--sm"
+                    href={`/inflate?recipe=${r.slug}`}
+                  >
+                    <span class="ck-button__label">Inflate</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="No recipes yet.">
+              <a
+                slot="action"
+                class="ck-button ck-button--primary ck-button--sm"
+                href="/inflate?recipe=new"
+              >
+                <span class="ck-button__label">New recipe</span>
               </a>
             </EmptyState>
           )

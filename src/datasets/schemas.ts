@@ -15,6 +15,22 @@ import {
 } from './registry.ts';
 import type { DatasetId } from './registry.ts';
 import {
+  BLOCK_ID_PATTERN,
+  CLONE_DIR_MESSAGE,
+  INFLATE_LAYOUTS,
+  INFLATE_TARGETS,
+  ITEM_KEY_PATTERN,
+  ITEM_KIND_LABELS,
+  ITEM_KINDS,
+  MODE_IDS,
+  REFERENCE_MODE_IDS,
+  SEGMENT_KEY_PATTERN,
+  isModeFor,
+  isSafeRelativeDir,
+  parseItemKey,
+} from '../lib/inflate/catalog.ts';
+import type { ItemKind } from '../lib/inflate/catalog.ts';
+import {
   classifyRemoteUri,
   GIT_URI_MESSAGE,
   isGitUri,
@@ -184,6 +200,145 @@ export const contextSchema = z
     });
   });
 
+// ---------------------------------------------------------------- recipe (yaml, Context Inflate)
+
+export const inflateOptionsSchema = z.strictObject({
+  includeFrontmatter: z.boolean().optional(),
+  includeLog: z.boolean().optional(),
+  shiftHeadings: z.boolean().optional(),
+  rewriteLinks: z.boolean().optional(),
+  eager: z.boolean().optional(),
+  symlink: z.boolean().optional(),
+  treeLimit: z.number().int().min(1).max(500).optional(),
+  cloneDir: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(isSafeRelativeDir, { error: CLONE_DIR_MESSAGE })
+    .optional(),
+  shallow: z.boolean().optional(),
+  sparse: z.boolean().optional(),
+});
+export const recipeItemSchema = z.strictObject({
+  dataset: z.enum(LINKABLE_DATASETS),
+  slug: nameSchema,
+});
+export const recipeMarkdownSchema = z.strictObject({
+  id: z.string().min(1).max(NAME_MAX_LENGTH).regex(BLOCK_ID_PATTERN, 'must be kebab-case, e.g. b1'),
+  body: z.string(),
+});
+export const recipeOverrideSchema = z.strictObject({
+  key: z.string().regex(ITEM_KEY_PATTERN, 'must be <dataset>/<slug> of a linkable dataset'),
+  mode: z.enum(MODE_IDS).optional(),
+  options: inflateOptionsSchema.optional(),
+  exclude: z.boolean().optional(),
+});
+const kindDefaultSchema = z.strictObject({
+  mode: z.enum(MODE_IDS).optional(),
+  options: inflateOptionsSchema.optional(),
+});
+export const recipeDefaultsSchema = z.partialRecord(z.enum(ITEM_KINDS), kindDefaultSchema);
+
+export const recipeSchema = z
+  .strictObject({
+    name: nameSchema,
+    description: z.string().trim().min(1),
+    tags: tagsSchema,
+    target: z.enum(INFLATE_TARGETS).default('claude-code'),
+    layout: z.enum(INFLATE_LAYOUTS).default('grouped'),
+    /** Top-of-document markdown instructions from the user (verbatim). */
+    preamble: z.string().optional(),
+    contexts: z.array(nameSchema).default([]),
+    items: z.array(recipeItemSchema).default([]),
+    markdown: z.array(recipeMarkdownSchema).default([]),
+    overrides: z.array(recipeOverrideSchema).default([]),
+    order: z
+      .array(
+        z
+          .string()
+          .regex(
+            SEGMENT_KEY_PATTERN,
+            'must be <dataset>/<slug>, md:<id>, ctx:<context> or sec:extra',
+          ),
+      )
+      .default([]),
+    defaults: recipeDefaultsSchema.default({}),
+  })
+  .superRefine((r, issues) => {
+    const duplicates = <T>(
+      list: readonly T[],
+      keyOf: (item: T) => string,
+      path: (index: number, item: T) => (string | number)[],
+      message: (key: string) => string,
+    ): void => {
+      const seen = new Set<string>();
+      list.forEach((item, index) => {
+        const key = keyOf(item);
+        if (seen.has(key))
+          issues.addIssue({ code: 'custom', path: path(index, item), message: message(key) });
+        seen.add(key);
+      });
+    };
+    duplicates(
+      r.contexts,
+      (slug) => slug,
+      (i) => ['contexts', i],
+      (k) => `duplicate context ${k}`,
+    );
+    duplicates(
+      r.items,
+      (item) => `${item.dataset}/${item.slug}`,
+      (i) => ['items', i],
+      (k) => `duplicate item ${k}`,
+    );
+    duplicates(
+      r.markdown,
+      (b) => b.id,
+      (i) => ['markdown', i, 'id'],
+      (k) => `duplicate markdown block id ${k}`,
+    );
+    duplicates(
+      r.overrides,
+      (o) => o.key,
+      (i) => ['overrides', i, 'key'],
+      (k) => `duplicate override ${k}`,
+    );
+    duplicates(
+      r.order,
+      (key) => key,
+      (i) => ['order', i],
+      (k) => `duplicate order key ${k}`,
+    );
+
+    for (const [kind, def] of Object.entries(r.defaults)) {
+      const mode = def?.mode;
+      if (mode !== undefined && !isModeFor(kind as ItemKind, mode)) {
+        issues.addIssue({
+          code: 'custom',
+          path: ['defaults', kind, 'mode'],
+          message: `mode "${mode}" does not apply to ${ITEM_KIND_LABELS[kind as ItemKind]} items`,
+        });
+      }
+    }
+
+    r.overrides.forEach((override, index) => {
+      const mode = override.mode;
+      const parsed = parseItemKey(override.key);
+      if (mode === undefined || parsed === null) return;
+      const applies =
+        parsed.dataset === 'reference'
+          ? (REFERENCE_MODE_IDS as readonly string[]).includes(mode)
+          : isModeFor(parsed.dataset, mode);
+      if (!applies) {
+        issues.addIssue({
+          code: 'custom',
+          path: ['overrides', index, 'mode'],
+          message: `mode "${mode}" does not apply to ${override.key}`,
+        });
+      }
+    });
+  });
+
 // ---------------------------------------------------------------- types + lookup
 
 export type OkfConcept = z.infer<typeof okfConceptSchema>;
@@ -202,6 +357,14 @@ export type ContextData = z.infer<typeof contextSchema>;
 /** Input shape (before defaults) — what API clients send and what context-io writes. */
 export type ContextInput = z.input<typeof contextSchema>;
 export type DocData = z.infer<typeof docSchema>;
+export type InflateOptionsInput = z.infer<typeof inflateOptionsSchema>;
+export type RecipeItem = z.infer<typeof recipeItemSchema>;
+export type RecipeMarkdown = z.infer<typeof recipeMarkdownSchema>;
+export type RecipeOverride = z.infer<typeof recipeOverrideSchema>;
+/** All arrays + defaults present (after zod defaults). */
+export type RecipeData = z.infer<typeof recipeSchema>;
+/** Input shape (before defaults): what API bodies carry. */
+export type RecipeInput = z.input<typeof recipeSchema>;
 
 /** Schema per dataset id (used by content.config.ts, check-collections.ts, context-io.ts). */
 export const DATASET_SCHEMAS = {
@@ -215,4 +378,5 @@ export const DATASET_SCHEMAS = {
   skill: skillSchema,
   reference: referenceSchema,
   context: contextSchema,
+  recipe: recipeSchema,
 } as const satisfies Record<DatasetId, z.ZodType>;

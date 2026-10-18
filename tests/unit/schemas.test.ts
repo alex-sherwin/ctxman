@@ -37,6 +37,7 @@ const MINIMAL: Record<DatasetId, Record<string, unknown>> = {
     owner: 'me',
   },
   context: { name: 'demo', description: 'A demo context' },
+  recipe: { name: 'x', description: 'd' },
 };
 
 describe('DATASET_SCHEMAS', () => {
@@ -63,8 +64,8 @@ describe('DATASET_SCHEMAS', () => {
     );
   });
 
-  it('defaults tags to [] (okf, reference, context)', () => {
-    for (const id of ['kb', 'idea', 'reference', 'context'] as const) {
+  it('defaults tags to [] (okf, reference, context, recipe)', () => {
+    for (const id of ['kb', 'idea', 'reference', 'context', 'recipe'] as const) {
       const parsed = DATASET_SCHEMAS[id].parse(MINIMAL[id]) as { tags: string[] };
       expect(parsed.tags, id).toEqual([]);
     }

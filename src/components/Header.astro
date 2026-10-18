@@ -4,7 +4,7 @@ import type { DatasetId } from '../datasets/registry.ts';
 import SearchButton from './SearchButton.astro';
 
 interface Props {
-  active?: DatasetId | 'forge' | 'tools' | 'home';
+  active?: DatasetId | 'forge' | 'inflate' | 'tools' | 'home';
 }
 
 const { active } = Astro.props;
@@ -55,6 +55,14 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
           href="/forge"
           aria-current={current('forge', '/forge')}
           data-testid="nav-forge">Forge</a
+        >
+      </li>
+      <li>
+        <a
+          class="cx-nav__link cx-nav__link--tool"
+          href="/inflate"
+          aria-current={current('inflate', '/inflate')}
+          data-testid="nav-inflate">Inflate</a
         >
       </li>
       <li>
