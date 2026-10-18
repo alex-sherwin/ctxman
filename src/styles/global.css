@@ -233,9 +233,6 @@
     font-family: var(--font-mono);
     font-size: var(--fs-mono);
   }
-  .cx-muted {
-    color: var(--fg-muted);
-  }
   .cx-subtle {
     color: var(--fg-subtle);
   }
@@ -256,11 +253,6 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
-  }
-  .cx-stack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-3);
   }
   .cx-row {
     display: flex;

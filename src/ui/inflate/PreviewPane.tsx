@@ -128,8 +128,7 @@ function ManifestTable({ manifest }: { manifest: InflateManifest }) {
                 {s.n}
               </Cell>
               <Cell>
-                <span className="cx-manifest__title">{s.title}</span>{' '}
-                <code className="cx-manifest__key cx-subtle">{s.key}</code>
+                <span>{s.title}</span> <code className="cx-manifest__key cx-subtle">{s.key}</code>
               </Cell>
               <Cell className="cx-manifest__nowrap">
                 {s.modeLabel ?? TYPE_LABELS[s.type] ?? s.type}

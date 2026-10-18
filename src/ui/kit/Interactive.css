@@ -7,7 +7,6 @@
   summary,
   [role='button'],
   .ck-button,
-  .ck-iconbtn,
   .ck-chip,
   .ck-tabs__tab,
   .ck-select__trigger,
@@ -28,7 +27,6 @@
   :is(
     button,
     .ck-button,
-    .ck-iconbtn,
     .ck-chip,
     .ck-tabs__tab,
     .ck-select__trigger,
@@ -44,24 +42,10 @@
 
   /* ---- 2. icon buttons: neon yellow glow on hover and keyboard focus ----
      `Button iconOnly` (.ck-button--icon), `Button glow` (.ck-button--glow: small text utility buttons such as
-     Copy), `.ck-iconbtn` (a plain <a>/<button> icon control) and the kit's built-in icon controls. */
-  .ck-iconbtn {
-    display: inline-grid;
-    place-items: center;
-    min-width: var(--control-h-sm);
-    height: var(--control-h-sm);
-    padding: 0 var(--sp-1);
-    color: var(--fg-muted);
-    background: none;
-    border: var(--border-w) solid transparent;
-    border-radius: var(--r-sm);
-    text-decoration: none;
-    outline: none;
-  }
+     Copy), and the kit's built-in icon controls. */
   :is(
     .ck-button--icon,
     .ck-button--glow,
-    .ck-iconbtn,
     .ck-tag__remove,
     .ck-searchfield__clear,
     .ck-olist__handle
@@ -76,7 +60,6 @@
   :is(
     .ck-button--icon,
     .ck-button--glow,
-    .ck-iconbtn,
     .ck-tag__remove,
     .ck-searchfield__clear,
     .ck-olist__handle
@@ -97,7 +80,6 @@
   :is(
     .ck-button--icon,
     .ck-button--glow,
-    .ck-iconbtn,
     .ck-tag__remove,
     .ck-searchfield__clear,
     .ck-olist__handle
@@ -105,7 +87,7 @@
     outline: var(--focus-w) solid var(--icon-hot);
     outline-offset: 1px;
   }
-  :is(.ck-button--icon, .ck-button--glow, .ck-iconbtn, .ck-olist__handle):is(
+  :is(.ck-button--icon, .ck-button--glow, .ck-olist__handle):is(
       [data-hovered],
       [data-focus-visible],
       :not([data-rac]):hover,
@@ -131,7 +113,6 @@
     :is(
       .ck-button--icon,
       .ck-button--glow,
-      .ck-iconbtn,
       .ck-tag__remove,
       .ck-searchfield__clear,
       .ck-olist__handle

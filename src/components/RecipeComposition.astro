@@ -73,7 +73,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
   <Panel title="Contexts" count={contexts.length} id="h-rc-contexts" testid="recipe-contexts">
     {
       contexts.length > 0 ? (
-        <ul class="cx-minilist">
+        <ul>
           {contexts.map((c) => (
             <li
               class:list={['cx-minilist__row', !c.missing && 'cx-rowlink']}
@@ -107,7 +107,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
   <Panel title="Ad hoc items" count={items.length} id="h-rc-items" testid="recipe-items">
     {
       items.length > 0 ? (
-        <ul class="cx-minilist">
+        <ul>
           {items.map((i) => (
             <li
               class:list={['cx-minilist__row', !i.missing && 'cx-rowlink']}

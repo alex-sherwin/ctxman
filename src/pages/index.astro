@@ -41,7 +41,7 @@ const recipeMeta = (r: EntrySummary): string =>
     >
   </PageHeader>
 
-  <section aria-labelledby="h-datasets" class="cx-dash__section">
+  <section aria-labelledby="h-datasets">
     <h2 id="h-datasets" class="ck-sr-only">Datasets</h2>
     <ul class="cx-dash__tiles" data-testid="dashboard-cards">
       {
@@ -92,7 +92,7 @@ const recipeMeta = (r: EntrySummary): string =>
         </a>
         {
           contexts.length > 0 ? (
-            <ul class="cx-minilist">
+            <ul>
               {contexts.map((c) => (
                 <li class="cx-minilist__row cx-rowlink">
                   <a class="ck-entryline__title cx-rowlink__main" href={c.url}>
@@ -135,7 +135,7 @@ const recipeMeta = (r: EntrySummary): string =>
         </a>
         {
           recipes.length > 0 ? (
-            <ul class="cx-minilist">
+            <ul>
               {recipes.map((r) => (
                 <li class="cx-minilist__row cx-rowlink" data-testid="dashboard-recipe" data-slug={r.slug}>
                   <a class="ck-entryline__title cx-rowlink__main" href={r.url}>

@@ -60,7 +60,6 @@ function StepRow({ step }: { step: JobStep }) {
             meta={plural(step.tail.length, 'line')}
             triggerTestId="inflate-job-step-tail"
             defaultExpanded={step.status === 'running' || step.status === 'failed'}
-            className="cx-job__tail-disclosure"
           >
             <pre className="cx-job__tail">{step.tail.join('\n')}</pre>
           </Disclosure>
@@ -187,7 +186,7 @@ export function JobProgress() {
           {statusText(state, now)}
         </Status>
         {active && job.startedAt !== null && (
-          <span className="cx-job__elapsed cx-mono cx-subtle" data-testid="inflate-job-elapsed">
+          <span className="cx-mono cx-subtle" data-testid="inflate-job-elapsed">
             {formatDuration(elapsed(job, now))}
           </span>
         )}

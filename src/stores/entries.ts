@@ -7,6 +7,7 @@ import { map } from 'nanostores';
 import { DATASET_IDS, LINKABLE_DATASETS } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
+import { getJson } from '../ui/edit/api.ts';
 
 export type EntriesState = {
   status: 'loading' | 'ready' | 'error';
@@ -21,23 +22,12 @@ const inflight = new Map<DatasetId, Promise<void>>();
 const generation = new Map<DatasetId, number>();
 
 async function fetchEntries(ds: DatasetId): Promise<EntriesState> {
-  try {
-    const res = await fetch(`/api/entries?dataset=${encodeURIComponent(ds)}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (!res.ok) {
-      await res.body?.cancel();
-      return { status: 'error', entries: [], error: `HTTP ${res.status}` };
-    }
-    const body = (await res.json()) as { entries?: EntrySummary[] };
-    return { status: 'ready', entries: Array.isArray(body.entries) ? body.entries : [] };
-  } catch (error) {
-    return {
-      status: 'error',
-      entries: [],
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  const res = await getJson<{ entries?: EntrySummary[] }>(
+    `/api/entries?dataset=${encodeURIComponent(ds)}`,
+  );
+  if (!res.ok) return { status: 'error', entries: [], error: res.message };
+  const entries = res.body?.entries;
+  return { status: 'ready', entries: Array.isArray(entries) ? entries : [] };
 }
 
 function load(ds: DatasetId): void {

@@ -170,7 +170,7 @@ const tools =
     {isDoc && <DetailAside dataset={def.id} slug={slug} detail={detail} />}
     {
       (detail.kind === 'okf' || detail.kind === 'skill') && (
-        <section class="cx-detail__main cx-doc" aria-label="Content">
+        <section class="cx-detail__main" aria-label="Content">
           {detail.summary.invalid && <InvalidBanner issues={detail.summary.invalid} />}
           {relations?.children && <ChildrenPanel slug={slug} children={relations.children} />}
           <DocEditor

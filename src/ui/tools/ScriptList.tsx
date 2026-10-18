@@ -15,14 +15,14 @@ export function ScriptList({ scripts }: { scripts: readonly ScriptInfo[] }) {
       <h2 className="cx-panel__title ck-label" id="h-scripts">
         Checks
       </h2>
-      <ul className="cx-scripts">
+      <ul>
         {checks.map((s) => {
           const code = exitCodes[s.name];
           return (
             <li key={s.name} className="cx-scripts__row" data-testid={`tools-script-${s.name}`}>
               <div className="cx-scripts__info">
                 <code className="cx-scripts__name">{s.name}</code>
-                <span className="cx-scripts__label">{s.label}</span>
+                <span>{s.label}</span>
                 <p className="cx-subtle">{s.description}</p>
               </div>
               {code !== undefined && (

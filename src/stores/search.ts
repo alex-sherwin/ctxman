@@ -21,6 +21,7 @@ import type { DatasetId } from '../datasets/registry.ts';
 import type { SearchDoc } from '../lib/entry-summary.ts';
 import { FUSE_OPTIONS, MAX_RESULTS, MIN_QUERY } from '../lib/search-config.ts';
 import { parseSearchUrl, withParams } from '../lib/url-state.ts';
+import { getJson } from '../ui/edit/api.ts';
 
 /** `window` CustomEvent that opens the widget (see file header). */
 export const SEARCH_OPEN_EVENT = 'ctxman:search-open';
@@ -100,11 +101,10 @@ function isIndexPayload(value: unknown): value is { docs: SearchDoc[] } {
 }
 
 async function fetchIndex(): Promise<SearchDoc[]> {
-  const res = await fetch(INDEX_URL, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body: unknown = await res.json();
-  if (!isIndexPayload(body)) throw new Error('Malformed search index response');
-  return body.docs;
+  const res = await getJson<unknown>(INDEX_URL);
+  if (!res.ok) throw new Error(res.message);
+  if (!isIndexPayload(res.body)) throw new Error('Malformed search index response');
+  return res.body.docs;
 }
 
 /**

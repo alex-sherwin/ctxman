@@ -420,7 +420,7 @@ export function ContextPane() {
   const baseline = useStore($baseline);
   return (
     <section
-      className="cx-forge__pane cx-forge__pane--context"
+      className="cx-forge__pane"
       aria-labelledby="forge-context-h"
       data-testid="forge-context"
     >

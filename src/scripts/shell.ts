@@ -151,7 +151,7 @@ const stateTimers = new WeakMap<HTMLElement, number>();
 
 function setStateStatus(
   select: HTMLSelectElement,
-  kind: 'ok' | 'error' | '',
+  kind: 'ok' | 'error' | 'busy' | '',
   text: string,
   ms = 0,
 ): void {
@@ -187,7 +187,7 @@ async function saveState(select: HTMLSelectElement): Promise<void> {
   const previous = select.dataset.prev ?? '';
   if (!dataset || !slug || next === previous) return;
   select.disabled = true;
-  setStateStatus(select, '', 'Saving…');
+  setStateStatus(select, 'busy', 'Saving…');
   try {
     const response = await fetch(`/api/entry/${dataset}/${slug}`, {
       method: 'PATCH',

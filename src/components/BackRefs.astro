@@ -25,7 +25,7 @@ const preview = (notes: string): string => {
 <Panel title="Linked from contexts" id="h-backrefs" testid="detail-backrefs" count={refs.length}>
   {
     refs.length > 0 ? (
-      <ul class="cx-minilist">
+      <ul>
         {refs.map((ref) => (
           <li class="cx-minilist__row cx-backref cx-rowlink">
             <a class="ck-entryline__title cx-rowlink__main cx-backref__title" href={`/context/${ref.context}`}>

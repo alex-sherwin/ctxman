@@ -113,7 +113,7 @@
     --focus-ring: var(--cyber-cyan-500);
     --glow-sm: 0 0 6px color-mix(in srgb, var(--cyber-cyan-500) 55%, transparent);
     --glow-md: 0 0 12px color-mix(in srgb, var(--cyber-cyan-500) 40%, transparent);
-    /* icon-button hover/focus: neon yellow (ck-button--icon, ck-button--glow, ck-iconbtn; kit/Interactive.css) */
+    /* icon-button hover/focus: neon yellow (ck-button--icon, ck-button--glow; kit/Interactive.css) */
     --icon-hot: var(--cyber-yellow-500); /* #fcee0a */
     --icon-hot-bg: color-mix(in srgb, var(--cyber-yellow-500) 12%, transparent);
     --icon-hot-line: color-mix(in srgb, var(--cyber-yellow-500) 70%, transparent);

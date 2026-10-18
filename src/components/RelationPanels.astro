@@ -41,7 +41,7 @@ const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
         </button>
       )}
       {linksTo.length > 0 ? (
-        <ul class="cx-minilist">
+        <ul>
           {linksTo.map((row) => (
             <RelationRow row={row} entryFile={ownFile} removable={canEdit && row.source === 'frontmatter'} />
           ))}
@@ -56,7 +56,7 @@ const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
 }
 <Panel title="Linked from" id="h-linked-from" testid="detail-linked-from" count={linkedFrom.length}>
   {linkedFrom.length > 0 ? (
-    <ul class="cx-minilist">
+    <ul>
       {linkedFrom.map((row) => (
         <RelationRow row={row} entryFile={fileOfSource(row)} />
       ))}

@@ -72,7 +72,7 @@ export function Shortcuts() {
                   <Kbd key={k}>{keyLabel(k)}</Kbd>
                 ))}
               </span>
-              <span className="cx-shortcuts__label">{s.label}</span>
+              <span>{s.label}</span>
               <span className="cx-shortcuts__where cx-subtle">{s.where}</span>
             </li>
           ))}

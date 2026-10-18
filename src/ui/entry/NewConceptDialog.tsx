@@ -71,7 +71,6 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
         if (!open) onClose();
       }}
       size="large"
-      className="cx-nc"
       testId="new-concept-dialog"
     >
       <Dialog

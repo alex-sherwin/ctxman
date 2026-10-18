@@ -19,7 +19,7 @@ interface Props {
 const { slug, links } = Astro.props;
 ---
 
-<Panel title="Links" id="h-links" testid="context-links" count={links.length} class="cx-ctxlinks">
+<Panel title="Links" id="h-links" testid="context-links" count={links.length}>
   {
     links.length === 0 ? (
       <EmptyState compact title="No links yet">

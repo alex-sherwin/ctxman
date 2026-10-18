@@ -17,7 +17,7 @@ const { id, label, testid, class: className } = Astro.props;
 
 <button
   type="button"
-  class:list={['ck-button ck-button--ghost ck-button--sm ck-button--icon cx-mdedit', className]}
+  class:list={['ck-button ck-button--ghost ck-button--sm ck-button--icon', className]}
   data-md-edit={id}
   aria-label={`Edit ${label}`}
   title={`Edit ${label}`}

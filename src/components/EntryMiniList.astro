@@ -15,7 +15,7 @@ interface Props {
 const { entries, showStaleAfter = false } = Astro.props;
 ---
 
-<ul class="cx-minilist">
+<ul>
   {
     entries.map((e) => (
       <li class="cx-minilist__row cx-rowlink" data-testid="minilist-row">

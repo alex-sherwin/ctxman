@@ -220,7 +220,7 @@ function MaterialControls({ seg }: { seg: ItemSegment }) {
   if (kind === null || material === null) return null;
   const options = materialDef(kind, material)?.options ?? [];
   return (
-    <div className="cx-seg__opts cx-seg__opts--material" data-testid="inflate-segment-materials">
+    <div className="cx-seg__opts" data-testid="inflate-segment-materials">
       <span className="cx-seg__optlabel" title="What a run places in the working directory">
         Material
       </span>

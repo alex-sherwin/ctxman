@@ -203,7 +203,6 @@ export function FrontmatterDialog({
           if (!open) cancel();
         }}
         size="large"
-        className="cx-fm"
         testId="fm-dialog"
       >
         <Dialog

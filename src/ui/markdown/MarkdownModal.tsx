@@ -174,7 +174,6 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
           if (!open) cancel();
         }}
         size="large"
-        className="cx-mdmodal"
         testId="md-modal"
       >
         <Dialog

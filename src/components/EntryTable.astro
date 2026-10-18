@@ -79,7 +79,7 @@ const MAX_TAGS = 4;
     <tbody class="ck-table__body">
       {
         entries.map((e) => (
-          <tr class="ck-table__row cx-table__row cx-rowlink" data-testid="list-row" data-slug={e.slug}>
+          <tr class="ck-table__row cx-rowlink" data-testid="list-row" data-slug={e.slug}>
             {columns.map((c) => {
               switch (c) {
                 case 'entry':
@@ -106,7 +106,7 @@ const MAX_TAGS = 4;
                   );
                 case 'state':
                   return (
-                    <td class="ck-table__td cx-table__td--state">
+                    <td class="ck-table__td">
                       <StateSelect dataset={e.dataset} slug={e.slug} title={e.title ?? e.name} state={e.state} />
                     </td>
                   );

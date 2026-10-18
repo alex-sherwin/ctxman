@@ -35,7 +35,7 @@ const favicon = `data:image/svg+xml,${encodeURIComponent(
     <link rel="icon" href={favicon} />
   </head>
   <body
-    class:list={['cx-shell', { 'cx-shell--fill': fill }]}
+    class={fill ? 'cx-shell--fill' : undefined}
     data-shortcut-create={createHref}
     data-shortcut-link={linkShortcut ? '' : undefined}
   >

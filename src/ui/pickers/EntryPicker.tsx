@@ -237,7 +237,6 @@ export function EntryPicker({
         if (!open) onClose();
       }}
       size="large"
-      className="cx-picker"
       testId={testId}
       attrs={modalAttrs}
     >
