@@ -871,7 +871,7 @@ describe('planMaterialization: step groups', () => {
         {
           key: 'reference/rr',
           material: 'clone',
-          materialOptions: { cloneDepth: 0, branch: 'main', subpathOnly: true },
+          materialOptions: { cloneDepth: 0, branch: 'trunk', subpathOnly: true },
         },
       ]),
     );
@@ -879,10 +879,10 @@ describe('planMaterialization: step groups', () => {
       kind: 'gitClone',
       uri: 'git@github.com:o/r.git',
       depth: 0,
-      branch: 'main',
+      branch: 'trunk',
       sparse: 'docs',
     });
-    expect(p.materials['reference/rr']).toMatchObject({ depth: 0, branch: 'main', sparse: true });
+    expect(p.materials['reference/rr']).toMatchObject({ depth: 0, branch: 'trunk', sparse: true });
     const plain = await plan(
       w,
       adhoc(['reference/rr'], {}, [{ key: 'reference/rr', material: 'clone' }]),
@@ -1069,9 +1069,9 @@ describe('createPathMapper (mount mapping)', () => {
   it('maps the source itself and everything below it; others stay absolute', () => {
     const map = mapper([view('kb/a', '/data/kb/a', 'kb/a')]);
     expect(map('/data/kb/a')).toBe('kb/a');
-    expect(map('/data/kb/a/main.md')).toBe('kb/a/main.md');
+    expect(map('/data/kb/a/index.md')).toBe('kb/a/index.md');
     expect(map('/data/kb/a/concepts/x.md')).toBe('kb/a/concepts/x.md');
-    expect(map('/data/kb/ab/main.md')).toBe('/data/kb/ab/main.md');
+    expect(map('/data/kb/ab/index.md')).toBe('/data/kb/ab/index.md');
     expect(map('/data/kb/a.md')).toBe('/data/kb/a.md');
     expect(map('/elsewhere/x')).toBe('/elsewhere/x');
   });
@@ -1097,13 +1097,13 @@ describe('createPathMapper (mount mapping)', () => {
       view('kb/none', '/data/kb/none', null),
       view('reference/remote', null, 'repos/remote'),
     ]);
-    expect(map('/data/kb/failed/main.md')).toBe('/data/kb/failed/main.md');
-    expect(map('/data/kb/none/main.md')).toBe('/data/kb/none/main.md');
+    expect(map('/data/kb/failed/index.md')).toBe('/data/kb/failed/index.md');
+    expect(map('/data/kb/none/index.md')).toBe('/data/kb/none/index.md');
     expect(map('repos/remote')).toBe('repos/remote');
   });
 
   it('an ok view still maps (state ok = placed)', () => {
     const map = mapper([view('kb/a', '/data/kb/a', 'kb/a', 'ok')]);
-    expect(map('/data/kb/a/main.md')).toBe('kb/a/main.md');
+    expect(map('/data/kb/a/index.md')).toBe('kb/a/index.md');
   });
 });

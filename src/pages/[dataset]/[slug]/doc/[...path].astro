@@ -21,16 +21,16 @@ import Base from '../../../../layouts/Base.astro';
 import EntryTools from '../../../../ui/entry/EntryTools.tsx';
 import DocEditor from '../../../../ui/markdown/DocEditor.tsx';
 
-// Any markdown file of an okf bundle except main.md (index.md, log.md, concepts/**).
+// Any markdown file of an okf bundle except the entry (the root index.md); nested index.md, log.md, concepts/**.
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def || !isOkfDatasetId(def.id)) return Astro.rewrite('/404');
 const slug = Astro.params.slug ?? '';
 const rawPath = Astro.params.path ?? '';
 
 // `…/doc/concepts/x.md` is the same page as `…/doc/concepts/x` (UX-32): one canonical URL, query kept (`?edit=1`).
-// main.md is the entry page itself, not a sub-doc.
+// The root index.md is the entry page itself, not a sub-doc.
 const docPath = rawPath.endsWith('.md') ? rawPath.slice(0, -'.md'.length) : rawPath;
-if (docPath === 'main') return Astro.redirect(entryUrl(def.id, slug), 301);
+if (docPath === 'index') return Astro.redirect(entryUrl(def.id, slug), 301);
 if (docPath !== rawPath && docPath !== '') {
   return Astro.redirect(`${docUrl(def.id, slug, docPath)}${Astro.url.search}`, 301);
 }
@@ -133,6 +133,7 @@ const breadcrumbs = [
       <div class="cx-detail cx-detail--doc">
         <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
           <IdeOpenButton dataset={def.id} slug={slug} path={doc.relPath} />
+          <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} canCreate />
           <MetaPanel
             dataset={def.id}
             kind="okf"
@@ -141,7 +142,6 @@ const breadcrumbs = [
             file={`${def.id}/${slug}/${doc.relPath}`}
             bundle={{ url: doc.entry.url, title: bundleTitle }}
           />
-          <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} canCreate />
           <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
         </aside>
         <section class="cx-detail__main cx-doc" aria-label="Content">

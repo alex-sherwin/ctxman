@@ -30,7 +30,7 @@ const project = uniqueName('e2e-ent-proj');
 const task = uniqueName('e2e-ent-task');
 const child = uniqueName('e2e-ent-child');
 const ctx = uniqueName('e2e-ent-ctx');
-const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/main.md`;
+const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/index.md`;
 const entryUrl = (ds: string, slug: string): string => `${API}/entry/${ds}/${slug}`;
 const jsonHeaders = { 'content-type': 'application/json' };
 
@@ -82,7 +82,7 @@ test('POST /api/entry creates the project and the task; GET returns JSON-safe fr
     slug: task,
     path: mainOf('task', task),
     url: `/task/${task}`,
-    files: [`task/${task}/index.md`, mainOf('task', task), `task/${task}/log.md`],
+    files: [mainOf('task', task), `task/${task}/log.md`],
   });
 
   const got = await request.get(entryUrl('task', task));
@@ -435,7 +435,7 @@ test('POST /api/doc rejects reserved paths, skills, bad bodies, missing entries 
 }) => {
   const post = (url: string, data: unknown) => request.post(`${API}/doc/${url}`, { data });
   expect((await post(`task/${task}/index.md`, { title: 'X' })).status()).toBe(400);
-  expect((await post(`task/${task}/main.md`, { title: 'X' })).status()).toBe(400);
+  expect((await post(`task/${task}/concepts/index.md`, { title: 'X' })).status()).toBe(400);
   expect((await post(`task/${task}/concepts/log.md`, { title: 'X' })).status()).toBe(400);
   expect((await post(`task/${task}/x.txt`, { title: 'X' })).status()).toBe(400);
   const skill = await post('skill/ctxman-add-entry/references/e2e-x.md', { title: 'X' });

@@ -163,7 +163,7 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
         await request.dispose();
       }
       // an invalid file: `done` is not a task state (written by hand, like a mistake in an editor)
-      const file = dataPath(`task/${broken}/main.md`);
+      const file = dataPath(`task/${broken}/index.md`);
       writeFileSync(file, readFileSync(file, 'utf8').replace('state: pending', 'state: done'));
     });
   });
@@ -190,7 +190,7 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     await expect(row).toHaveCount(0, { timeout: 15_000 });
     await expect(page).toHaveURL(/\/task\?state=pending&sort=name$/);
     await expect(page.getByTestId('list-chip-state-pending')).toBeChecked();
-    expect(readFileSync(dataPath(`task/${pending}/main.md`), 'utf8')).toContain(
+    expect(readFileSync(dataPath(`task/${pending}/index.md`), 'utf8')).toContain(
       'state: in-progress',
     );
 
@@ -273,6 +273,6 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     await savedStatus(page, '.cx-statesel');
     await expect(page.getByTestId('invalid-banner')).toHaveCount(0, { timeout: 15_000 });
     await expect(page.getByTestId('state-select')).toHaveValue('pending');
-    expect(readFileSync(dataPath(`task/${broken}/main.md`), 'utf8')).toContain('state: pending');
+    expect(readFileSync(dataPath(`task/${broken}/index.md`), 'utf8')).toContain('state: pending');
   });
 });

@@ -345,7 +345,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
       'src/content/docs/en/index.md': '# English',
       'src/content/docs/fr/index.md': '# French',
     });
-    git(dir, 'init', '-q', '-b', 'main');
+    git(dir, 'init', '-q', '-b', 'trunk');
     git(dir, 'add', '-A');
     git(dir, 'commit', '-qm', 'docs');
     return dir;

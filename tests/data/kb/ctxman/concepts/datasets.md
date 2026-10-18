@@ -16,13 +16,13 @@ All data lives in the data directory, the folder `CTXMAN_DATA_DIR` points at (se
 
 | Dataset | Kind | Entry file | Lifecycle states |
 | --- | --- | --- | --- |
-| `kb` | OKF bundle | `kb/<name>/main.md` | none |
-| `rca` | OKF bundle | `rca/<name>/main.md` | none |
-| `idea` | OKF bundle | `idea/<name>/main.md` | pending, in-progress, complete, abandoned |
-| `task` | OKF bundle | `task/<name>/main.md` | pending, in-progress, complete, wont-do |
-| `bug` | OKF bundle | `bug/<name>/main.md` | pending, in-progress, fixed, wont-fix |
-| `feature` | OKF bundle | `feature/<name>/main.md` | pending, in-progress, complete, wont-do |
-| `project` | OKF bundle | `project/<name>/main.md` | pending, in-progress, complete, wont-do |
+| `kb` | OKF bundle | `kb/<name>/index.md` | none |
+| `rca` | OKF bundle | `rca/<name>/index.md` | none |
+| `idea` | OKF bundle | `idea/<name>/index.md` | pending, in-progress, complete, abandoned |
+| `task` | OKF bundle | `task/<name>/index.md` | pending, in-progress, complete, wont-do |
+| `bug` | OKF bundle | `bug/<name>/index.md` | pending, in-progress, fixed, wont-fix |
+| `feature` | OKF bundle | `feature/<name>/index.md` | pending, in-progress, complete, wont-do |
+| `project` | OKF bundle | `project/<name>/index.md` | pending, in-progress, complete, wont-do |
 | `skill` | agentskills.io folder | `skill/<name>/SKILL.md` | none |
 | `reference` | YAML file | `reference/<name>.yaml` | none |
 | `context` | YAML file | `context/<name>.yaml` | none |
@@ -34,8 +34,7 @@ State values are stored kebab-case in the files; the UI shows labels such as "in
 
 Seven datasets are Open Knowledge Format v0.2 bundles. A bundle folder contains:
 
-* `index.md`: bundle navigation. Its only frontmatter is `okf_version: "0.2"`.
-* `main.md`: the entry concept. Frontmatter holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`.
+* `index.md`: the entry. Frontmatter starts with `okf_version: "0.2"` and holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`; the body is the entry content and may end with a `## Concepts` navigation section that lists the concept files (new concepts are added there for you). Nested `index.md` files are frontmatter-free navigation.
 * `log.md` (optional): update history, newest first, under `## YYYY-MM-DD` headings.
 * Any number of further concept files. Each needs frontmatter with a non-empty `type`.
 
@@ -86,7 +85,7 @@ The URL is the running app's schema endpoint, so the schema resolves while ctxma
 
 ## Relations: the `links` field
 
-An okf `main.md` can declare typed relations to other entries (see [Relations](/concepts/relations.md)):
+An okf entry `index.md` can declare typed relations to other entries (see [Relations](/concepts/relations.md)):
 
 ```yaml
 links:

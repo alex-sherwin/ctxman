@@ -204,7 +204,7 @@ describe('POST /mcp (2025-era JSON-RPC)', () => {
         jsonrpc: '2.0',
         id: 10,
         method: 'resources/read',
-        params: { uri: 'ctxman://kb/ctxman/doc/../../task/write-agents-md/main.md' },
+        params: { uri: 'ctxman://kb/ctxman/doc/../../task/write-agents-md/index.md' },
       }),
     );
     expect(escape.error ?? escape.result.isError).toBeDefined();

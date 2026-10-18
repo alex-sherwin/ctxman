@@ -198,18 +198,19 @@ describe('stripLeadingTitle', () => {
 describe('rewriteLinks', () => {
   const D = '/data';
   const files = new Map<string, string>([
-    ['main.md', `${D}/kb/demo/main.md`],
+    ['index.md', `${D}/kb/demo/index.md`],
     ['concepts/one.md', `${D}/kb/demo/concepts/one.md`],
     ['concepts/x.md', `${D}/kb/demo/concepts/x.md`],
     ['concepts/with space.md', `${D}/kb/demo/concepts/with space.md`],
     ['assets/pic.png', `${D}/kb/demo/assets/pic.png`],
   ]);
   const targets: Record<string, EntryRef | null> = {
-    'kb/demo': { title: 'Demo', abs: `${D}/kb/demo/main.md` },
-    'task/do-it': { title: 'do-it', abs: `${D}/task/do-it/main.md` },
+    'kb/demo': { title: 'Demo', abs: `${D}/kb/demo/index.md` },
+    'task/do-it': { title: 'do-it', abs: `${D}/task/do-it/index.md` },
     'kb/gone': null,
   };
-  const rw = (body: string, fromRel = 'main.md') => rewriteLinks(body, { fromRel, files, targets });
+  const rw = (body: string, fromRel = 'index.md') =>
+    rewriteLinks(body, { fromRel, files, targets });
 
   it('root-relative and ./relative bundle links become absolute paths', () => {
     expect(rw('[one](/concepts/one.md)')).toBe(`[one](${D}/kb/demo/concepts/one.md)`);
@@ -219,19 +220,19 @@ describe('rewriteLinks', () => {
   });
 
   it('keeps fragments', () => {
-    expect(rw('[m](../main.md#demo)', 'concepts/x.md')).toBe(`[m](${D}/kb/demo/main.md#demo)`);
-    expect(rw('[m](/main.md#a-b)')).toBe(`[m](${D}/kb/demo/main.md#a-b)`);
+    expect(rw('[m](../index.md#demo)', 'concepts/x.md')).toBe(`[m](${D}/kb/demo/index.md#demo)`);
+    expect(rw('[m](/index.md#a-b)')).toBe(`[m](${D}/kb/demo/index.md#a-b)`);
   });
 
   it('ctxman: links resolve through the targets map', () => {
-    expect(rw('[c](ctxman:kb/demo)')).toBe(`[c](${D}/kb/demo/main.md)`);
-    expect(rw('[c](ctxman:task/do-it#steps)')).toBe(`[c](${D}/task/do-it/main.md#steps)`);
+    expect(rw('[c](ctxman:kb/demo)')).toBe(`[c](${D}/kb/demo/index.md)`);
+    expect(rw('[c](ctxman:task/do-it#steps)')).toBe(`[c](${D}/task/do-it/index.md#steps)`);
   });
 
   it('images and reference definitions are rewritten too', () => {
     expect(rw('![pic](/assets/pic.png)')).toBe(`![pic](${D}/kb/demo/assets/pic.png)`);
     expect(rw('See [one][1].\n\n[1]: /concepts/one.md\n[2]: <ctxman:kb/demo> "T"')).toBe(
-      `See [one][1].\n\n[1]: ${D}/kb/demo/concepts/one.md\n[2]: ${D}/kb/demo/main.md "T"`,
+      `See [one][1].\n\n[1]: ${D}/kb/demo/concepts/one.md\n[2]: ${D}/kb/demo/index.md "T"`,
     );
   });
 
@@ -268,20 +269,20 @@ describe('rewriteLinks', () => {
 
   it('keeps link titles and rewrites several links in one line', () => {
     expect(rw('[a](/concepts/one.md "Title") and [b](ctxman:kb/demo)')).toBe(
-      `[a](${D}/kb/demo/concepts/one.md "Title") and [b](${D}/kb/demo/main.md)`,
+      `[a](${D}/kb/demo/concepts/one.md "Title") and [b](${D}/kb/demo/index.md)`,
     );
   });
 
   it('wraps destinations containing spaces or parentheses in <…>', () => {
     expect(rw('[s](/concepts/with%20space.md)')).toBe(`[s](<${D}/kb/demo/concepts/with space.md>)`);
     expect(rw('[s](</concepts/with space.md>)')).toBe(`[s](<${D}/kb/demo/concepts/with space.md>)`);
-    expect(rw('[s](/concepts/one.md#f)', 'main.md')).toBe(`[s](${D}/kb/demo/concepts/one.md#f)`);
+    expect(rw('[s](/concepts/one.md#f)', 'index.md')).toBe(`[s](${D}/kb/demo/concepts/one.md#f)`);
     const parens = rewriteLinks('[p](ctxman:kb/demo)', {
-      fromRel: 'main.md',
+      fromRel: 'index.md',
       files,
-      targets: { 'kb/demo': { title: 'D', abs: '/da ta/(x)/main.md' } },
+      targets: { 'kb/demo': { title: 'D', abs: '/da ta/(x)/index.md' } },
     });
-    expect(parens).toBe('[p](</da ta/(x)/main.md>)');
+    expect(parens).toBe('[p](</da ta/(x)/index.md>)');
   });
 
   it('ignores empty destinations', () => {
@@ -289,7 +290,7 @@ describe('rewriteLinks', () => {
   });
 
   describe('onUnresolved (ROUND3 §H.5)', () => {
-    const collect = (body: string, fromRel = 'main.md'): [string, UnresolvedReason][] => {
+    const collect = (body: string, fromRel = 'index.md'): [string, UnresolvedReason][] => {
       const seen: [string, UnresolvedReason][] = [];
       rewriteLinks(body, {
         fromRel,

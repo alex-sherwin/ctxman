@@ -7,6 +7,7 @@ import {
   isReferenceType,
   isValidName,
   NAME_MAX_LENGTH,
+  OKF_ENTRY_FILE,
   OWNERS,
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
@@ -31,7 +32,7 @@ export interface NewEntryOptions {
 }
 
 export interface PlannedFile {
-  /** Data-dir-relative posix path, e.g. 'task/fix-login/main.md'. */
+  /** Data-dir-relative posix path, e.g. 'task/fix-login/index.md'. */
   relPath: string;
   content: string;
 }
@@ -115,6 +116,7 @@ export function planNewEntry(
     case 'okf': {
       const state = def.states ? (opts.state ?? def.states[0]?.id) : undefined;
       const frontmatter: Record<string, unknown> = {
+        okf_version: '0.2',
         type: def.okfType,
         name,
         title,
@@ -126,16 +128,12 @@ export function planNewEntry(
       const sections = (SECTIONS[dataset] ?? []).map((h) => `## ${h}\n`).join('\n');
       return [
         {
-          relPath: `${dataset}/${name}/index.md`,
-          content: `---\n${stringifyYaml({ okf_version: '0.2' })}---\n# ${title}\n\n## Entry\n\n* [${linkText(title)}](/main.md) - ${description}\n`,
-        },
-        {
-          relPath: `${dataset}/${name}/main.md`,
+          relPath: `${dataset}/${name}/${OKF_ENTRY_FILE}`,
           content: `---\n${okfFrontmatterYaml(frontmatter)}---\n\n# ${title}\n\n${description}\n\n${sections}`,
         },
         {
           relPath: `${dataset}/${name}/log.md`,
-          content: `# Update log\n\n## ${ymd(opts.now)}\n* **Create**: Created [${linkText(title)}](/main.md).\n`,
+          content: `# Update log\n\n## ${ymd(opts.now)}\n* **Create**: Created [${linkText(title)}](/index.md).\n`,
         },
       ];
     }

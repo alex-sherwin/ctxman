@@ -1,5 +1,5 @@
 // SERVER (no astro:*): the MCP resources of /mcp (plans/CORE_REFACTOR_PLAN.md §8). Two URI templates:
-//   ctxman://{dataset}/{slug}                 the entry file as it is on disk (main.md / SKILL.md / <slug>.yaml)
+//   ctxman://{dataset}/{slug}                 the entry file as it is on disk (index.md / SKILL.md / <slug>.yaml)
 //   ctxman://{dataset}/{slug}/doc/{+path}     one text file of an okf bundle / skill directory
 // `resources/list` enumerates every entry (not the bundle files: use list-bundle-files). Reads go to the disk on
 // every call and reuse the bundle guards (safeJoin + realpath inside the bundle, 512 KB cap).

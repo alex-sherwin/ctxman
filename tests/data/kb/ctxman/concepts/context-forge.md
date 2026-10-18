@@ -60,5 +60,5 @@ Notes render as markdown on the context's page. Keep them short: one to three li
 
 * [Datasets](/concepts/datasets.md) defines every linkable dataset.
 * [Search](./search.md) is separate from the forge; the forge discovers entries through its own filtered lists.
-* The overview is in [ctxman](/main.md).
+* The overview is in [ctxman](/index.md).
 * To hand several contexts to an agent session at once, use [Context inflate](/concepts/context-inflate.md), which expands contexts into one document. Origin: the idea [context-inflate](ctxman:idea/context-inflate).

@@ -36,19 +36,19 @@ describe('writePlannedEntry', () => {
     const dir = tmp.make();
     const planned = planNewEntry('task', 'fix-it', { now, description: 'Fix it' });
     const files = await writePlannedEntry('task', 'fix-it', planned, dir);
-    expect(files).toEqual(['task/fix-it/index.md', 'task/fix-it/main.md', 'task/fix-it/log.md']);
+    expect(files).toEqual(['task/fix-it/index.md', 'task/fix-it/log.md']);
     for (const file of planned) expect(read(dir, file.relPath)).toBe(file.content);
   });
 
   it('never overwrites: an existing entry is `exists` and left alone', async () => {
     const dir = tmp.make(validDataTree());
-    const before = read(dir, 'task/do-it/main.md');
+    const before = read(dir, 'task/do-it/index.md');
     const planned = planNewEntry('task', 'do-it', { now, description: 'Again' });
     const error = await writePlannedEntry('task', 'do-it', planned, dir).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(EntryCreateError);
     expect((error as EntryCreateError).code).toBe('exists');
     expect((error as EntryCreateError).relPath).toBe('task/do-it');
-    expect(read(dir, 'task/do-it/main.md')).toBe(before);
+    expect(read(dir, 'task/do-it/index.md')).toBe(before);
 
     const yaml = await writePlannedEntry(
       'context',
@@ -62,7 +62,7 @@ describe('writePlannedEntry', () => {
   it('rolls back every file (and the directory) when a generated file fails validation', async () => {
     const dir = tmp.make();
     const planned = planNewEntry('task', 'broken', { now, description: 'Broken' }).map((file) =>
-      file.relPath.endsWith('main.md') ? { ...file, content: '---\ntype: Task\n---\n' } : file,
+      file.relPath.endsWith('index.md') ? { ...file, content: '---\ntype: Task\n---\n' } : file,
     );
     const error = await writePlannedEntry('task', 'broken', planned, dir).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(EntryCreateError);
@@ -70,7 +70,7 @@ describe('writePlannedEntry', () => {
     expect(created.code).toBe('invalid');
     expect(created.problems.length).toBeGreaterThan(0);
     expect(created.message).toMatch(
-      /^generated files failed validation:\n {2}task\/broken\/main\.md: /,
+      /^generated files failed validation:\n {2}task\/broken\/index\.md: /,
     );
     expect(existsSync(path.join(dir, 'task', 'broken'))).toBe(false);
     expect(readdirSync(path.join(dir, 'task'))).toEqual([]);
@@ -113,14 +113,14 @@ describe('createEntry: okf entries', () => {
     expect(created).toEqual({
       dataset: 'task',
       slug: 'w2-demo',
-      path: 'task/w2-demo/main.md',
+      path: 'task/w2-demo/index.md',
       url: '/task/w2-demo',
-      files: ['task/w2-demo/index.md', 'task/w2-demo/main.md', 'task/w2-demo/log.md'],
+      files: ['task/w2-demo/index.md', 'task/w2-demo/log.md'],
     });
-    const main = read(dir, 'task/w2-demo/main.md');
-    expect(main).toContain('title: W2 demo\n');
-    expect(main).toContain('state: in-progress\n');
-    expect(main).toContain('tags: [docs, agent-notes]\n');
+    const entryText = read(dir, 'task/w2-demo/index.md');
+    expect(entryText).toContain('title: W2 demo\n');
+    expect(entryText).toContain('state: in-progress\n');
+    expect(entryText).toContain('tags: [docs, agent-notes]\n');
     const entry = await readEntry('task', 'w2-demo', dir);
     expect(entry.issues).toEqual([]);
     expect(entry.frontmatter).toMatchObject({
@@ -165,7 +165,7 @@ describe('createEntry: okf entries', () => {
       dir,
       now,
     );
-    expect(created.path).toBe('kb/notes/main.md');
+    expect(created.path).toBe('kb/notes/index.md');
     const entry = await readEntry('kb', 'notes', dir);
     expect(entry.frontmatter).toMatchObject({
       type: 'Knowledge Base',
@@ -192,12 +192,12 @@ describe('createEntry: okf entries', () => {
 
   it('answers `exists` and leaves the existing entry alone', async () => {
     const dir = tmp.make(validDataTree());
-    const before = read(dir, 'task/do-it/main.md');
+    const before = read(dir, 'task/do-it/index.md');
     const error = await ioFailure(
       createEntry('task', { name: 'do-it', description: 'Again' }, dir),
     );
     expect(error.code).toBe('exists');
-    expect(read(dir, 'task/do-it/main.md')).toBe(before);
+    expect(read(dir, 'task/do-it/index.md')).toBe(before);
   });
 });
 
@@ -257,7 +257,7 @@ describe('createEntry: validation (nothing written)', () => {
 describe('createEntry: parent project', () => {
   const projectTree = (): string =>
     tmp.make({
-      'project/proj/main.md':
+      'project/proj/index.md':
         '---\ntype: Project\nname: proj\ndescription: A project.\nstate: pending\ntags: [x]\n---\n\n# Proj\n',
     });
 
@@ -270,7 +270,7 @@ describe('createEntry: parent project', () => {
       now,
     );
     expect(created.parentLinked).toBe(true);
-    expect(read(dir, 'project/proj/main.md')).toBe(
+    expect(read(dir, 'project/proj/index.md')).toBe(
       '---\ntype: Project\nname: proj\ndescription: A project.\nstate: pending\ntags: [x]\nlinks:\n  - dataset: task\n    slug: child-one\n    rel: child\n---\n\n# Proj\n',
     );
     await createEntry(
@@ -298,7 +298,7 @@ describe('createEntry: parent project', () => {
 
   it('keeps the new entry and reports parentLinked: false when the project cannot be patched', async () => {
     const dir = tmp.make({
-      'project/proj/main.md':
+      'project/proj/index.md':
         '---\ntype: Project\nname: proj\ndescription: P.\nstate: pending\nfoo: [\n---\n',
     });
     const created = await createEntry(
@@ -307,7 +307,7 @@ describe('createEntry: parent project', () => {
       dir,
     );
     expect(created.parentLinked).toBe(false);
-    expect(created.parentError).toContain('project/proj/main.md');
-    expect(existsSync(path.join(dir, 'task', 'kept', 'main.md'))).toBe(true);
+    expect(created.parentError).toContain('project/proj/index.md');
+    expect(existsSync(path.join(dir, 'task', 'kept', 'index.md'))).toBe(true);
   });
 });

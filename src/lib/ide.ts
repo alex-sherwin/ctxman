@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
-import { isOkfDatasetId, isValidName } from '../datasets/registry.ts';
+import { datasetDef, isOkfDatasetId, isValidName } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import { resolveBundleFile } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
@@ -155,7 +155,7 @@ type TargetResult =
 
 /**
  * okf / skill: root = data/<ds>/<slug> (must be a dir), file = `relPath` (bundle-relative, any existing regular
- * file, resolved with resolveBundleFile) or the entry file (main.md / SKILL.md) when relPath is undefined.
+ * file, resolved with resolveBundleFile) or the entry file (index.md / SKILL.md) when relPath is undefined.
  * reference / context / recipe: root = the data dir, file = <ds>/<slug>.yaml (must exist); relPath must be undefined.
  */
 export async function ideTargetFor(
@@ -169,7 +169,7 @@ export async function ideTargetFor(
   }
 
   if (isOkfDatasetId(dataset) || dataset === 'skill') {
-    const rel = relPath ?? (dataset === 'skill' ? 'SKILL.md' : 'main.md');
+    const rel = relPath ?? datasetDef(dataset).entryFile;
     const file = await resolveBundleFile(dataset, slug, rel, dataDir);
     if (file.ok) return { ok: true, target: { root: file.root, file: file.abs } };
     switch (file.reason) {

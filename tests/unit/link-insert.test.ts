@@ -98,8 +98,8 @@ describe('escapeLinkText / markdownLink', () => {
   it('gives the same output as templates.ts linkText (checked through a planned entry)', () => {
     const title = 'a[b]\\c';
     const files = planNewEntry('kb', 'x', { title, description: 'd', now: new Date() });
-    const index = files.find((f) => f.relPath === 'kb/x/index.md');
-    expect(index?.content).toContain(`[${escapeLinkText(title)}](/main.md)`);
+    const log = files.find((f) => f.relPath === 'kb/x/log.md');
+    expect(log?.content).toContain(`[${escapeLinkText(title)}](/index.md)`);
   });
 
   it('writes [Title](ctxman:ds/slug) with the title escaped', () => {

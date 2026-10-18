@@ -28,24 +28,18 @@ describe('titleFromName', () => {
 describe('planNewEntry okf lifecycle dataset (task)', () => {
   const files = planNewEntry('task', 'fix-login', { now, description: 'Fix the login flow' });
 
-  it('plans index.md, main.md and log.md under data/task/<name>/', () => {
+  it('plans index.md (the entry) and log.md under data/task/<name>/', () => {
     expect(files.map((f) => f.relPath)).toEqual([
       'task/fix-login/index.md',
-      'task/fix-login/main.md',
       'task/fix-login/log.md',
     ]);
   });
 
   it('writes the exact index.md template', () => {
     expect(byPath(files, 'task/fix-login/index.md')).toBe(
-      '---\nokf_version: "0.2"\n---\n# Fix login\n\n## Entry\n\n* [Fix login](/main.md) - Fix the login flow\n',
-    );
-  });
-
-  it('writes the exact main.md template', () => {
-    expect(byPath(files, 'task/fix-login/main.md')).toBe(
       [
         '---',
+        'okf_version: "0.2"',
         'type: Task',
         'name: fix-login',
         'title: Fix login',
@@ -73,13 +67,13 @@ describe('planNewEntry okf lifecycle dataset (task)', () => {
 
   it('writes the exact log.md template', () => {
     expect(byPath(files, 'task/fix-login/log.md')).toBe(
-      '# Update log\n\n## 2026-10-17\n* **Create**: Created [Fix login](/main.md).\n',
+      '# Update log\n\n## 2026-10-17\n* **Create**: Created [Fix login](/index.md).\n',
     );
   });
 
   it('honours title and state overrides', () => {
     const custom = planNewEntry('task', 'x', { now, title: 'Custom title', state: 'in-progress' });
-    const main = byPath(custom, 'task/x/main.md');
+    const main = byPath(custom, 'task/x/index.md');
     expect(main).toContain('title: Custom title');
     expect(main).toContain('state: in-progress');
   });
@@ -100,7 +94,7 @@ describe('planNewEntry per okf dataset', () => {
     it(`${dataset}: type, sections and state line match the registry`, () => {
       if (!isOkfDatasetId(dataset)) throw new Error('not okf');
       const def = datasetDef(dataset);
-      const main = byPath(planNewEntry(dataset, 'demo', { now }), `${dataset}/demo/main.md`);
+      const main = byPath(planNewEntry(dataset, 'demo', { now }), `${dataset}/demo/index.md`);
       expect(main).toContain(`type: ${def.okfType}\n`);
       const hasState = main.includes('\nstate: ');
       expect(hasState).toBe(def.states !== undefined);
@@ -111,7 +105,7 @@ describe('planNewEntry per okf dataset', () => {
   }
 
   it('kb has no state line', () => {
-    expect(byPath(planNewEntry('kb', 'demo', { now }), 'kb/demo/main.md')).not.toContain('state:');
+    expect(byPath(planNewEntry('kb', 'demo', { now }), 'kb/demo/index.md')).not.toContain('state:');
   });
 });
 
@@ -220,7 +214,7 @@ describe('planNewEntry validation', () => {
   it('collapses multi-line input to one line so frontmatter stays valid', () => {
     const main = byPath(
       planNewEntry('kb', 'x', { now, title: 'Two\nlines', description: 'a\r\nb' }),
-      'kb/x/main.md',
+      'kb/x/index.md',
     );
     expect(main).toContain('title: Two lines\n');
     expect(main).toContain('description: a b\n');
@@ -250,7 +244,7 @@ describe('planned files validate against the schemas', () => {
               file: file.relPath,
             });
             expect(findings, file.relPath).toEqual([]);
-            if (relPath === 'main.md') {
+            if (relPath === 'index.md') {
               const parsed = parseFrontmatter(file.content);
               expect(parsed.ok && parsed.doc.data.description).toBe(
                 description ?? 'TODO: describe Demo.',
@@ -274,10 +268,10 @@ describe('planned files validate against the schemas', () => {
 
 describe('planNewEntry tags (okf)', () => {
   it('writes tags as a flow sequence and the rest of the template stays as without tags', () => {
-    const plain = byPath(planNewEntry('task', 'x', { now, description: 'd' }), 'task/x/main.md');
+    const plain = byPath(planNewEntry('task', 'x', { now, description: 'd' }), 'task/x/index.md');
     const tagged = byPath(
       planNewEntry('task', 'x', { now, description: 'd', tags: ['docs', 'agent-notes'] }),
-      'task/x/main.md',
+      'task/x/index.md',
     );
     expect(plain).toContain('\ntags: []\n');
     expect(tagged).toBe(plain.replace('tags: []', 'tags: [docs, agent-notes]'));

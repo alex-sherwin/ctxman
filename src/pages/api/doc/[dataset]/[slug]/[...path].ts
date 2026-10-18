@@ -4,7 +4,7 @@
 //   GET  200 { path, markdown, lastModified, bytes, warnings }
 //   PUT  body { markdown, ifUnmodifiedSince? } -> 200 { path, bytes, lastModified, warnings }
 //   POST body { title, type?, description? } -> 201 { path, url, lastModified, warnings }: creates the concept file
-//        (okf datasets only; index.md / log.md / the root main.md are reserved) and lists it in the bundle's root
+//        (okf datasets only; the root index.md (the entry) / nested index.md / log.md are reserved) and lists it in the bundle's root
 //        index.md (## Concepts) and log.md (today)
 //   400 bad-dataset | bad-slug | bad-path | bad-json | invalid (issues), 403 forbidden-origin, 404 not-found,
 //   405, 409 conflict ({ error, message, lastModified }) | exists, 413 too-large, 415, 422 not-text, 500 internal.

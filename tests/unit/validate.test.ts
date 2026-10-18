@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   DATASET_SCHEMAS,
   contextSchema,
-  okfIndexSchema,
   recipeSchema,
   referenceSchema,
   runOverridesSchema,
@@ -172,9 +171,11 @@ describe('validate()', () => {
     expect(issues[0]!.message).toBe('must be <dataset>/<slug> of a linkable dataset');
   });
 
-  it('a strict root rejects unknown keys of okf_version indexes', () => {
-    expect(validate(okfIndexSchema, {}).success).toBe(true);
-    expect(issuesOf(validate(okfIndexSchema, { title: 'x' }))[0]).toMatchObject({
+  it('a strict root rejects unknown keys', () => {
+    expect(validate(skillSchema, { name: 'x', description: 'd' }).success).toBe(true);
+    expect(
+      issuesOf(validate(skillSchema, { name: 'x', description: 'd', title: 'x' }))[0],
+    ).toMatchObject({
       path: ['title'],
       kind: 'unknown-key',
     });

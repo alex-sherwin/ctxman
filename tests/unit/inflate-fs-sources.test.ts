@@ -14,11 +14,11 @@ const NOW = Date.parse('2026-10-17T12:00:00Z');
 function fixture(extra: Record<string, string> = {}) {
   const dataDir = tmp.make({
     ...validDataTree(),
-    'kb/old/main.md':
+    'kb/old/index.md':
       '---\ntype: Knowledge Base\nname: old\ndescription: Old stuff.\nstale_after: 2020-01-01\n---\n',
-    'kb/no-desc/main.md': '---\ntype: Knowledge Base\nname: no-desc\n---\n',
-    'kb/bad-yaml/main.md': '---\ntype: [oops\n---\n',
-    'kb/no-main/index.md': '# nothing\n',
+    'kb/no-desc/index.md': '---\ntype: Knowledge Base\nname: no-desc\n---\n',
+    'kb/bad-yaml/index.md': '---\ntype: [oops\n---\n',
+    'kb/no-index/concepts/x.md': '# nothing\n',
     'skill/strict/SKILL.md': '---\nname: strict\ndescription: d\nextra: nope\n---\n',
     'reference/rs.yaml':
       'name: rs\ndescription: A remote skill.\ntags: [t]\ntype: remote-skill\nuri: https://h.test/s.tar.gz\nsubpath: pkg\nowner: not-me\n',
@@ -109,10 +109,10 @@ describe('readItem', () => {
     expect(stale.status === 'ready' && stale.meta.stale).toBe(true);
   });
 
-  it('okf: missing for an absent entry, an absent main.md and an invalid slug', async () => {
+  it('okf: missing for an absent entry, an absent index.md and an invalid slug', async () => {
     const { src } = fixture();
     expect(await src.readItem('kb', 'gone')).toEqual({ status: 'missing' });
-    expect(await src.readItem('kb', 'no-main')).toEqual({ status: 'missing' });
+    expect(await src.readItem('kb', 'no-index')).toEqual({ status: 'missing' });
     expect(await src.readItem('kb', '../demo')).toEqual({ status: 'missing' });
     expect(await src.readItem('skill', 'gone')).toEqual({ status: 'missing' });
   });
@@ -202,11 +202,11 @@ describe('entryRef', () => {
     const { dataDir, src } = fixture();
     expect(await src.entryRef('kb', 'demo')).toEqual({
       title: 'Demo',
-      abs: path.join(dataDir, 'kb', 'demo', 'main.md'),
+      abs: path.join(dataDir, 'kb', 'demo', 'index.md'),
     });
     expect(await src.entryRef('task', 'do-it')).toEqual({
       title: 'do-it',
-      abs: path.join(dataDir, 'task', 'do-it', 'main.md'),
+      abs: path.join(dataDir, 'task', 'do-it', 'index.md'),
     });
     expect(await src.entryRef('skill', 'my-skill')).toEqual({
       title: 'my-skill',
@@ -231,10 +231,10 @@ describe('entryRef', () => {
     const { dataDir, src } = fixture();
     expect(await src.entryRef('kb', 'no-desc')).toEqual({
       title: 'no-desc',
-      abs: path.join(dataDir, 'kb', 'no-desc', 'main.md'),
+      abs: path.join(dataDir, 'kb', 'no-desc', 'index.md'),
     });
     expect(await src.entryRef('kb', 'gone')).toBeNull();
-    expect(await src.entryRef('kb', 'no-main')).toBeNull();
+    expect(await src.entryRef('kb', 'no-index')).toBeNull();
     expect(await src.entryRef('context', 'gone')).toBeNull();
     expect(await src.entryRef('kb', '../x')).toBeNull();
     expect(await src.entryRef('kb', 'Bad Slug')).toBeNull();
@@ -242,11 +242,11 @@ describe('entryRef', () => {
 });
 
 describe('itemPaths / listFiles / readText', () => {
-  it('itemPaths: bundle dir + main.md, skill dir + SKILL.md, yaml file for both', () => {
+  it('itemPaths: bundle dir + index.md, skill dir + SKILL.md, yaml file for both', () => {
     const { dataDir, src } = fixture();
     expect(src.itemPaths('kb', 'demo')).toEqual({
       rootAbs: path.join(dataDir, 'kb', 'demo'),
-      entryAbs: path.join(dataDir, 'kb', 'demo', 'main.md'),
+      entryAbs: path.join(dataDir, 'kb', 'demo', 'index.md'),
     });
     expect(src.itemPaths('skill', 'my-skill')).toEqual({
       rootAbs: path.join(dataDir, 'skill', 'my-skill'),
@@ -261,12 +261,11 @@ describe('itemPaths / listFiles / readText', () => {
     const files = await src.listFiles('kb', 'demo');
     expect(files.map((f) => [f.rel, f.kind])).toEqual([
       ['index.md', 'markdown'],
-      ['main.md', 'markdown'],
       ['log.md', 'markdown'],
       ['assets/pic.png', 'binary'],
       ['concepts/one.md', 'markdown'],
     ]);
-    expect(files[3]?.abs).toBe(path.join(dataDir, 'kb', 'demo', 'assets', 'pic.png'));
+    expect(files[2]?.abs).toBe(path.join(dataDir, 'kb', 'demo', 'assets', 'pic.png'));
     expect(await src.listFiles('kb', 'gone')).toEqual([]);
     expect((await src.listFiles('skill', 'my-skill')).map((f) => f.rel)).toEqual([
       'SKILL.md',
@@ -278,7 +277,7 @@ describe('itemPaths / listFiles / readText', () => {
     const { src } = fixture();
     expect(await src.readText('kb', 'demo', 'concepts/one.md')).toContain('# One');
     expect(await src.readText('kb', 'demo', 'nope.md')).toBeNull();
-    expect(await src.readText('kb', 'demo', '../../task/do-it/main.md')).toBeNull();
+    expect(await src.readText('kb', 'demo', '../../task/do-it/index.md')).toBeNull();
     expect(await src.readText('kb', 'demo', '/etc/passwd')).toBeNull();
     expect(await src.readText('skill', 'my-skill', 'SKILL.md')).toContain('name: my-skill');
   });
@@ -311,7 +310,7 @@ describe('localPaths / statPath / listDir', () => {
   it('statPath: dir, file, null', async () => {
     const { dataDir, src } = fixture();
     expect(await src.statPath(dataDir)).toBe('dir');
-    expect(await src.statPath(path.join(dataDir, 'kb', 'demo', 'main.md'))).toBe('file');
+    expect(await src.statPath(path.join(dataDir, 'kb', 'demo', 'index.md'))).toBe('file');
     expect(await src.statPath(path.join(dataDir, 'nope'))).toBeNull();
   });
 

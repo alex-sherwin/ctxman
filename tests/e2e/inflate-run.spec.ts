@@ -358,7 +358,7 @@ test.describe('Run view', () => {
     await jobEnds(page);
     await expect(jobStep(page, 'rm:kb/okf-format')).toHaveAttribute('data-status', 'ok');
     expect(isLink(path.join(workDir(), 'kb', 'okf-format'))).toBe(false);
-    expect(existsSync(path.join(E2E_DATA_DIR, 'kb', 'okf-format', 'main.md'))).toBe(true);
+    expect(existsSync(path.join(E2E_DATA_DIR, 'kb', 'okf-format', 'index.md'))).toBe(true);
     expect(isLink(path.join(workDir(), 'repos', LOCAL_REF))).toBe(true);
     expect(readManifest(workDir()).entries.map((e) => e.path)).not.toContain('kb/okf-format');
   });

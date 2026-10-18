@@ -17,8 +17,11 @@ export const DATASET_IDS = [
 ] as const;
 export type DatasetId = (typeof DATASET_IDS)[number];
 
-/** okf = OKF v0.2 bundle dir (index.md + main.md); skill = agentskills.io dir (SKILL.md); data = one YAML file. */
+/** okf = OKF v0.2 bundle dir (index.md = the entry, optional log.md and concepts); skill = agentskills.io dir (SKILL.md); data = one YAML file. */
 export type DatasetKind = 'okf' | 'skill' | 'data';
+
+/** The entry file of every okf bundle: the bundle-root `index.md` (entry frontmatter + `okf_version` + body). */
+export const OKF_ENTRY_FILE = 'index.md';
 
 export const OKF_DATASET_IDS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const;
 export type OkfDatasetId = (typeof OKF_DATASET_IDS)[number];
@@ -126,9 +129,9 @@ export interface DatasetDef {
   readonly kind: DatasetKind;
   /** Lifecycle states in lifecycle order; undefined = no lifecycle. First state = default for new entries. */
   readonly states?: readonly StateDef[];
-  /** okf: data/<id>/<name>/main.md; skill: data/skill/<name>/SKILL.md; data: data/<id>/<name>.yaml */
-  readonly entryFile: 'main.md' | 'SKILL.md' | '.yaml';
-  /** OKF `type` that add-entry writes into main.md (okf kind only). */
+  /** okf: data/<id>/<name>/index.md; skill: data/skill/<name>/SKILL.md; data: data/<id>/<name>.yaml */
+  readonly entryFile: typeof OKF_ENTRY_FILE | 'SKILL.md' | '.yaml';
+  /** OKF `type` that add-entry writes into index.md (okf kind only). */
   readonly okfType?: string;
   /** One sentence shown on the dashboard card. */
   readonly description: string;
@@ -142,7 +145,7 @@ export const DATASETS: readonly DatasetDef[] = [
     plural: 'knowledge base entries',
     singular: 'kb entry',
     kind: 'okf',
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Knowledge Base',
     description: 'OKF bundles describing something that already exists.',
   },
@@ -153,7 +156,7 @@ export const DATASETS: readonly DatasetDef[] = [
     plural: 'root cause analyses',
     singular: 'RCA',
     kind: 'okf',
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Root Cause Analysis',
     description: 'Write-ups of past incidents and solved problems, kept to avoid repeats.',
   },
@@ -165,7 +168,7 @@ export const DATASETS: readonly DatasetDef[] = [
     singular: 'idea',
     kind: 'okf',
     states: states(IDEA_STATES),
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Idea',
     description: 'Ideas worth exploring, from rough thoughts to proposals.',
   },
@@ -177,7 +180,7 @@ export const DATASETS: readonly DatasetDef[] = [
     singular: 'task',
     kind: 'okf',
     states: states(TASK_STATES),
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Task',
     description: 'Discrete units of work.',
   },
@@ -189,7 +192,7 @@ export const DATASETS: readonly DatasetDef[] = [
     singular: 'bug',
     kind: 'okf',
     states: states(BUG_STATES),
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Bug',
     description: 'Defects to reproduce, diagnose and fix.',
   },
@@ -201,7 +204,7 @@ export const DATASETS: readonly DatasetDef[] = [
     singular: 'feature',
     kind: 'okf',
     states: states(FEATURE_STATES),
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Feature',
     description: 'User-facing capabilities to design and build.',
   },
@@ -213,7 +216,7 @@ export const DATASETS: readonly DatasetDef[] = [
     singular: 'project',
     kind: 'okf',
     states: states(PROJECT_STATES),
-    entryFile: 'main.md',
+    entryFile: OKF_ENTRY_FILE,
     okfType: 'Project',
     description: 'Large scopes of work spanning ideas, tasks, features and knowledge.',
   },

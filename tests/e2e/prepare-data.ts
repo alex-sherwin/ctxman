@@ -46,7 +46,7 @@ writeFileSync(path.join(E2E_GIT_FIXTURE, 'docs', 'guide.md'), '# Guide\n');
 mkdirSync(E2E_LOCAL_FIXTURE, { recursive: true });
 writeFileSync(path.join(E2E_LOCAL_FIXTURE, 'README.md'), '# local folder\n');
 const gitSteps = [
-  ['init', '-q', '-b', 'main'],
+  ['init', '-q', '-b', 'trunk'],
   ['add', '-A'],
   ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', 'commit', '-qm', 'fixture'],
 ];

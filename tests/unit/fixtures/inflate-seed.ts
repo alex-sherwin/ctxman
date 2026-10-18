@@ -17,20 +17,19 @@ const okfEntry = (
   extra = '',
   body = `# ${name}\n`,
 ): string =>
-  `---\ntype: ${type}\nname: ${name}\ndescription: ${description}\n${extra}---\n\n${body}`;
+  `---\nokf_version: "0.2"\ntype: ${type}\nname: ${name}\ndescription: ${description}\n${extra}---\n\n${body}`;
 
-/** The kb/ctxman bundle: main.md, one concept, an index, links to a mounted and an unmounted entry. */
+/** The kb/ctxman bundle: index.md (the entry, with a Concepts section), one concept, links to a mounted and an unmounted entry. */
 function ctxmanBundle(): Record<string, string> {
   return {
-    'kb/ctxman/index.md': `---\nokf_version: "0.2"\n---\n# ctxman\n\n## Entry\n\n* [ctxman](/main.md) - Entry.\n\n## Concepts\n\n* [Datasets](/concepts/datasets.md) - The datasets.\n`,
-    'kb/ctxman/main.md': okfEntry(
+    'kb/ctxman/index.md': okfEntry(
       'Knowledge Base',
       'ctxman',
       'What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.',
       'title: ctxman\ntags: [ctxman, architecture, docs]\n',
       '# ctxman\n\nSee [datasets](/concepts/datasets.md), the [idea](ctxman:idea/context-inflate) and the [docs](ctxman:reference/astro-docs).\n',
     ),
-    'kb/ctxman/concepts/datasets.md': `---\ntype: Concept\ndescription: The datasets.\n---\n\n# Datasets\n\nBack to [main](../main.md).\n`,
+    'kb/ctxman/concepts/datasets.md': `---\ntype: Concept\ndescription: The datasets.\n---\n\n# Datasets\n\nBack to [entry](../index.md).\n`,
   };
 }
 
@@ -38,41 +37,41 @@ function ctxmanBundle(): Record<string, string> {
 export function seedTree(extra: Record<string, string> = {}): Record<string, string> {
   return withYamlComments({
     ...ctxmanBundle(),
-    'kb/astro-content-layer/main.md': okfEntry(
+    'kb/astro-content-layer/index.md': okfEntry(
       'Knowledge Base',
       'astro-content-layer',
       'How Astro 7 content collections, loaders and schemas work.',
     ),
-    'rca/astro-dev-full-reload-on-save/main.md': okfEntry(
+    'rca/astro-dev-full-reload-on-save/index.md': okfEntry(
       'Root Cause Analysis',
       'astro-dev-full-reload-on-save',
       'Saving a context in the forge reloaded the whole page, because the loader watched the file.',
     ),
-    'idea/context-inflate/main.md': okfEntry(
+    'idea/context-inflate/index.md': okfEntry(
       'Idea',
       'context-inflate',
       'A tool that turns selected contexts plus user instructions into one document.',
       'state: pending\n',
     ),
-    'task/write-agents-md/main.md': okfEntry(
+    'task/write-agents-md/index.md': okfEntry(
       'Task',
       'write-agents-md',
       'Write and maintain the agent guide at the repository root.',
       'state: pending\n',
     ),
-    'bug/stale-badge-timezone/main.md': okfEntry(
+    'bug/stale-badge-timezone/index.md': okfEntry(
       'Bug',
       'stale-badge-timezone',
       'The stale badge flips a day early with a negative UTC offset.',
       'state: pending\n',
     ),
-    'feature/context-forge/main.md': okfEntry(
+    'feature/context-forge/index.md': okfEntry(
       'Feature',
       'context-forge',
       'A UI at /forge to discover entries across datasets and build contexts.',
       'state: in-progress\n',
     ),
-    'project/ctxman-v1/main.md': okfEntry(
+    'project/ctxman-v1/index.md': okfEntry(
       'Project',
       'ctxman-v1',
       'Deliver the first complete version of ctxman with ten datasets.',

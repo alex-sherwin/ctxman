@@ -29,22 +29,22 @@ Add `--json` to a check or `fix:yaml-comments` script for machine-readable outpu
 
 ## OKF rules (`check:okf`)
 
-Errors include a bundle without `main.md`, a concept without parseable frontmatter or a non-empty `type`, a `main.md` that fails its dataset schema, a `name` that differs from the folder, a root `index.md` with frontmatter other than `okf_version: "0.2"`, any frontmatter on a nested `index.md` or on `log.md`, a `log.md` heading that is not `YYYY-MM-DD`, and a `stale_after` that is not a `YYYY-MM-DD` date.
+Errors include a bundle without `index.md` (`okf/missing-index`, the entry), a concept without parseable frontmatter or a non-empty `type`, a root `index.md` that fails its dataset schema, a `name` that differs from the folder, a root `okf_version` other than `"0.2"` (`okf/index-frontmatter`), any frontmatter on a nested `index.md` or on `log.md`, a `log.md` heading that is not `YYYY-MM-DD`, and a `stale_after` that is not a `YYYY-MM-DD` date.
 
-Warnings include a `main.md` whose `type` differs from the registry value, a missing root `index.md`, log dates that are not newest-first, and a footnote reference whose id has neither a definition nor a matching `sources` id.
+Warnings include a root `index.md` without `okf_version` (`okf/index-version`), an entry whose `type` differs from the registry value, log dates that are not newest-first, and a footnote reference whose id has neither a definition nor a matching `sources` id.
 
 ## Link rules (`check:links`)
 
 Checked in every OKF bundle and every skill folder. A bundle-root link (`/x.md`) or relative link (`./x.md`) to a missing file is an error, as is a link that escapes the bundle. External URLs and in-page anchors are skipped. A `ctxman:` link with bad syntax is an error; one that points at a missing entry is a warning, because entries may be deleted while links lag behind.
 
-The structured `links` of an okf `main.md` (see [Relations](/concepts/relations.md)) get two more rules, reported on the line of the `links:` key:
+The structured `links` of an okf entry `index.md` (see [Relations](/concepts/relations.md)) get two more rules, reported on the line of the `links:` key:
 
 | Rule id | Severity | Fires when |
 | --- | --- | --- |
 | `links/relation-target` | warning | A frontmatter link points at an entry that does not exist (`relation target <dataset>/<slug> does not exist`) |
 | `links/relation-self` | error | An entry links to itself (`an entry cannot link to itself`) |
 
-A malformed link item or a duplicate target is not reported here: it fails the dataset schema (`okf/entry-schema` in `check:okf`, `collections/schema` in `check:collections`). The same file-level link findings (`links/broken`, `links/escapes-bundle`, `links/ctxman-invalid`, `links/ctxman-target`, and the two relation rules for a `main.md`) come back as `warnings` from `PUT /api/doc/...`, so a save from the browser shows what the CLI would say.
+A malformed link item or a duplicate target is not reported here: it fails the dataset schema (`okf/entry-schema` in `check:okf`, `collections/schema` in `check:collections`). The same file-level link findings (`links/broken`, `links/escapes-bundle`, `links/ctxman-invalid`, `links/ctxman-target`, and the two relation rules for an entry `index.md`) come back as `warnings` from `PUT /api/doc/...`, so a save from the browser shows what the CLI would say.
 
 ## Collection rules (`check:collections`)
 

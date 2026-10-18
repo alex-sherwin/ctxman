@@ -47,8 +47,8 @@ describe('buildRelationGraph', () => {
           ['kb/k', 'related'],
         ],
         [
-          ['idea/i', 'main.md'],
-          ['task/a', 'main.md'], // already a frontmatter target: no mention edge
+          ['idea/i', 'index.md'],
+          ['task/a', 'index.md'], // already a frontmatter target: no mention edge
           ['feature/f', 'concepts/x.md'],
           ['idea/i', 'concepts/x.md'],
         ],
@@ -78,9 +78,9 @@ describe('buildRelationGraph', () => {
         'kb/x',
         [],
         [
-          ['task/t', 'main.md'],
+          ['task/t', 'index.md'],
           ['task/t', 'concepts/a.md'],
-          ['task/t', 'main.md'],
+          ['task/t', 'index.md'],
           ['task/t', 'concepts/a.md'],
           ['task/t', 'log.md'],
         ],
@@ -89,7 +89,7 @@ describe('buildRelationGraph', () => {
     const [edge, ...rest] = linksTo(g, 'kb/x');
     expect(rest).toEqual([]);
     expect(edge).toMatchObject({ rel: 'mentions', source: 'body' });
-    expect(edge?.files).toEqual(['main.md', 'concepts/a.md', 'log.md']);
+    expect(edge?.files).toEqual(['index.md', 'concepts/a.md', 'log.md']);
   });
 
   it('gives frontmatter edges an empty file list', () => {
@@ -105,7 +105,7 @@ describe('buildRelationGraph', () => {
 
   it('frontmatter beats a mention of the same target from the same entry, in both directions', () => {
     const g = buildRelationGraph([
-      entry('task/a', [['feature/f', 'depends-on']], [['feature/f', 'main.md']]),
+      entry('task/a', [['feature/f', 'depends-on']], [['feature/f', 'index.md']]),
     ]);
     expect(summary(linksTo(g, 'task/a'), 'to')).toEqual(['feature/f:depends-on']);
     expect(summary(linkedFrom(g, 'feature/f'), 'from')).toEqual(['task/a:depends-on']);
@@ -120,7 +120,7 @@ describe('buildRelationGraph', () => {
           ['kb/k', 'child'],
           ['kb/k', 'related'],
         ],
-        [['task/a', 'main.md']],
+        [['task/a', 'index.md']],
       ),
     ]);
     expect(summary(linksTo(g, 'task/a'), 'to')).toEqual(['kb/k:child']);
@@ -145,8 +145,8 @@ describe('buildRelationGraph', () => {
 describe('linkedFrom ordering', () => {
   it('orders incoming edges child, depends-on, related, mentions, then by source key', () => {
     const g = buildRelationGraph([
-      entry('task/z-mention', [], [['feature/target', 'main.md']]),
-      entry('kb/a-mention', [], [['feature/target', 'main.md']]),
+      entry('task/z-mention', [], [['feature/target', 'index.md']]),
+      entry('kb/a-mention', [], [['feature/target', 'index.md']]),
       entry('task/rel-b', [['feature/target', 'related']]),
       entry('bug/rel-a', [['feature/target', 'related']]),
       entry('task/needs', [['feature/target', 'depends-on']]),
@@ -175,10 +175,10 @@ describe('childrenOf / parentsOf', () => {
         ['bug/first', 'child'],
         ['feature/dep', 'depends-on'],
       ],
-      [['task/mentioned', 'main.md']],
+      [['task/mentioned', 'index.md']],
     ),
     entry('project/other', [['bug/first', 'child']]),
-    entry('task/second', [], [['project/p', 'main.md']]),
+    entry('task/second', [], [['project/p', 'index.md']]),
   ]);
 
   it('lists the declared children in file order, only child edges', () => {

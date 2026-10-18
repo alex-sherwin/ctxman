@@ -379,7 +379,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await expect(page.getByTestId('detail-slug')).toHaveText(nTask);
     await expect(page.getByTestId('detail-meta')).toContainText('In progress');
     await expect(page.getByTestId('detail-meta')).toContainText('alpha');
-    const file = readDataText(`task/${nTask}/main.md`);
+    const file = readDataText(`task/${nTask}/index.md`);
     expect(file).toContain(`name: ${nTask}`);
     expect(file).toContain('title: E2E form task');
     expect(file).toContain('state: in-progress');

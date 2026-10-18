@@ -310,7 +310,7 @@ test.describe('plan (dry run)', () => {
 });
 
 test.describe('run', () => {
-  const workDir = (): string => path.join(base, 'main');
+  const workDir = (): string => path.join(base, 'work');
 
   test('places every material, writes the relative context, stubs and manifest', async ({
     request,
@@ -436,7 +436,7 @@ test.describe('run', () => {
     });
     expect(job.summary?.removed).toBe(1);
     expect(isLink(path.join(dir, 'kb', 'okf-format'))).toBe(false);
-    expect(existsSync(path.join(E2E_DATA_DIR, 'kb', 'okf-format', 'main.md'))).toBe(true);
+    expect(existsSync(path.join(E2E_DATA_DIR, 'kb', 'okf-format', 'index.md'))).toBe(true);
     expect(isLink(path.join(dir, 'repos', LOCAL_REF))).toBe(true);
     expect(existsSync(path.join(dir, '.claude', 'skills', 'okf-authoring', 'SKILL.md'))).toBe(true);
     if (HAS_GIT) expect(existsSync(path.join(dir, 'repos', REPO_REF, '.git'))).toBe(true);

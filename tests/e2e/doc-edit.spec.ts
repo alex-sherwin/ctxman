@@ -27,7 +27,7 @@ test.describe.configure({ mode: 'serial' });
 
 const name = uniqueName('e2e-docedit');
 const entryDir = dataPath(`kb/${name}`);
-const MAIN = `kb/${name}/main.md`;
+const MAIN = `kb/${name}/index.md`;
 const NOTE = `kb/${name}/concepts/e2e-note.md`;
 const NOTE_PAGE = `/kb/${name}/doc/concepts/e2e-note`;
 const NOTE_TEXT =
@@ -141,7 +141,7 @@ async function pressSave(page: Page): Promise<void> {
 test.describe('Open in IDE', () => {
   test.skip(process.platform === 'win32', 'the fake IDE command is a posix script');
 
-  test('opens the entry folder with main.md and reports it inline', async ({ page }) => {
+  test('opens the entry folder with index.md and reports it inline', async ({ page }) => {
     await page.goto(`/kb/${name}`);
     const button = page.getByTestId('detail-open-ide');
     await expect(button).toBeEnabled();
@@ -245,7 +245,7 @@ test.describe('edit mode', () => {
 
     const reloaded = nextPageLoad(page);
     const put = page.waitForResponse(
-      (r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/doc/kb/${name}/main.md`),
+      (r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/doc/kb/${name}/index.md`),
     );
     await pressSave(page);
     expect((await put).status()).toBe(200);
@@ -337,10 +337,10 @@ test.describe('edit mode', () => {
   });
 });
 
-/** localStorage key of the draft of `kb/<name>/main.md` (src/stores/doc-editor.ts `docKey` + draft-backup.ts). */
-const MAIN_DRAFT_KEY = `ctxman:draft:doc:kb/${name}/main.md`;
+/** localStorage key of the draft of `kb/<name>/index.md` (src/stores/doc-editor.ts `docKey` + draft-backup.ts). */
+const MAIN_DRAFT_KEY = `ctxman:draft:doc:kb/${name}/index.md`;
 
-/** The persisted draft of main.md (null when none): what an unsaved reload would bring back. */
+/** The persisted draft of index.md (null when none): what an unsaved reload would bring back. */
 async function storedDraft(page: Page): Promise<{ text: string; base: string } | null> {
   return page.evaluate((key) => {
     const raw = localStorage.getItem(key);
@@ -449,9 +449,12 @@ test.describe('entry links in the editor', () => {
       page,
       '\n\nLinks gone wrong: [a](./e2e-missing-note.md) and [b](ctxman:idea/e2e-nope).\n',
     );
+    // the paste has reached the model (and the editor is dirty) before the shortcut runs
+    await expect(viewLines(page)).toContainText('ctxman:idea/e2e-nope');
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
     const reloaded = nextPageLoad(page);
     const put = page.waitForResponse(
-      (r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/doc/kb/${name}/main.md`),
+      (r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/doc/kb/${name}/index.md`),
     );
     await pressSave(page);
     const response = await put;

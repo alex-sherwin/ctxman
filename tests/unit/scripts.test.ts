@@ -157,19 +157,19 @@ describe('add-entry.ts', () => {
       ok: true,
       dataset: 'task',
       slug: 't1',
-      path: 'task/t1/main.md',
-      files: ['task/t1/index.md', 'task/t1/main.md', 'task/t1/log.md'],
+      path: 'task/t1/index.md',
+      files: ['task/t1/index.md', 'task/t1/log.md'],
     });
-    const main = readFileSync(path.join(dir, 'task', 't1', 'main.md'), 'utf8');
-    expect(main).toContain('type: Task\nname: t1\ntitle: T1\n');
-    expect(main).toContain('state: pending\n');
+    const entryText = readFileSync(path.join(dir, 'task', 't1', 'index.md'), 'utf8');
+    expect(entryText).toContain('okf_version: "0.2"\ntype: Task\nname: t1\ntitle: T1\n');
+    expect(entryText).toContain('state: pending\n');
     expect(run('check-all.ts', dir, '--json').code).toBe(0);
   });
 
   it('refuses to overwrite, leaving the existing entry untouched', () => {
     const dir = tmp.make();
     expect(run('add-entry.ts', dir, 'kb', 'demo', '--description', 'First').code).toBe(0);
-    const file = path.join(dir, 'kb', 'demo', 'main.md');
+    const file = path.join(dir, 'kb', 'demo', 'index.md');
     writeFileSync(file, `${readFileSync(file, 'utf8')}\nedited by hand\n`);
     const again = run('add-entry.ts', dir, 'kb', 'demo', '--description', 'Second');
     expect(again.code).toBe(1);
@@ -189,12 +189,11 @@ describe('add-entry.ts', () => {
     expect(r.code).toBe(0);
     const lines = r.stdout.trim().split('\n');
     expect(lines[0]).toBe('Created kb "demo":');
-    expect(lines.slice(1, 4)).toEqual([
+    expect(lines.slice(1, 3)).toEqual([
       `  ${path.join(dir, 'kb', 'demo', 'index.md')}`,
-      `  ${path.join(dir, 'kb', 'demo', 'main.md')}`,
       `  ${path.join(dir, 'kb', 'demo', 'log.md')}`,
     ]);
-    expect(lines[4]).toBe('Open: http://127.0.0.1:4321/kb/demo');
+    expect(lines[3]).toBe('Open: http://127.0.0.1:4321/kb/demo');
   });
 
   it.each([
@@ -233,7 +232,7 @@ describe('add-entry.ts', () => {
       ],
       'reference/tar-skill.yaml',
     ],
-    [['bug', 'b1', '--state', 'wont-fix', '--title', 'A "quoted": title'], 'bug/b1/main.md'],
+    [['bug', 'b1', '--state', 'wont-fix', '--title', 'A "quoted": title'], 'bug/b1/index.md'],
   ])('creates %j and the result passes check-all', (args, expectedPath) => {
     const dir = tmp.make();
     const r = run('add-entry.ts', dir, ...args, '--json');

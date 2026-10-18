@@ -107,14 +107,14 @@ describe('TARGETS (spec 4.1)', () => {
   });
 
   it('eagerClause: bare @path for Claude Code, a backticked "read" sentence otherwise', () => {
-    expect(TARGETS['claude-code'].eagerClause('/d/kb/demo/main.md')).toBe(
-      'Read it before starting: @/d/kb/demo/main.md',
+    expect(TARGETS['claude-code'].eagerClause('/d/kb/demo/index.md')).toBe(
+      'Read it before starting: @/d/kb/demo/index.md',
     );
-    expect(TARGETS.codex.eagerClause('/d/kb/demo/main.md')).toBe(
-      'Read `/d/kb/demo/main.md` before starting.',
+    expect(TARGETS.codex.eagerClause('/d/kb/demo/index.md')).toBe(
+      'Read `/d/kb/demo/index.md` before starting.',
     );
-    expect(TARGETS.generic.eagerClause('/d/a b/main.md')).toBe(
-      'Read `/d/a b/main.md` before starting.',
+    expect(TARGETS.generic.eagerClause('/d/a b/index.md')).toBe(
+      'Read `/d/a b/index.md` before starting.',
     );
   });
 });
@@ -205,14 +205,14 @@ describe('modes (spec 4.2)', () => {
     expect(rows('kb')).toEqual([
       [
         'inline-main',
-        'Inline main.md',
-        "Embed the entry's main.md.",
+        'Inline entry',
+        "Embed the entry's index.md.",
         ['includeFrontmatter', 'shiftHeadings', 'rewriteLinks'],
       ],
       [
         'inline-bundle',
         'Inline bundle',
-        'Embed main.md and every concept file, in index order.',
+        'Embed index.md and every concept file, in index order.',
         ['includeFrontmatter', 'includeLog', 'shiftHeadings', 'rewriteLinks'],
       ],
       ['summary', 'Summary', 'Title, state, tags, description and the file path.', []],
@@ -595,7 +595,7 @@ describe('output constants and helpers (plans/INFLATE_V2_SPEC.md §3)', () => {
   });
 
   it('isSafeGitRef: empty (default branch) or a plain branch / tag name', () => {
-    for (const ok of ['', 'main', 'release/1.2', 'v1.0.0', 'feature/a-b_c', 'a'.repeat(200)]) {
+    for (const ok of ['', 'trunk', 'release/1.2', 'v1.0.0', 'feature/a-b_c', 'a'.repeat(200)]) {
       expect(isSafeGitRef(ok), ok).toBe(true);
     }
     for (const bad of [

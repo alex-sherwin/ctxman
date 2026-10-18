@@ -738,7 +738,7 @@ describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
         ],
         defaults: {
           'remote-repo': { material: 'clone', materialOptions: { cloneDepth: 10, branch: 'dev' } },
-          'remote-skill': { materialOptions: { branch: 'main', cloneDepth: 5 } },
+          'remote-skill': { materialOptions: { branch: 'trunk', cloneDepth: 5 } },
         },
         overrides: [{ key: 'reference/rr', materialOptions: { cloneDepth: 0, subpathOnly: true } }],
       }),
@@ -750,7 +750,7 @@ describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
       materialOptions: { cloneDepth: 0, branch: 'dev', subpathOnly: true },
     });
     // remote-skill install only has `branch`
-    expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: 'main' });
+    expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: 'trunk' });
     // material none carries no options even when some are configured
     const none = expandRecipe(
       recipe({

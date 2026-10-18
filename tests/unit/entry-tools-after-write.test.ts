@@ -61,7 +61,7 @@ describe('afterWrite', () => {
     stubSession();
     stubBrowser();
     const reload = vi.fn();
-    $docTarget.set({ dataset: 'kb', slug: 'demo', path: 'main.md' });
+    $docTarget.set({ dataset: 'kb', slug: 'demo', path: 'index.md' });
     $docEdit.set(true);
     afterWrite('k', 'Saved', { reload });
     expect(reload).not.toHaveBeenCalled();

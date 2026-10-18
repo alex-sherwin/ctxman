@@ -123,19 +123,19 @@ describe('renderPlan golden document', () => {
       '',
       '### Demo',
       '',
-      `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/main.md\``,
+      `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/index.md\``,
       '',
       '> **From context `ctx`:** Read this.',
       '',
       'A demo knowledge base entry.',
       '',
-      `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/main.md).`,
+      `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/index.md).`,
       '',
       `More in this bundle (under \`${D}/kb/demo\`): \`concepts/one.md\`.`,
       '',
       '### do-it',
       '',
-      `\`task/do-it\` · Task · state: In progress · \`${D}/task/do-it/main.md\``,
+      `\`task/do-it\` · Task · state: In progress · \`${D}/task/do-it/index.md\``,
       '',
       'Do the thing.',
       '',
@@ -282,7 +282,7 @@ describe('renderPlan structure', () => {
   });
 
   it('excluded, missing and invalid items are not rendered; the manifest counts them', async () => {
-    const { D } = world({ 'kb/broken/main.md': '---\ntype: Knowledge Base\nname: broken\n---\n' });
+    const { D } = world({ 'kb/broken/index.md': '---\ntype: Knowledge Base\nname: broken\n---\n' });
     const { markdown, manifest } = await render(
       D,
       recipe({
@@ -327,9 +327,10 @@ describe('okf modes', () => {
       [
         '## Demo',
         '',
-        `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/main.md\``,
+        `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/index.md\``,
         '',
         '```yaml',
+        'okf_version: "0.2"',
         'type: Knowledge Base',
         'name: demo',
         'title: Demo',
@@ -341,7 +342,7 @@ describe('okf modes', () => {
         '  at: 2026-10-17T00:00:00Z',
         '```',
         '',
-        `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/main.md).`,
+        `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/index.md).`,
         '',
         `More in this bundle (under \`${D}/kb/demo\`): \`concepts/one.md\`.`,
         '',
@@ -351,7 +352,7 @@ describe('okf modes', () => {
 
   it('inline-main honours shiftHeadings / rewriteLinks off', async () => {
     const { D } = world({
-      'kb/plain/main.md':
+      'kb/plain/index.md':
         '---\ntype: Knowledge Base\nname: plain\ndescription: Plain.\n---\n\n# Plain\n\nIntro [x](/concepts/a.md).\n\n## Section\n\ntext\n',
       'kb/plain/concepts/a.md': '---\ntype: Concept\n---\n\n# A\n',
     });
@@ -378,9 +379,10 @@ describe('okf modes', () => {
       [
         '## Demo',
         '',
-        `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/main.md\``,
+        `\`kb/demo\` · Knowledge Base · tags: demo · \`${D}/kb/demo/index.md\``,
         '',
         '```yaml',
+        'okf_version: "0.2"',
         'type: Knowledge Base',
         'name: demo',
         'title: Demo',
@@ -392,13 +394,13 @@ describe('okf modes', () => {
         '  at: 2026-10-17T00:00:00Z',
         '```',
         '',
-        `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/main.md).`,
+        `See [one](${D}/kb/demo/concepts/one.md) and [ctxman](${D}/kb/demo/index.md).`,
         '',
         '### One',
         '',
         `\`concepts/one.md\` · \`${D}/kb/demo/concepts/one.md\``,
         '',
-        `Back to [main](${D}/kb/demo/main.md#demo). A claim.[^spec] Another.[^note]`,
+        `Back to [entry](${D}/kb/demo/index.md#demo). A claim.[^spec] Another.[^note]`,
         '',
         '[^note]: A note.',
         '',
@@ -410,7 +412,7 @@ describe('okf modes', () => {
         '* **Update**: Edited.',
         '',
         '#### 2026-10-17',
-        `* **Create**: Created [Demo](${D}/kb/demo/main.md).`,
+        `* **Create**: Created [Demo](${D}/kb/demo/index.md).`,
         '',
         'Other files in this bundle:',
         '',
@@ -423,7 +425,7 @@ describe('okf modes', () => {
   it('inline-bundle without includeLog skips the log; concepts follow index order then tree order', async () => {
     const { D } = world({
       'kb/demo/index.md':
-        '---\nokf_version: "0.2"\n---\n# Demo\n\n* [Zed](/concepts/zed.md)\n* [One](/concepts/one.md)\n* [Main](/main.md)\n* [Gone](/concepts/gone.md)\n',
+        '---\nokf_version: "0.2"\ntype: Knowledge Base\nname: demo\ntitle: Demo\ndescription: A demo knowledge base entry.\n---\n\n# Demo\n\n* [Zed](/concepts/zed.md)\n* [One](/concepts/one.md)\n* [Entry](/index.md)\n* [Gone](/concepts/gone.md)\n',
       'kb/demo/concepts/zed.md':
         '---\ntype: Concept\ntitle: The Zed\n---\n\n# Zed heading\n\nz body\n',
       'kb/demo/concepts/alpha.md': '---\ntype: Concept\n---\n\nalpha body, no heading\n',
@@ -451,7 +453,7 @@ describe('okf modes', () => {
 
   it('summary: meta line (state, tags, stale) and the description', async () => {
     const { D } = world({
-      'task/old/main.md':
+      'task/old/index.md':
         '---\ntype: Task\nname: old\ndescription: An old task.\nstate: pending\ntags: [a, b]\nstale_after: 2020-01-01\n---\n',
     });
     const { markdown } = await render(
@@ -459,7 +461,7 @@ describe('okf modes', () => {
       recipe({ layout: 'flat', items: [{ dataset: 'task', slug: 'old' }] }),
     );
     expect(body(markdown)).toBe(
-      `## old\n\n\`task/old\` · Task · state: Pending · stale since 2020-01-01 · tags: a, b · \`${D}/task/old/main.md\`\n\nAn old task.\n`,
+      `## old\n\n\`task/old\` · Task · state: Pending · stale since 2020-01-01 · tags: a, b · \`${D}/task/old/index.md\`\n\nAn old task.\n`,
     );
   });
 
@@ -473,7 +475,7 @@ describe('okf modes', () => {
       D,
       flat({ target, overrides: [{ key: 'kb/demo', mode: 'pointer', options: { eager: true } }] }),
     );
-    const abs = `${D}/kb/demo/main.md`;
+    const abs = `${D}/kb/demo/index.md`;
     expect(body(eager.markdown)).toBe(
       `## Demo\n\n\`kb/demo\` · Knowledge Base · A demo knowledge base entry. ${clause(abs)}\n`,
     );
@@ -493,7 +495,7 @@ describe('okf modes', () => {
       recipe({ contexts: ['ctx'], layout: 'flat', defaults: { kb: { mode: 'pointer' } } }),
     );
     expect(markdown).toContain(
-      `## Demo\n\n\`kb/demo\` · Knowledge Base · A demo knowledge base entry. Read \`${D}/kb/demo/main.md\` if relevant.\n\n> **From context \`ctx\`:** Read this.\n`,
+      `## Demo\n\n\`kb/demo\` · Knowledge Base · A demo knowledge base entry. Read \`${D}/kb/demo/index.md\` if relevant.\n\n> **From context \`ctx\`:** Read this.\n`,
     );
   });
 
@@ -543,7 +545,7 @@ describe('brief quality (ROUND3 §H)', () => {
   describe('defaults and the description', () => {
     it('every okf kind is inline-main by default: a task brings its body, headed by its description', async () => {
       const { D } = world({
-        'task/work/main.md': okf(
+        'task/work/index.md': okf(
           'work',
           'Do the work.',
           '# Work\n\n## Steps\n\n1. one\n2. two\n',
@@ -555,7 +557,7 @@ describe('brief quality (ROUND3 §H)', () => {
         [
           '## work',
           '',
-          `\`task/work\` · Task · state: Pending · \`${D}/task/work/main.md\``,
+          `\`task/work\` · Task · state: Pending · \`${D}/task/work/index.md\``,
           '',
           'Do the work.',
           '',
@@ -568,13 +570,13 @@ describe('brief quality (ROUND3 §H)', () => {
       );
       expect(manifest.segments.find((s) => s.key === 'task/work')).toMatchObject({
         mode: 'inline-main',
-        modeLabel: 'Inline main.md',
+        modeLabel: 'Inline entry',
       });
     });
 
     it('prints the description first (inline-main and inline-bundle) when the body does not say it', async () => {
       const { D } = world({
-        'kb/plain/main.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
+        'kb/plain/index.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
       });
       for (const mode of ['inline-main', 'inline-bundle']) {
         const { markdown } = await render(D, one('kb/plain', mode));
@@ -582,7 +584,7 @@ describe('brief quality (ROUND3 §H)', () => {
           [
             '## plain',
             '',
-            `\`kb/plain\` · Knowledge Base · \`${D}/kb/plain/main.md\``,
+            `\`kb/plain\` · Knowledge Base · \`${D}/kb/plain/index.md\``,
             '',
             'Alpha beta gamma.',
             '',
@@ -595,7 +597,7 @@ describe('brief quality (ROUND3 §H)', () => {
 
     it('does not repeat a description the body already contains (case and whitespace ignored)', async () => {
       const { D } = world({
-        'kb/plain/main.md': okf(
+        'kb/plain/index.md': okf(
           'plain',
           'Alpha beta gamma.',
           '# Plain\n\nIntro: ALPHA   beta\ngamma. More.\n',
@@ -608,7 +610,7 @@ describe('brief quality (ROUND3 §H)', () => {
 
     it('with includeFrontmatter the yaml block carries the description: no extra paragraph', async () => {
       const { D } = world({
-        'kb/plain/main.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
+        'kb/plain/index.md': okf('plain', 'Alpha beta gamma.', '# Plain\n\nSomething else.\n'),
       });
       const { markdown } = await render(
         D,
@@ -638,9 +640,9 @@ describe('brief quality (ROUND3 §H)', () => {
   });
 
   describe('empty sections', () => {
-    it('drops template headings with nothing under them, in main.md and concepts', async () => {
+    it('drops template headings with nothing under them, in index.md and concepts', async () => {
       const { D } = world({
-        'bug/crash/main.md': okf(
+        'bug/crash/index.md': okf(
           'crash',
           'It crashes.',
           [
@@ -668,7 +670,7 @@ describe('brief quality (ROUND3 §H)', () => {
         [
           '## crash',
           '',
-          `\`bug/crash\` · Bug · state: Pending · \`${D}/bug/crash/main.md\``,
+          `\`bug/crash\` · Bug · state: Pending · \`${D}/bug/crash/index.md\``,
           '',
           'It crashes.',
           '',
@@ -686,7 +688,7 @@ describe('brief quality (ROUND3 §H)', () => {
 
     it('keeps headings inside code fences and headings that have content', async () => {
       const { D } = world({
-        'kb/plain/main.md': okf(
+        'kb/plain/index.md': okf(
           'plain',
           'Plain.',
           '# Plain\n\n## Example\n\n```md\n## Not a heading\n```\n\n## Gone\n',
@@ -770,7 +772,7 @@ describe('brief quality (ROUND3 §H)', () => {
     ].join('\n\n');
     const linked = () =>
       world({
-        'kb/linked/main.md': okf('linked', 'Has links.', `# Linked\n\n${links}\n`),
+        'kb/linked/index.md': okf('linked', 'Has links.', `# Linked\n\n${links}\n`),
         'kb/linked/concepts/one.md': '---\ntype: Concept\n---\n\n# One\n\n[nope](./nope.md)\n',
       });
 
@@ -778,10 +780,10 @@ describe('brief quality (ROUND3 §H)', () => {
       const { D } = linked();
       const { markdown, manifest } = await render(D, one('kb/linked'));
       const expected = [
-        'kb/linked/main.md: link "ctxman:kb/gone" does not resolve (no such entry)',
-        'kb/linked/main.md: link "/concepts/missing.md" does not resolve (no such file in the bundle)',
-        'kb/linked/main.md: link "../../etc/passwd" does not resolve (points outside the bundle)',
-        'kb/linked/main.md: link "ctxman:nope" does not resolve (malformed ctxman: link)',
+        'kb/linked/index.md: link "ctxman:kb/gone" does not resolve (no such entry)',
+        'kb/linked/index.md: link "/concepts/missing.md" does not resolve (no such file in the bundle)',
+        'kb/linked/index.md: link "../../etc/passwd" does not resolve (points outside the bundle)',
+        'kb/linked/index.md: link "ctxman:nope" does not resolve (malformed ctxman: link)',
       ];
       expect(manifest.warnings.map((w) => [w.code, w.key, w.message])).toEqual(
         expected.map((message) => ['unresolved-link', 'kb/linked', message]),
@@ -874,10 +876,10 @@ describe('skill modes', () => {
     const { markdown } = await render(D, goldenRecipe());
     expect(markdown).toContain(`cp -R '${D}/skill/my-skill' .claude/skills/my-skill\n`);
     expect(markdown).toContain(
-      `See [one](<${D}/kb/demo/concepts/one.md>) and [ctxman](<${D}/kb/demo/main.md>).`,
+      `See [one](<${D}/kb/demo/concepts/one.md>) and [ctxman](<${D}/kb/demo/index.md>).`,
     );
     // inline code is not shell: the path is shown as is
-    expect(markdown).toContain(`\`${D}/kb/demo/main.md\``);
+    expect(markdown).toContain(`\`${D}/kb/demo/index.md\``);
   });
 
   it('inline: frontmatter, body with absolute links, and the other files of the skill', async () => {
@@ -1290,7 +1292,7 @@ describe('manifest', () => {
       options: {},
       via: ['ctx'],
       adhoc: false,
-      source: `${D}/kb/demo/main.md`,
+      source: `${D}/kb/demo/index.md`,
     });
     const skill = manifest.segments.find((s) => s.key === 'skill/my-skill');
     expect(skill).toMatchObject({
@@ -1338,7 +1340,7 @@ describe('manifest', () => {
       `---\ntype: Concept\n---\n${'y'.repeat(100 * 1024)}\n`,
     ]);
     const { D } = world({
-      'kb/big/main.md': '---\ntype: Knowledge Base\nname: big\ndescription: Big.\n---\n\n# Big\n',
+      'kb/big/index.md': '---\ntype: Knowledge Base\nname: big\ndescription: Big.\n---\n\n# Big\n',
       ...Object.fromEntries(big),
     });
     const { markdown, manifest } = await render(
@@ -1372,7 +1374,7 @@ describe('renderPlan (pure)', () => {
     expect(twice).toEqual(once);
     expect(Object.keys(content.items).sort()).toEqual(['kb/demo', 'skill/my-skill', 'task/do-it']);
     expect(content.targets).toEqual({
-      'kb/demo': { title: 'Demo', abs: expect.stringMatching(/kb[\\/]demo[\\/]main\.md$/) },
+      'kb/demo': { title: 'Demo', abs: expect.stringMatching(/kb[\\/]demo[\\/]index\.md$/) },
     });
   });
 });
@@ -1568,53 +1570,53 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       '',
       '### ctxman',
       '',
-      '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · `kb/ctxman/main.md`',
+      '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · `kb/ctxman/index.md`',
       '',
       '> **From context `ctxman-dev`:** Start here.',
       '',
       'What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.',
       '',
-      `See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/main.md) and the [docs](${D}/reference/astro-docs.yaml).`,
+      `See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/index.md) and the [docs](${D}/reference/astro-docs.yaml).`,
       '',
       '#### Datasets',
       '',
       '`concepts/datasets.md` · `kb/ctxman/concepts/datasets.md`',
       '',
-      'Back to [main](kb/ctxman/main.md).',
+      'Back to [entry](kb/ctxman/index.md).',
       '',
       '### astro-content-layer',
       '',
-      '`kb/astro-content-layer` · Knowledge Base · `kb/astro-content-layer/main.md`',
+      '`kb/astro-content-layer` · Knowledge Base · `kb/astro-content-layer/index.md`',
       '',
       'How Astro 7 content collections, loaders and schemas work.',
       '',
       '### astro-dev-full-reload-on-save',
       '',
-      '`rca/astro-dev-full-reload-on-save` · Root Cause Analysis · `rca/astro-dev-full-reload-on-save/main.md`',
+      '`rca/astro-dev-full-reload-on-save` · Root Cause Analysis · `rca/astro-dev-full-reload-on-save/index.md`',
       '',
       'Saving a context in the forge reloaded the whole page, because the loader watched the file.',
       '',
       '### context-inflate',
       '',
-      '`idea/context-inflate` · Idea · state: Pending · `idea/context-inflate/main.md`',
+      '`idea/context-inflate` · Idea · state: Pending · `idea/context-inflate/index.md`',
       '',
       'A tool that turns selected contexts plus user instructions into one document.',
       '',
       '### write-agents-md',
       '',
-      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/main.md`',
+      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/index.md`',
       '',
       'Write and maintain the agent guide at the repository root.',
       '',
       '### context-forge',
       '',
-      '`feature/context-forge` · Feature · state: In progress · `feature/context-forge/main.md`',
+      '`feature/context-forge` · Feature · state: In progress · `feature/context-forge/index.md`',
       '',
       'A UI at /forge to discover entries across datasets and build contexts.',
       '',
       '### ctxman-v1',
       '',
-      '`project/ctxman-v1` · Project · state: In progress · `project/ctxman-v1/main.md`',
+      '`project/ctxman-v1` · Project · state: In progress · `project/ctxman-v1/index.md`',
       '',
       'Deliver the first complete version of ctxman with ten datasets.',
       '',
@@ -1703,7 +1705,7 @@ describe('renderPlan without output stays the v1 document', () => {
     expect(md).not.toContain('## Primary repository');
     expect(md).not.toContain('## Skills');
     expect(md).not.toContain('this directory');
-    expect(md).toContain(`${w.D}${path.sep}kb${path.sep}ctxman${path.sep}main.md`);
+    expect(md).toContain(`${w.D}${path.sep}kb${path.sep}ctxman${path.sep}index.md`);
     expect(md).toContain('mkdir -p .claude/skills');
     expect(result.manifest.output).toBeUndefined();
     expect(
@@ -1797,7 +1799,7 @@ describe('renderPlan with output: working directory map', () => {
           {
             key: 'reference/rr',
             material: 'clone',
-            materialOptions: { branch: 'main', subpathOnly: true },
+            materialOptions: { branch: 'trunk', subpathOnly: true },
           },
           { key: 'kb/ctxman', material: 'copy' },
         ],
@@ -1815,7 +1817,7 @@ describe('renderPlan with output: working directory map', () => {
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
         '  lr/               symlink · Desc lr.',
-        '  rr/               git clone, sparse, branch main · primary · Desc rr.',
+        '  rr/               git clone, sparse, branch trunk · primary · Desc rr.',
         'kb/',
         '  ctxman/           copy · What ctxman is, how it is built, and how to work with i…',
         'task/',
@@ -1853,7 +1855,7 @@ describe('renderPlan with output: working directory map', () => {
     const long = 'a'.repeat(50);
     const D2 = tmp.make({
       ...seedTree(),
-      [`kb/${long}/main.md`]: `---\ntype: Knowledge Base\nname: ${long}\ndescription: Long.\n---\n\n# Long\n`,
+      [`kb/${long}/index.md`]: `---\ntype: Knowledge Base\nname: ${long}\ndescription: Long.\n---\n\n# Long\n`,
     });
     const { plan, content } = await prepare(D2, flatDir([`kb/${long}`]));
     const mp = planMaterialization({
@@ -2054,17 +2056,17 @@ describe('renderPlan with output: item segments', () => {
     );
     const md = result.markdown;
     expect(md).toContain(
-      '`kb/ctxman` · Knowledge Base · What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks. Read it before starting: @kb/ctxman/main.md',
+      '`kb/ctxman` · Knowledge Base · What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks. Read it before starting: @kb/ctxman/index.md',
     );
     expect(md).toContain(
-      '`kb/astro-content-layer` · Knowledge Base · How Astro 7 content collections, loaders and schemas work. Read `kb/astro-content-layer/main.md` if relevant.',
+      '`kb/astro-content-layer` · Knowledge Base · How Astro 7 content collections, loaders and schemas work. Read `kb/astro-content-layer/index.md` if relevant.',
     );
     expect(md).toContain(
-      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/main.md`',
+      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/index.md`',
     );
     // material none: the ctxman data path, absolute as in v1
     expect(md).toContain(
-      `\`idea/context-inflate\` · Idea · state: Pending · \`${path.join(w.D, 'idea', 'context-inflate', 'main.md')}\``,
+      `\`idea/context-inflate\` · Idea · state: Pending · \`${path.join(w.D, 'idea', 'context-inflate', 'index.md')}\``,
     );
   });
 
@@ -2075,10 +2077,10 @@ describe('renderPlan with output: item segments', () => {
       flatDir(['kb/ctxman', 'idea/context-inflate'], [{ key: 'kb/ctxman', mode: 'inline-bundle' }]),
     );
     expect(result.markdown).toContain(
-      'See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/main.md) and the [docs]',
+      'See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/index.md) and the [docs]',
     );
     expect(result.markdown).toContain('`concepts/datasets.md` · `kb/ctxman/concepts/datasets.md`');
-    expect(result.markdown).toContain('Back to [main](kb/ctxman/main.md).');
+    expect(result.markdown).toContain('Back to [entry](kb/ctxman/index.md).');
   });
 
   it('inline-main lists the other concepts under the relative bundle path', async () => {
@@ -2225,7 +2227,7 @@ describe('renderPlan with output: item segments', () => {
     );
     const md = result.markdown;
     // absolute again (not mounted), reason at the end of the segment
-    expect(md).toContain(`\`${path.join(w.D, 'kb', 'ctxman', 'main.md')}\``);
+    expect(md).toContain(`\`${path.join(w.D, 'kb', 'ctxman', 'index.md')}\``);
     expect(md).toContain('Not placed in this directory: source /x does not exist.');
     expect(md).toContain(`(under \`${path.join(w.D, 'kb', 'ctxman')}\`)`);
     expect(section(result.markdown, 'Working directory map')).not.toContain('ctxman/');
@@ -2234,7 +2236,7 @@ describe('renderPlan with output: item segments', () => {
     const w = dirWorld();
     mkdirSync(path.join(w.D, 'kb/broken'), { recursive: true });
     writeFileSync(
-      path.join(w.D, 'kb/broken/main.md'),
+      path.join(w.D, 'kb/broken/index.md'),
       '---\ntype: Knowledge Base\nname: broken\ndescription: Has a dead link.\n---\n\n# Broken\n\nSee [gone](ctxman:kb/gone) and [ctxman](ctxman:kb/ctxman).\n',
     );
     const { result } = await renderDir(w, flatDir(['kb/broken']));
@@ -2245,7 +2247,7 @@ describe('renderPlan with output: item segments', () => {
       {
         code: 'unresolved-link',
         key: 'kb/broken',
-        message: 'kb/broken/main.md: link "ctxman:kb/gone" does not resolve (no such entry)',
+        message: 'kb/broken/index.md: link "ctxman:kb/gone" does not resolve (no such entry)',
       },
     ]);
   });

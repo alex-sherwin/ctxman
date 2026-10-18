@@ -28,4 +28,4 @@ Other rules:
 * Type-only imports use `import type`, enforced by `verbatimModuleSyntax`.
 * `.ts` files never import `.astro` files.
 
-How this failure was found: [Node strip-types enum crash](/main.md).
+How this failure was found: [Node strip-types enum crash](/index.md).

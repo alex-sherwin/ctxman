@@ -220,13 +220,13 @@ describe('platformFallbacks', () => {
 });
 
 describe('buildIdeInvocation', () => {
-  const target = { root: '/data/kb/x', file: '/data/kb/x/main.md' };
+  const target = { root: '/data/kb/x', file: '/data/kb/x/index.md' };
 
   it('posix: runs the command directly with [root, file] and nothing else', () => {
     expect(buildIdeInvocation('/usr/local/bin/code', target, 'darwin')).toEqual({
       file: '/usr/local/bin/code',
-      args: ['/data/kb/x', '/data/kb/x/main.md'],
-      display: ['/usr/local/bin/code', '/data/kb/x', '/data/kb/x/main.md'],
+      args: ['/data/kb/x', '/data/kb/x/index.md'],
+      display: ['/usr/local/bin/code', '/data/kb/x', '/data/kb/x/index.md'],
     });
     expect(buildIdeInvocation('/usr/bin/code', target, 'linux').windowsVerbatimArguments).toBe(
       undefined,
@@ -252,26 +252,26 @@ describe('buildIdeInvocation', () => {
   });
 
   it('win32 + .exe: direct, no cmd.exe', () => {
-    const winTarget = { root: 'C:\\data\\kb\\x', file: 'C:\\data\\kb\\x\\main.md' };
+    const winTarget = { root: 'C:\\data\\kb\\x', file: 'C:\\data\\kb\\x\\index.md' };
     expect(buildIdeInvocation('C:\\Code\\code.exe', winTarget, 'win32', {})).toEqual({
       file: 'C:\\Code\\code.exe',
-      args: ['C:\\data\\kb\\x', 'C:\\data\\kb\\x\\main.md'],
-      display: ['C:\\Code\\code.exe', 'C:\\data\\kb\\x', 'C:\\data\\kb\\x\\main.md'],
+      args: ['C:\\data\\kb\\x', 'C:\\data\\kb\\x\\index.md'],
+      display: ['C:\\Code\\code.exe', 'C:\\data\\kb\\x', 'C:\\data\\kb\\x\\index.md'],
     });
   });
 
   it('win32 + .cmd/.bat: ComSpec with /d /s /c, one quoted command line, verbatim arguments', () => {
-    const winTarget = { root: 'C:\\data\\kb\\x y', file: 'C:\\data\\kb\\x y\\main.md' };
+    const winTarget = { root: 'C:\\data\\kb\\x y', file: 'C:\\data\\kb\\x y\\index.md' };
     const expected = {
       file: 'C:\\Windows\\System32\\cmd.exe',
       args: [
         '/d',
         '/s',
         '/c',
-        '""C:\\Code\\bin\\code.cmd" "C:\\data\\kb\\x y" "C:\\data\\kb\\x y\\main.md""',
+        '""C:\\Code\\bin\\code.cmd" "C:\\data\\kb\\x y" "C:\\data\\kb\\x y\\index.md""',
       ],
       windowsVerbatimArguments: true,
-      display: ['C:\\Code\\bin\\code.cmd', 'C:\\data\\kb\\x y', 'C:\\data\\kb\\x y\\main.md'],
+      display: ['C:\\Code\\bin\\code.cmd', 'C:\\data\\kb\\x y', 'C:\\data\\kb\\x y\\index.md'],
     };
     const env = { ComSpec: 'C:\\Windows\\System32\\cmd.exe' };
     expect(buildIdeInvocation('C:\\Code\\bin\\code.cmd', winTarget, 'win32', env)).toEqual(
@@ -314,13 +314,13 @@ describe('ideTargetFor', () => {
     });
   }
 
-  it('okf: the entry dir and main.md by default', async () => {
+  it('okf: the entry dir and index.md by default', async () => {
     const dir = dataTree();
     expect(await ideTargetFor('kb', 'demo', undefined, dir)).toEqual({
       ok: true,
       target: {
         root: path.join(dir, 'kb', 'demo'),
-        file: path.join(dir, 'kb', 'demo', 'main.md'),
+        file: path.join(dir, 'kb', 'demo', 'index.md'),
       },
     });
   });
@@ -368,7 +368,7 @@ describe('ideTargetFor', () => {
 
   it('unsafe paths are bad-path; missing entries and files are not-found', async () => {
     const dir = dataTree();
-    for (const rel of ['../main.md', '/etc/passwd', 'a\0b']) {
+    for (const rel of ['../index.md', '/etc/passwd', 'a\0b']) {
       expect(await ideTargetFor('kb', 'demo', rel, dir), rel).toMatchObject({
         ok: false,
         error: 'bad-path',
@@ -477,7 +477,7 @@ describe('launchIde', () => {
       0o755,
       `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(process.env.CTXMAN_IDE_RECORD, JSON.stringify(process.argv.slice(2)) + '\\n');\n`,
     );
-    const target = { root: dir, file: path.join(dir, 'main.md') };
+    const target = { root: dir, file: path.join(dir, 'index.md') };
     process.env.CTXMAN_IDE_RECORD = record;
     try {
       await launchIde(buildIdeInvocation(script, target, 'linux'), dir);
@@ -501,7 +501,7 @@ describe('launchIde', () => {
     async () => {
       const dir = tmp.make();
       const plain = makeFile(dir, 'plain', 0o644);
-      const target = { root: dir, file: path.join(dir, 'main.md') };
+      const target = { root: dir, file: path.join(dir, 'index.md') };
       await expect(
         launchIde(buildIdeInvocation(plain, target, 'linux'), dir),
       ).rejects.toMatchObject({

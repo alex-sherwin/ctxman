@@ -1,6 +1,12 @@
 // PURE builders for the fuse.js search index (PLAN §E.16, UI_SPEC §0.5 SearchDoc). The server
 // (src/lib/entries.ts) feeds these with collection data + raw markdown bodies; they never touch fs.
-import { OWNER_LABELS, REFERENCE_TYPE_LABELS, docUrl, entryUrl } from '../datasets/registry.ts';
+import {
+  OKF_ENTRY_FILE,
+  OWNER_LABELS,
+  REFERENCE_TYPE_LABELS,
+  docUrl,
+  entryUrl,
+} from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import type { ContextData, RecipeData, ReferenceData, SkillData } from '../datasets/schemas.ts';
 import type { SearchDoc } from './entry-summary.ts';
@@ -182,42 +188,42 @@ function basename(relPath: string): string {
 }
 
 /**
- * One SearchDoc for one markdown file of an okf bundle. `main.md` is the entry itself (id
+ * One SearchDoc for one markdown file of an okf bundle. The root `index.md` is the entry itself (id
  * `<ds>/<slug>`, path null, carries the lifecycle state); any other file is a sub-doc
  * (id `<ds>/<slug>/<path without .md>`). Title: frontmatter title, else the first `# ` heading, else
- * (main.md) frontmatter name / `entryTitle`, else the file name.
+ * (the entry) frontmatter name / `entryTitle`, else the file name.
  */
 export function okfDocToSearchDoc(a: {
   dataset: OkfDatasetId;
   slug: string;
-  /** 'main.md' | 'concepts/x.md' */
+  /** 'index.md' (the entry) | 'concepts/x.md' */
   relPath: string;
   data: Record<string, unknown>;
   body: string;
   entryTitle: string;
 }): SearchDoc {
-  const isMain = a.relPath === 'main.md';
+  const isEntry = a.relPath === OKF_ENTRY_FILE;
   const firstH1 = scanHeadings(a.body, 1)[0]?.text;
   const title =
     stringOr(a.data.title) ??
     firstH1 ??
-    (isMain ? (stringOr(a.data.name) ?? stringOr(a.entryTitle) ?? a.slug) : basename(a.relPath));
+    (isEntry ? (stringOr(a.data.name) ?? stringOr(a.entryTitle) ?? a.slug) : basename(a.relPath));
   const doc: SearchDoc = {
-    id: isMain
+    id: isEntry
       ? `${a.dataset}/${a.slug}`
       : `${a.dataset}/${a.slug}/${a.relPath.replace(/\.md$/, '')}`,
     dataset: a.dataset,
     slug: a.slug,
-    path: isMain ? null : a.relPath,
+    path: isEntry ? null : a.relPath,
     title,
     name: a.slug,
     description: stringOr(a.data.description) ?? '',
     tags: tagsOf(a.data.tags),
     headings: extractHeadings(a.body),
     body: markdownToText(a.body),
-    url: isMain ? entryUrl(a.dataset, a.slug) : docUrl(a.dataset, a.slug, a.relPath),
+    url: isEntry ? entryUrl(a.dataset, a.slug) : docUrl(a.dataset, a.slug, a.relPath),
   };
-  const state = isMain ? stringOr(a.data.state) : undefined;
+  const state = isEntry ? stringOr(a.data.state) : undefined;
   if (state !== undefined) doc.state = state;
   return doc;
 }

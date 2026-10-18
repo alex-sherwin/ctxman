@@ -29,7 +29,7 @@ export type DocDataset = OkfDatasetId | 'skill';
 export interface DocTarget {
   dataset: DocDataset;
   slug: string;
-  /** Bundle-relative posix path, e.g. 'main.md', 'SKILL.md', 'concepts/search.md'. */
+  /** Bundle-relative posix path, e.g. 'index.md', 'SKILL.md', 'concepts/search.md'. */
   path: string;
 }
 

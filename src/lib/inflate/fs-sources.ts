@@ -3,7 +3,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
+import { datasetDef, isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { DATASET_SCHEMAS, referenceSchema } from '../../datasets/schemas.ts';
 import { validate } from '../../datasets/validate.ts';
@@ -62,12 +62,12 @@ export function createFsSources(
     }
   }
 
-  /** okf `main.md` / skill `SKILL.md`: frontmatter parsed loosely, validated with the dataset schema. */
+  /** okf `index.md` / skill `SKILL.md`: frontmatter parsed loosely, validated with the dataset schema. */
   async function readFrontmatterItem(
     dataset: Exclude<LinkableDatasetId, 'reference'>,
     slug: string,
   ): Promise<ItemLookup> {
-    const file = dataset === 'skill' ? 'SKILL.md' : 'main.md';
+    const file = datasetDef(dataset).entryFile;
     const text = await readBundleText(dataset, slug, file, dataDir);
     if (text === null) return { status: 'missing' };
     let data: Record<string, unknown>;

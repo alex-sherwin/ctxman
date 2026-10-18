@@ -155,11 +155,11 @@ describe('extractHeadings', () => {
 describe('okfDocToSearchDoc', () => {
   const body = '# Context Forge\n\nBuild contexts with **links**.\n\n## Workflow\n\nPick items.';
 
-  it('builds the entry doc for main.md', () => {
+  it('builds the entry doc for index.md', () => {
     const doc = okfDocToSearchDoc({
       dataset: 'feature',
       slug: 'context-forge',
-      relPath: 'main.md',
+      relPath: 'index.md',
       data: {
         type: 'Feature',
         name: 'context-forge',
@@ -211,16 +211,29 @@ describe('okfDocToSearchDoc', () => {
     expect(Object.keys(doc)).not.toContain('state');
   });
 
-  it('builds ids/urls for reserved files (index.md, log.md)', () => {
-    const index = okfDocToSearchDoc({
+  it('builds ids/urls for the entry index.md, a nested index.md and log.md', () => {
+    const entry = okfDocToSearchDoc({
       dataset: 'rca',
       slug: 'x',
       relPath: 'index.md',
+      data: { name: 'x' },
+      body: '# Entry\n',
+      entryTitle: 'X',
+    });
+    expect(entry).toMatchObject({ id: 'rca/x', path: null, url: '/rca/x' });
+    const nested = okfDocToSearchDoc({
+      dataset: 'rca',
+      slug: 'x',
+      relPath: 'concepts/index.md',
       data: {},
       body: '# Index\n',
       entryTitle: 'X',
     });
-    expect(index).toMatchObject({ id: 'rca/x/index', path: 'index.md', url: '/rca/x/doc/index' });
+    expect(nested).toMatchObject({
+      id: 'rca/x/concepts/index',
+      path: 'concepts/index.md',
+      url: '/rca/x/doc/concepts/index',
+    });
     const log = okfDocToSearchDoc({
       dataset: 'rca',
       slug: 'x',
@@ -242,20 +255,20 @@ describe('okfDocToSearchDoc', () => {
         body: text,
         entryTitle: 'Entry T',
       }).title;
-    expect(make('main.md', { title: 'FM', name: 'n' }, '# H1')).toBe('FM');
-    expect(make('main.md', { name: 'n' }, 'intro\n\n# H1\n')).toBe('H1');
-    expect(make('main.md', { name: 'n' }, '## only h2')).toBe('n');
-    expect(make('main.md', {}, 'no heading')).toBe('Entry T');
+    expect(make('index.md', { title: 'FM', name: 'n' }, '# H1')).toBe('FM');
+    expect(make('index.md', { name: 'n' }, 'intro\n\n# H1\n')).toBe('H1');
+    expect(make('index.md', { name: 'n' }, '## only h2')).toBe('n');
+    expect(make('index.md', {}, 'no heading')).toBe('Entry T');
     expect(make('concepts/deep-dive.md', { name: 'ignored' }, 'no heading')).toBe('deep-dive');
     expect(make('concepts/x.md', { title: '  ' }, '# Fallback')).toBe('Fallback');
-    expect(make('main.md', {}, '```\n# in code\n```')).toBe('Entry T');
+    expect(make('index.md', {}, '```\n# in code\n```')).toBe('Entry T');
   });
 
   it('uses safe defaults for missing or malformed data', () => {
     const doc = okfDocToSearchDoc({
       dataset: 'idea',
       slug: 'i',
-      relPath: 'main.md',
+      relPath: 'index.md',
       data: { tags: ['ok', 7], description: 5 },
       body: '',
       entryTitle: '',
@@ -289,7 +302,7 @@ describe('skillToSearchDoc', () => {
     const doc = skillToSearchDoc(
       'okf-authoring',
       data,
-      '# OKF authoring\n\n## Steps\n\nWrite `main.md`.',
+      '# OKF authoring\n\n## Steps\n\nWrite `index.md`.',
     );
     expect(doc).toEqual({
       id: 'skill/okf-authoring',
@@ -301,7 +314,7 @@ describe('skillToSearchDoc', () => {
       description: 'Author OKF bundles',
       tags: [],
       headings: ['OKF authoring', 'Steps'],
-      body: 'OKF authoring Steps Write main.md.',
+      body: 'OKF authoring Steps Write index.md.',
       url: '/skill/okf-authoring',
     });
   });
@@ -396,7 +409,7 @@ describe('contextToSearchDoc', () => {
           notes: 'Start with the **overview**.\n\n- datasets\n- search\n',
         },
         { dataset: 'task', slug: 'write-agents-md' },
-        { dataset: 'skill', slug: 'okf-authoring', notes: 'Use `main.md` rules.' },
+        { dataset: 'skill', slug: 'okf-authoring', notes: 'Use `index.md` rules.' },
       ],
     });
     expect(contextToSearchDoc('ctxman-dev', data)).toEqual({
@@ -413,7 +426,7 @@ describe('contextToSearchDoc', () => {
         'Everything for developing ctxman',
         'kb/ctxman Start with the overview. datasets search',
         'task/write-agents-md',
-        'skill/okf-authoring Use main.md rules.',
+        'skill/okf-authoring Use index.md rules.',
       ].join('\n'),
       url: '/context/ctxman-dev',
     });

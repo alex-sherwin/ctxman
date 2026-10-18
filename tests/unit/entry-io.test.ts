@@ -39,13 +39,13 @@ const SKILL = '---\nname: my-skill\ndescription: A skill.\n---\n\n# My skill\n';
 
 function tree(): { dir: string; read: (rel: string) => string } {
   const dir = tmp.make({
-    'task/do-it/main.md': TASK,
-    'task/bare/main.md': BARE,
-    'project/proj/main.md':
+    'task/do-it/index.md': TASK,
+    'task/bare/index.md': BARE,
+    'project/proj/index.md':
       '---\ntype: Project\nname: proj\ndescription: P.\nstate: pending\n---\n',
-    'kb/notes/main.md': '---\ntype: Knowledge Base\nname: notes\ndescription: N.\n---\n',
+    'kb/notes/index.md': '---\ntype: Knowledge Base\nname: notes\ndescription: N.\n---\n',
     'skill/my-skill/SKILL.md': SKILL,
-    'task/nofm/main.md': '# no frontmatter\n',
+    'task/nofm/index.md': '# no frontmatter\n',
   });
   return { dir, read: (rel) => readFileSync(path.join(dir, ...rel.split('/')), 'utf8') };
 }
@@ -87,14 +87,14 @@ describe('readEntry', () => {
       generated: { by: 'process:test', at: '2026-10-17T11:20:00.000Z' },
     });
     expect(entry.lastModified).toBe(
-      statSync(path.join(dir, 'task', 'do-it', 'main.md')).mtime.toISOString(),
+      statSync(path.join(dir, 'task', 'do-it', 'index.md')).mtime.toISOString(),
     );
     expect(entry.issues).toEqual([]);
   });
 
   it('reports schema issues without throwing', async () => {
     const dir = tmp.make({
-      'task/bad/main.md': '---\ntype: Task\nname: other\ndescription: d\nstate: done\n---\n',
+      'task/bad/index.md': '---\ntype: Task\nname: other\ndescription: d\nstate: done\n---\n',
     });
     const entry = await readEntry('task', 'bad', dir);
     expect(entry.issues.map((i) => i.path).sort()).toEqual(['name', 'state']);
@@ -118,33 +118,43 @@ describe('readEntry', () => {
 });
 
 describe('patchEntry: single keys, every other byte untouched', () => {
+  it('keeps okf_version (first key) and the navigation sections of the entry index.md', async () => {
+    const source =
+      '---\nokf_version: "0.2"\ntype: Task\nname: nav\ndescription: d\nstate: pending\n---\n\n# Nav\n\n## Concepts\n\n* [A](/concepts/a.md) - a\n';
+    const dir = tmp.make({ 'task/nav/index.md': source });
+    await patchEntry('task', 'nav', { state: 'complete' }, dir);
+    expect(readFileSync(path.join(dir, 'task', 'nav', 'index.md'), 'utf8')).toBe(
+      source.replace('state: pending', 'state: complete'),
+    );
+  });
+
   it('state replaces only the state line', async () => {
     const { dir, read } = tree();
     const result = await patchEntry('task', 'do-it', { state: 'pending' }, dir);
     expect(result.changed).toBe(true);
     expect(result.frontmatter.state).toBe('pending');
-    expect(read('task/do-it/main.md')).toBe(TASK.replace('state: in-progress', 'state: pending'));
+    expect(read('task/do-it/index.md')).toBe(TASK.replace('state: in-progress', 'state: pending'));
     expect(result.lastModified).toBe(
-      statSync(path.join(dir, 'task', 'do-it', 'main.md')).mtime.toISOString(),
+      statSync(path.join(dir, 'task', 'do-it', 'index.md')).mtime.toISOString(),
     );
   });
 
   it('title is trimmed and newlines collapsed; null / blank delete it', async () => {
     const { dir, read } = tree();
     await patchEntry('task', 'do-it', { title: '  A  new\n  title ' }, dir);
-    expect(read('task/do-it/main.md')).toBe(TASK.replace('title: Do it', 'title: A  new title'));
+    expect(read('task/do-it/index.md')).toBe(TASK.replace('title: Do it', 'title: A  new title'));
     await patchEntry('task', 'do-it', { title: null }, dir);
-    expect(read('task/do-it/main.md')).toBe(TASK.replace('title: Do it\n', ''));
+    expect(read('task/do-it/index.md')).toBe(TASK.replace('title: Do it\n', ''));
     await patchEntry('task', 'bare', { title: 'Bare title' }, dir);
-    expect(read('task/bare/main.md')).toContain('name: bare\ntitle: Bare title\ndescription:');
+    expect(read('task/bare/index.md')).toContain('name: bare\ntitle: Bare title\ndescription:');
     await patchEntry('task', 'bare', { title: '   ' }, dir);
-    expect(read('task/bare/main.md')).toBe(BARE);
+    expect(read('task/bare/index.md')).toBe(BARE);
   });
 
   it('description replaces a folded scalar as one line', async () => {
     const { dir, read } = tree();
     await patchEntry('task', 'do-it', { description: 'Short one.\nSecond line.' }, dir);
-    expect(read('task/do-it/main.md')).toBe(
+    expect(read('task/do-it/index.md')).toBe(
       TASK.replace(
         'description: >-\n  Do the thing,\n  folded.\n',
         'description: Short one. Second line.\n',
@@ -162,41 +172,41 @@ describe('patchEntry: single keys, every other byte untouched', () => {
   it('tags are normalized, deduplicated and keep the flow style', async () => {
     const { dir, read } = tree();
     await patchEntry('task', 'do-it', { tags: [' Docs ', 'agent notes', 'docs'] }, dir);
-    expect(read('task/do-it/main.md')).toBe(
+    expect(read('task/do-it/index.md')).toBe(
       TASK.replace('tags: [a,  b]', 'tags: [docs, agent-notes]'),
     );
     await patchEntry('task', 'do-it', { tags: [] }, dir);
-    expect(read('task/do-it/main.md')).toContain('\ntags: []\n');
+    expect(read('task/do-it/index.md')).toContain('\ntags: []\n');
     const bad = await failure(patchEntry('task', 'do-it', { tags: ['ok', 'no!'] }, dir));
     expect(bad.issues).toEqual([{ path: 'tags.1', message: expect.stringContaining('"no!"') }]);
     expect((await failure(patchEntry('task', 'do-it', { tags: 'a' }, dir))).code).toBe('invalid');
     // a new tags key is added after description (no state on a kb entry)
     await patchEntry('kb', 'notes', { tags: ['x'] }, dir);
-    expect(read('kb/notes/main.md')).toContain('description: N.\ntags: [x]\n');
+    expect(read('kb/notes/index.md')).toContain('description: N.\ntags: [x]\n');
   });
 
   it('stale_after is written as a plain date; null and blank delete it', async () => {
     const { dir, read } = tree();
     await patchEntry('task', 'do-it', { stale_after: '2027-03-04' }, dir);
-    expect(read('task/do-it/main.md')).toBe(TASK.replace('2099-01-01', '2027-03-04'));
+    expect(read('task/do-it/index.md')).toBe(TASK.replace('2099-01-01', '2027-03-04'));
     expect((await readEntry('task', 'do-it', dir)).frontmatter.stale_after).toBe('2027-03-04');
     await patchEntry('task', 'do-it', { stale_after: null }, dir);
-    expect(read('task/do-it/main.md')).not.toContain('stale_after');
+    expect(read('task/do-it/index.md')).not.toContain('stale_after');
     for (const bad of ['2027-02-30', '2027-1-1', 'soon', 7]) {
       const error = await failure(patchEntry('task', 'do-it', { stale_after: bad }, dir));
       expect(error.issues[0]?.path, String(bad)).toBe('stale_after');
     }
     await patchEntry('task', 'do-it', { stale_after: '2028-01-01' }, dir);
     await patchEntry('task', 'do-it', { stale_after: '' }, dir);
-    expect(read('task/do-it/main.md')).not.toContain('stale_after');
+    expect(read('task/do-it/index.md')).not.toContain('stale_after');
   });
 
   it('status is draft | stable | deprecated or null', async () => {
     const { dir, read } = tree();
     await patchEntry('kb', 'notes', { status: 'stable' }, dir);
-    expect(read('kb/notes/main.md')).toContain('status: stable');
+    expect(read('kb/notes/index.md')).toContain('status: stable');
     await patchEntry('kb', 'notes', { status: null }, dir);
-    expect(read('kb/notes/main.md')).not.toContain('status');
+    expect(read('kb/notes/index.md')).not.toContain('status');
     expect((await failure(patchEntry('kb', 'notes', { status: 'done' }, dir))).code).toBe(
       'invalid',
     );
@@ -210,7 +220,7 @@ describe('patchEntry: single keys, every other byte untouched', () => {
       { state: 'in-progress', tags: ['x'], title: 'T', stale_after: '2027-01-01' },
       dir,
     );
-    expect(read('task/bare/main.md')).toBe(
+    expect(read('task/bare/index.md')).toBe(
       '---\ntype: Task\nname: bare\ntitle: T\ndescription: A bare task.\nstate: in-progress\ntags: [x]\nstale_after: 2027-01-01\n---\n\n# Bare\n',
     );
     expect(result.frontmatter).toMatchObject({ state: 'in-progress', tags: ['x'], title: 'T' });
@@ -228,7 +238,7 @@ describe('patchEntry: links', () => {
       { addLinks: [link('kb', 'notes'), { dataset: 'task', slug: 'do-it', rel: 'depends-on' }] },
       dir,
     );
-    expect(read('task/bare/main.md')).toBe(
+    expect(read('task/bare/index.md')).toBe(
       BARE.replace(
         'state: pending\n',
         'state: pending\nlinks:\n  - dataset: kb\n    slug: notes\n    rel: related\n  - dataset: task\n    slug: do-it\n    rel: depends-on\n',
@@ -288,7 +298,7 @@ describe('patchEntry: links', () => {
     );
     expect(last.changed).toBe(true);
     expect(last.frontmatter).not.toHaveProperty('links');
-    expect(read('project/proj/main.md')).toBe(
+    expect(read('project/proj/index.md')).toBe(
       '---\ntype: Project\nname: proj\ndescription: P.\nstate: pending\n---\n',
     );
   });
@@ -359,7 +369,7 @@ describe('patchEntry: links', () => {
 describe('patchEntry: validation, nothing written', () => {
   it('rejects keys that do not exist or do not apply to the dataset', async () => {
     const { dir, read } = tree();
-    const before = read('task/do-it/main.md');
+    const before = read('task/do-it/index.md');
     const unknown = await failure(patchEntry('task', 'do-it', { nope: 1 }, dir));
     expect(unknown.issues).toEqual([{ path: 'nope', message: 'unexpected property' }]);
     expect(
@@ -378,25 +388,25 @@ describe('patchEntry: validation, nothing written', () => {
       ).code,
     ).toBe('invalid');
     expect((await failure(patchEntry('task', 'do-it', [], dir))).code).toBe('invalid');
-    expect(read('task/do-it/main.md')).toBe(before);
+    expect(read('task/do-it/index.md')).toBe(before);
   });
 
   it('rejects a state that is not a lifecycle state of the dataset', async () => {
     const { dir, read } = tree();
-    const before = read('task/do-it/main.md');
+    const before = read('task/do-it/index.md');
     for (const state of ['done', 'fixed', 5, null]) {
       const error = await failure(patchEntry('task', 'do-it', { state }, dir));
       expect(error.issues[0]?.path, String(state)).toBe('state');
     }
-    expect(read('task/do-it/main.md')).toBe(before);
+    expect(read('task/do-it/index.md')).toBe(before);
   });
 
   it('refuses to write when the patched frontmatter still fails the schema', async () => {
     const dir = tmp.make({
-      'task/odd/main.md':
+      'task/odd/index.md':
         '---\ntype: Task\nname: odd\ndescription: d\nstate: pending\ntags: 5\n---\n',
     });
-    const file = path.join(dir, 'task', 'odd', 'main.md');
+    const file = path.join(dir, 'task', 'odd', 'index.md');
     const before = readFileSync(file, 'utf8');
     const error = await failure(patchEntry('task', 'odd', { state: 'complete' }, dir));
     expect(error.code).toBe('invalid');
@@ -406,7 +416,7 @@ describe('patchEntry: validation, nothing written', () => {
 
   it('can repair an invalid file when the patch fixes every problem', async () => {
     const dir = tmp.make({
-      'task/odd/main.md': '---\ntype: Task\nname: odd\ndescription: d\nstate: done\n---\n',
+      'task/odd/index.md': '---\ntype: Task\nname: odd\ndescription: d\nstate: done\n---\n',
     });
     const result = await patchEntry('task', 'odd', { state: 'complete' }, dir);
     expect(result.changed).toBe(true);
@@ -415,9 +425,9 @@ describe('patchEntry: validation, nothing written', () => {
 
   it('answers invalid-file for a missing, broken or non-mapping frontmatter and not-found for no file', async () => {
     const dir = tmp.make({
-      'task/nofm/main.md': '# nothing\n',
-      'task/dup/main.md': '---\ntype: Task\nname: dup\nname: dup\ndescription: d\n---\n',
-      'task/list/main.md': '---\n- a\n---\n',
+      'task/nofm/index.md': '# nothing\n',
+      'task/dup/index.md': '---\ntype: Task\nname: dup\nname: dup\ndescription: d\n---\n',
+      'task/list/index.md': '---\n- a\n---\n',
     });
     for (const slug of ['nofm', 'dup', 'list']) {
       const error = await failure(patchEntry('task', slug, { state: 'pending' }, dir));
@@ -445,7 +455,7 @@ describe('patchEntry: validation, nothing written', () => {
 describe('patchEntry: no-op and conflicts', () => {
   it('writes nothing when the patch equals the current frontmatter', async () => {
     const { dir, read } = tree();
-    const file = path.join(dir, 'task', 'do-it', 'main.md');
+    const file = path.join(dir, 'task', 'do-it', 'index.md');
     const old = new Date('2026-01-02T03:04:05.678Z');
     utimesSync(file, old, old);
     const result = await patchEntry(
@@ -463,12 +473,12 @@ describe('patchEntry: no-op and conflicts', () => {
     expect(result.changed).toBe(false);
     expect(result.lastModified).toBe(old.toISOString());
     expect(statSync(file).mtime.toISOString()).toBe(old.toISOString());
-    expect(read('task/do-it/main.md')).toBe(TASK);
+    expect(read('task/do-it/index.md')).toBe(TASK);
   });
 
   it('ifUnmodifiedSince must equal the file mtime', async () => {
     const { dir } = tree();
-    const file = path.join(dir, 'task', 'do-it', 'main.md');
+    const file = path.join(dir, 'task', 'do-it', 'index.md');
     const stamp = new Date('2026-05-06T07:08:09.123Z');
     utimesSync(file, stamp, stamp);
 
@@ -513,7 +523,7 @@ describe('patchEntry: no-op and conflicts', () => {
 
   it('keeps the file mode', async () => {
     const { dir } = tree();
-    const file = path.join(dir, 'task', 'bare', 'main.md');
+    const file = path.join(dir, 'task', 'bare', 'index.md');
     chmodSync(file, 0o600);
     await patchEntry('task', 'bare', { state: 'pending' }, dir);
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
@@ -535,7 +545,7 @@ describe('patchEntry: the per-file lock serializes concurrent patches', () => {
 
   it('many concurrent addLinks lose no link', async () => {
     const dir = tmp.make({
-      'project/proj/main.md':
+      'project/proj/index.md':
         '---\ntype: Project\nname: proj\ndescription: P.\nstate: pending\n---\n',
     });
     const slugs = Array.from({ length: 15 }, (_, i) => `t-${i}`);
@@ -557,9 +567,9 @@ describe('patchEntry: the per-file lock serializes concurrent patches', () => {
     expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
   });
 
-  it('shares the lock with the doc editor: a PATCH and a PUT of the same main.md cannot both pass the mtime guard', async () => {
+  it('shares the lock with the doc editor: a PATCH and a PUT of the same index.md cannot both pass the mtime guard', async () => {
     const { dir } = tree();
-    const file = path.join(dir, 'task', 'bare', 'main.md');
+    const file = path.join(dir, 'task', 'bare', 'index.md');
     const old = new Date('2026-01-02T03:04:05.000Z');
     utimesSync(file, old, old);
     const base = old.toISOString();
@@ -568,7 +578,7 @@ describe('patchEntry: the per-file lock serializes concurrent patches', () => {
       writeDoc(
         'task',
         'bare',
-        'main.md',
+        'index.md',
         { markdown: `${BARE}\nEdited.\n`, ifUnmodifiedSince: base },
         dir,
       ),

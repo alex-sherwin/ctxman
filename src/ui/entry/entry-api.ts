@@ -13,7 +13,7 @@ const seg = encodeURIComponent;
 export interface EntryRead {
   /** JSON-safe frontmatter exactly as on disk (a date is `YYYY-MM-DD`). */
   frontmatter: Record<string, unknown>;
-  /** ISO mtime of main.md / SKILL.md: the `ifUnmodifiedSince` base. */
+  /** ISO mtime of index.md / SKILL.md: the `ifUnmodifiedSince` base. */
   lastModified: string;
   issues: { path: string; message: string }[];
 }

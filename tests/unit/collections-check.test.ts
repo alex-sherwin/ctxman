@@ -18,8 +18,8 @@ describe('checkCollections', () => {
   it('passes a clean data tree and counts every collection file', async () => {
     const result = await checkCollections(tmp.make(validDataTree()));
     expect(result.findings).toEqual([]);
-    // kb: 4 md; task: 2 md; skill: SKILL.md; reference + context + recipe yaml
-    expect(result.filesChecked).toBe(10);
+    // kb: 3 md; task: 1 md; skill: SKILL.md; reference + context + recipe yaml
+    expect(result.filesChecked).toBe(8);
   });
 
   it('treats a missing or empty data dir as clean', async () => {
@@ -32,8 +32,8 @@ describe('checkCollections', () => {
 
   it('okf entries: schema issues (all of them) and name mismatch', async () => {
     const dir = tmp.make({
-      'idea/oops/main.md': '---\ntype: Idea\nname: different\nstate: done\n---\n',
-      'bug/fine/main.md': '---\ntype: Bug\nname: fine\ndescription: d\nstate: fixed\n---\n',
+      'idea/oops/index.md': '---\ntype: Idea\nname: different\nstate: done\n---\n',
+      'bug/fine/index.md': '---\ntype: Bug\nname: fine\ndescription: d\nstate: fixed\n---\n',
     });
     const { findings } = await checkCollections(dir);
     expect(ruleIds(findings)).toEqual(['collections/name-mismatch', 'collections/schema']);
@@ -41,18 +41,18 @@ describe('checkCollections', () => {
     expect(schema).toHaveLength(2);
     expect(schema.some((m) => m.startsWith('description:'))).toBe(true);
     expect(schema.some((m) => m.startsWith('state:'))).toBe(true);
-    expect(findings.every((f) => f.file === 'idea/oops/main.md')).toBe(true);
+    expect(findings.every((f) => f.file === 'idea/oops/index.md')).toBe(true);
   });
 
   it('okf entries: missing or broken frontmatter is a schema error', async () => {
     const dir = tmp.make({
-      'kb/plain/main.md': '# no frontmatter\n',
-      'kb/broken/main.md': '---\ntype: a: b\n---\n',
+      'kb/plain/index.md': '# no frontmatter\n',
+      'kb/broken/index.md': '---\ntype: a: b\n---\n',
     });
     const { findings } = await checkCollections(dir);
     expect(findings.map((f) => [f.file, f.rule, f.severity])).toEqual([
-      ['kb/broken/main.md', 'collections/schema', 'error'],
-      ['kb/plain/main.md', 'collections/schema', 'error'],
+      ['kb/broken/index.md', 'collections/schema', 'error'],
+      ['kb/plain/index.md', 'collections/schema', 'error'],
     ]);
   });
 

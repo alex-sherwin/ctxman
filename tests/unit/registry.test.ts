@@ -65,7 +65,7 @@ describe('dataset registry', () => {
     }
   });
 
-  it('gives every okf dataset an okfType and main.md as entry file', () => {
+  it('gives every okf dataset an okfType and index.md as entry file', () => {
     expect([...OKF_DATASET_IDS]).toEqual([
       'kb',
       'rca',
@@ -78,7 +78,7 @@ describe('dataset registry', () => {
     for (const id of OKF_DATASET_IDS) {
       const def = datasetDef(id);
       expect(def.kind).toBe('okf');
-      expect(def.entryFile).toBe('main.md');
+      expect(def.entryFile).toBe('index.md');
       expect(def.okfType, id).toBeTruthy();
     }
     expect(DATASETS.filter((d) => d.kind === 'okf').map((d) => d.id)).toEqual([...OKF_DATASET_IDS]);

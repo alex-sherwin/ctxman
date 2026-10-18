@@ -158,17 +158,17 @@ try {
 
     let markdown = '';
     let lastModified: unknown;
-    await check('GET /api/doc/kb/ctxman/main.md returns markdown and lastModified', async () => {
+    await check('GET /api/doc/kb/ctxman/index.md returns markdown and lastModified', async () => {
       const body = await getJson<{ markdown?: unknown; lastModified?: unknown }>(
-        '/api/doc/kb/ctxman/main.md',
+        '/api/doc/kb/ctxman/index.md',
       );
       assert(typeof body.markdown === 'string' && body.markdown.length > 0, 'no markdown');
       assert(body.lastModified !== undefined, 'no lastModified');
       markdown = body.markdown;
       lastModified = body.lastModified;
     });
-    await check('PUT /api/doc/kb/ctxman/main.md with the browser Origin -> 200', async () => {
-      const res = await sendJson('PUT', '/api/doc/kb/ctxman/main.md', {
+    await check('PUT /api/doc/kb/ctxman/index.md with the browser Origin -> 200', async () => {
+      const res = await sendJson('PUT', '/api/doc/kb/ctxman/index.md', {
         markdown,
         ifUnmodifiedSince: lastModified,
       });
@@ -177,7 +177,7 @@ try {
     await check('PUT with a foreign Origin -> 403', async () => {
       const res = await sendJson(
         'PUT',
-        '/api/doc/kb/ctxman/main.md',
+        '/api/doc/kb/ctxman/index.md',
         { markdown, ifUnmodifiedSince: lastModified },
         'http://evil.test',
       );

@@ -1,4 +1,4 @@
-// NODE (fs): the entry index. One scan of every okf `main.md` / skill `SKILL.md` (frontmatter, schema issues,
+// NODE (fs): the entry index. One scan of every okf `index.md` / skill `SKILL.md` (frontmatter, schema issues,
 // structured relations) and of every `.md` body of those directories (`ctxman:` mentions), cached per entry
 // directory by the (mtimeMs, size) of its files. relations.ts (PURE) builds the link graph from it; entries.ts
 // builds list/detail summaries from it. Spec: plans/ROUND3_SPEC.md §C.
@@ -37,7 +37,7 @@ export interface Mention {
 export interface IndexedEntry {
   dataset: IndexedDataset;
   slug: string;
-  /** Data-dir-relative posix path of the entry file: 'task/x/main.md' | 'skill/x/SKILL.md'. */
+  /** Data-dir-relative posix path of the entry file: 'task/x/index.md' | 'skill/x/SKILL.md'. */
   file: string;
   /** `parseFrontmatterLoose(...).data` (timestamp tag, like astro); {} when unparseable. */
   data: Record<string, unknown>;
@@ -52,7 +52,7 @@ export interface IndexedEntry {
   relations: EntryLink[];
   /**
    * `ctxman:` links in every .md of the directory (frontmatter excluded, code masked, images skipped), targets in
-   * LINKABLE_DATASETS, links to the entry itself skipped; main.md first, then the other files in walk order.
+   * LINKABLE_DATASETS, links to the entry itself skipped; the entry first, then the other files in walk order.
    */
   mentions: Mention[];
   /** Newest mtime of any file of the directory (dot names skipped): the same value as `lastModifiedOf(dir)`. */
@@ -262,7 +262,7 @@ async function buildEntry(
 ): Promise<IndexedEntry | null> {
   const { dataset, slug } = candidate;
   const markdown = stats.filter((s) => s.rel.endsWith('.md'));
-  // main.md / SKILL.md first, then the rest in walk order (mention order).
+  // index.md / SKILL.md first, then the rest in walk order (mention order).
   const ordered = [
     ...markdown.filter((s) => s.rel === entryFile),
     ...markdown.filter((s) => s.rel !== entryFile),

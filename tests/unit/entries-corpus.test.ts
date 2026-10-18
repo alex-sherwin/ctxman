@@ -54,6 +54,14 @@ describe('entries.ts on the seed corpus', () => {
     expect(doc?.relPath).toBe('concepts/search.md');
   });
 
+  it('serves the entry index.md only as the entry page, a nested index.md as a doc', async () => {
+    expect(await getDocDetail('kb', 'ctxman', 'index')).toBeNull();
+    writeTree(dir, { 'kb/ctxman/concepts/nested/index.md': '# Nested nav\n' });
+    expect((await getDocDetail('kb', 'ctxman', 'concepts/nested/index'))?.relPath).toBe(
+      'concepts/nested/index.md',
+    );
+  });
+
   it('shows a new concept on the very next request (no content layer lag)', async () => {
     writeTree(dir, {
       'kb/ctxman/concepts/fresh-one.md':
@@ -72,7 +80,7 @@ describe('entries.ts on the seed corpus', () => {
     for (const ds of ['kb', 'task', 'skill', 'reference', 'context', 'recipe']) {
       expect(datasets.has(ds as never), ds).toBe(true);
     }
-    // index.md and log.md never enter the corpus; main.md only as the entry itself
+    // index.md and log.md never enter the corpus; index.md only as the entry itself
     expect(docs.some((d) => /\/(index|log)$/.test(d.id))).toBe(false);
     expect(docs.filter((d) => d.id === 'kb/ctxman')).toHaveLength(1);
   });

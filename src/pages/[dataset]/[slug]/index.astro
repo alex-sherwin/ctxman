@@ -170,7 +170,7 @@ const tools =
             client:only="react"
             dataset={detail.kind === 'skill' ? 'skill' : (def.id as OkfDatasetId)}
             slug={slug}
-            path={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+            path={def.entryFile}
             previewId="cx-doc-preview"
             initialEdit={edit}
           >

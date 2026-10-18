@@ -210,7 +210,12 @@ describe('mount: URL and saved run', () => {
         stdout: 'Created',
         stderr: '',
         durationMs: 5,
-        created: { dataset: 'idea', slug: 'later', path: 'idea/later/main.md', url: '/idea/later' },
+        created: {
+          dataset: 'idea',
+          slug: 'later',
+          path: 'idea/later/index.md',
+          url: '/idea/later',
+        },
         follow: true,
         followUntil: Date.now() + 10_000,
       }),

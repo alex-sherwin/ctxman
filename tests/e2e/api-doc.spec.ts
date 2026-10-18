@@ -57,15 +57,15 @@ test.afterAll(async () => {
   await settleDevReload();
 });
 
-test('GET main.md returns path, markdown, lastModified, bytes and no warnings', async ({
+test('GET index.md returns path, markdown, lastModified, bytes and no warnings', async ({
   request,
 }) => {
-  const response = await request.get(docUrl('main.md'));
+  const response = await request.get(docUrl('index.md'));
   expect(response.status()).toBe(200);
   expect(response.headers()['cache-control']).toBe('no-store');
   const body = (await response.json()) as DocBody;
-  expect(body.path).toBe('main.md');
-  expect(body.markdown).toBe(readFileSync(path.join(entryDir, 'main.md'), 'utf8'));
+  expect(body.path).toBe('index.md');
+  expect(body.markdown).toBe(readFileSync(path.join(entryDir, 'index.md'), 'utf8'));
   expect(body.bytes).toBe(Buffer.byteLength(body.markdown));
   expect(Number.isNaN(Date.parse(body.lastModified))).toBe(false);
   expect(body.warnings).toEqual([]);
@@ -74,60 +74,60 @@ test('GET main.md returns path, markdown, lastModified, bytes and no warnings', 
 test('PUT saves the exact text, advances lastModified and answers without the markdown', async ({
   request,
 }) => {
-  const before = (await (await request.get(docUrl('main.md'))).json()) as DocBody;
+  const before = (await (await request.get(docUrl('index.md'))).json()) as DocBody;
   const text = `${before.markdown}\nSaved by the e2e doc spec.\r\n`;
-  const response = await request.put(docUrl('main.md'), {
+  const response = await request.put(docUrl('index.md'), {
     data: { markdown: text, ifUnmodifiedSince: before.lastModified },
   });
   expect(response.status()).toBe(200);
   const body = (await response.json()) as Record<string, unknown>;
   expect(Object.keys(body).sort()).toEqual(['bytes', 'lastModified', 'path', 'warnings']);
-  expect(body.path).toBe('main.md');
+  expect(body.path).toBe('index.md');
   expect(body.bytes).toBe(Buffer.byteLength(text));
   expect(Date.parse(body.lastModified as string)).toBeGreaterThan(Date.parse(before.lastModified));
-  expect(readFileSync(path.join(entryDir, 'main.md'), 'utf8')).toBe(text);
+  expect(readFileSync(path.join(entryDir, 'index.md'), 'utf8')).toBe(text);
   expect(body.warnings).toEqual([]);
 });
 
 test('PUT with a stale lastModified is 409 conflict with the current lastModified', async ({
   request,
 }) => {
-  const first = (await (await request.get(docUrl('main.md'))).json()) as DocBody;
-  const saved = await request.put(docUrl('main.md'), {
+  const first = (await (await request.get(docUrl('index.md'))).json()) as DocBody;
+  const saved = await request.put(docUrl('index.md'), {
     data: { markdown: `${first.markdown}one more\n`, ifUnmodifiedSince: first.lastModified },
   });
   expect(saved.status()).toBe(200);
   const current = ((await saved.json()) as DocBody).lastModified;
 
-  const stale = await request.put(docUrl('main.md'), {
+  const stale = await request.put(docUrl('index.md'), {
     data: { markdown: 'lost update\n', ifUnmodifiedSince: first.lastModified },
   });
   expect(stale.status()).toBe(409);
   const body = await errorOf(stale);
   expect(body.error).toBe('conflict');
   expect(body.lastModified).toBe(current);
-  expect(readFileSync(path.join(entryDir, 'main.md'), 'utf8')).toBe(`${first.markdown}one more\n`);
+  expect(readFileSync(path.join(entryDir, 'index.md'), 'utf8')).toBe(`${first.markdown}one more\n`);
 
   // Without ifUnmodifiedSince the write is unconditional.
-  const forced = await request.put(docUrl('main.md'), { data: { markdown: first.markdown } });
+  const forced = await request.put(docUrl('index.md'), { data: { markdown: first.markdown } });
   expect(forced.status()).toBe(200);
 });
 
 test('PUT with invalid frontmatter still saves and returns validator warnings', async ({
   request,
 }) => {
-  const current = (await (await request.get(docUrl('main.md'))).json()) as DocBody;
+  const current = (await (await request.get(docUrl('index.md'))).json()) as DocBody;
   const bad = current.markdown.replace(/^state: .*$/m, 'state: nope');
   expect(bad).not.toBe(current.markdown);
-  const response = await request.put(docUrl('main.md'), { data: { markdown: bad } });
+  const response = await request.put(docUrl('index.md'), { data: { markdown: bad } });
   expect(response.status()).toBe(200);
   const body = (await response.json()) as DocBody;
   expect(body.warnings.map((w) => w.rule)).toContain('okf/entry-schema');
-  expect(body.warnings.every((w) => w.file === `task/${name}/main.md`)).toBe(true);
-  expect(readFileSync(path.join(entryDir, 'main.md'), 'utf8')).toBe(bad);
+  expect(body.warnings.every((w) => w.file === `task/${name}/index.md`)).toBe(true);
+  expect(readFileSync(path.join(entryDir, 'index.md'), 'utf8')).toBe(bad);
 
   // Restore a valid entry file.
-  const fixed = await request.put(docUrl('main.md'), { data: { markdown: current.markdown } });
+  const fixed = await request.put(docUrl('index.md'), { data: { markdown: current.markdown } });
   expect(((await fixed.json()) as DocBody).warnings).toEqual([]);
 });
 
@@ -163,7 +163,7 @@ test('missing file or entry is 404 not-found; no file is created by PUT', async 
   const missing = await request.get(docUrl('concepts/nope.md'));
   expect(missing.status()).toBe(404);
   expect((await errorOf(missing)).error).toBe('not-found');
-  const noEntry = await request.get(docUrl('main.md', 'task', 'no-such-entry-here'));
+  const noEntry = await request.get(docUrl('index.md', 'task', 'no-such-entry-here'));
   expect(noEntry.status()).toBe(404);
   const put = await request.put(docUrl('concepts/nope.md'), { data: { markdown: 'x' } });
   expect(put.status()).toBe(404);
@@ -174,7 +174,7 @@ test('bad dataset and bad slug are 400', async ({ request }) => {
   const dataset = await request.get(docUrl('x.md', 'context', 'ctxman-dev'));
   expect(dataset.status()).toBe(400);
   expect((await errorOf(dataset)).error).toBe('bad-dataset');
-  const slug = await request.get(docUrl('main.md', 'task', 'Bad_Slug'));
+  const slug = await request.get(docUrl('index.md', 'task', 'Bad_Slug'));
   expect(slug.status()).toBe(400);
   expect((await errorOf(slug)).error).toBe('bad-slug');
 });
@@ -189,19 +189,19 @@ test('a skill SKILL.md can be read', async ({ request }) => {
 });
 
 test('PUT body is validated: 400 invalid with issues', async ({ request }) => {
-  const missing = await request.put(docUrl('main.md'), { data: { text: 'x' } });
+  const missing = await request.put(docUrl('index.md'), { data: { text: 'x' } });
   expect(missing.status()).toBe(400);
   const body = await errorOf(missing);
   expect(body.error).toBe('invalid');
   expect(body.issues?.map((i) => i.path).sort()).toEqual(['markdown', 'text']);
 
-  const badDate = await request.put(docUrl('main.md'), {
+  const badDate = await request.put(docUrl('index.md'), {
     data: { markdown: 'x', ifUnmodifiedSince: 'yesterday' },
   });
   expect(badDate.status()).toBe(400);
   expect((await errorOf(badDate)).issues?.[0]?.path).toBe('ifUnmodifiedSince');
 
-  const malformed = await request.put(docUrl('main.md'), {
+  const malformed = await request.put(docUrl('index.md'), {
     headers: { 'content-type': 'application/json' },
     data: Buffer.from('{"markdown": '),
   });
@@ -210,7 +210,7 @@ test('PUT body is validated: 400 invalid with issues', async ({ request }) => {
 });
 
 test('PUT of more than 512 KB is 413 too-large', async ({ request }) => {
-  const response = await request.put(docUrl('main.md'), {
+  const response = await request.put(docUrl('index.md'), {
     data: { markdown: 'a'.repeat(512 * 1024 + 1) },
   });
   expect(response.status()).toBe(413);
@@ -220,25 +220,25 @@ test('PUT of more than 512 KB is 413 too-large', async ({ request }) => {
 test('guards: text/plain is 415, a foreign Origin is 403, other methods are 405', async ({
   request,
 }) => {
-  const plain = await request.put(docUrl('main.md'), {
+  const plain = await request.put(docUrl('index.md'), {
     headers: { 'content-type': 'text/plain' },
     data: 'x',
   });
   expect(plain.status()).toBe(415);
   expect((await errorOf(plain)).error).toBe('unsupported-media-type');
 
-  const foreign = await request.put(docUrl('main.md'), {
+  const foreign = await request.put(docUrl('index.md'), {
     headers: { origin: 'https://evil.example' },
     data: { markdown: 'x' },
   });
   expect(foreign.status()).toBe(403);
   expect((await errorOf(foreign)).error).toBe('forbidden-origin');
 
-  const patch = await request.patch(docUrl('main.md'), { data: { markdown: 'x' } });
+  const patch = await request.patch(docUrl('index.md'), { data: { markdown: 'x' } });
   expect(patch.status()).toBe(405);
   expect(patch.headers().allow).toBe('GET, PUT, POST');
   expect((await errorOf(patch)).error).toBe('method-not-allowed');
-  expect((await request.delete(docUrl('main.md'))).status()).toBe(405);
+  expect((await request.delete(docUrl('index.md'))).status()).toBe(405);
 });
 
 test('PUT returns link problems as warnings (links/broken, links/ctxman-target) and still saves', async ({

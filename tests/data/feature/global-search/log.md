@@ -2,4 +2,4 @@
 
 ## 2026-10-17
 * **Update**: Marked complete.
-* **Create**: Created [Global search](/main.md).
+* **Create**: Created [Global search](/index.md).

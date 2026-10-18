@@ -6,7 +6,12 @@
 // description is printed when the body lacks it, empty template sections are dropped, markdown blocks nest
 // under their group, links that do not resolve become `unresolved-link` warnings. Never import from the
 // browser island.
-import { OKF_DATASET_IDS, OWNER_LABELS, stateLabel } from '../../datasets/registry.ts';
+import {
+  OKF_DATASET_IDS,
+  OKF_ENTRY_FILE,
+  OWNER_LABELS,
+  stateLabel,
+} from '../../datasets/registry.ts';
 import { maskMarkdownCode, parseFrontmatterLoose, splitFrontmatter } from '../okf.ts';
 import { classifyRemoteUri } from '../remote-uri.ts';
 import { ITEM_KIND_LABELS, OPTION_DEFS, REPOS_DIR, TARGETS, modeDef } from './catalog.ts';
@@ -375,7 +380,7 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
   const options = seg.options;
   const files = new Map((ic.files ?? []).map((f) => [f.rel, env.pathOf(f.abs)] as const));
   const targets = env.targets;
-  const main = ic.texts?.['main.md'];
+  const main = ic.texts?.[OKF_ENTRY_FILE];
   const out: string[] = [];
   const concepts = ic.concepts ?? [];
   const body = (rel: string, text: string, title: string, base: number): string =>
@@ -392,7 +397,7 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
     });
 
   const mainBody =
-    main !== undefined && main !== null ? body('main.md', main, seg.title, level + 1) : '';
+    main !== undefined && main !== null ? body(OKF_ENTRY_FILE, main, seg.title, level + 1) : '';
   // The description is the one line that says what the entry is: print it unless the frontmatter block or
   // the body already carries it.
   const description = (seg.meta?.description ?? '').trim();

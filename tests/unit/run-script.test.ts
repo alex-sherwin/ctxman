@@ -53,7 +53,7 @@ describe('buildArgs', () => {
       created: {
         dataset: 'task',
         slug: 'my-task',
-        path: 'task/my-task/main.md',
+        path: 'task/my-task/index.md',
         url: '/task/my-task',
       },
     });
@@ -74,7 +74,7 @@ describe('buildArgs', () => {
 
   it('created.path follows the dataset kind for every dataset', () => {
     const expected: Record<string, string> = {
-      kb: 'kb/x/main.md',
+      kb: 'kb/x/index.md',
       skill: 'skill/x/SKILL.md',
       reference: 'reference/x.yaml',
       context: 'context/x.yaml',
@@ -82,7 +82,7 @@ describe('buildArgs', () => {
     };
     for (const dataset of DATASET_IDS) {
       const r = buildArgs('add', { dataset, name: 'x', description: 'd' });
-      expect(r.ok && r.created?.path).toBe(expected[dataset] ?? `${dataset}/x/main.md`);
+      expect(r.ok && r.created?.path).toBe(expected[dataset] ?? `${dataset}/x/index.md`);
     }
   });
 
@@ -206,12 +206,12 @@ describe('runScript / executeScript (real repo scripts against a temp data dir)'
   });
 
   it('a failing check is a normal result with a non-zero code', async () => {
-    const dataDir = tmp.make({ 'kb/broken/index.md': '# no main.md here\n' });
+    const dataDir = tmp.make({ 'kb/broken/concepts/x.md': '---\ntype: T\n---\n' });
     const run = await executeScript('check-okf', {}, { env: { CTXMAN_DATA_DIR: dataDir } });
     expect(run.ok).toBe(true);
     if (run.ok) {
       expect(run.result.code).toBe(1);
-      expect(run.result.stdout).toContain('okf/missing-main');
+      expect(run.result.stdout).toContain('okf/missing-index');
       expect(run.result.created).toBeUndefined();
     }
   });
@@ -232,11 +232,11 @@ describe('runScript / executeScript (real repo scripts against a temp data dir)'
       expect(first.result.created).toEqual({
         dataset: 'task',
         slug: 'rs-task',
-        path: 'task/rs-task/main.md',
+        path: 'task/rs-task/index.md',
         url: '/task/rs-task',
       });
     }
-    expect(existsSync(path.join(dataDir, 'task', 'rs-task', 'main.md'))).toBe(true);
+    expect(existsSync(path.join(dataDir, 'task', 'rs-task', 'index.md'))).toBe(true);
 
     const again = await executeScript('add', body, { env });
     expect(again.ok).toBe(true);

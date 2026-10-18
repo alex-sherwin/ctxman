@@ -11,7 +11,7 @@ import { API, dataPath, readDataText, readYaml, uniqueName } from './helpers.ts'
 const project = uniqueName('e2e-rel-proj');
 const taskA = uniqueName('e2e-rel-a'); // created with `parent`
 const taskB = uniqueName('e2e-rel-b'); // added through the "Add existing" picker
-const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/main.md`;
+const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/index.md`;
 
 test.describe.configure({ mode: 'serial' });
 

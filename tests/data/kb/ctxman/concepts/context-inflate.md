@@ -134,8 +134,8 @@ What each mode writes:
 
 | Mode | Output |
 | --- | --- |
-| `inline-main` | The entry's `main.md` body, plus a line listing the bundle's other concept files by relative path. The entry's `description` is printed first when the body does not already contain it, so a task or project whose template body is empty still says what it is. |
-| `inline-bundle` | `main.md`, then every concept file under its own heading, in `index.md` order, then non-markdown files as a path list. |
+| `inline-main` | The entry's `index.md` body (the id stays `inline-main`, shown as "Inline entry"), plus a line listing the bundle's other concept files by relative path. The entry's `description` is printed first when the body does not already contain it, so a task or project whose template body is empty still says what it is. |
+| `inline-bundle` | `index.md` (the entry), then every concept file under its own heading, in `index.md` order, then non-markdown files as a path list. |
 | `summary` | Meta line plus the description. |
 | `pointer` | One line with the description and the path to read. |
 | `install` (skill) | A shell block that copies (or symlinks) the skill folder into the target's skills directory. |
@@ -218,7 +218,7 @@ Everything an agent needs to work on ctxman itself.
 
 ### ctxman
 
-`kb/ctxman` · Knowledge Base · tags: ctxman · `/abs/data/kb/ctxman/main.md`
+`kb/ctxman` · Knowledge Base · tags: ctxman · `/abs/data/kb/ctxman/index.md`
 
 > **From context `ctxman-dev`:** Start here.
 

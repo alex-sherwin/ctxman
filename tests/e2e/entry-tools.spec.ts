@@ -12,7 +12,7 @@ const kb = uniqueName('e2e-et-kb');
 const task = uniqueName('e2e-et-task');
 const ctxOld = uniqueName('e2e-et-ctx-old');
 const ctxNew = uniqueName('e2e-et-ctx-new');
-const kbMain = `kb/${kb}/main.md`;
+const kbMain = `kb/${kb}/index.md`;
 
 test.describe.configure({ mode: 'serial' });
 
@@ -269,9 +269,12 @@ test('a .md doc URL redirects to the extensionless page (query kept)', async ({
   });
   expect(redirect.status()).toBe(301);
   expect(redirect.headers().location).toBe('/kb/ctxman/doc/concepts/datasets?edit=1');
-  const main = await request.get('/kb/ctxman/doc/main.md', { maxRedirects: 0 });
+  const main = await request.get('/kb/ctxman/doc/index.md', { maxRedirects: 0 });
   expect(main.status()).toBe(301);
   expect(main.headers().location).toBe('/kb/ctxman');
+  const bare = await request.get('/kb/ctxman/doc/index', { maxRedirects: 0 });
+  expect(bare.status()).toBe(301);
+  expect(bare.headers().location).toBe('/kb/ctxman');
 
   await page.goto('/kb/ctxman/doc/concepts/datasets.md');
   await expect(page).toHaveURL(/\/kb\/ctxman\/doc\/concepts\/datasets$/);

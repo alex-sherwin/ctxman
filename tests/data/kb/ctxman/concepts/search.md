@@ -10,13 +10,13 @@ generated:
 
 # Search
 
-Search is a full-screen modal available on every page. It queries every dataset at once and can be narrowed to some datasets with filter chips. The feature record is [global-search](ctxman:feature/global-search); for the overview return to the [concept map](../main.md#concept-map).
+Search is a full-screen modal available on every page. It queries every dataset at once and can be narrowed to some datasets with filter chips. The feature record is [global-search](ctxman:feature/global-search); for the overview return to the [concept map](../index.md#concept-map).
 
 ## What is indexed
 
 `GET /api/search-index.json` returns `{ generatedAt, docs }`. Documents are built on the server on every request by reading the files on disk, so a new or changed entry is searchable at once, in the dev server and in a built server alike (reload the page to refresh the index the widget downloaded):
 
-* One document per markdown file in every OKF bundle (`main.md` and the concepts), found by walking the bundle folder. A bundle's `index.md` and `log.md` are left out at any depth: they are navigation and history, not knowledge.
+* One document per markdown file in every OKF bundle (the entry `index.md` and the concepts), found by walking the bundle folder. A nested `index.md` and every `log.md` are left out: they are navigation and history, not knowledge (the root `index.md` is the entry itself).
 * One document per skill with valid frontmatter, from the `SKILL.md` body.
 * One document per reference, context and recipe, made from their field values flattened to text, so data records are searchable by their fields. A recipe's text is its description, target and layout, the listed contexts and ad hoc item keys, the preamble and the markdown blocks; its page is `/recipe/<slug>`.
 

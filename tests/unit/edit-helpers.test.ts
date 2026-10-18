@@ -62,9 +62,9 @@ describe('getJson / sendJson', () => {
   it('PUT sends a JSON body with a content-type', async () => {
     const fetchMock = respond({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
-    await sendJson('PUT', '/api/doc/kb/x/main.md', { markdown: '# hi' });
+    await sendJson('PUT', '/api/doc/kb/x/index.md', { markdown: '# hi' });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('/api/doc/kb/x/main.md');
+    expect(url).toBe('/api/doc/kb/x/index.md');
     expect(init.method).toBe('PUT');
     expect(init.body).toBe('{"markdown":"# hi"}');
     expect(init.headers).toMatchObject({ 'content-type': 'application/json' });
@@ -106,7 +106,7 @@ describe('getJson / sendJson', () => {
       'fetch',
       respond({ error: 'conflict', message: 'changed', lastModified: 'x' }, 409),
     );
-    const result = await sendJson('PUT', '/api/doc/kb/x/main.md', {});
+    const result = await sendJson('PUT', '/api/doc/kb/x/index.md', {});
     expect(result).toMatchObject({ ok: false, status: 409, error: 'conflict', message: 'changed' });
     expect(result).not.toHaveProperty('issues');
   });
@@ -142,22 +142,22 @@ describe('getJson / sendJson', () => {
 describe('draft-backup (localStorage, 14-day TTL)', () => {
   it('round-trips a draft under ctxman:draft:<key>, stamped with savedAt, and clears it', () => {
     const data = stubLocal();
-    expect(loadDraft('doc:kb/x/main.md')).toBeNull();
-    expect(hasDraft('doc:kb/x/main.md')).toBe(false);
-    saveDraft('doc:kb/x/main.md', { text: 'edited', base: '2026-01-01T00:00:00.000Z' });
-    expect([...data.keys()]).toEqual(['ctxman:draft:doc:kb/x/main.md']);
-    const stored = JSON.parse(data.get('ctxman:draft:doc:kb/x/main.md') ?? 'null');
+    expect(loadDraft('doc:kb/x/index.md')).toBeNull();
+    expect(hasDraft('doc:kb/x/index.md')).toBe(false);
+    saveDraft('doc:kb/x/index.md', { text: 'edited', base: '2026-01-01T00:00:00.000Z' });
+    expect([...data.keys()]).toEqual(['ctxman:draft:doc:kb/x/index.md']);
+    const stored = JSON.parse(data.get('ctxman:draft:doc:kb/x/index.md') ?? 'null');
     expect(stored).toMatchObject({ text: 'edited', base: '2026-01-01T00:00:00.000Z' });
     expect(typeof stored.savedAt).toBe('number');
     // loadDraft returns only { text, base }
-    expect(loadDraft('doc:kb/x/main.md')).toEqual({
+    expect(loadDraft('doc:kb/x/index.md')).toEqual({
       text: 'edited',
       base: '2026-01-01T00:00:00.000Z',
     });
-    expect(hasDraft('doc:kb/x/main.md')).toBe(true);
-    clearDraft('doc:kb/x/main.md');
-    expect(loadDraft('doc:kb/x/main.md')).toBeNull();
-    expect(hasDraft('doc:kb/x/main.md')).toBe(false);
+    expect(hasDraft('doc:kb/x/index.md')).toBe(true);
+    clearDraft('doc:kb/x/index.md');
+    expect(loadDraft('doc:kb/x/index.md')).toBeNull();
+    expect(hasDraft('doc:kb/x/index.md')).toBe(false);
     expect(data.size).toBe(0);
   });
 

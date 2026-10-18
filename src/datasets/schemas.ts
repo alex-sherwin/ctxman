@@ -118,7 +118,7 @@ export const okfSourceSchema = type({
 });
 export const OKF_STATUSES = ['draft', 'stable', 'deprecated'] as const;
 
-/** Keys shared by every concept and main.md (`description` differs: optional vs required). Unknown keys are preserved (arktype objects are loose). */
+/** Keys shared by every concept and the entry index.md (`description` differs: optional vs required). Unknown keys are preserved (arktype objects are loose). */
 const okfSharedShape = {
   type: nonBlank,
   'title?': 'string',
@@ -135,7 +135,7 @@ const okfSharedShape = {
 export const okfConceptSchema = type({ ...okfSharedShape, 'description?': 'string' });
 
 /**
- * One structured relation of an okf entry (main.md frontmatter `links`); `from` is the entry that declares it.
+ * One structured relation of an okf entry (entry index.md frontmatter `links`); `from` is the entry that declares it.
  * `rel`: `child` = this entry contains the target (projects), `related` symmetric, `depends-on` = this needs the
  * target first.
  */
@@ -160,8 +160,9 @@ export const entryLinksSchema = entryLinkSchema.array().narrow((links, ctx) => {
   return ok;
 });
 
-/** Bundle entry concept main.md for kb / rca (no lifecycle). */
+/** Bundle entry (root index.md) for kb / rca (no lifecycle); `okf_version` leads the frontmatter. */
 export const okfEntrySchema = type({
+  'okf_version?': "'0.2'",
   ...okfSharedShape,
   name: nameSchema,
   description: nonBlank,
@@ -176,11 +177,8 @@ export const bugSchema = okfEntrySchema.merge({ state: type.enumerated(...BUG_ST
 export const featureSchema = okfEntrySchema.merge({ state: type.enumerated(...FEATURE_STATES) });
 export const projectSchema = okfEntrySchema.merge({ state: type.enumerated(...PROJECT_STATES) });
 
-/** Bundle-root index.md: only okf_version is allowed (OKF v0.2). Nested index.md: no frontmatter. */
-export const okfIndexSchema = type({ '+': 'reject', 'okf_version?': "'0.2'" });
-
 /**
- * Every .md file inside okf bundles (main.md, concepts, index.md, log.md): the lenient "docs" shape.
+ * Every .md file inside okf bundles (entry index.md, concepts, nested index.md, log.md): the lenient "docs" shape.
  * Loose on purpose — strict OKF rules are enforced by scripts/check-okf.ts, not by page rendering.
  */
 export const docSchema = type({

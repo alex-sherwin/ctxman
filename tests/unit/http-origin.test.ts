@@ -11,7 +11,7 @@ async function expectForbidden(res: Response | null): Promise<void> {
 }
 
 describe('checkOrigin', () => {
-  const url = new URL('http://localhost:4321/api/doc/kb/ctxman/main.md');
+  const url = new URL('http://localhost:4321/api/doc/kb/ctxman/index.md');
 
   it('passes a request without an Origin header', () => {
     expect(checkOrigin(req(url.href), url)).toBeNull();

@@ -542,7 +542,7 @@ describe('serializeRecipe: output and material (plans/INFLATE_V2_SPEC.md §4.2)'
       {
         key: 'reference/app',
         exclude: true,
-        materialOptions: { branch: 'main', cloneDepth: 0, subpathOnly: undefined },
+        materialOptions: { branch: 'trunk', cloneDepth: 0, subpathOnly: undefined },
         material: 'clone',
         options: { sparse: true },
         mode: 'describe',
@@ -575,7 +575,7 @@ overrides:
     material: clone
     materialOptions:
       cloneDepth: 0
-      branch: main
+      branch: trunk
     exclude: true
 defaults:
   kb:

@@ -1,5 +1,5 @@
 // PURE (no fs, no astro:*; browser-safe): the relation graph between entries, built from the entry index.
-// Edges come from the structured `links` of an okf main.md (frontmatter) and from `ctxman:` links in the
+// Edges come from the structured `links` of an okf entry index.md (frontmatter) and from `ctxman:` links in the
 // bodies of an entry's files (mentions). Contexts are not part of the graph. Spec: plans/ROUND3_SPEC.md §C.3.
 import type { EntryRel } from '../datasets/registry.ts';
 import type { IndexedEntry } from './entry-index.ts';

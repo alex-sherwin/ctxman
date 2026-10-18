@@ -12,13 +12,13 @@ generated:
 
 ## Links
 
-A concept's id is its bundle-relative path without `.md`. Relationships between concepts are standard Markdown links, and the surrounding sentence gives the meaning. Prefer bundle-root links such as the one to [Provenance and lifecycle](/concepts/provenance.md); relative links such as [the overview](../main.md) are also valid.
+A concept's id is its bundle-relative path without `.md`. Relationships between concepts are standard Markdown links, and the surrounding sentence gives the meaning. Prefer bundle-root links such as the one to [Provenance and lifecycle](/concepts/provenance.md); relative links such as [the overview](../index.md) are also valid.
 
 Path-valued fields (`resource`, `sources[].resource`) accept an absolute URL, a bundle-relative path or a relative path.
 
 ## index.md
 
-An optional navigation file. The bundle-root index may declare `okf_version: "0.2"`; every other index has no frontmatter. The body groups links under headings and gives each target's description:
+An optional navigation file. The bundle-root index may declare `okf_version: "0.2"` (in ctxman it also carries the entry frontmatter and body, see the overview); every other index has no frontmatter. The body groups links under headings and gives each target's description:
 
 ```markdown
 # Concepts
@@ -26,7 +26,7 @@ An optional navigation file. The bundle-root index may declare `okf_version: "0.
 * [Provenance and lifecycle](/concepts/provenance.md) - How OKF records sources and expiry.
 ```
 
-A missing index is conformant. ctxman warns anyway and its add script always writes one.
+A missing index is conformant in OKF. ctxman needs one: the root `index.md` is the entry, so a bundle without it is an error.
 
 ## log.md
 
@@ -36,4 +36,4 @@ An optional update history, newest first, under ISO date headings (`## 2026-10-1
 
 By convention a `references/` folder holds mirrored external material or run instructions. It has no special semantics.
 
-See also [OKF format](/main.md) and [Provenance and lifecycle](./provenance.md).
+See also [OKF format](/index.md) and [Provenance and lifecycle](./provenance.md).

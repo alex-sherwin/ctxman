@@ -47,6 +47,6 @@ If `generated` exists, both `by` and an ISO 8601 `at` are required. `verified` t
 * `stale_after` is an absolute `YYYY-MM-DD`. Content is stale on or after that date. ctxman shows a stale badge and lists stale entries on the dashboard.
 * `generated.at` records when content changed, not when it was last re-confirmed.
 
-Back to the [overview](/main.md) or on to [Bundle navigation](./navigation.md).
+Back to the [overview](/index.md) or on to [Bundle navigation](./navigation.md).
 
 [^okf-skill]: OKF v0.2 authoring skill, vendored at .agents/skills/okf/SKILL.md.

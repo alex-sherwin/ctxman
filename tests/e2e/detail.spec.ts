@@ -12,7 +12,7 @@ test.describe('bundle detail pages', () => {
     await expect(content.getByRole('heading', { level: 1 })).toHaveText('ctxman');
     await expect(page.getByTestId('detail-slug')).toHaveText('ctxman');
     await expect(page.getByTestId('detail-meta')).toContainText('architecture');
-    await expect(page.getByTestId('detail-files')).toContainText('main.md');
+    await expect(page.getByTestId('detail-files')).toContainText('index.md');
     await expect(page.getByTestId('detail-files')).toContainText('concepts/datasets.md');
   });
 
@@ -22,7 +22,7 @@ test.describe('bundle detail pages', () => {
     const content = page.getByTestId('detail-content');
     await expect(aside.getByTestId('detail-open-ide')).toBeVisible();
     await expect(aside.getByTestId('detail-open-ide')).toHaveAttribute('data-dataset', 'kb');
-    await expect(aside.getByTestId('detail-open-ide')).toHaveAttribute('data-path', 'main.md');
+    await expect(aside.getByTestId('detail-open-ide')).toHaveAttribute('data-path', 'index.md');
     const asideBox = await aside.boundingBox();
     const contentBox = await content.boundingBox();
     expect(asideBox).not.toBeNull();
@@ -47,7 +47,7 @@ test.describe('bundle detail pages', () => {
 
   test('intra-bundle links are rewritten and navigate to the sub-doc', async ({ page }) => {
     await page.goto('/kb/ctxman');
-    // main.md links to the Datasets concept twice (body and reading list): either one is the same route.
+    // index.md links to the Datasets concept twice (body and reading list): either one is the same route.
     const link = page
       .getByTestId('detail-content')
       .getByRole('link', { name: 'Datasets', exact: true })
@@ -404,7 +404,7 @@ test.describe('broken links', () => {
         await request.dispose();
       }
       appendFileSync(
-        dataPath(`kb/${name}/main.md`),
+        dataPath(`kb/${name}/index.md`),
         '\nSee [ghost](ctxman:task/e2e-no-such-task), [file](./concepts/e2e-nope.md) and [fine](ctxman:kb/ctxman).\n',
       );
     });

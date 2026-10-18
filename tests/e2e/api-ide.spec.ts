@@ -51,11 +51,11 @@ test('GET reports the configured command as available', async ({ request }) => {
   expect(await response.json()).toEqual({ available: true, command: E2E_IDE_COMMAND });
 });
 
-test('POST opens the entry folder with main.md: argv is [folder, file] and nothing else', async ({
+test('POST opens the entry folder with index.md: argv is [folder, file] and nothing else', async ({
   request,
 }) => {
   const root = dataPath('kb/ctxman');
-  const file = dataPath('kb/ctxman/main.md');
+  const file = dataPath('kb/ctxman/index.md');
   const { command, call } = await openAndRecord(request, { dataset: 'kb', slug: 'ctxman' });
   expect(command).toEqual([E2E_IDE_COMMAND, root, file]);
   expect(call).toEqual([root, file]);

@@ -3,7 +3,12 @@
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DATASET_IDS, OKF_DATASET_IDS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
+import {
+  DATASET_IDS,
+  OKF_DATASET_IDS,
+  OKF_ENTRY_FILE,
+  REFERENCE_TYPE_LABELS,
+} from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId, ReferenceType } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, docSchema } from '../datasets/schemas.ts';
 import type { RecipeData } from '../datasets/schemas.ts';
@@ -82,8 +87,8 @@ async function checkOkfDataset(ctx: Ctx, dataset: OkfDatasetId): Promise<void> {
       const source = await readFile(path.join(root, ...relPath.split('/')), 'utf8');
       ctx.files.add(file);
 
-      if (relPath === 'main.md') {
-        // The entry collection (glob '*/main.md', id = directory name).
+      if (relPath === OKF_ENTRY_FILE) {
+        // The entry collection (glob '*/index.md', id = directory name).
         const parsed = parseFrontmatter(source);
         if (!parsed.ok) {
           add(

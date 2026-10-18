@@ -24,8 +24,8 @@ describe('entryAbsPath / entryFileRelPath', () => {
   });
 
   it('returns the posix entry file path per kind', () => {
-    expect(entryFileRelPath('kb', 'foo')).toBe('kb/foo/main.md');
-    expect(entryFileRelPath('project', 'foo')).toBe('project/foo/main.md');
+    expect(entryFileRelPath('kb', 'foo')).toBe('kb/foo/index.md');
+    expect(entryFileRelPath('project', 'foo')).toBe('project/foo/index.md');
     expect(entryFileRelPath('skill', 'foo')).toBe('skill/foo/SKILL.md');
     expect(entryFileRelPath('reference', 'foo')).toBe('reference/foo.yaml');
     expect(entryFileRelPath('context', 'foo')).toBe('context/foo.yaml');
@@ -42,12 +42,12 @@ describe('lastModifiedOf', () => {
 
   it('returns the newest mtime of any file below a directory, recursively', async () => {
     const dir = tmp.make({
-      'kb/x/main.md': 'a',
+      'kb/x/index.md': 'a',
       'kb/x/concepts/deep/new.md': 'b',
       'kb/x/old.md': 'c',
     });
     const root = path.join(dir, 'kb', 'x');
-    touch(path.join(root, 'main.md'), '2026-01-01T00:00:00.000Z');
+    touch(path.join(root, 'index.md'), '2026-01-01T00:00:00.000Z');
     touch(path.join(root, 'old.md'), '2025-01-01T00:00:00.000Z');
     touch(path.join(root, 'concepts', 'deep', 'new.md'), '2026-03-01T12:00:00.000Z');
     expect((await lastModifiedOf(root)).toISOString()).toBe('2026-03-01T12:00:00.000Z');
@@ -55,13 +55,13 @@ describe('lastModifiedOf', () => {
 
   it('ignores dot-files and dot-directories at every level', async () => {
     const dir = tmp.make({
-      'kb/x/main.md': 'a',
+      'kb/x/index.md': 'a',
       'kb/x/.DS_Store': 'junk',
       'kb/x/.git/HEAD': 'junk',
       'kb/x/concepts/.hidden.md': 'junk',
     });
     const root = path.join(dir, 'kb', 'x');
-    touch(path.join(root, 'main.md'), '2026-01-01T00:00:00.000Z');
+    touch(path.join(root, 'index.md'), '2026-01-01T00:00:00.000Z');
     touch(path.join(root, '.DS_Store'), '2027-01-01T00:00:00.000Z');
     touch(path.join(root, '.git', 'HEAD'), '2027-01-01T00:00:00.000Z');
     touch(path.join(root, 'concepts', '.hidden.md'), '2027-01-01T00:00:00.000Z');

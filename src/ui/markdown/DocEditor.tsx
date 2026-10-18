@@ -47,7 +47,7 @@ import { DraftNotice } from './DraftNotice.tsx';
 export interface DocEditorProps {
   dataset: DocDataset;
   slug: string;
-  /** Bundle-relative posix path: 'main.md', 'SKILL.md' or a sub-doc's `relPath`. */
+  /** Bundle-relative posix path: 'index.md', 'SKILL.md' or a sub-doc's `relPath`. */
   path: string;
   /** id of the SSR preview element this island shows / hides. */
   previewId: string;

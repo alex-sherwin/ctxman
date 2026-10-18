@@ -31,9 +31,9 @@ describe('getEntryIndex: entries', () => {
   it('lists okf and skill entries in registry dataset order, then slug', async () => {
     const dir = tmp.make({
       ...validDataTree(),
-      'task/aaa/main.md': task('aaa'),
-      'project/p/main.md': okf('Project', 'p', 'state: pending\n'),
-      'kb/another/main.md': okf('Knowledge Base', 'another'),
+      'task/aaa/index.md': task('aaa'),
+      'project/p/index.md': okf('Project', 'p', 'state: pending\n'),
+      'kb/another/index.md': okf('Knowledge Base', 'another'),
     });
     const index = await getEntryIndex(dir);
     expect(index.entries.map((e) => `${e.dataset}/${e.slug}`)).toEqual([
@@ -47,7 +47,7 @@ describe('getEntryIndex: entries', () => {
     expect([...index.byKey.keys()].sort()).toEqual(
       index.entries.map((e) => `${e.dataset}/${e.slug}`).sort(),
     );
-    expect(index.byKey.get('task/do-it')?.file).toBe('task/do-it/main.md');
+    expect(index.byKey.get('task/do-it')?.file).toBe('task/do-it/index.md');
     expect(index.byKey.get('skill/my-skill')?.file).toBe('skill/my-skill/SKILL.md');
     expect(index.entries.every((e) => e.issues.length === 0)).toBe(true);
   });
@@ -71,10 +71,10 @@ describe('getEntryIndex: entries', () => {
 
   it('skips directories that are not entries (dot names, invalid names, no entry file)', async () => {
     const dir = tmp.make({
-      'task/ok/main.md': task('ok'),
-      'task/.hidden/main.md': task('hidden'),
-      'task/Bad_Name/main.md': task('bad'),
-      'task/no-main/index.md': '# no main\n',
+      'task/ok/index.md': task('ok'),
+      'task/.hidden/index.md': task('hidden'),
+      'task/Bad_Name/index.md': task('bad'),
+      'task/no-index/concepts/x.md': '# no entry\n',
       'task/stray.md': '# a file\n',
       'skill/no-skill-md/readme.md': '# x\n',
     });
@@ -92,7 +92,7 @@ describe('getEntryIndex: entries', () => {
 
 describe('getEntryIndex: issues', () => {
   it('reports a YAML error as one root issue and keeps no data', async () => {
-    const dir = tmp.make({ 'task/bad-yaml/main.md': '---\ntype: [oops\nname: x\n---\n# Body\n' });
+    const dir = tmp.make({ 'task/bad-yaml/index.md': '---\ntype: [oops\nname: x\n---\n# Body\n' });
     const entry = (await getEntryIndex(dir)).byKey.get('task/bad-yaml');
     expect(entry?.data).toEqual({});
     expect(entry?.issues).toHaveLength(1);
@@ -102,14 +102,14 @@ describe('getEntryIndex: issues', () => {
   });
 
   it('reports a non-mapping frontmatter as a root issue', async () => {
-    const dir = tmp.make({ 'task/list/main.md': '---\n- a\n- b\n---\n# T\n' });
+    const dir = tmp.make({ 'task/list/index.md': '---\n- a\n- b\n---\n# T\n' });
     const entry = (await getEntryIndex(dir)).byKey.get('task/list');
     expect(entry?.issues).toEqual([{ path: '', message: 'frontmatter is not a mapping' }]);
   });
 
   it('reports schema issues with dotted paths and readable wording', async () => {
     const dir = tmp.make({
-      'task/odd/main.md':
+      'task/odd/index.md':
         '---\ntype: Task\nname: odd\nstate: done\nlinks:\n  - dataset: task\n    slug: Bad Slug\n---\n# T\n',
     });
     const entry = (await getEntryIndex(dir)).byKey.get('task/odd');
@@ -120,7 +120,7 @@ describe('getEntryIndex: issues', () => {
   });
 
   it('reports a frontmatter-less entry file through the schema', async () => {
-    const dir = tmp.make({ 'kb/plain/main.md': '# Just markdown\n' });
+    const dir = tmp.make({ 'kb/plain/index.md': '# Just markdown\n' });
     const entry = (await getEntryIndex(dir)).byKey.get('kb/plain');
     expect(entry?.data).toEqual({});
     expect(entry?.body).toBe('# Just markdown\n');
@@ -128,7 +128,7 @@ describe('getEntryIndex: issues', () => {
   });
 
   it('reports a name that differs from the directory name', async () => {
-    const dir = tmp.make({ 'task/dir-name/main.md': task('other-name') });
+    const dir = tmp.make({ 'task/dir-name/index.md': task('other-name') });
     const entry = (await getEntryIndex(dir)).byKey.get('task/dir-name');
     expect(entry?.issues).toEqual([
       { path: 'name', message: 'name "other-name" must equal the directory name "dir-name"' },
@@ -137,7 +137,7 @@ describe('getEntryIndex: issues', () => {
 
   it('reports a duplicate relation target', async () => {
     const dir = tmp.make({
-      'task/dup/main.md': task(
+      'task/dup/index.md': task(
         'dup',
         'links:\n  - dataset: kb\n    slug: a\n  - dataset: kb\n    slug: a\n    rel: child\n',
       ),
@@ -159,7 +159,7 @@ describe('getEntryIndex: issues', () => {
 describe('getEntryIndex: relations', () => {
   it('lists the valid items of links in file order, skipping bad ones, rel defaulting to related', async () => {
     const dir = tmp.make({
-      'project/p/main.md': okf(
+      'project/p/index.md': okf(
         'Project',
         'p',
         [
@@ -195,8 +195,8 @@ describe('getEntryIndex: relations', () => {
 
   it('gives an entry without links, or with a non-array links, no relations', async () => {
     const dir = tmp.make({
-      'task/a/main.md': task('a'),
-      'task/b/main.md': task('b', 'links: nope\n'),
+      'task/a/index.md': task('a'),
+      'task/b/index.md': task('b', 'links: nope\n'),
     });
     const index = await getEntryIndex(dir);
     expect(index.byKey.get('task/a')?.relations).toEqual([]);
@@ -208,10 +208,9 @@ describe('getEntryIndex: mentions', () => {
   const mentionFiles = (entry: { mentions: { file: string; line: number }[] } | undefined) =>
     entry?.mentions.map((m) => `${m.file}:${m.line}`);
 
-  it('collects ctxman: links from every md of the directory, main.md first, with file lines', async () => {
+  it('collects ctxman: links from every md of the directory, index.md first, with file lines', async () => {
     const dir = tmp.make({
-      'kb/x/index.md': '# Index\n\n* [Y](ctxman:kb/from-index) - y\n',
-      'kb/x/main.md': okf(
+      'kb/x/index.md': okf(
         'Knowledge Base',
         'x',
         '',
@@ -228,23 +227,21 @@ describe('getEntryIndex: mentions', () => {
       'task/one',
       'skill/three',
       'reference/four',
-      'kb/from-index',
       'idea/five',
     ]);
     expect(mentionFiles(entry)).toEqual([
-      'main.md:7',
-      'main.md:7',
-      'main.md:8',
+      'index.md:7',
+      'index.md:7',
+      'index.md:8',
       'concepts/deep.md:5',
       'concepts/deep.md:5',
-      'index.md:3',
       'log.md:4',
     ]);
   });
 
   it('ignores code, images, the entry itself, non-linkable datasets and malformed targets', async () => {
     const dir = tmp.make({
-      'kb/x/main.md': okf(
+      'kb/x/index.md': okf(
         'Knowledge Base',
         'x',
         'related: "[fm](ctxman:task/in-frontmatter)"\n',
@@ -307,7 +304,7 @@ describe('getEntryIndex: freshness', () => {
     bump(path.join(dir, 'kb', 'demo', 'concepts', 'one.md'), 5000);
     const entry = (await fresh(dir)).byKey.get('kb/demo');
     expect(entry?.fileModified).toBe(
-      statSync(path.join(dir, 'kb', 'demo', 'main.md')).mtime.toISOString(),
+      statSync(path.join(dir, 'kb', 'demo', 'index.md')).mtime.toISOString(),
     );
     expect(entry?.lastModified.getTime()).toBeGreaterThan(
       new Date(entry?.fileModified ?? 0).getTime(),
@@ -317,8 +314,8 @@ describe('getEntryIndex: freshness', () => {
 
 describe('getEntryIndex: fileModified precision', () => {
   it('rounds a fractional millisecond like Stats.mtime (the PATCH base)', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a') });
-    const file = path.join(dir, 'task', 'a', 'main.md');
+    const dir = tmp.make({ 'task/a/index.md': task('a') });
+    const file = path.join(dir, 'task', 'a', 'index.md');
     utimesSync(file, 1_700_000_000.9996, 1_700_000_000.9996);
     const entry = (await getEntryIndex(dir)).byKey.get('task/a');
     expect(entry?.fileModified).toBe(statSync(file).mtime.toISOString());
@@ -353,8 +350,8 @@ describe('getEntryIndex: caching', () => {
   });
 
   it('notices a content change (size) even when the mtime is restored', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a') });
-    const file = path.join(dir, 'task', 'a', 'main.md');
+    const dir = tmp.make({ 'task/a/index.md': task('a') });
+    const file = path.join(dir, 'task', 'a', 'index.md');
     const before = statSync(file);
     await getEntryIndex(dir);
     writeFileSync(file, `${task('a', 'tags: [x]\n')}\n`);
@@ -365,12 +362,12 @@ describe('getEntryIndex: caching', () => {
   });
 
   it('picks up added files and added or vanished entries', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a'), 'task/b/main.md': task('b') });
+    const dir = tmp.make({ 'task/a/index.md': task('a'), 'task/b/index.md': task('b') });
     const first = await getEntryIndex(dir);
     expect(first.entries.map((e) => e.slug)).toEqual(['a', 'b']);
 
     writeTree(dir, {
-      'task/c/main.md': task('c'),
+      'task/c/index.md': task('c'),
       'task/a/concepts/new.md': '# New\n[x](ctxman:kb/x)\n',
     });
     rmSync(path.join(dir, 'task', 'b'), { recursive: true });
@@ -381,22 +378,22 @@ describe('getEntryIndex: caching', () => {
     expect(second.byKey.has('task/b')).toBe(false);
 
     // a vanished directory comes back as a fresh parse, not from a stale cache entry
-    writeTree(dir, { 'task/b/main.md': task('b') });
+    writeTree(dir, { 'task/b/index.md': task('b') });
     const third = await fresh(dir);
     expect(third.parsed).toBe(1);
     expect(third.entries.map((e) => e.slug)).toEqual(['a', 'b', 'c']);
   });
 
-  it('drops an entry whose main.md is removed', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a'), 'task/a/index.md': '# I\n' });
+  it('drops an entry whose index.md is removed', async () => {
+    const dir = tmp.make({ 'task/a/index.md': task('a'), 'task/a/concepts/x.md': '# I\n' });
     expect((await getEntryIndex(dir)).entries).toHaveLength(1);
-    rmSync(path.join(dir, 'task', 'a', 'main.md'));
+    rmSync(path.join(dir, 'task', 'a', 'index.md'));
     expect((await fresh(dir)).entries).toEqual([]);
   });
 
   it('keeps separate caches per data dir', async () => {
-    const one = tmp.make({ 'task/a/main.md': task('a') });
-    const two = tmp.make({ 'task/z/main.md': task('z') });
+    const one = tmp.make({ 'task/a/index.md': task('a') });
+    const two = tmp.make({ 'task/z/index.md': task('z') });
     expect((await getEntryIndex(one)).entries.map((e) => e.slug)).toEqual(['a']);
     expect((await getEntryIndex(two)).entries.map((e) => e.slug)).toEqual(['z']);
     expect((await fresh(one)).parsed).toBe(0);
@@ -405,19 +402,19 @@ describe('getEntryIndex: caching', () => {
 
 describe('getEntryIndex: memo and invalidateEntryIndex', () => {
   it('serves the same build for calls within 200 ms and shares an in-flight build', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a') });
+    const dir = tmp.make({ 'task/a/index.md': task('a') });
     const [x, y] = await Promise.all([getEntryIndex(dir), getEntryIndex(dir)]);
     expect(y).toBe(x);
     expect(await getEntryIndex(dir)).toBe(x);
 
-    writeTree(dir, { 'task/b/main.md': task('b') });
+    writeTree(dir, { 'task/b/index.md': task('b') });
     expect((await getEntryIndex(dir)).entries.map((e) => e.slug)).toEqual(['a']); // memoized
   });
 
   it('invalidateEntryIndex(dir) drops the memo but not the per-directory cache', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a') });
+    const dir = tmp.make({ 'task/a/index.md': task('a') });
     const x = await getEntryIndex(dir);
-    writeTree(dir, { 'task/b/main.md': task('b') });
+    writeTree(dir, { 'task/b/index.md': task('b') });
     invalidateEntryIndex(dir);
     const y = await getEntryIndex(dir);
     expect(y).not.toBe(x);
@@ -426,12 +423,12 @@ describe('getEntryIndex: memo and invalidateEntryIndex', () => {
   });
 
   it('invalidateEntryIndex() without an argument drops every memo', async () => {
-    const one = tmp.make({ 'task/a/main.md': task('a') });
-    const two = tmp.make({ 'task/z/main.md': task('z') });
+    const one = tmp.make({ 'task/a/index.md': task('a') });
+    const two = tmp.make({ 'task/z/index.md': task('z') });
     await getEntryIndex(one);
     await getEntryIndex(two);
-    writeTree(one, { 'task/b/main.md': task('b') });
-    writeTree(two, { 'task/y/main.md': task('y') });
+    writeTree(one, { 'task/b/index.md': task('b') });
+    writeTree(two, { 'task/y/index.md': task('y') });
     invalidateEntryIndex();
     expect((await getEntryIndex(one)).entries).toHaveLength(2);
     expect((await getEntryIndex(two)).entries).toHaveLength(2);
@@ -439,12 +436,12 @@ describe('getEntryIndex: memo and invalidateEntryIndex', () => {
   });
 
   it('rescans once the 200 ms memo has expired', async () => {
-    const dir = tmp.make({ 'task/a/main.md': task('a') });
+    const dir = tmp.make({ 'task/a/index.md': task('a') });
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-18T10:00:00Z'));
     const x = await getEntryIndex(dir);
     mkdirSync(path.join(dir, 'task', 'b'), { recursive: true });
-    writeFileSync(path.join(dir, 'task', 'b', 'main.md'), task('b'));
+    writeFileSync(path.join(dir, 'task', 'b', 'index.md'), task('b'));
 
     vi.setSystemTime(new Date('2026-10-18T10:00:00.150Z'));
     expect(await getEntryIndex(dir)).toBe(x);

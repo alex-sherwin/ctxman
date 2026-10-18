@@ -1,6 +1,7 @@
 // NODE* (no fs calls of its own: every read goes through `InflateSources`; imports src/lib/okf.ts and
 // src/lib/links.ts): loads what a recipe needs, gathers file contents for the included items and renders
 // the document (plans/INFLATE_SPEC.md §5.6, §6.2). Never import from the browser island.
+import { OKF_ENTRY_FILE } from '../../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, OkfDatasetId } from '../../datasets/registry.ts';
 import type { RecipeData } from '../../datasets/schemas.ts';
 import { classifyHref, extractLinks, parseCtxmanHref, resolveBundleHref } from '../links.ts';
@@ -116,14 +117,15 @@ const baseName = (rel: string): string => rel.split('/').pop() ?? rel;
 
 /**
  * Concept files of a bundle in index order: markdown links of index.md that resolve to markdown files of
- * the bundle, then every other markdown file in tree order. main.md and every index.md / log.md excluded.
+ * the bundle, then every other markdown file in tree order. `indexText` is the entry (the root index.md, which
+ * carries the bundle's navigation); the entry itself, every nested index.md and every log.md are excluded.
  */
 export function conceptFiles(files: readonly BundleFileRef[], indexText: string | null): string[] {
   const markdown = new Set(files.filter((f) => f.kind === 'markdown').map((f) => f.rel));
   const out: string[] = [];
   const add = (rel: string): void => {
     const name = baseName(rel);
-    if (rel === 'main.md' || name === 'index.md' || name === 'log.md') return;
+    if (name === 'index.md' || name === 'log.md') return;
     if (!markdown.has(rel) || out.includes(rel)) return;
     out.push(rel);
   };
@@ -223,11 +225,8 @@ export async function gatherContent(
       collectTargets(text, rewrite);
       return text;
     };
-    const indexText = has('index.md')
-      ? await sources.readText(dataset, seg.slug, 'index.md')
-      : null;
-    content.concepts = conceptFiles(files, indexText);
-    await read('main.md');
+    const entryText = await read(OKF_ENTRY_FILE);
+    content.concepts = conceptFiles(files, entryText);
     if (mode === 'inline-bundle') {
       for (const rel of content.concepts) await read(rel);
       if (seg.options.includeLog === true && has('log.md')) await read('log.md');

@@ -167,12 +167,12 @@ describe('edit mode and loading', () => {
   it('a failed GET is reported and can be retried', async () => {
     stubFetch(() => ({
       status: 404,
-      body: { error: 'not-found', message: 'main.md does not exist' },
+      body: { error: 'not-found', message: 'index.md does not exist' },
     }));
     s.initDoc({ ...TARGET });
     s.enterEdit();
     await settle();
-    expect(s.$docLoad.get()).toEqual({ status: 'error', message: 'main.md does not exist' });
+    expect(s.$docLoad.get()).toEqual({ status: 'error', message: 'index.md does not exist' });
     disk({ markdown: 'ok', lastModified: 'T2' });
     await s.loadDoc();
     expect(s.$docLoad.get().status).toBe('ready');

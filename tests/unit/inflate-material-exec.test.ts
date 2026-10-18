@@ -263,7 +263,7 @@ describe('ensureDir, writeManifest and the loop', () => {
   });
 
   it('manifest merge: previous entries overlaid with results, removed paths dropped, sorted', async () => {
-    const source = tmp.make({ 'a/main.md': 'a' });
+    const source = tmp.make({ 'a/index.md': 'a' });
     const h = harness();
     mkdirSync(path.join(h.dir, 'old'), { recursive: true });
     symlinkSync(source, path.join(h.dir, 'old', 'gone'), 'dir');
@@ -327,7 +327,7 @@ describe('ensureDir, writeManifest and the loop', () => {
 
 describe('symlink step', () => {
   it('creates, then is unchanged', async () => {
-    const source = tmp.make({ 'main.md': 'x' });
+    const source = tmp.make({ 'index.md': 'x' });
     const h = harness();
     const steps = [dirStep(), symlinkStep('kb/x', 'kb/x', source), manifestStep()];
     const first = await h.run(steps);
@@ -422,7 +422,7 @@ describe('symlink step', () => {
 
 describe('copyDir step', () => {
   const sourceTree = {
-    'main.md': 'main',
+    'index.md': 'trunk',
     'concepts/a.md': 'a',
     '.git/HEAD': 'ref',
     'node_modules/x/index.js': 'x',
@@ -440,7 +440,7 @@ describe('copyDir step', () => {
       '.claude/skills/x',
       '.claude/skills/x/concepts',
       '.claude/skills/x/concepts/a.md',
-      '.claude/skills/x/main.md',
+      '.claude/skills/x/index.md',
     ]);
     expect(find(results, 'okf:skill/x').entry).toEqual({
       path: '.claude/skills/x',
@@ -451,22 +451,22 @@ describe('copyDir step', () => {
   });
 
   it('replaces a recorded copy: stale files are gone, new files are there', async () => {
-    const source = tmp.make({ 'main.md': 'v1', 'old.md': 'old' });
+    const source = tmp.make({ 'index.md': 'v1', 'old.md': 'old' });
     const h = harness();
     const steps = [dirStep(), copyStep('kb/x', 'kb/x', source), manifestStep()];
     const first = await h.run(steps);
     writeFileSync(path.join(h.dir, 'kb', 'x', 'local.md'), 'local edit');
-    writeFileSync(path.join(source, 'main.md'), 'v2');
+    writeFileSync(path.join(source, 'index.md'), 'v2');
     await import('node:fs').then(({ rmSync }) => rmSync(path.join(source, 'old.md')));
     const second = await h.run(steps, { previous: first.manifest });
     expect(find(second.results, 'okf:kb/x')).toMatchObject({ status: 'ok', action: 'replaced' });
-    expect(listTree(path.join(h.dir, 'kb'))).toEqual(['x', 'x/main.md']);
-    expect(readFileSync(path.join(h.dir, 'kb', 'x', 'main.md'), 'utf8')).toBe('v2');
+    expect(listTree(path.join(h.dir, 'kb'))).toEqual(['x', 'x/index.md']);
+    expect(readFileSync(path.join(h.dir, 'kb', 'x', 'index.md'), 'utf8')).toBe('v2');
     expect(listTree(h.dir).some((p) => p.includes('.ctxman-abcdef12'))).toBe(false);
   });
 
   it('refuses an unrecorded destination and removes its temp copy', async () => {
-    const source = tmp.make({ 'main.md': 'x' });
+    const source = tmp.make({ 'index.md': 'x' });
     const h = harness();
     mkdirSync(path.join(h.dir, 'kb', 'x'), { recursive: true });
     writeFileSync(path.join(h.dir, 'kb', 'x', 'mine.md'), 'mine');
@@ -515,7 +515,7 @@ function makeFixtureRepo(): { dir: string; uri: string } {
     'docs/guide.md': 'guide',
     'src/code.ts': 'code',
   });
-  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'init', '-q', '-b', 'trunk');
   git(dir, 'add', '-A');
   git(dir, 'commit', '-qm', 'one');
   return { dir, uri: pathToFileURL(dir).href };
@@ -565,7 +565,7 @@ describe.skipIf(!HAS_GIT)('git steps (real git, local file:// fixture)', () => {
     const repo = makeFixtureRepo();
     git(repo.dir, 'checkout', '-q', '-b', 'dev');
     commitFile(repo.dir, 'dev.md', 'dev');
-    git(repo.dir, 'checkout', '-q', 'main');
+    git(repo.dir, 'checkout', '-q', 'trunk');
     const h = harness();
     const { results } = await h.run([
       dirStep(),
@@ -706,7 +706,7 @@ describe.skipIf(!HAS_GIT)('git steps (real git, local file:// fixture)', () => {
     expect(find(branch.results, 'clone:reference/r')).toMatchObject({
       status: 'skipped',
       action: 'kept',
-      message: 'on branch main, recipe wants release; left as is',
+      message: 'on branch trunk, recipe wants release; left as is',
     });
 
     // a local commit in the clone and a different upstream commit: no fast-forward possible
@@ -779,7 +779,7 @@ describe.skipIf(!HAS_GIT)('git steps (real git, local file:// fixture)', () => {
 
 describe('remove step', () => {
   it('unlinks a recorded symlink and leaves the target intact', async () => {
-    const source = tmp.make({ 'main.md': 'x' });
+    const source = tmp.make({ 'index.md': 'x' });
     const h = harness();
     const first = await h.run([dirStep(), symlinkStep('kb/x', 'kb/x', source), manifestStep()]);
     const entry = first.manifest?.entries[0] as ManifestEntry;
@@ -788,7 +788,7 @@ describe('remove step', () => {
     });
     expect(find(second.results, 'rm:kb/x')).toMatchObject({ status: 'ok', action: 'removed' });
     expect(isLink(path.join(h.dir, 'kb', 'x'))).toBe(false);
-    expect(existsSync(path.join(source, 'main.md'))).toBe(true);
+    expect(existsSync(path.join(source, 'index.md'))).toBe(true);
     expect(second.manifest?.entries).toEqual([]);
   });
 

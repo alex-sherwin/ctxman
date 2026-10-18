@@ -9,6 +9,7 @@ import {
   isDatasetId,
   isValidName,
   OKF_DATASET_IDS,
+  OKF_ENTRY_FILE,
 } from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { entryLinkSchema } from '../datasets/schemas.ts';
@@ -251,7 +252,7 @@ async function listSkillDirs(dataDir: string): Promise<string[]> {
   }
 }
 
-/** Does the entry file of `<dataset>/<slug>` exist? (`reference/x.yaml`, `kb/x/main.md`, …) */
+/** Does the entry file of `<dataset>/<slug>` exist? (`reference/x.yaml`, `kb/x/index.md`, …) */
 function entryExists(dataDir: string, dataset: DatasetId, slug: string): boolean {
   return existsSync(path.join(dataDir, ...entryFileRelPath(dataset, slug).split('/')));
 }
@@ -268,7 +269,7 @@ export interface FileLinksArgs {
 }
 
 /**
- * Findings for the structured `links` of an okf entry's main.md frontmatter, all reported on the line of the
+ * Findings for the structured `links` of an okf entry's index.md frontmatter, all reported on the line of the
  * `links:` key: `links/relation-self` (error, a link to the entry itself) and `links/relation-target`
  * (warning, the target entry does not exist). Items that do not parse (bad dataset or slug, duplicate keys…) are
  * `okf/entry-schema` errors elsewhere and are skipped here, as is frontmatter that does not parse.
@@ -296,7 +297,7 @@ export function checkFrontmatterLinks(args: {
   // The frontmatter starts on file line 2.
   const keyIndex = split.raw.split('\n').findIndex((line) => /^links\s*:/.test(line));
   const line = keyIndex === -1 ? 2 : keyIndex + 2;
-  const file = `${dataset}/${name}/main.md`;
+  const file = `${dataset}/${name}/${OKF_ENTRY_FILE}`;
   const findings: Finding[] = [];
   const reported = new Set<string>();
   for (const item of links) {
@@ -331,7 +332,7 @@ export function checkFrontmatterLinks(args: {
 /**
  * Link findings for ONE markdown file of an okf bundle or skill directory (the loop body of checkLinks, shared with
  * the doc editor): links/broken, links/escapes-bundle, links/ctxman-invalid (errors), links/ctxman-target (warning),
- * and, for an okf entry's main.md, checkFrontmatterLinks. `file` of each finding is `<dataset>/<name>/<relPath>`.
+ * and, for an okf entry's index.md, checkFrontmatterLinks. `file` of each finding is `<dataset>/<name>/<relPath>`.
  */
 export function checkFileLinks(args: FileLinksArgs): Finding[] {
   const { dataset, name, relPath, source } = args;
@@ -390,7 +391,7 @@ export function checkFileLinks(args: FileLinksArgs): Finding[] {
     }
   }
 
-  if (relPath === 'main.md' && dataset !== 'skill') {
+  if (relPath === OKF_ENTRY_FILE && dataset !== 'skill') {
     findings.push(...checkFrontmatterLinks({ dataset, name, source, dataDir }));
   }
   return sortFindings(findings);
@@ -467,7 +468,7 @@ function markBroken(tag: string, title: string): string {
 
 /**
  * Rewrites `href` attributes of `<a>` tags in rendered HTML. Bundle `.md` targets become site routes
- * (main.md -> the entry page, others -> the sub-doc page; fragment kept), `ctxman:<ds>/<slug>` becomes
+ * (the root index.md -> the entry page, others -> the sub-doc page; fragment kept), `ctxman:<ds>/<slug>` becomes
  * `/<ds>/<slug>`, http(s) links open in a new tab. Anchors, non-.md bundle targets and links in skill
  * entries (no doc route) are left unchanged.
  *
@@ -523,7 +524,7 @@ export function rewriteRenderedHtml(
       if (routable && 'path' in resolved && resolved.path.endsWith('.md')) {
         const fragment = stripQueryAndFragment(href).fragment;
         const base =
-          resolved.path === 'main.md'
+          resolved.path === OKF_ENTRY_FILE
             ? entryUrl(ctx.dataset, ctx.slug)
             : docUrl(ctx.dataset, ctx.slug, encodeURI(resolved.path));
         next = fragment === '' ? base : `${base}#${fragment}`;

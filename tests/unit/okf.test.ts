@@ -84,12 +84,12 @@ describe('parseFrontmatterLoose', () => {
 });
 
 describe('classifyOkfPath', () => {
-  it('reserves index.md and log.md at every level', () => {
+  it('index.md is the entry at the root, a nested index.md and log.md are reserved', () => {
     expect(classifyOkfPath('index.md')).toBe('root-index');
     expect(classifyOkfPath('concepts/index.md')).toBe('index');
     expect(classifyOkfPath('log.md')).toBe('log');
     expect(classifyOkfPath('a/b/log.md')).toBe('log');
-    expect(classifyOkfPath('main.md')).toBe('concept');
+    expect(classifyOkfPath('entry.md')).toBe('concept');
     expect(classifyOkfPath('concepts/search.md')).toBe('concept');
   });
 });
@@ -187,22 +187,24 @@ describe('validateOkfFile concept rules', () => {
   });
 });
 
-describe('validateOkfFile main.md rules', () => {
-  const main = (fm: string) =>
+describe('validateOkfFile index.md rules', () => {
+  const entry = (fm: string) =>
     validateOkfFile({
       dataset: 'task',
       bundle: 'demo',
-      relPath: 'main.md',
+      relPath: 'index.md',
       source: `---\n${fm}\n---\n`,
-      file: 'task/demo/main.md',
+      file: 'task/demo/index.md',
     });
 
   it('passes a valid lifecycle entry', () => {
-    expect(main('type: Task\nname: demo\ndescription: d\nstate: pending')).toEqual([]);
+    expect(
+      entry('okf_version: "0.2"\ntype: Task\nname: demo\ndescription: d\nstate: pending'),
+    ).toEqual([]);
   });
 
   it('okf/entry-schema: one finding per schema issue as "path: message"', () => {
-    const found = main('type: Task\nname: demo\nstate: done');
+    const found = entry('okf_version: "0.2"\ntype: Task\nname: demo\nstate: done');
     expect(ruleIds(found)).toEqual(['okf/entry-schema']);
     const messages = found.map((f) => f.message);
     expect(messages.some((m) => m.startsWith('description:'))).toBe(true);
@@ -210,19 +212,21 @@ describe('validateOkfFile main.md rules', () => {
   });
 
   it('okf/name-mismatch and okf/type-mismatch', () => {
-    const found = main('type: Weird\nname: other\ndescription: d\nstate: pending');
+    const found = entry(
+      'okf_version: "0.2"\ntype: Weird\nname: other\ndescription: d\nstate: pending',
+    );
     expect(ruleIds(found)).toEqual(['okf/name-mismatch', 'okf/type-mismatch']);
     expect(byRule(found, 'okf/type-mismatch')[0]?.severity).toBe('warning');
     expect(byRule(found, 'okf/name-mismatch')[0]?.severity).toBe('error');
   });
 
-  it('only the bundle-root main.md is the entry (nested main.md is a plain concept)', () => {
+  it('only the bundle-root index.md is the entry (a nested index.md is navigation, any other file a concept)', () => {
     const found = validateOkfFile({
       dataset: 'task',
       bundle: 'demo',
-      relPath: 'concepts/main.md',
+      relPath: 'concepts/entry.md',
       source: '---\ntype: Note\n---\n',
-      file: 'task/demo/concepts/main.md',
+      file: 'task/demo/concepts/entry.md',
     });
     expect(found).toEqual([]);
   });
@@ -232,21 +236,32 @@ describe('validateOkfFile reserved files', () => {
   const run = (relPath: string, source: string) =>
     validateOkfFile({ dataset: 'kb', bundle: 'demo', relPath, source, file: `kb/demo/${relPath}` });
 
-  it('root index: no frontmatter or okf_version "0.2" are fine', () => {
-    expect(run('index.md', '# Index\n')).toEqual([]);
-    expect(run('index.md', '---\nokf_version: "0.2"\n---\n# Index\n')).toEqual([]);
+  const rootIndex = (fm: string) => run('index.md', `---\n${fm}\n---\n# Index\n`);
+
+  it('root index.md (the entry): okf_version "0.2" first, no finding for a valid kb entry', () => {
+    expect(
+      rootIndex('okf_version: "0.2"\ntype: Knowledge Base\nname: demo\ndescription: d'),
+    ).toEqual([]);
   });
 
-  it('okf/index-frontmatter: extra keys, wrong or non-string version, bad YAML', () => {
-    for (const fm of [
-      'okf_version: "0.2"\ntitle: x',
-      'okf_version: "0.3"',
-      'okf_version: 0.2',
-      'a: b: c',
-    ]) {
-      const found = run('index.md', `---\n${fm}\n---\n`);
+  it('okf/index-version: a root index.md without okf_version is a warning', () => {
+    const found = rootIndex('type: Knowledge Base\nname: demo\ndescription: d');
+    expect(found.map((f) => [f.rule, f.severity])).toEqual([['okf/index-version', 'warning']]);
+  });
+
+  it('root index.md without frontmatter is okf/frontmatter', () => {
+    expect(ruleIds(run('index.md', '# Index\n'))).toEqual(['okf/frontmatter']);
+  });
+
+  it('okf/index-frontmatter: wrong or non-string version (once, no schema duplicate)', () => {
+    for (const version of ['"0.3"', '0.2']) {
+      const found = rootIndex(
+        `okf_version: ${version}\ntype: Knowledge Base\nname: demo\ndescription: d`,
+      );
       expect(ruleIds(found)).toEqual(['okf/index-frontmatter']);
+      expect(found[0]?.severity).toBe('error');
     }
+    expect(ruleIds(rootIndex('a: b: c'))).toEqual(['okf/frontmatter']);
   });
 
   it('okf/reserved-frontmatter: nested index.md and any log.md with frontmatter', () => {
@@ -287,7 +302,7 @@ describe('checkOkf', () => {
     const dir = tmp.make(validKbBundle());
     const result = await checkOkf(dir);
     expect(result.findings).toEqual([]);
-    expect(result.filesChecked).toBe(4);
+    expect(result.filesChecked).toBe(3);
   });
 
   it('treats a missing data dir as empty', async () => {
@@ -298,25 +313,26 @@ describe('checkOkf', () => {
     const dir = tmp.make({
       // bundle-level
       'kb/README.md': 'stray\n',
-      'kb/Bad_Name/main.md': '---\ntype: Knowledge Base\nname: Bad_Name\ndescription: d\n---\n',
-      'kb/no-main/index.md': '# nothing\n',
+      'kb/Bad_Name/index.md': '---\ntype: Knowledge Base\nname: Bad_Name\ndescription: d\n---\n',
+      'kb/no-index/concepts/x.md': '---\ntype: T\n---\n',
+      'kb/no-version/index.md':
+        '---\ntype: Knowledge Base\nname: no-version\ndescription: d\n---\n',
       'kb/.hidden/ignored.md': 'not checked',
       // file-level
-      'kb/crafted/main.md':
-        '---\ntype: Weird\nname: not-crafted\ndescription: d\nstale_after: soon\ngenerated:\n  by: x\n---\nText[^lost]\n',
+      'kb/crafted/index.md':
+        '---\nokf_version: "0.3"\ntype: Weird\nname: not-crafted\ndescription: d\nstale_after: soon\ngenerated:\n  by: x\n---\nText[^lost]\n',
       'kb/crafted/concepts/no-fm.md': '# nothing\n',
       'kb/crafted/concepts/no-type.md': '---\ntitle: x\n---\n',
       'kb/crafted/concepts/index.md': '---\ntype: T\n---\n',
-      'kb/crafted/index.md': '---\nfoo: bar\n---\n',
       'kb/crafted/log.md': '## nope\n\n## 2026-01-01\n\n## 2026-02-01\n',
-      'task/crafted/main.md': '---\ntype: Task\nname: crafted\ndescription: d\nstate: nope\n---\n',
+      'task/crafted/index.md': '---\ntype: Task\nname: crafted\ndescription: d\nstate: nope\n---\n',
     });
     const { findings } = await checkOkf(dir);
     const rules = ruleIds(findings);
     for (const rule of [
       'okf/stray-file',
       'okf/bad-bundle-name',
-      'okf/missing-main',
+      'okf/index-version',
       'okf/missing-index',
       'okf/frontmatter',
       'okf/type',
@@ -336,14 +352,18 @@ describe('checkOkf', () => {
     // never reaches into dot-directories
     expect(findings.some((f) => f.file.includes('.hidden'))).toBe(false);
     // finding paths are data-dir relative posix
-    expect(byRule(findings, 'okf/missing-main').map((f) => f.file)).toContain('kb/no-main');
+    expect(byRule(findings, 'okf/missing-index').map((f) => f.file)).toContain('kb/no-index');
+    expect(byRule(findings, 'okf/missing-index')[0]?.severity).toBe('error');
+    expect(byRule(findings, 'okf/index-version').map((f) => f.file)).toContain(
+      'kb/no-version/index.md',
+    );
     expect(byRule(findings, 'okf/stray-file')[0]?.file).toBe('kb/README.md');
   });
 
   it('lists bundle directories sorted, skipping files and dot-dirs', async () => {
     const dir = tmp.make({
-      'kb/b/main.md': '',
-      'kb/a/main.md': '',
+      'kb/b/index.md': '',
+      'kb/a/index.md': '',
       'kb/.git/x': '',
       'kb/file.md': '',
     });
@@ -361,18 +381,18 @@ describe('findings report', () => {
   it('sorts by file, line, rule and counts errors and warnings', () => {
     const report = toReport(
       [
-        f('warning', 'b/rule', 'kb/b/main.md', 3),
-        f('error', 'a/rule', 'kb/b/main.md', 3),
-        f('error', 'z/rule', 'kb/a/main.md', 9),
-        f('error', 'z/rule', 'kb/a/main.md'),
+        f('warning', 'b/rule', 'kb/b/index.md', 3),
+        f('error', 'a/rule', 'kb/b/index.md', 3),
+        f('error', 'z/rule', 'kb/a/index.md', 9),
+        f('error', 'z/rule', 'kb/a/index.md'),
       ],
       4,
     );
     expect(report.findings.map((x) => [x.file, x.line, x.rule])).toEqual([
-      ['kb/a/main.md', undefined, 'z/rule'],
-      ['kb/a/main.md', 9, 'z/rule'],
-      ['kb/b/main.md', 3, 'a/rule'],
-      ['kb/b/main.md', 3, 'b/rule'],
+      ['kb/a/index.md', undefined, 'z/rule'],
+      ['kb/a/index.md', 9, 'z/rule'],
+      ['kb/b/index.md', 3, 'a/rule'],
+      ['kb/b/index.md', 3, 'b/rule'],
     ]);
     expect(report).toMatchObject({ ok: false, errors: 3, warnings: 1, filesChecked: 4 });
     expect(exitCode(report)).toBe(1);
@@ -388,13 +408,16 @@ describe('findings report', () => {
     const text = formatReport(
       'OKF',
       toReport(
-        [f('error', 'okf/type', 'kb/x/main.md', 2), f('warning', 'okf/stray-file', 'kb/README.md')],
+        [
+          f('error', 'okf/type', 'kb/x/index.md', 2),
+          f('warning', 'okf/stray-file', 'kb/README.md'),
+        ],
         5,
       ),
     );
     expect(text.split('\n')).toEqual([
       'WARN  okf/stray-file kb/README.md m',
-      'ERROR okf/type kb/x/main.md:2 m',
+      'ERROR okf/type kb/x/index.md:2 m',
       'OKF: 1 errors, 1 warnings (5 files)',
     ]);
     expect(formatReport('Links', toReport([], 12))).toBe('Links: OK (12 files)');

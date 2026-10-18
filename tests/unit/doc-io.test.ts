@@ -41,7 +41,7 @@ async function failure(promise: Promise<unknown>): Promise<DocIoError> {
   throw new Error('expected a DocIoError, but the call resolved');
 }
 
-const MAIN = `---\ntype: Knowledge Base\nname: x\ndescription: A KB.\n---\n\n# X\n`;
+const MAIN = `---\nokf_version: "0.2"\ntype: Knowledge Base\nname: x\ndescription: A KB.\n---\n\n# X\n`;
 
 describe('isDocDatasetId', () => {
   it('accepts the okf datasets and skill only', () => {
@@ -57,7 +57,7 @@ describe('isDocDatasetId', () => {
 describe('normalizeDocPath', () => {
   it('returns valid paths unchanged', () => {
     for (const ok of [
-      'main.md',
+      'index.md',
       'concepts/search.md',
       'concepts/a b.md',
       'a/b/c/d.md',
@@ -119,8 +119,8 @@ describe('readDoc', () => {
   });
 
   it('counts UTF-8 bytes, not characters', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': `${MAIN}é€\n` });
-    const doc = await readDoc('kb', 'x', 'main.md', dir);
+    const dir = tmp.make({ 'kb/x/index.md': `${MAIN}é€\n` });
+    const doc = await readDoc('kb', 'x', 'index.md', dir);
     expect(doc.bytes).toBe(Buffer.byteLength(`${MAIN}é€\n`));
     expect(doc.bytes).toBeGreaterThan(doc.markdown.length);
   });
@@ -136,24 +136,24 @@ describe('readDoc', () => {
 
   it('throws bad-dataset for non-doc datasets (message lists the allowed ids)', async () => {
     const dir = tmp.make();
-    const error = await failure(readDoc('context', 'x', 'main.md', dir));
+    const error = await failure(readDoc('context', 'x', 'index.md', dir));
     expect(error.code).toBe('bad-dataset');
     expect(error.message).toContain('kb');
     expect(error.message).toContain('skill');
   });
 
   it('throws bad-slug and bad-path before touching the disk', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
-    expect((await failure(readDoc('kb', '../x', 'main.md', dir))).code).toBe('bad-slug');
-    expect((await failure(readDoc('kb', 'X', 'main.md', dir))).code).toBe('bad-slug');
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
+    expect((await failure(readDoc('kb', '../x', 'index.md', dir))).code).toBe('bad-slug');
+    expect((await failure(readDoc('kb', 'X', 'index.md', dir))).code).toBe('bad-slug');
     for (const bad of [undefined, '', '../x.md', 'a\\b.md', 'x.txt', '.hidden/x.md']) {
       expect((await failure(readDoc('kb', 'x', bad, dir))).code, String(bad)).toBe('bad-path');
     }
   });
 
   it('throws not-found for a missing entry and a missing file', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
-    const noEntry = await failure(readDoc('kb', 'nope', 'main.md', dir));
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
+    const noEntry = await failure(readDoc('kb', 'nope', 'index.md', dir));
     expect(noEntry.code).toBe('not-found');
     expect(noEntry.message).toBe('kb entry "nope" does not exist');
     const noFile = await failure(readDoc('kb', 'x', 'concepts/nope.md', dir));
@@ -165,7 +165,7 @@ describe('readDoc', () => {
   });
 
   it('throws bad-path for a symlink that leaves the bundle', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN, 'outside.md': 'outside' });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN, 'outside.md': 'outside' });
     try {
       symlinkSync(path.join(dir, 'outside.md'), path.join(dir, 'kb', 'x', 'out.md'));
     } catch {
@@ -175,7 +175,7 @@ describe('readDoc', () => {
   });
 
   it('throws too-large above 512 KB and not-text for a NUL byte', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     writeFileSync(path.join(dir, 'kb', 'x', 'big.md'), 'a'.repeat(MAX_TEXT_BYTES + 1));
     writeFileSync(path.join(dir, 'kb', 'x', 'ok.md'), 'a'.repeat(MAX_TEXT_BYTES));
     writeFileSync(path.join(dir, 'kb', 'x', 'bin.md'), Buffer.from([65, 0, 66]));
@@ -186,46 +186,46 @@ describe('readDoc', () => {
 });
 
 describe('writeDoc', () => {
-  const file = (dir: string, rel = 'main.md') => path.join(dir, 'kb', 'x', ...rel.split('/'));
+  const file = (dir: string, rel = 'index.md') => path.join(dir, 'kb', 'x', ...rel.split('/'));
 
   it('writes the exact bytes (CRLF kept) and returns the new record', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const text =
-      '---\r\ntype: Knowledge Base\r\nname: x\r\ndescription: Changed.\r\n---\r\n\r\n# X\r\n';
-    const doc = await writeDoc('kb', 'x', 'main.md', { markdown: text }, dir);
+      '---\r\nokf_version: "0.2"\r\ntype: Knowledge Base\r\nname: x\r\ndescription: Changed.\r\n---\r\n\r\n# X\r\n';
+    const doc = await writeDoc('kb', 'x', 'index.md', { markdown: text }, dir);
     expect(readFileSync(file(dir), 'utf8')).toBe(text);
     expect(doc.markdown).toBe(text);
     expect(doc.bytes).toBe(Buffer.byteLength(text));
-    expect(doc.path).toBe('main.md');
+    expect(doc.path).toBe('index.md');
     expect(doc.lastModified).toBe(statSync(file(dir)).mtime.toISOString());
     expect(doc.warnings).toEqual([]);
   });
 
   it('keeps the file mode and leaves no temp file behind', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     if (process.platform !== 'win32') chmodSync(file(dir), 0o640);
-    await writeDoc('kb', 'x', 'main.md', { markdown: `${MAIN}more\n` }, dir);
+    await writeDoc('kb', 'x', 'index.md', { markdown: `${MAIN}more\n` }, dir);
     if (process.platform !== 'win32') expect(statSync(file(dir)).mode & 0o777).toBe(0o640);
-    expect(readdirSync(path.join(dir, 'kb', 'x'))).toEqual(['main.md']);
+    expect(readdirSync(path.join(dir, 'kb', 'x'))).toEqual(['index.md']);
   });
 
   it('changes lastModified', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const old = new Date('2020-01-01T00:00:00.000Z');
     utimesSync(file(dir), old, old);
-    const before = (await readDoc('kb', 'x', 'main.md', dir)).lastModified;
+    const before = (await readDoc('kb', 'x', 'index.md', dir)).lastModified;
     expect(before).toBe('2020-01-01T00:00:00.000Z');
-    const after = await writeDoc('kb', 'x', 'main.md', { markdown: MAIN }, dir);
+    const after = await writeDoc('kb', 'x', 'index.md', { markdown: MAIN }, dir);
     expect(after.lastModified).not.toBe(before);
   });
 
   it('ifUnmodifiedSince equal to the current mtime writes', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
-    const { lastModified } = await readDoc('kb', 'x', 'main.md', dir);
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
+    const { lastModified } = await readDoc('kb', 'x', 'index.md', dir);
     const doc = await writeDoc(
       'kb',
       'x',
-      'main.md',
+      'index.md',
       { markdown: `${MAIN}ok\n`, ifUnmodifiedSince: lastModified },
       dir,
     );
@@ -234,30 +234,30 @@ describe('writeDoc', () => {
   });
 
   it('any other mtime, older or newer, is a conflict that carries the current mtime and keeps the file', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const current = new Date('2024-05-05T05:05:05.000Z');
     utimesSync(file(dir), current, current);
     for (const stale of ['2024-05-05T05:05:04.000Z', '2024-05-05T05:05:06.000Z']) {
       const error = await failure(
-        writeDoc('kb', 'x', 'main.md', { markdown: 'lost', ifUnmodifiedSince: stale }, dir),
+        writeDoc('kb', 'x', 'index.md', { markdown: 'lost', ifUnmodifiedSince: stale }, dir),
       );
       expect(error.code, stale).toBe('conflict');
       expect(error.lastModified).toBe('2024-05-05T05:05:05.000Z');
     }
     expect(readFileSync(file(dir), 'utf8')).toBe(MAIN);
-    expect(readdirSync(path.join(dir, 'kb', 'x'))).toEqual(['main.md']);
+    expect(readdirSync(path.join(dir, 'kb', 'x'))).toEqual(['index.md']);
   });
 
   it('omitting ifUnmodifiedSince writes unconditionally', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const old = new Date('2001-01-01T00:00:00.000Z');
     utimesSync(file(dir), old, old);
-    await writeDoc('kb', 'x', 'main.md', { markdown: 'new\n' }, dir);
+    await writeDoc('kb', 'x', 'index.md', { markdown: 'new\n' }, dir);
     expect(readFileSync(file(dir), 'utf8')).toBe('new\n');
   });
 
   it('rejects an invalid body with issues and writes nothing', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const cases: [unknown, { path: string; message: string }[]][] = [
       [null, [{ path: '', message: 'must be an object' }]],
       [[], [{ path: '', message: 'must be an object' }]],
@@ -275,7 +275,7 @@ describe('writeDoc', () => {
       [{ markdown: 'x', extra: 1 }, [{ path: 'extra', message: 'unexpected property' }]],
     ];
     for (const [body, issues] of cases) {
-      const error = await failure(writeDoc('kb', 'x', 'main.md', body, dir));
+      const error = await failure(writeDoc('kb', 'x', 'index.md', body, dir));
       expect(error.code, JSON.stringify(body)).toBe('invalid');
       expect(error.issues, JSON.stringify(body)).toEqual(issues);
     }
@@ -283,29 +283,29 @@ describe('writeDoc', () => {
   });
 
   it('rejects markdown over 512 KB (too-large) and accepts exactly 512 KB', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const error = await failure(
-      writeDoc('kb', 'x', 'main.md', { markdown: 'a'.repeat(MAX_TEXT_BYTES + 1) }, dir),
+      writeDoc('kb', 'x', 'index.md', { markdown: 'a'.repeat(MAX_TEXT_BYTES + 1) }, dir),
     );
     expect(error.code).toBe('too-large');
-    await writeDoc('kb', 'x', 'main.md', { markdown: 'a'.repeat(MAX_TEXT_BYTES) }, dir);
+    await writeDoc('kb', 'x', 'index.md', { markdown: 'a'.repeat(MAX_TEXT_BYTES) }, dir);
     expect(statSync(file(dir)).size).toBe(MAX_TEXT_BYTES);
   });
 
   it('uses the path checks of readDoc (no create, no traversal, no dot files)', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const body = { markdown: 'x' };
     expect((await failure(writeDoc('kb', 'x', 'new.md', body, dir))).code).toBe('not-found');
-    expect((await failure(writeDoc('kb', 'nope', 'main.md', body, dir))).code).toBe('not-found');
+    expect((await failure(writeDoc('kb', 'nope', 'index.md', body, dir))).code).toBe('not-found');
     expect((await failure(writeDoc('kb', 'x', '../y.md', body, dir))).code).toBe('bad-path');
-    expect((await failure(writeDoc('context', 'x', 'main.md', body, dir))).code).toBe(
+    expect((await failure(writeDoc('context', 'x', 'index.md', body, dir))).code).toBe(
       'bad-dataset',
     );
     expect(existsSync(file(dir, 'new.md'))).toBe(false);
   });
 
   it('writes through a symlinked file inside the bundle: the link stays, its target changes', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN, 'kb/x/real/target.md': 'old\n' });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN, 'kb/x/real/target.md': 'old\n' });
     const link = file(dir, 'link.md');
     try {
       symlinkSync(file(dir, 'real/target.md'), link);
@@ -322,20 +322,20 @@ describe('writeDoc', () => {
 
   it('saves invalid frontmatter and reports findings as warnings', async () => {
     const dir = tmp.make({
-      'task/t/main.md':
+      'task/t/index.md':
         '---\ntype: Task\nname: t\ndescription: A task.\nstate: pending\n---\n\n# T\n',
     });
     const bad = '---\ntype: Task\nname: t\ndescription: A task.\nstate: nope\n---\n\n# T\n';
-    const doc = await writeDoc('task', 't', 'main.md', { markdown: bad }, dir);
-    expect(readFileSync(path.join(dir, 'task', 't', 'main.md'), 'utf8')).toBe(bad);
+    const doc = await writeDoc('task', 't', 'index.md', { markdown: bad }, dir);
+    expect(readFileSync(path.join(dir, 'task', 't', 'index.md'), 'utf8')).toBe(bad);
     expect(ruleIds(doc.warnings)).toContain('okf/entry-schema');
-    expect(doc.warnings.every((w) => w.file === 'task/t/main.md')).toBe(true);
+    expect(doc.warnings.every((w) => w.file === 'task/t/index.md')).toBe(true);
     expect(doc.warnings.some((w) => w.severity === 'error')).toBe(true);
   });
 });
 
 describe('validateDoc', () => {
-  it('okf: a concept without type, a bad log heading, an extra root-index key', () => {
+  it('okf: a concept without type, a bad log heading, a wrong okf_version on the entry', () => {
     expect(
       ruleIds(validateDoc('kb', 'x', 'concepts/c.md', '---\ndescription: d\n---\n# C\n')),
     ).toContain('okf/type');
@@ -343,12 +343,19 @@ describe('validateDoc', () => {
       ruleIds(validateDoc('kb', 'x', 'log.md', '# Update log\n\n## Yesterday\n* **Update**: x\n')),
     ).toContain('okf/log-heading');
     expect(
-      ruleIds(validateDoc('kb', 'x', 'index.md', '---\nokf_version: "0.2"\nextra: 1\n---\n# I\n')),
+      ruleIds(
+        validateDoc(
+          'kb',
+          'x',
+          'index.md',
+          '---\nokf_version: "0.3"\ntype: Knowledge Base\nname: x\ndescription: d\n---\n# I\n',
+        ),
+      ),
     ).toContain('okf/index-frontmatter');
   });
 
   it('okf: a clean file has no findings, findings carry the data-dir relative file', () => {
-    expect(validateDoc('kb', 'x', 'main.md', MAIN)).toEqual([]);
+    expect(validateDoc('kb', 'x', 'index.md', MAIN)).toEqual([]);
     const findings = validateDoc('kb', 'x', 'concepts/c.md', 'no frontmatter');
     expect(findings.length).toBeGreaterThan(0);
     expect(findings.every((f) => f.file === 'kb/x/concepts/c.md')).toBe(true);
@@ -379,7 +386,7 @@ describe('validateDoc', () => {
   it('is exercised through a full data tree', async () => {
     const dir = tmp.make();
     writeTree(dir, validKbBundle('demo'));
-    const doc = await readDoc('kb', 'demo', 'main.md', dir);
+    const doc = await readDoc('kb', 'demo', 'index.md', dir);
     expect(doc.warnings).toEqual([]);
   });
 });
@@ -389,7 +396,8 @@ describe('link findings as warnings (validateDoc / readDoc / writeDoc)', () => {
 
   it('validateDoc appends the link findings of that file, resolved against the given data dir', () => {
     const dir = tmp.make({
-      'task/exists/main.md': '---\ntype: Task\nname: exists\ndescription: d\nstate: pending\n---\n',
+      'task/exists/index.md':
+        '---\ntype: Task\nname: exists\ndescription: d\nstate: pending\n---\n',
     });
     const source = concept(
       '[a](./nope.md) [b](ctxman:idea/e2e-nope) [c](ctxman:task/exists) [d](ctxman:Bad)\n',
@@ -406,20 +414,20 @@ describe('link findings as warnings (validateDoc / readDoc / writeDoc)', () => {
     expect(target?.line).toBe(4);
   });
 
-  it('also covers skill markdown files and main.md frontmatter relations', () => {
+  it('also covers skill markdown files and index.md frontmatter relations', () => {
     const dir = tmp.make();
     expect(ruleIds(validateDoc('skill', 's', 'references/x.md', '[x](./gone.md)\n', dir))).toEqual([
       'links/broken',
     ]);
     const main =
-      '---\ntype: Task\nname: x\ndescription: d\nstate: pending\nlinks:\n  - dataset: idea\n    slug: e2e-nope\n    rel: related\n---\n';
-    expect(ruleIds(validateDoc('task', 'x', 'main.md', main, dir))).toEqual([
+      '---\nokf_version: "0.2"\ntype: Task\nname: x\ndescription: d\nstate: pending\nlinks:\n  - dataset: idea\n    slug: e2e-nope\n    rel: related\n---\n';
+    expect(ruleIds(validateDoc('task', 'x', 'index.md', main, dir))).toEqual([
       'links/relation-target',
     ]);
   });
 
   it('PUT and GET return them in warnings; the save still never blocks', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN, 'kb/x/concepts/c.md': concept('# C\n') });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN, 'kb/x/concepts/c.md': concept('# C\n') });
     const source = concept('[a](./nope.md) and [b](ctxman:idea/e2e-nope)\n');
     const saved = await writeDoc('kb', 'x', 'concepts/c.md', { markdown: source }, dir);
     expect(ruleIds(saved.warnings)).toEqual(['links/broken', 'links/ctxman-target']);
@@ -431,22 +439,22 @@ describe('link findings as warnings (validateDoc / readDoc / writeDoc)', () => {
 
 describe('writeDoc runs under the per-file lock', () => {
   it('serializes concurrent saves of one file: each sees the previous mtime guard', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const old = new Date('2026-01-02T03:04:05.000Z');
-    utimesSync(path.join(dir, 'kb', 'x', 'main.md'), old, old);
-    const first = await readDoc('kb', 'x', 'main.md', dir);
+    utimesSync(path.join(dir, 'kb', 'x', 'index.md'), old, old);
+    const first = await readDoc('kb', 'x', 'index.md', dir);
     const results = await Promise.allSettled([
       writeDoc(
         'kb',
         'x',
-        'main.md',
+        'index.md',
         { markdown: `${MAIN}one\n`, ifUnmodifiedSince: first.lastModified },
         dir,
       ),
       writeDoc(
         'kb',
         'x',
-        'main.md',
+        'index.md',
         { markdown: `${MAIN}two\n`, ifUnmodifiedSince: first.lastModified },
         dir,
       ),
@@ -464,7 +472,7 @@ describe('addConceptToIndex', () => {
 
   it('inserts after the last list item of ## Concepts, using the section bullet', () => {
     const source =
-      '---\nokf_version: "0.2"\n---\n# T\n\n## Entry\n\n* [T](/main.md) - E.\n\n## Concepts\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n\n* x\n';
+      '---\nokf_version: "0.2"\n---\n# T\n\n## Entry\n\n* [T](/index.md) - E.\n\n## Concepts\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n\n* x\n';
     expect(addConceptToIndex(source, concept)).toBe(
       source.replace('- [B](/concepts/b.md) - B.\n', `- [B](/concepts/b.md) - B.\n- ${line}\n`),
     );
@@ -640,13 +648,11 @@ describe('createDoc', () => {
     expect(created.lastModified).toBe(statSync(file).mtime.toISOString());
     const index = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
     expect(index).toBe(
-      validKbBundle('demo')['kb/demo/index.md']!.replace(
-        '* [One](/concepts/one.md) - First concept.\n',
-        '* [One](/concepts/one.md) - First concept.\n* [W2 new](/concepts/w2-new.md) - A new guide.\n',
-      ),
+      // The entry has no `## Concepts` section yet: one is appended.
+      `${validKbBundle('demo')['kb/demo/index.md']!}\n## Concepts\n\n* [W2 new](/concepts/w2-new.md) - A new guide.\n`,
     );
     expect(readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8')).toBe(
-      '# Update log\n\n## 2026-10-18\n* **Create**: Created [W2 new](/concepts/w2-new.md).\n* **Update**: Edited.\n\n## 2026-10-17\n* **Create**: Created [Demo](/main.md).\n',
+      '# Update log\n\n## 2026-10-18\n* **Create**: Created [W2 new](/concepts/w2-new.md).\n* **Update**: Edited.\n\n## 2026-10-17\n* **Create**: Created [Demo](/index.md).\n',
     );
     // Nothing is left behind and the bundle still passes the okf + link checks.
     expect(readdirSync(path.join(dir, 'kb', 'demo', 'concepts')).sort()).toEqual([
@@ -675,10 +681,10 @@ describe('createDoc', () => {
   });
 
   it('is fine in a bundle without index.md / log.md (they are not created)', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': MAIN });
+    const dir = tmp.make({ 'kb/x/index.md': MAIN });
     const created = await createDoc('kb', 'x', 'a.md', { title: 'A' }, dir, now);
     expect(created.warnings).toEqual([]);
-    expect(readdirSync(path.join(dir, 'kb', 'x')).sort()).toEqual(['a.md', 'main.md']);
+    expect(readdirSync(path.join(dir, 'kb', 'x')).sort()).toEqual(['a.md', 'index.md']);
   });
 
   it('answers exists for an existing file (also a directory or a dangling symlink) and changes nothing', async () => {
@@ -704,12 +710,12 @@ describe('createDoc', () => {
     );
   });
 
-  it('reserves index.md, log.md and the root main.md', async () => {
+  it('reserves index.md, log.md and the root index.md', async () => {
     const dir = tmp.make(bundle());
     for (const target of [
       'index.md',
       'log.md',
-      'main.md',
+      'index.md',
       'concepts/index.md',
       'concepts/log.md',
     ]) {

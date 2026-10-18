@@ -21,7 +21,7 @@ export const SERVER_NAME = 'ctxman';
 export const INSTRUCTIONS = `ctxman keeps knowledge, work items, skills and references as files and links them with typed relations.
 Datasets: kb, rca, idea, task, bug, feature, project (okf bundles), skill, reference, context (evergreen link sets) and recipe (saved Context Inflate compositions).
 1. Start with search (all datasets, ranked, with snippets) or list-entries (filter by state, tag, project); list-datasets shows what exists.
-2. get-entry gives frontmatter, body, relations and files; read-bundle-file reads one concept file (concepts/x.md, log.md, SKILL.md); get-context resolves a context's links and notes.
+2. get-entry gives frontmatter, body, relations and files; read-bundle-file reads one file (index.md is an okf entry, plus concepts/x.md, log.md; SKILL.md for skills); get-context resolves a context's links and notes.
 3. render-recipe returns the full Context Inflate brief for a recipe or an ad hoc set of contexts/items; check-data runs the compliance checks.
 4. Write tools change files immediately and without confirmation: create-entry, patch-entry (state, title, description, tags, relations), append-context-links, append-log (a dated line in a bundle's log.md). Record notable changes with append-log.
 5. Entries are also resources: ctxman://{dataset}/{slug} and ctxman://{dataset}/{slug}/doc/{path}. Other entries are referenced in prose as ctxman:<dataset>/<slug>.`;
@@ -73,7 +73,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'Entry',
       description:
-        'An entry file as on disk: main.md / SKILL.md, or the yaml of a reference, context or recipe.',
+        'An entry file as on disk: index.md / SKILL.md, or the yaml of a reference, context or recipe.',
     },
     async (uri: URL, vars: Variables) => {
       try {

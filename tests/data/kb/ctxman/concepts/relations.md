@@ -7,7 +7,7 @@ tags: [relations, links, projects, entry-index, ui]
 
 # Relations between entries
 
-Entries used to know about each other only through prose links. A **relation** is structured data: an okf entry (kb, rca, idea, task, bug, feature, project) lists the entries it relates to in the `links` key of its `main.md` frontmatter, and the UI reads and edits that list. The feature record is [entry-relations](ctxman:feature/entry-relations); the project that owns it is [ctxman-v1](ctxman:project/ctxman-v1), which is also the best example of the model.
+Entries used to know about each other only through prose links. A **relation** is structured data: an okf entry (kb, rca, idea, task, bug, feature, project) lists the entries it relates to in the `links` key of its entry `index.md` frontmatter, and the UI reads and edits that list. The feature record is [entry-relations](ctxman:feature/entry-relations); the project that owns it is [ctxman-v1](ctxman:project/ctxman-v1), which is also the best example of the model.
 
 ## The `links` field
 
@@ -37,7 +37,7 @@ Cycles are not checked. A body link is a **mention**: any `ctxman:<dataset>/<slu
 
 ## The project owns its children
 
-A project lists its tasks, features, bugs and ideas as `rel: child` links in its own `main.md`; the child does not point back. One file therefore holds the ordered child set, and the Children panel edits only that file. The data model allows `child` on any okf entry, but the UI offers the panel on project pages only.
+A project lists its tasks, features, bugs and ideas as `rel: child` links in its own `index.md`; the child does not point back. One file therefore holds the ordered child set, and the Children panel edits only that file. The data model allows `child` on any okf entry, but the UI offers the panel on project pages only.
 
 * A child page shows a "Part of &lt;project&gt;" chip in its header and lists the project as "Parent" under Linked from.
 * **Children panel** (project pages): the children in file order with their state badges, a progress count ("N of M done", counting children that have a lifecycle state in a done group), `+ Add existing` (an entry picker), a remove button per row, `Build context`, and footer links: "New:" task, feature, idea or bug (`/new/<dataset>?parent=<project>`) and "View:" one link per dataset that has children (`/<dataset>?project=<project>`).
@@ -79,7 +79,7 @@ Everything below is the EntryTools island on okf and skill detail pages (see [Ed
 | `links/relation-target` | warning | A frontmatter link points at an entry that does not exist |
 | `links/relation-self` | error | An entry links to itself |
 
-A malformed item or a duplicate is an `okf/entry-schema` / `collections/schema` error instead. The doc API also returns these findings as warnings when a `main.md` is saved. Details are in [Compliance checks](/concepts/compliance-checks.md).
+A malformed item or a duplicate is an `okf/entry-schema` / `collections/schema` error instead. The doc API also returns these findings as warnings when an entry `index.md` is saved. Details are in [Compliance checks](/concepts/compliance-checks.md).
 
 ## Related
 

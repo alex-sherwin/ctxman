@@ -5,7 +5,7 @@ import { Dialog, Modal } from '../kit/Dialog.tsx';
 
 export interface ConflictDialogProps {
   isOpen: boolean;
-  /** What changed, shown in code font: a file name or entry ("main.md", "context/ctxman-dev"). */
+  /** What changed, shown in code font: a file name or entry ("index.md", "context/ctxman-dev"). */
   what: string;
   /** Discard my edits and load the disk version. */
   onLoadTheirs: () => void;

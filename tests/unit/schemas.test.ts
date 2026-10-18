@@ -18,8 +18,8 @@ import {
   nameSchema,
   okfConceptSchema,
   okfEventSchema,
-  okfIndexSchema,
   referenceSchema,
+  kbSchema,
   skillSchema,
 } from '../../src/datasets/schemas.ts';
 import { isSafeGitRef, isSafeRelativeDir } from '../../src/lib/inflate/catalog.ts';
@@ -194,11 +194,12 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     expect(validate(okfEventSchema, { by: 'human:alex', at: '2026-10-17' }).success).toBe(true);
   });
 
-  it('okfIndexSchema allows only okf_version "0.2"', () => {
-    expect(validate(okfIndexSchema, {}).success).toBe(true);
-    expect(validate(okfIndexSchema, { okf_version: '0.2' }).success).toBe(true);
-    expect(validate(okfIndexSchema, { okf_version: '0.1' }).success).toBe(false);
-    expect(validate(okfIndexSchema, { okf_version: '0.2', title: 'x' }).success).toBe(false);
+  it('okfEntrySchema accepts okf_version "0.2" only', () => {
+    const entry = { type: 'Knowledge Base', name: 'x', description: 'd' };
+    expect(validate(kbSchema, entry).success).toBe(true);
+    expect(validate(kbSchema, { okf_version: '0.2', ...entry }).success).toBe(true);
+    expect(validate(kbSchema, { okf_version: '0.1', ...entry }).success).toBe(false);
+    expect(validate(kbSchema, { okf_version: 0.2, ...entry }).success).toBe(false);
   });
 
   it('docSchema is loose', () => {
@@ -533,7 +534,7 @@ const CLONE_DIRS = [
 
 const GIT_REFS = [
   '',
-  'main',
+  'develop',
   'release/1.2',
   'v1.0.0',
   'feature/a-b_c',

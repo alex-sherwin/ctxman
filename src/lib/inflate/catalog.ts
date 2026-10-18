@@ -324,14 +324,14 @@ export const FAMILY_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
   okf: [
     {
       id: 'inline-main',
-      label: 'Inline main.md',
-      description: "Embed the entry's main.md.",
+      label: 'Inline entry',
+      description: "Embed the entry's index.md.",
       options: ['includeFrontmatter', 'shiftHeadings', 'rewriteLinks'],
     },
     {
       id: 'inline-bundle',
       label: 'Inline bundle',
-      description: 'Embed main.md and every concept file, in index order.',
+      description: 'Embed index.md and every concept file, in index order.',
       options: ['includeFrontmatter', 'includeLog', 'shiftHeadings', 'rewriteLinks'],
     },
     {
@@ -416,7 +416,7 @@ export function isModeFor(kind: ItemKind, mode: string): mode is ModeId {
 export function defaultModeFor(kind: ItemKind, target: InflateTarget): ModeId {
   switch (familyOf(kind)) {
     case 'okf':
-      // Every okf kind is brought in as its main.md (plans/ROUND3_SPEC.md §H.1); a brief with only a
+      // Every okf kind is brought in as its index.md (plans/ROUND3_SPEC.md §H.1); a brief with only a
       // description for a task or project says too little.
       return 'inline-main';
     case 'skill':

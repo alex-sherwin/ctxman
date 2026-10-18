@@ -14,7 +14,7 @@ Measured with Astro 7.4.0 on Node 24, by counting full-page reloads in a connect
 
 | Write | Loader serving the folder | Full reloads observed |
 | --- | --- | --- |
-| `data/kb/<name>/main.md` | glob, watching | 1, roughly 0.7 s after the write |
+| `data/kb/<name>/index.md` | glob, watching | 1, roughly 0.7 s after the write |
 | `data/context/<name>.yaml` | custom, no watcher | 0 |
 
 Additional observations:
@@ -23,4 +23,4 @@ Additional observations:
 * Pre-bundling client dependencies with `vite.optimizeDeps.include` avoids "new dependency" reloads in the middle of a session.
 * In a built server, a context file created after the build was invisible to `getCollection`, which confirms the filesystem read path is required.
 
-Return to the [analysis](/main.md).
+Return to the [analysis](/index.md).

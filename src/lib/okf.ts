@@ -2,9 +2,9 @@
 // (data/<kb|rca|idea|task|bug|feature|project>/<name>/**). Rule ids: PLAN.md §E.5.
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { datasetDef, isValidName, OKF_DATASET_IDS } from '../datasets/registry.ts';
+import { datasetDef, isValidName, OKF_DATASET_IDS, OKF_ENTRY_FILE } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
-import { DATASET_SCHEMAS, okfConceptSchema, okfIndexSchema } from '../datasets/schemas.ts';
+import { DATASET_SCHEMAS, okfConceptSchema } from '../datasets/schemas.ts';
 import { validate } from '../datasets/validate.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
@@ -236,10 +236,6 @@ export function validateOkfFile(args: {
 
   const kind = classifyOkfPath(relPath);
 
-  if (kind === 'root-index') {
-    validateRootIndex(source, add);
-    return findings;
-  }
   if (kind === 'index' || kind === 'log') {
     if (splitFrontmatter(source)) {
       add(
@@ -271,6 +267,22 @@ export function validateOkfFile(args: {
 
   // stale_after has its own rule; `type` too. Mark them handled before schema issues are listed.
   const handledKeys = new Set<string>();
+
+  const isEntry = kind === 'root-index';
+  if (isEntry) {
+    // The entry index.md declares okf_version (OKF v0.2); a wrong value is an error, an absent one a warning.
+    handledKeys.add('okf_version');
+    if (!('okf_version' in data)) {
+      add('warning', 'okf/index-version', 'root index.md should declare okf_version: "0.2"', 2);
+    } else if (data.okf_version !== '0.2') {
+      add(
+        'error',
+        'okf/index-frontmatter',
+        'okf_version must be "0.2"',
+        keyLine(raw, 'okf_version') ?? 2,
+      );
+    }
+  }
 
   const type = data.type;
   if (typeof type !== 'string' || type.trim() === '') {
@@ -312,7 +324,7 @@ export function validateOkfFile(args: {
   const concept = validate(okfConceptSchema, data);
   if (!concept.success) reportIssues('okf/concept-schema', concept.issues);
 
-  if (relPath === 'main.md') {
+  if (isEntry) {
     const entry = validate(DATASET_SCHEMAS[dataset], data);
     if (!entry.success) reportIssues('okf/entry-schema', entry.issues);
     if (typeof data.name === 'string' && data.name !== bundle) {
@@ -344,31 +356,6 @@ type AddFinding = (
   message: string,
   line?: number,
 ) => void;
-
-function validateRootIndex(source: string, add: AddFinding): void {
-  const split = splitFrontmatter(source);
-  if (!split) return; // no frontmatter at all is fine
-  let value: unknown;
-  try {
-    value = parseYaml(split.raw);
-  } catch (error) {
-    const info = yamlErrorInfo(error);
-    add('error', 'okf/index-frontmatter', info.message, info.line ?? 2);
-    return;
-  }
-  const data = value === undefined || value === null ? {} : value;
-  const result = validate(okfIndexSchema, data);
-  if (!result.success) {
-    for (const issue of result.issues) {
-      add(
-        'error',
-        'okf/index-frontmatter',
-        `${issueMessage(issue)} (the bundle-root index.md may only declare okf_version: "0.2")`,
-        2,
-      );
-    }
-  }
-}
 
 function validateLog(source: string, add: AddFinding): void {
   const masked = maskMarkdownCode(source.replace(/^﻿/, '').replace(/\r\n?/g, '\n'));
@@ -498,20 +485,12 @@ export async function checkOkf(
         });
       }
       const files = (await walkFiles(root)).filter((f) => f.endsWith('.md'));
-      if (!files.includes('main.md')) {
+      if (!files.includes(OKF_ENTRY_FILE)) {
         findings.push({
           severity: 'error',
-          rule: 'okf/missing-main',
-          file: bundleFile,
-          message: 'bundle has no main.md (the entry concept)',
-        });
-      }
-      if (!files.includes('index.md')) {
-        findings.push({
-          severity: 'warning',
           rule: 'okf/missing-index',
           file: bundleFile,
-          message: 'bundle has no root index.md',
+          message: 'bundle has no index.md (the entry)',
         });
       }
       for (const relPath of files) {

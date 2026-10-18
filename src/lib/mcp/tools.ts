@@ -720,7 +720,7 @@ const readBundleFileTool = defineTool({
   name: 'read-bundle-file',
   title: 'Read bundle file',
   description:
-    'The text of one file of an okf bundle or skill (e.g. concepts/search.md, log.md, SKILL.md, scripts/x.ts), up to 512 KB. Output over 50 KB is clipped; pass offset to continue.',
+    'The text of one file of an okf bundle or skill (e.g. index.md (the okf entry), concepts/search.md, log.md, SKILL.md, scripts/x.ts), up to 512 KB. Output over 50 KB is clipped; pass offset to continue.',
   readOnly: true,
   input: type({
     '+': 'reject',
@@ -1025,7 +1025,7 @@ const patchEntryTool = defineTool({
   name: 'patch-entry',
   title: 'Patch entry frontmatter',
   description:
-    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, tags (replaces the list), addLinks / removeLinks (relations of an okf main.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
+    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, tags (replaces the list), addLinks / removeLinks (relations of an okf entry index.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
   readOnly: false,
   input: type({
     '+': 'reject',

@@ -26,4 +26,4 @@ Each milestone builds on the previous one. Status follows the lifecycle state of
 * The seed data shows every page type with no empty states.
 * No open defect marked blocking; currently [forge-reorder-focus](ctxman:bug/forge-reorder-focus) is the one to close.
 
-Parent: [ctxman v1](/main.md).
+Parent: [ctxman v1](/index.md).

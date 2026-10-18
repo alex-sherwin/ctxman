@@ -1,5 +1,5 @@
 ---
-import { docUrl, entryUrl } from '../datasets/registry.ts';
+import { docUrl, entryUrl, OKF_ENTRY_FILE } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import type { BundleFile } from '../lib/bundles.ts';
 
@@ -8,7 +8,7 @@ interface Props {
   slug: string;
   /** Files in tree order (src/lib/bundles.ts#listBundleFiles). */
   files: BundleFile[];
-  /** Bundle-relative path of the file being shown, e.g. 'main.md' or 'concepts/search.md'. */
+  /** Bundle-relative path of the file being shown, e.g. 'index.md' or 'concepts/search.md'. */
   current: string;
   /** okf only: a `+ New concept` button in the panel title (EntryTools island, `data-entry-action="new-concept"`). */
   canCreate?: boolean;
@@ -17,16 +17,15 @@ interface Props {
 const { dataset, slug, files, current, canCreate = false } = Astro.props;
 
 const HINTS: Record<NonNullable<BundleFile['role']>, string> = {
-  'root-index': 'bundle index',
   entry: 'entry',
   log: 'log',
 };
 
-// okf markdown files link to their route (main.md = the entry page). Skill files and non-markdown
+// okf markdown files link to their route (the root index.md = the entry page). Skill files and non-markdown
 // files have no route, so they are listed as plain text.
 function hrefOf(file: BundleFile): string | undefined {
   if (dataset === 'skill' || file.kind !== 'markdown') return undefined;
-  return file.path === 'main.md' ? entryUrl(dataset, slug) : docUrl(dataset, slug, file.path);
+  return file.path === OKF_ENTRY_FILE ? entryUrl(dataset, slug) : docUrl(dataset, slug, file.path);
 }
 
 const items = files.map((file) => {

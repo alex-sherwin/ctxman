@@ -3,7 +3,7 @@
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
-import { isValidName } from '../datasets/registry.ts';
+import { datasetDef, isValidName } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 
 export interface BundleFile {
@@ -13,7 +13,7 @@ export interface BundleFile {
   /** ISO mtime. */
   mtime: string;
   kind: 'markdown' | 'text' | 'binary';
-  role?: 'root-index' | 'entry' | 'log';
+  role?: 'entry' | 'log';
 }
 
 /** Largest file readBundleText will return. */
@@ -160,21 +160,20 @@ async function classify(abs: string, rel: string): Promise<BundleFile['kind']> {
 }
 
 function roleOf(dataset: OkfDatasetId | 'skill', rel: string): BundleFile['role'] {
-  if (rel === 'index.md') return 'root-index';
-  if (rel === (dataset === 'skill' ? 'SKILL.md' : 'main.md')) return 'entry';
+  if (rel === datasetDef(dataset).entryFile) return 'entry';
   if (path.posix.basename(rel) === 'log.md') return 'log';
   return undefined;
 }
 
-const SPECIAL_ORDER: Record<string, number> = { 'root-index': 0, entry: 1 };
+const SPECIAL_ORDER: Record<string, number> = { entry: 0 };
 
 /**
- * Tree order: root index.md, main.md|SKILL.md, root log.md; then everything else with directories
+ * Tree order: the entry (index.md | SKILL.md), root log.md; then everything else with directories
  * before files at every level, names compared case-insensitively.
  */
 function compareFiles(a: BundleFile, b: BundleFile): number {
-  const sa = a.path === 'log.md' ? 2 : (SPECIAL_ORDER[a.role ?? ''] ?? 3);
-  const sb = b.path === 'log.md' ? 2 : (SPECIAL_ORDER[b.role ?? ''] ?? 3);
+  const sa = a.path === 'log.md' ? 1 : (SPECIAL_ORDER[a.role ?? ''] ?? 2);
+  const sb = b.path === 'log.md' ? 1 : (SPECIAL_ORDER[b.role ?? ''] ?? 2);
   if (sa !== sb) return sa - sb;
   const pa = a.path.split('/');
   const pb = b.path.split('/');

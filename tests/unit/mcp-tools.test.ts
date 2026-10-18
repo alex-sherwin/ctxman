@@ -191,7 +191,7 @@ describe('get-entry', () => {
     expect(out.files.map((f) => f.path)).toContain('concepts/search.md');
     expect(out.url).toBe('http://127.0.0.1:4321/kb/ctxman');
     expect(out.resource).toBe('ctxman://kb/ctxman');
-    expect(out.path).toBe('kb/ctxman/main.md');
+    expect(out.path).toBe('kb/ctxman/index.md');
     expect(out.relations).toHaveProperty('linksTo');
     expect(text(result)).toContain('```yaml');
     expect(text(result)).toContain('## Files');
@@ -230,8 +230,8 @@ describe('get-entry', () => {
 
   it('clips a huge body and says how to continue', async () => {
     writeFileSync(
-      path.join(dir, 'kb', 'ctxman', 'main.md'),
-      read('kb', 'ctxman', 'main.md') + '\n' + 'word '.repeat(30_000),
+      path.join(dir, 'kb', 'ctxman', 'index.md'),
+      read('kb', 'ctxman', 'index.md') + '\n' + 'word '.repeat(30_000),
     );
     invalidateEntryIndex();
     const result = await ok('get-entry', { dataset: 'kb', slug: 'ctxman' });
@@ -291,7 +291,7 @@ describe('bundle files', () => {
   it('refuses unsafe, missing and oversized paths', async () => {
     await fails(
       'read-bundle-file',
-      { dataset: 'kb', slug: 'ctxman', path: '../../task/write-agents-md/main.md' },
+      { dataset: 'kb', slug: 'ctxman', path: '../../task/write-agents-md/index.md' },
       'bad-path',
     );
     await fails(
@@ -304,7 +304,7 @@ describe('bundle files', () => {
       { dataset: 'kb', slug: 'ctxman', path: 'concepts/nope.md' },
       'not-found',
     );
-    await fails('read-bundle-file', { dataset: 'kb', slug: 'nope', path: 'main.md' }, 'no-entry');
+    await fails('read-bundle-file', { dataset: 'kb', slug: 'nope', path: 'index.md' }, 'no-entry');
     writeFileSync(path.join(dir, 'kb', 'ctxman', 'concepts', 'huge.md'), 'x'.repeat(600 * 1024));
     await fails(
       'read-bundle-file',
@@ -387,7 +387,7 @@ describe('check-data', () => {
 
   it('reports errors of the chosen scope', async () => {
     writeFileSync(
-      path.join(dir, 'task', 'write-agents-md', 'main.md'),
+      path.join(dir, 'task', 'write-agents-md', 'index.md'),
       '---\ntype: Task\n---\n# x\n',
     );
     const result = await ok('check-data', { scope: ['okf'] });
@@ -422,12 +422,12 @@ describe('create-entry', () => {
       parentLinked: boolean;
       summary: { state: string; title: string };
     }>(result);
-    expect(out.path).toBe('task/mcp-made-task/main.md');
-    expect(out.files).toContain('task/mcp-made-task/main.md');
+    expect(out.path).toBe('task/mcp-made-task/index.md');
+    expect(out.files).toContain('task/mcp-made-task/index.md');
     expect(out.parentLinked).toBe(true);
     expect(out.summary).toMatchObject({ state: 'in-progress', title: 'MCP task' });
-    expect(existsSync(path.join(dir, 'task', 'mcp-made-task', 'main.md'))).toBe(true);
-    expect(read('project', 'ctxman-v1', 'main.md')).toContain('mcp-made-task');
+    expect(existsSync(path.join(dir, 'task', 'mcp-made-task', 'index.md'))).toBe(true);
+    expect(read('project', 'ctxman-v1', 'index.md')).toContain('mcp-made-task');
     const listed = data<{ entries: { slug: string }[] }>(
       await ok('list-entries', { dataset: 'task', q: 'mcp' }),
     );
@@ -524,7 +524,7 @@ describe('patch-entry', () => {
       changed: true,
       frontmatter: { state: 'complete', tags: ['docs', 'mcp'] },
     });
-    expect(read('task', 'write-agents-md', 'main.md')).toMatch(/state: complete/);
+    expect(read('task', 'write-agents-md', 'index.md')).toMatch(/state: complete/);
     const entry = data<{ state: string }>(
       await ok('get-entry', { dataset: 'task', slug: 'write-agents-md', includeBody: false }),
     );
@@ -541,7 +541,7 @@ describe('patch-entry', () => {
       slug: 'write-agents-md',
       addLinks: [{ dataset: 'kb', slug: 'ctxman', rel: 'depends-on' }],
     });
-    expect(read('task', 'write-agents-md', 'main.md')).toContain('depends-on');
+    expect(read('task', 'write-agents-md', 'index.md')).toContain('depends-on');
     const entry = data<{ relations: { linksTo: { entry: string; rel: string }[] } }>(
       await ok('get-entry', { dataset: 'task', slug: 'write-agents-md' }),
     );
@@ -554,11 +554,11 @@ describe('patch-entry', () => {
       removeLinks: [{ dataset: 'kb', slug: 'ctxman' }],
     });
     expect(data(removed).changed).toBe(true);
-    expect(read('task', 'write-agents-md', 'main.md')).not.toContain('depends-on');
+    expect(read('task', 'write-agents-md', 'index.md')).not.toContain('depends-on');
   });
 
   it('reports no change and refuses invalid patches without writing', async () => {
-    const before = read('task', 'write-agents-md', 'main.md');
+    const before = read('task', 'write-agents-md', 'index.md');
     const same = await ok('patch-entry', {
       dataset: 'task',
       slug: 'write-agents-md',
@@ -577,7 +577,7 @@ describe('patch-entry', () => {
       { dataset: 'skill', slug: 'ctxman-add-entry', tags: ['x'] },
       'invalid',
     );
-    expect(read('task', 'write-agents-md', 'main.md')).toBe(before);
+    expect(read('task', 'write-agents-md', 'index.md')).toBe(before);
   });
 });
 

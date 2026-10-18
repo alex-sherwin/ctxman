@@ -13,6 +13,7 @@ import {
   isValidName,
   NAME_MAX_LENGTH,
   OKF_DATASET_IDS,
+  OKF_ENTRY_FILE,
 } from '../datasets/registry.ts';
 import type { LinkableDatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, entryLinkSchema, OKF_STATUSES } from '../datasets/schemas.ts';
@@ -101,7 +102,7 @@ export interface EntryRecord {
 interface LocatedEntry {
   dataset: EntryDatasetId;
   slug: string;
-  entryFile: 'main.md' | 'SKILL.md';
+  entryFile: typeof OKF_ENTRY_FILE | 'SKILL.md';
   /** Lock key: the entry file as addressed (symlinks not resolved). */
   abs: string;
 }
@@ -119,7 +120,7 @@ function locateEntry(dataset: string, slug: string, dataDir: string): LocatedEnt
       `"${slug}" is not a valid entry name (lowercase letters, digits and single hyphens, max 64 characters)`,
     );
   }
-  const entryFile = datasetDef(dataset).entryFile === 'SKILL.md' ? 'SKILL.md' : 'main.md';
+  const entryFile = datasetDef(dataset).entryFile === 'SKILL.md' ? 'SKILL.md' : OKF_ENTRY_FILE;
   return {
     dataset,
     slug,
@@ -503,7 +504,7 @@ function relationWarnings(located: LocatedEntry, source: string, dataDir: string
   return checkFileLinks({
     dataset: located.dataset,
     name: located.slug,
-    relPath: 'main.md',
+    relPath: OKF_ENTRY_FILE,
     source,
     dataDir,
   }).filter((f) => f.rule === 'links/relation-target');
@@ -607,11 +608,11 @@ export async function patchEntry(
     }
     const problems = schemaIssues(located.dataset, located.slug, reparsed.doc.data);
     if (located.dataset !== 'skill') {
-      const rel = `${located.dataset}/${located.slug}/main.md`;
+      const rel = `${located.dataset}/${located.slug}/${OKF_ENTRY_FILE}`;
       for (const finding of validateOkfFile({
         dataset: located.dataset,
         bundle: located.slug,
-        relPath: 'main.md',
+        relPath: OKF_ENTRY_FILE,
         source: patched.source,
         file: rel,
       })) {
@@ -645,7 +646,7 @@ export async function patchEntry(
 export interface CreatedEntry {
   dataset: EntryDatasetId;
   slug: string;
-  /** Data-dir-relative posix path of the entry file: 'task/x/main.md' | 'skill/x/SKILL.md'. */
+  /** Data-dir-relative posix path of the entry file: 'task/x/index.md' | 'skill/x/SKILL.md'. */
   path: string;
   /** Page URL: '/task/x'. */
   url: string;
@@ -771,7 +772,7 @@ export async function createEntry(
   const input = parseCreateBody(dataset, body);
 
   if (input.parent !== undefined) {
-    const project = await resolveBundleFile('project', input.parent, 'main.md', dataDir);
+    const project = await resolveBundleFile('project', input.parent, OKF_ENTRY_FILE, dataDir);
     if (!project.ok) {
       throw new EntryIoError('invalid', 'request body is invalid', [
         { path: 'parent', message: `project "${input.parent}" does not exist` },

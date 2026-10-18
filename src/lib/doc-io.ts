@@ -54,7 +54,7 @@ export interface DocRecord {
   lastModified: string;
   /** UTF-8 byte length of `markdown`. */
   bytes: number;
-  /** validateDoc() findings; `file` is data-dir relative ('kb/foo/main.md'). */
+  /** validateDoc() findings; `file` is data-dir relative ('kb/foo/index.md'). */
   warnings: Finding[];
 }
 
@@ -85,7 +85,7 @@ export class DocIoError extends Error {
  * Findings for `source` as if it were saved at <dataset>/<slug>/<relPath>. Never throws.
  * okf: validateOkfFile (all severities); skill + 'SKILL.md': validateSkillFile; other skill files: [].
  * Both then get the link findings of that one file (`checkFileLinks`: links/broken, links/escapes-bundle,
- * links/ctxman-invalid, links/ctxman-target and, for an okf main.md, the frontmatter relation checks), resolved
+ * links/ctxman-invalid, links/ctxman-target and, for an okf entry index.md, the frontmatter relation checks), resolved
  * against `dataDir`.
  */
 export function validateDoc(
@@ -550,7 +550,7 @@ async function updateExistingFile(
  * `index.md` (`## Concepts`) and `log.md` (today, UTC) when those files exist. `body` is untrusted JSON:
  * `{ title, type?, description? }` (`type` defaults to `Concept`). The folders in the path are created inside the
  * bundle (symlinks are followed only while they stay inside it). Throws DocIoError: `bad-dataset` (not an okf
- * dataset), `bad-slug`, `bad-path` (not a concept path: index.md, log.md and the root main.md are reserved),
+ * dataset), `bad-slug`, `bad-path` (not a concept path: the root index.md (the entry), nested index.md and log.md are reserved),
  * `invalid` (body), `not-found` (no such entry), `exists`.
  */
 export async function createDoc(
@@ -568,7 +568,7 @@ export async function createDoc(
     );
   }
   const target = docTarget(dataset, slug, rawPath, dataDir);
-  if (classifyOkfPath(target.path) !== 'concept' || target.path === 'main.md') {
+  if (classifyOkfPath(target.path) !== 'concept') {
     throw new DocIoError(
       'bad-path',
       `"${target.path}" is reserved; a concept is any other .md file (e.g. concepts/my-topic.md)`,

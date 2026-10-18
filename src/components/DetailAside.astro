@@ -1,4 +1,5 @@
 ---
+import { datasetDef } from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import type { EntryDetail } from '../lib/entries.ts';
 import BackRefs from './BackRefs.astro';
@@ -8,7 +9,8 @@ import MetaPanel from './MetaPanel.astro';
 import RelationPanels from './RelationPanels.astro';
 
 // The details column of an entry page (`/<ds>/<slug>`): Open in IDE (okf + skill), the metadata panel (with the
-// Details `Edit` button for okf + skill), the file tree (okf + skill, with `+ New concept` for okf), the relation
+// Details `Edit` button for okf + skill), the file tree (okf + skill, with `+ New concept` for okf; ABOVE the metadata
+// panel so switching files never moves the list), the relation
 // panels (Links to / Linked from; reference: Linked from only) and the "Linked from contexts" list (not for
 // context / recipe). It sits LEFT of the content on okf + skill pages (`cx-detail--doc`) and RIGHT of it on
 // reference / context / recipe pages. A project lists its `child` links in the Children panel (main column), so
@@ -20,6 +22,7 @@ interface Props {
 }
 
 const { dataset, slug, detail } = Astro.props;
+const entryFile = datasetDef(dataset).entryFile;
 const relations = 'relations' in detail ? detail.relations : undefined;
 const linksTo =
   relations === undefined
@@ -35,7 +38,18 @@ const linksTo =
       <IdeOpenButton
         dataset={dataset}
         slug={slug}
-        path={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+        path={entryFile}
+      />
+    )
+  }
+  {
+    (detail.kind === 'okf' || detail.kind === 'skill') && (
+      <FileTree
+        dataset={dataset as OkfDatasetId | 'skill'}
+        slug={slug}
+        files={detail.files}
+        current={entryFile}
+        canCreate={detail.kind === 'okf'}
       />
     )
   }
@@ -47,17 +61,6 @@ const linksTo =
     file={detail.fileRelPath}
     editable={detail.kind === 'okf' || detail.kind === 'skill'}
   />
-  {
-    (detail.kind === 'okf' || detail.kind === 'skill') && (
-      <FileTree
-        dataset={dataset as OkfDatasetId | 'skill'}
-        slug={slug}
-        files={detail.files}
-        current={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
-        canCreate={detail.kind === 'okf'}
-      />
-    )
-  }
   {
     relations && (
       <RelationPanels

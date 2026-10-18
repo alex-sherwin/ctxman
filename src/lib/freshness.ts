@@ -17,7 +17,7 @@ export function entryAbsPath(
     : path.join(base, slug);
 }
 
-/** Data-dir-relative posix path of the entry's own file: 'kb/foo/main.md' | 'skill/foo/SKILL.md' | 'reference/foo.yaml'. */
+/** Data-dir-relative posix path of the entry's own file: 'kb/foo/index.md' | 'skill/foo/SKILL.md' | 'reference/foo.yaml'. */
 export function entryFileRelPath(dataset: DatasetId, slug: string): string {
   const def = datasetDef(dataset);
   return def.kind === 'data' ? `${dataset}/${slug}.yaml` : `${dataset}/${slug}/${def.entryFile}`;

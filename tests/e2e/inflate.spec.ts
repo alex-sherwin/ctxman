@@ -1120,9 +1120,8 @@ test.describe('All tab', () => {
     const slug = uniqueName('e2e-invalid-idea');
     const dir = dataPath(`idea/${slug}`);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(`${dir}/index.md`, '# Index\n');
     writeFileSync(
-      `${dir}/main.md`,
+      `${dir}/index.md`,
       `---\ntype: Idea\nname: ${slug}\ndescription: An idea with a state that does not exist\nstate: done\n---\n\n# Bad\n`,
     );
     try {

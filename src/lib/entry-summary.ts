@@ -56,7 +56,7 @@ export interface EntrySummary {
    */
   invalid?: Issue[];
   /**
-   * okf only: the structured relations of the entry (`links` in main.md frontmatter, `rel` filled in), file order.
+   * okf only: the structured relations of the entry (`links` in the entry index.md frontmatter, `rel` filled in), file order.
    * Present only when there is at least one valid item (malformed items are skipped).
    */
   relations?: EntryLink[];
@@ -68,7 +68,7 @@ export interface SearchDoc {
   id: string;
   dataset: DatasetId;
   slug: string;
-  /** Bundle-relative file e.g. 'concepts/x.md'; null for the entry itself (main.md / SKILL.md / yaml). */
+  /** Bundle-relative file e.g. 'concepts/x.md'; null for the entry itself (index.md / SKILL.md / yaml). */
   path: string | null;
   title: string;
   name: string;

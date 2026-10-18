@@ -18,7 +18,7 @@ describe('safeJoin', () => {
   const root = path.resolve('/bundle-root/x');
 
   it('joins inside-the-root relative paths', () => {
-    expect(safeJoin(root, 'main.md')).toBe(path.join(root, 'main.md'));
+    expect(safeJoin(root, 'index.md')).toBe(path.join(root, 'index.md'));
     expect(safeJoin(root, 'concepts/a.md')).toBe(path.join(root, 'concepts', 'a.md'));
     expect(safeJoin(root, 'a/../b.md')).toBe(path.join(root, 'b.md'));
   });
@@ -55,14 +55,13 @@ describe('walkFiles', () => {
 });
 
 describe('listBundleFiles', () => {
-  it('orders index.md, main.md, log.md first, then directories before files', async () => {
+  it('orders index.md, log.md first, then directories before files', async () => {
     const dir = tmp.make({
       'kb/x/zeta.md': 'z',
       'kb/x/log.md': 'l',
       'kb/x/concepts/b.md': 'b',
       'kb/x/concepts/a.md': 'a',
       'kb/x/concepts/deep/c.md': 'c',
-      'kb/x/main.md': 'm',
       'kb/x/alpha.md': 'a',
       'kb/x/index.md': 'i',
       'kb/x/.DS_Store': 'junk',
@@ -71,7 +70,6 @@ describe('listBundleFiles', () => {
     const files = await listBundleFiles('kb', 'x', dir);
     expect(files.map((f) => f.path)).toEqual([
       'index.md',
-      'main.md',
       'log.md',
       'assets/pic.png',
       'concepts/deep/c.md',
@@ -80,8 +78,8 @@ describe('listBundleFiles', () => {
       'alpha.md',
       'zeta.md',
     ]);
-    expect(files.slice(0, 3).map((f) => f.role)).toEqual(['root-index', 'entry', 'log']);
-    expect(files[3]?.role).toBeUndefined();
+    expect(files.slice(0, 2).map((f) => f.role)).toEqual(['entry', 'log']);
+    expect(files[2]?.role).toBeUndefined();
   });
 
   it('reports size, ISO mtime and kind', async () => {
@@ -105,17 +103,17 @@ describe('listBundleFiles', () => {
     expect(files[0]?.mtime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('uses SKILL.md (not main.md) as the entry of a skill', async () => {
-    const dir = tmp.make({ 'skill/s/main.md': 'm', 'skill/s/SKILL.md': 's' });
+  it('uses SKILL.md (not index.md) as the entry of a skill', async () => {
+    const dir = tmp.make({ 'skill/s/index.md': 'm', 'skill/s/SKILL.md': 's' });
     const files = await listBundleFiles('skill', 's', dir);
     expect(files.map((f) => [f.path, f.role])).toEqual([
       ['SKILL.md', 'entry'],
-      ['main.md', undefined],
+      ['index.md', undefined],
     ]);
   });
 
   it('returns [] for a missing bundle or an invalid slug', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': '' });
+    const dir = tmp.make({ 'kb/x/index.md': '' });
     expect(await listBundleFiles('kb', 'nope', dir)).toEqual([]);
     expect(await listBundleFiles('kb', '../kb/x', dir)).toEqual([]);
   });
@@ -128,13 +126,13 @@ describe('readBundleText', () => {
   });
 
   it('returns null for traversal, absolute paths, NUL, missing files and directories', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/secret.md': 'secret' });
+    const dir = tmp.make({ 'kb/x/index.md': 'm', 'kb/secret.md': 'secret' });
     expect(await readBundleText('kb', 'x', '../secret.md', dir)).toBeNull();
     expect(await readBundleText('kb', 'x', path.join(dir, 'kb', 'secret.md'), dir)).toBeNull();
-    expect(await readBundleText('kb', 'x', 'main.md\0', dir)).toBeNull();
+    expect(await readBundleText('kb', 'x', 'index.md\0', dir)).toBeNull();
     expect(await readBundleText('kb', 'x', 'nope.md', dir)).toBeNull();
     expect(await readBundleText('kb', 'x', '.', dir)).toBeNull();
-    expect(await readBundleText('kb', '../x', 'main.md', dir)).toBeNull();
+    expect(await readBundleText('kb', '../x', 'index.md', dir)).toBeNull();
   });
 
   it('returns null for binary and oversized files', async () => {
@@ -150,14 +148,14 @@ describe('readBundleText', () => {
   });
 
   it('refuses symlinks that point outside the bundle', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm', 'outside.md': 'outside' });
+    const dir = tmp.make({ 'kb/x/index.md': 'm', 'outside.md': 'outside' });
     try {
       symlinkSync(path.join(dir, 'outside.md'), path.join(dir, 'kb', 'x', 'link.md'));
     } catch {
       return; // symlinks unavailable (e.g. Windows without privileges)
     }
     expect(await readBundleText('kb', 'x', 'link.md', dir)).toBeNull();
-    expect(await readBundleText('kb', 'x', 'main.md', dir)).toBe('m');
+    expect(await readBundleText('kb', 'x', 'index.md', dir)).toBe('m');
   });
 });
 
@@ -176,26 +174,26 @@ describe('resolveBundleFile', () => {
   });
 
   it('reports no-entry for a missing entry dir or an invalid slug', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm' });
-    expect(await resolveBundleFile('kb', 'nope', 'main.md', dir)).toEqual({
+    const dir = tmp.make({ 'kb/x/index.md': 'm' });
+    expect(await resolveBundleFile('kb', 'nope', 'index.md', dir)).toEqual({
       ok: false,
       reason: 'no-entry',
     });
-    expect(await resolveBundleFile('kb', '../x', 'main.md', dir)).toEqual({
+    expect(await resolveBundleFile('kb', '../x', 'index.md', dir)).toEqual({
       ok: false,
       reason: 'no-entry',
     });
     // an entry that is a file, not a directory
     const file = tmp.make({ 'kb/flat': 'x' });
-    expect(await resolveBundleFile('kb', 'flat', 'main.md', file)).toEqual({
+    expect(await resolveBundleFile('kb', 'flat', 'index.md', file)).toEqual({
       ok: false,
       reason: 'no-entry',
     });
   });
 
   it('reports not-found for a missing file, a directory and the entry dir itself', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/x/concepts/a.md': 'a' });
-    for (const rel of ['nope.md', 'concepts', '.', 'main.md/x']) {
+    const dir = tmp.make({ 'kb/x/index.md': 'm', 'kb/x/concepts/a.md': 'a' });
+    for (const rel of ['nope.md', 'concepts', '.', 'index.md/x']) {
       expect(await resolveBundleFile('kb', 'x', rel, dir), rel).toEqual({
         ok: false,
         reason: 'not-found',
@@ -204,8 +202,8 @@ describe('resolveBundleFile', () => {
   });
 
   it('reports bad-path for traversal, absolute paths and NUL', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/secret.md': 'secret' });
-    for (const rel of ['../secret.md', path.join(dir, 'kb', 'secret.md'), 'main.md\0']) {
+    const dir = tmp.make({ 'kb/x/index.md': 'm', 'kb/secret.md': 'secret' });
+    for (const rel of ['../secret.md', path.join(dir, 'kb', 'secret.md'), 'index.md\0']) {
       expect(await resolveBundleFile('kb', 'x', rel, dir), rel).toEqual({
         ok: false,
         reason: 'bad-path',
@@ -214,7 +212,7 @@ describe('resolveBundleFile', () => {
   });
 
   it('reports outside for a symlink out of the bundle; a symlink inside resolves to its target', async () => {
-    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/x/real.md': 'r', 'outside.md': 'outside' });
+    const dir = tmp.make({ 'kb/x/index.md': 'm', 'kb/x/real.md': 'r', 'outside.md': 'outside' });
     try {
       symlinkSync(path.join(dir, 'outside.md'), path.join(dir, 'kb', 'x', 'out.md'));
       symlinkSync(path.join(dir, 'kb', 'x', 'real.md'), path.join(dir, 'kb', 'x', 'in.md'));

@@ -2,7 +2,9 @@
 
 Run through this before finishing work on a bundle.
 
-## Entry file (`main.md`)
+## Entry file (root `index.md`)
+
+- [ ] Frontmatter starts with `okf_version: "0.2"`.
 
 - [ ] `type` matches the dataset: Knowledge Base, Root Cause Analysis, Idea, Task, Bug, Feature or Project.
 - [ ] `name` equals the folder name and is kebab-case.
@@ -15,7 +17,7 @@ Run through this before finishing work on a bundle.
 
 - [ ] Each has frontmatter starting on line 1 with `---`.
 - [ ] Each has a non-empty `type`.
-- [ ] Each is listed in the bundle-root `index.md` with a description.
+- [ ] Each is listed in the entry `index.md` (`## Concepts`) with a description.
 
 ## Provenance and lifecycle
 
@@ -26,7 +28,7 @@ Run through this before finishing work on a bundle.
 
 ## Navigation
 
-- [ ] `index.md` frontmatter is only `okf_version: "0.2"` at the bundle root, and none anywhere else.
+- [ ] Only the bundle-root `index.md` (the entry) has frontmatter; a nested `index.md` has none.
 - [ ] `log.md` has no frontmatter, `## YYYY-MM-DD` headings, newest first.
 
 ## Links

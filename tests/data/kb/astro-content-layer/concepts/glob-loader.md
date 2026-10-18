@@ -37,4 +37,4 @@ The default id is derived from the file path or frontmatter slug. ctxman overrid
 * In a built server the entries are a snapshot.
 * A custom loader that calls `store.set` must pass `filePath` relative to the site root; an absolute path throws.
 
-Parent entry: [Astro content layer](/main.md).
+Parent entry: [Astro content layer](/index.md).

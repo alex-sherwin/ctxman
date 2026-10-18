@@ -14,6 +14,7 @@ import {
   entryUrl,
   isOkfDatasetId,
   isValidName,
+  OKF_ENTRY_FILE,
 } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS } from '../datasets/schemas.ts';
@@ -122,7 +123,7 @@ export interface EntryRelations {
 export type EntryDetail = {
   summary: EntrySummary;
   backRefs: BackRef[];
-  /** Data-dir-relative posix path of the entry's own file: 'kb/foo/main.md' | 'reference/foo.yaml'. */
+  /** Data-dir-relative posix path of the entry's own file: 'kb/foo/index.md' | 'reference/foo.yaml'. */
   fileRelPath: string;
 } & (
   | {
@@ -131,7 +132,7 @@ export type EntryDetail = {
       html: string;
       files: BundleFile[];
       relations: EntryRelations;
-      /** ISO mtime of main.md itself (the `ifUnmodifiedSince` base of the frontmatter PATCH). */
+      /** ISO mtime of the entry index.md itself (the `ifUnmodifiedSince` base of the frontmatter PATCH). */
       fileModified: string;
     }
   | {
@@ -159,7 +160,7 @@ export type EntryDetail = {
 export type DocFrontmatter = Record<string, unknown>;
 
 export interface DocDetail {
-  /** Summary of the bundle's entry (main.md). */
+  /** Summary of the bundle's entry (the root index.md). */
   entry: EntrySummary;
   /** Bundle-relative file, e.g. 'concepts/search.md'. */
   relPath: string;
@@ -596,7 +597,7 @@ export async function getEntryDetail(
 
 /**
  * One non-entry markdown file of an okf bundle (`docPath` = bundle-relative path WITHOUT `.md`, e.g.
- * 'concepts/search', 'index', 'log'). null when the bundle or file does not exist or the path is unsafe.
+ * 'concepts/search', 'log'). null when the bundle or file does not exist or the path is unsafe.
  */
 export async function getDocDetail(
   dataset: OkfDatasetId,
@@ -605,7 +606,8 @@ export async function getDocDetail(
   nowMs: number = Date.now(),
 ): Promise<DocDetail | null> {
   if (!isOkfDatasetId(dataset) || !isValidName(slug)) return null;
-  if (docPath === '' || docPath.endsWith('.md')) return null;
+  // 'index' is the entry (served by the entry page), not a sub-doc.
+  if (docPath === '' || docPath === 'index' || docPath.endsWith('.md')) return null;
   const segments = docPath.split('/');
   if (segments.some((s) => s === '' || s === '.' || s === '..' || s.startsWith('.'))) return null;
   const dataDir = resolveDataDir();
@@ -615,7 +617,7 @@ export async function getDocDetail(
   if (abs === null) return null;
 
   if (!(await exists(abs))) return null;
-  // The bundle is the entry index's (disk): an entry with an invalid main.md still has its pages.
+  // The bundle is the entry index's (disk): an entry with an invalid index.md still has its pages.
   const bundleEntry = (await getEntryIndex(dataDir)).byKey.get(`${dataset}/${slug}`);
   if (bundleEntry === undefined) return null;
 
@@ -672,19 +674,19 @@ export async function buildSearchIndex(
       okfDocToSearchDoc({
         dataset,
         slug: entry.slug,
-        relPath: 'main.md',
+        relPath: OKF_ENTRY_FILE,
         data: entry.data,
         body: entry.body,
         entryTitle: nonEmpty(entry.data.title) ?? nonEmpty(entry.data.name) ?? entry.slug,
       }),
     );
-    // Every other markdown file of the bundle; index.md and log.md are navigation and history, not knowledge
-    // (UX-22), at any depth.
+    // Every other markdown file of the bundle; the root index.md is the entry doc above, nested index.md and log.md
+    // are navigation and history, not knowledge (UX-22), at any depth.
     const bundleDir = path.join(datasetDir(dataset, dataDir), entry.slug);
     for (const relPath of await walkFiles(bundleDir)) {
       if (!relPath.endsWith('.md')) continue;
       const base = relPath.slice(relPath.lastIndexOf('/') + 1);
-      if (base === 'main.md' || base === 'index.md' || base === 'log.md') continue;
+      if (base === 'index.md' || base === 'log.md') continue;
       let source: string;
       try {
         source = await readFile(path.join(bundleDir, ...relPath.split('/')), 'utf8');
