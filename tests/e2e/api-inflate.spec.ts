@@ -15,6 +15,7 @@ import {
   dataPath,
   deleteRecipeQuietly,
   fetchSeedRecipe,
+  readDataText,
   readRecipeYaml,
   uniqueName,
 } from './helpers.ts';
@@ -118,6 +119,76 @@ test.describe('recipe CRUD', () => {
       },
     });
     expect(badName.status()).toBe(400);
+  });
+
+  test('an override may carry edit (written after materialOptions); only on a reference key', async ({
+    request,
+  }) => {
+    const name = uniqueName('api-rcp');
+    const base = {
+      name,
+      description: 'Editable flag',
+      target: 'claude-code',
+      layout: 'grouped',
+      contexts: [],
+      items: [],
+    };
+    const created201 = await request.post(`${API}/recipe`, {
+      data: {
+        ...base,
+        overrides: [
+          {
+            key: 'reference/astro-docs',
+            material: 'clone',
+            materialOptions: { cloneDepth: 10 },
+            edit: true,
+          },
+          { key: 'reference/blasto', edit: false },
+        ],
+      },
+    });
+    expect(created201.status(), await created201.text()).toBe(201);
+    created.add(name);
+    expect(readRecipeYaml(name).overrides).toEqual([
+      {
+        key: 'reference/astro-docs',
+        material: 'clone',
+        materialOptions: { cloneDepth: 10 },
+        edit: true,
+      },
+      { key: 'reference/blasto', edit: false },
+    ]);
+    // fixed key order: an override that only says edit is kept, edit follows materialOptions
+    const text = readDataText(`recipe/${name}.yaml`);
+    expect(text.indexOf('materialOptions:')).toBeGreaterThan(-1);
+    expect(text.indexOf('edit: true')).toBeGreaterThan(text.indexOf('materialOptions:'));
+    expect(text).toContain('- key: reference/blasto\n    edit: false');
+
+    // the flag is meaningless on anything but a repository (reference/<slug>)
+    for (const key of ['kb/ctxman', 'skill/okf-authoring']) {
+      const bad = await request.put(`${API}/recipe/${name}`, {
+        data: { ...base, overrides: [{ key, edit: true }] },
+      });
+      expect(bad.status(), key).toBe(400);
+      const body = await errorOf(bad);
+      expect(body.error).toBe('invalid');
+      expect(
+        body.issues?.some((i) => i.path === 'overrides.0.edit'),
+        key,
+      ).toBe(true);
+      expect(
+        body.issues?.some((i) => i.message.includes('repositories only')),
+        key,
+      ).toBe(true);
+    }
+    // nothing was written by the refused PUTs
+    expect(readRecipeYaml(name).overrides).toHaveLength(2);
+
+    // and a non-boolean flag is refused too
+    const notBoolean = await request.put(`${API}/recipe/${name}`, {
+      data: { ...base, overrides: [{ key: 'reference/blasto', edit: 'yes' }] },
+    });
+    expect(notBoolean.status()).toBe(400);
   });
 
   test('POST with a non-JSON body is 415; malformed JSON is 400 bad-json', async ({ request }) => {

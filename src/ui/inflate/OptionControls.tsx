@@ -1,12 +1,15 @@
-// Per-item mode Select and option controls (INFLATE_SPEC §4.2/§4.4, §9.3), plus the material controls of a
-// working-directory run (INFLATE_V2_SPEC §11.3). The controls are generated from the catalog: the mode's
+// Per-item controls of a composition row (INFLATE_SPEC §4.2/§4.4, §9.3, INFLATE_V3_PLAN §8). With a working
+// directory a row has two lines: PLACE (the material Select, its options, Primary and Editable of a repository)
+// and "In <context file>" (the placement-aware mode Select and the mode's options). A recipe without a
+// directory has the "Include as" mode Select only. The controls are generated from the catalog: the mode's
 // `options` pick the OPTION_DEFS entries, whose `control` picks the widget; the material's `options` pick
 // MATERIAL_OPTION_DEFS the same way. Values shown are the RESOLVED options of the segment; edits go through
-// `setMode` / `setOption` / `setMaterial` / `setMaterialOption`, which drop overrides that equal what the
-// plan would pick anyway.
+// `setMode` / `setOption` / `setMaterial` / `setMaterialOption` / `setEdit`, which drop overrides that equal
+// what the plan would pick anyway.
 import { useStore } from '@nanostores/react';
 import {
   CLONE_DIR_MESSAGE,
+  DEFAULT_CONTEXT_FILE,
   GIT_REF_MESSAGE,
   MATERIAL_OPTION_DEFS,
   OPTION_DEFS,
@@ -16,9 +19,12 @@ import {
   isSafeGitRef,
   isSafeRelativeDir,
   materialDef,
+  materialDescription,
+  materialLabel,
   materialsFor,
   modeDef,
   modesFor,
+  modesForPlacement,
 } from '../../lib/inflate/catalog.ts';
 import type {
   MaterialOptionDef,
@@ -28,14 +34,15 @@ import type {
 } from '../../lib/inflate/catalog.ts';
 import type { ItemSegment } from '../../lib/inflate/expand.ts';
 import {
+  $outputDir,
   $working,
+  setEdit,
   setMaterial,
   setMaterialOption,
   setMode,
   setOption,
   setPrimary,
 } from '../../stores/inflate.ts';
-import { $effectiveDir } from '../../stores/inflate-run.ts';
 import { useDraftField } from '../edit/useDraftField.ts';
 import { Checkbox, ListBoxItem, Select, TextField } from '../kit/index.ts';
 
@@ -176,6 +183,8 @@ function MaterialOption({ seg, id }: { seg: ItemSegment; id: MaterialOptionId })
       );
     }
     case 'text':
+      // A branch only means something for a git URI; an archive download has none.
+      if (seg.meta?.uriKind === 'archive') return null;
       return <BranchOption seg={seg} def={def} />;
     case 'checkbox':
       // Sparse checkout needs a subpath to check out: offered only when the reference has one (the entry
@@ -214,15 +223,39 @@ function PrimaryCheckbox({ seg }: { seg: ItemSegment }) {
   );
 }
 
-/** What a run places for this item: the material, its options and (for a repository) the Primary flag. */
-function MaterialControls({ seg }: { seg: ItemSegment }) {
+function EditableCheckbox({ seg }: { seg: ItemSegment }) {
+  // null = this repository cannot be edited (a copy, a remote repository that is not cloned)
+  if (seg.edit === null) return null;
+  return (
+    <span
+      className="cx-seg__opt"
+      title="The session may change files in this repository; otherwise it is reference material."
+    >
+      <Checkbox
+        isSelected={seg.edit}
+        onChange={(on) => setEdit(seg.key, on)}
+        data-testid="inflate-segment-edit"
+        aria-label={`Editable repository: ${seg.title}`}
+      >
+        Editable
+      </Checkbox>
+    </span>
+  );
+}
+
+/** Line 1 (working directory): what a run places for this item, its options, Primary and Editable. */
+function PlaceLine({ seg }: { seg: ItemSegment }) {
   const { kind, material } = seg;
   if (kind === null || material === null) return null;
+  const uriKind = seg.meta?.uriKind;
   const options = materialDef(kind, material)?.options ?? [];
   return (
     <div className="cx-seg__opts" data-testid="inflate-segment-materials">
-      <span className="cx-seg__optlabel" title="What a run places in the working directory">
-        Material
+      <span
+        className="cx-seg__optlabel"
+        title="How a run gets this item into the working directory"
+      >
+        Place
       </span>
       <Select
         size="sm"
@@ -235,28 +268,56 @@ function MaterialControls({ seg }: { seg: ItemSegment }) {
         triggerTestId="inflate-segment-material"
         className="cx-seg__material"
       >
-        {materialsFor(kind).map((m) => (
-          <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
-            {m.label}
-          </ListBoxItem>
-        ))}
+        {materialsFor(kind).map((m) => {
+          const label = materialLabel(kind, m.id, uriKind);
+          return (
+            <ListBoxItem
+              key={m.id}
+              id={m.id}
+              textValue={label}
+              description={materialDescription(kind, m.id, uriKind)}
+            >
+              {label}
+            </ListBoxItem>
+          );
+        })}
       </Select>
       {options.map((id) => (
         <MaterialOption key={id} seg={seg} id={id} />
       ))}
       {isPrimaryEligible(kind, material) && <PrimaryCheckbox seg={seg} />}
+      <EditableCheckbox seg={seg} />
     </div>
   );
 }
 
-export function OptionControls({ seg }: { seg: ItemSegment }) {
-  const dir = useStore($effectiveDir);
+/**
+ * The mode line. With a directory: "In <context file>" over the placement-aware list (static text when there is
+ * only one entry). Document only: "Include as" over the family list.
+ */
+function ModeLine({ seg, contextFile }: { seg: ItemSegment; contextFile: string | null }) {
   const { kind, mode } = seg;
   if (kind === null || mode === null) return null;
-  const options = modeDef(kind, mode)?.options ?? [];
+  const list = contextFile === null ? modesFor(kind) : modesForPlacement(kind, seg.placed);
+  const current = list.find((m) => m.id === mode);
+  const options = (current ?? modeDef(kind, mode))?.options ?? [];
   return (
-    <>
-      <div className="cx-seg__opts">
+    <div className="cx-seg__opts" data-testid="inflate-segment-modes">
+      <span
+        className="cx-seg__optlabel"
+        title={contextFile === null ? 'How the document presents this item' : undefined}
+      >
+        {contextFile === null ? 'Include as' : `In ${contextFile}`}
+      </span>
+      {list.length === 1 ? (
+        <span
+          className="cx-seg__static"
+          title={current?.description}
+          data-testid="inflate-segment-mode"
+        >
+          {current?.label ?? mode}
+        </span>
+      ) : (
         <Select
           size="sm"
           aria-label={`Mode for ${seg.title}`}
@@ -268,17 +329,29 @@ export function OptionControls({ seg }: { seg: ItemSegment }) {
           triggerTestId="inflate-segment-mode"
           className="cx-seg__mode"
         >
-          {modesFor(kind).map((m) => (
+          {list.map((m) => (
             <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
               {m.label}
             </ListBoxItem>
           ))}
         </Select>
-        {options.map((id) => (
-          <OptionControl key={id} seg={seg} id={id} />
-        ))}
-      </div>
-      {dir !== null && <MaterialControls seg={seg} />}
+      )}
+      {options.map((id) => (
+        <OptionControl key={id} seg={seg} id={id} />
+      ))}
+    </div>
+  );
+}
+
+export function OptionControls({ seg }: { seg: ItemSegment }) {
+  const dir = useStore($outputDir);
+  const working = useStore($working);
+  if (seg.kind === null || seg.mode === null) return null;
+  if (dir === null) return <ModeLine seg={seg} contextFile={null} />;
+  return (
+    <>
+      <PlaceLine seg={seg} />
+      <ModeLine seg={seg} contextFile={working?.output?.contextFile ?? DEFAULT_CONTEXT_FILE} />
     </>
   );
 }

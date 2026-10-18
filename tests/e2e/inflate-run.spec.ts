@@ -253,7 +253,9 @@ test.describe('Run view', () => {
     const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain('## Primary repository');
-    expect(context).toContain(`\`repos/${REPO_REF}\``);
+    // placed paths are relative markdown links, never the absolute ctxman data path
+    expect(context).toContain(`[\`repos/${REPO_REF}/\`](repos/${REPO_REF}/)`);
+    expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
     expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@LLM_CONTEXT.md\n')).toBe(
       true,
@@ -342,7 +344,7 @@ test.describe('Run view', () => {
     const item = page.locator('[data-testid="inflate-run-item"][data-key="kb/okf-format"]');
     await expect(item).toHaveAttribute('data-overridden', 'false');
     await item.getByTestId('inflate-run-item-material').click();
-    await page.getByRole('option', { name: /^Mention only/ }).click();
+    await page.getByRole('option', { name: /^Don't place/ }).click();
     await expect(item).toHaveAttribute('data-overridden', 'true');
     await expect(page.getByTestId('inflate-run-overrides')).toContainText('1 run override');
     await waitPlanReady(page);
@@ -437,7 +439,7 @@ test.describe('compose and run overrides', () => {
       `[data-testid="inflate-segment"][data-key="reference/${REPO_REF}"]`,
     );
     await repoRow.getByTestId('inflate-segment-material').click();
-    await page.getByRole('option', { name: /^Mention only/ }).click();
+    await page.getByRole('option', { name: /^Don't place/ }).click();
     await expect(primary(REPO_REF)).toHaveCount(0);
     await expect(page.getByTestId('inflate-output-primary')).toContainText('none');
     await repoRow.getByTestId('inflate-segment-material').click();

@@ -1,19 +1,27 @@
-// Left pane of Inflate (INFLATE_SPEC §9.3): description, preamble, contexts to include, default modes per
-// item kind, ad hoc items and the "+ Markdown block" button.
+// Left pane of Inflate (INFLATE_SPEC §9.3, INFLATE_V3_PLAN §8): description, output directory, preamble, contexts
+// to include, defaults per item kind (only the kinds the recipe uses), ad hoc items and the "+ Markdown block" button.
 import { useStore } from '@nanostores/react';
 import {
+  DEFAULT_CONTEXT_FILE,
   ITEM_KINDS,
   ITEM_KIND_LABELS,
   defaultMaterialFor,
   defaultModeFor,
-  materialDef,
+  isMaterialFor,
+  materialDescription,
+  materialLabel,
   materialsFor,
   modeDef,
   modesFor,
+  modesForPlacement,
 } from '../../lib/inflate/catalog.ts';
-import type { InflateTarget, ItemKind, MaterialId, ModeId } from '../../lib/inflate/catalog.ts';
+import type { ItemKind, MaterialId, ModeId } from '../../lib/inflate/catalog.ts';
+import type { Segment } from '../../lib/inflate/expand.ts';
+import type { RecipeData } from '../../datasets/schemas.ts';
 import { $entries } from '../../stores/entries.ts';
 import {
+  $outputDir,
+  $plan,
   $working,
   insertMarkdownAfter,
   saveIfDirty,
@@ -110,29 +118,81 @@ function ContextsSection({ selected }: { selected: readonly string[] }) {
   );
 }
 
-function DefaultModeRow({
+/** The item kinds the recipe has (included or excluded items) plus any kind with a stored default. */
+function kindsInUse(working: RecipeData, segments: readonly Segment[]): ItemKind[] {
+  const present = new Set<ItemKind>();
+  for (const seg of segments) {
+    if (seg.type !== 'item' || seg.kind === null) continue;
+    if (seg.status === 'included' || seg.status === 'excluded') present.add(seg.kind);
+  }
+  return ITEM_KINDS.filter((k) => present.has(k) || working.defaults[k] !== undefined);
+}
+
+/**
+ * One kind: "Place" (the default material; only with a working directory) and "In <context file>" / "Include as"
+ * (the default mode, over the list that fits the placement of that default material).
+ */
+function DefaultKindRow({
   kind,
-  target,
-  mode,
-  material,
+  working,
+  hasDir,
 }: {
   kind: ItemKind;
-  target: InflateTarget;
-  mode: ModeId | undefined;
-  material: MaterialId | undefined;
+  working: RecipeData;
+  hasDir: boolean;
 }) {
-  const builtIn = defaultModeFor(kind, target);
-  const builtInLabel = modeDef(kind, builtIn)?.label ?? builtIn;
-  const builtInMaterial = defaultMaterialFor(kind, target);
-  const builtInMaterialLabel = materialDef(kind, builtInMaterial)?.label ?? builtInMaterial;
+  const { target } = working;
   const label = ITEM_KIND_LABELS[kind];
+  const mode: ModeId | undefined = working.defaults[kind]?.mode;
+  const material: MaterialId | undefined = working.defaults[kind]?.material;
+  const builtInMaterial = defaultMaterialFor(kind, target);
+  const effectiveMaterial =
+    material !== undefined && isMaterialFor(kind, material) ? material : builtInMaterial;
+  // Same verdict as the expander: a directory is set and the material places something.
+  const placed = hasDir && effectiveMaterial !== 'none';
+  const modes = hasDir ? modesForPlacement(kind, placed) : modesFor(kind);
+  const builtIn = defaultModeFor(kind, target, placed);
+  const builtInLabel =
+    modes.find((m) => m.id === builtIn)?.label ?? modeDef(kind, builtIn)?.label ?? builtIn;
+  const builtInMaterialLabel = materialLabel(kind, builtInMaterial);
+  // A stored mode the placement does not offer (a skill `install` while the skill is symlinked) is not applied
+  // (the expander falls back to the default); it stays in the recipe and comes back with the material.
+  const shownMode = mode !== undefined && modes.some((m) => m.id === mode) ? mode : DEFAULT_ITEM;
   return (
-    <div className="cx-defrow">
+    <div className="cx-defrow" data-dir={hasDir ? 'true' : undefined}>
       <span className="cx-defrow__label">{label}</span>
+      {hasDir && (
+        <Select
+          aria-label={`Default material for ${label} items`}
+          size="sm"
+          value={material ?? DEFAULT_ITEM}
+          onChange={(key) => {
+            if (key === null) return;
+            const next = String(key);
+            setDefaultMaterial(kind, next === DEFAULT_ITEM ? null : (next as MaterialId));
+          }}
+          triggerTestId={`inflate-default-material-${kind}`}
+          pinnedKeys={[DEFAULT_ITEM]}
+        >
+          <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInMaterialLabel})`}>
+            Default ({builtInMaterialLabel})
+          </ListBoxItem>
+          {materialsFor(kind).map((m) => (
+            <ListBoxItem
+              key={m.id}
+              id={m.id}
+              textValue={materialLabel(kind, m.id)}
+              description={materialDescription(kind, m.id)}
+            >
+              {materialLabel(kind, m.id)}
+            </ListBoxItem>
+          ))}
+        </Select>
+      )}
       <Select
         aria-label={`Default mode for ${label} items`}
         size="sm"
-        value={mode ?? DEFAULT_ITEM}
+        value={shownMode}
         onChange={(key) => {
           if (key === null) return;
           const next = String(key);
@@ -144,28 +204,7 @@ function DefaultModeRow({
         <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInLabel})`}>
           Default ({builtInLabel})
         </ListBoxItem>
-        {modesFor(kind).map((m) => (
-          <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
-            {m.label}
-          </ListBoxItem>
-        ))}
-      </Select>
-      <Select
-        aria-label={`Default material for ${label} items`}
-        size="sm"
-        value={material ?? DEFAULT_ITEM}
-        onChange={(key) => {
-          if (key === null) return;
-          const next = String(key);
-          setDefaultMaterial(kind, next === DEFAULT_ITEM ? null : (next as MaterialId));
-        }}
-        triggerTestId={`inflate-default-material-${kind}`}
-        pinnedKeys={[DEFAULT_ITEM]}
-      >
-        <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInMaterialLabel})`}>
-          Default ({builtInMaterialLabel})
-        </ListBoxItem>
-        {materialsFor(kind).map((m) => (
+        {modes.map((m) => (
           <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
             {m.label}
           </ListBoxItem>
@@ -175,13 +214,46 @@ function DefaultModeRow({
   );
 }
 
+function DefaultsSection({ working }: { working: RecipeData }) {
+  const plan = useStore($plan);
+  const dir = useStore($outputDir);
+  const hasDir = dir !== null;
+  const kinds = kindsInUse(working, plan?.segments ?? []);
+  const custom = ITEM_KINDS.filter(
+    (k) => working.defaults[k]?.mode !== undefined || working.defaults[k]?.material !== undefined,
+  ).length;
+  return (
+    <Disclosure
+      title="Default modes"
+      meta={custom === 0 ? 'built-in' : `${custom} custom`}
+      triggerTestId="inflate-defaults-toggle"
+    >
+      {kinds.length === 0 ? (
+        <EmptyState compact title="No items yet">
+          Defaults per item kind appear once the recipe has items.
+        </EmptyState>
+      ) : (
+        <div className="cx-defmodes" data-testid="inflate-defaults">
+          <div className="cx-defrow cx-defrow--head" data-dir={hasDir ? 'true' : undefined}>
+            <span />
+            {hasDir && <span className="cx-seg__optlabel">Place</span>}
+            <span className="cx-seg__optlabel">
+              {hasDir ? `In ${working.output?.contextFile ?? DEFAULT_CONTEXT_FILE}` : 'Include as'}
+            </span>
+          </div>
+          {kinds.map((kind) => (
+            <DefaultKindRow key={kind} kind={kind} working={working} hasDir={hasDir} />
+          ))}
+        </div>
+      )}
+    </Disclosure>
+  );
+}
+
 export function SourcesPane() {
   const working = useStore($working);
   if (working === null) return null;
   const preamble = working.preamble ?? '';
-  const customDefaults = ITEM_KINDS.filter(
-    (k) => working.defaults[k]?.mode !== undefined || working.defaults[k]?.material !== undefined,
-  ).length;
   return (
     <section
       className="cx-forge__pane cx-forge__pane--discover"
@@ -227,22 +299,7 @@ export function SourcesPane() {
           }
         </Disclosure>
         <ContextsSection selected={working.contexts} />
-        <Disclosure
-          title="Default modes"
-          meta={customDefaults === 0 ? 'built-in' : `${customDefaults} custom`}
-        >
-          <div className="cx-defmodes">
-            {ITEM_KINDS.map((kind) => (
-              <DefaultModeRow
-                key={kind}
-                kind={kind}
-                target={working.target}
-                mode={working.defaults[kind]?.mode}
-                material={working.defaults[kind]?.material}
-              />
-            ))}
-          </div>
-        </Disclosure>
+        <DefaultsSection working={working} />
         <AdhocDiscover />
         <div className="cx-sources__section">
           <Button

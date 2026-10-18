@@ -83,8 +83,8 @@ The global search uses a different set (`search`, `sq`, `in`); see [Search](/con
 | `GET /api/schemas/<dataset>` | The committed JSON Schema of `reference`, `context` or `recipe` (`application/schema+json`, `access-control-allow-origin: *`); `<dataset>.schema.json` works too. The YAML modeline of every data file points here |
 | `POST /api/inflate/render` | Render a recipe (saved or not) to `{ markdown, manifest }`; writes nothing |
 | `POST /api/inflate/write` | Render `{ recipe, path }` and write the markdown to an absolute `.md` path |
-| `POST /api/inflate/plan` | Dry run of a working-directory run: `{ recipe, overrides? }` to the blocking problems, warnings, steps and the relative document; writes nothing |
-| `POST /api/inflate/run` | Start the run in the background: 202 `{ jobId, job }`; one run at a time |
+| `POST /api/inflate/plan` | Dry run of a working-directory run: `{ recipe, overrides? }` to the blocking problems, warnings, steps and the relative document; writes nothing. `overrides` are the run overrides (`dir`, `contextFile`, `primary`, `allowNonEmpty` and `items[key]` with `material`, `materialOptions` and `edit`, the Editable flag of a `reference/<slug>`; `edit` on any other key is a 400 `invalid`) |
+| `POST /api/inflate/run` | Same body as `plan`; start the run in the background: 202 `{ jobId, job }`; one run at a time |
 | `GET /api/inflate/jobs/<id>` | The job: status, steps with their output tails, summary |
 | `POST /api/inflate/jobs/<id>/cancel` | Cancel a queued or running job |
 | `POST /api/scripts/<name>` | Run an allowlisted script and return its exit code, stdout and stderr |

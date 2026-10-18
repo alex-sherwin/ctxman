@@ -125,6 +125,8 @@ export function view(
     branch: null,
     sparse: false,
     owner: null,
+    edit: null,
+    uriKind: null,
     state: 'planned',
     ...extra,
   };

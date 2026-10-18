@@ -3,10 +3,11 @@
 // server render (`$render`, absolute paths). With one, it is the dry run's document with paths relative to the
 // directory (`$dirPlan`) unless `paths=absolute` asks for the v1 render.
 import { useStore } from '@nanostores/react';
-import { materialDef } from '../../lib/inflate/catalog.ts';
+import { materialLabel } from '../../lib/inflate/catalog.ts';
 import type { InflateManifest, InflateResult } from '../../lib/inflate/render.ts';
 import {
   $inflateUrl,
+  $referenceInfo,
   $render,
   $working,
   $writePath,
@@ -99,6 +100,8 @@ function PreviewActions({ name, markdown }: { name: string; markdown: string | n
 }
 
 function ManifestTable({ manifest }: { manifest: InflateManifest }) {
+  // A remote skill reads "Clone" or "Download" by its URI kind, which the manifest does not carry.
+  const references = useStore($referenceInfo);
   const rows = manifest.segments.map((s, i) => ({ ...s, id: s.key, n: i + 1 }));
   // A render for a working directory also says what is placed where.
   const withMaterial = manifest.output !== undefined;
@@ -138,7 +141,7 @@ function ManifestTable({ manifest }: { manifest: InflateManifest }) {
                   <span className="cx-manifest__nowrap">
                     {s.material === undefined || s.kind === undefined
                       ? '—'
-                      : (materialDef(s.kind, s.material)?.label ?? s.material)}
+                      : materialLabel(s.kind, s.material, references.get(s.key)?.uriKind)}
                   </span>
                   {s.dest !== undefined && (
                     <code className="cx-manifest__key cx-manifest__dest cx-subtle">{s.dest}</code>

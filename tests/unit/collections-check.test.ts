@@ -330,6 +330,20 @@ describe('checkCollections', () => {
             'material "clone" does not apply to reference/rs (Remote skill)',
           ),
         ]);
+        // v3: a copy is a material of local repositories only
+        expect(await only(override('rr', 'copy'))).toEqual([
+          rule(
+            'recipe-material-invalid',
+            'material "copy" does not apply to reference/rr (Remote repo)',
+          ),
+        ]);
+        expect(await only(override('rs', 'copy'))).toEqual([
+          rule(
+            'recipe-material-invalid',
+            'material "copy" does not apply to reference/rs (Remote skill)',
+          ),
+        ]);
+        expect(await only(override('repo', 'copy'))).toEqual([]);
         // applicable materials and "none" are fine; so is an override without material
         expect(await only(override('repo', 'symlink'))).toEqual([]);
         expect(await only(override('repo', 'none'))).toEqual([]);
@@ -370,14 +384,27 @@ describe('checkCollections', () => {
             `primary ${key} needs material clone (remote-repo) or symlink (local-repo)`,
           );
         const items = (slug: string) => `items:\n  - dataset: reference\n    slug: ${slug}\n`;
-        // built-in default is none
-        expect(await run(`output:\n  primary: reference/rr\n${items('rr')}`)).toEqual([
-          needs('reference/rr'),
-        ]);
-        expect(await run(`output:\n  primary: reference/repo\n${items('repo')}`)).toEqual([
-          needs('reference/repo'),
-        ]);
-        // wrong material for the type (symlink on a remote repo) is not eligible either
+        // v3: the built-in materials (clone for a remote repo, symlink for a local one) are eligible
+        expect(await run(`output:\n  primary: reference/rr\n${items('rr')}`)).toEqual([]);
+        expect(await run(`output:\n  primary: reference/repo\n${items('repo')}`)).toEqual([]);
+        // none and a copy of a local repo (no .git) are not
+        expect(
+          await run(
+            `output:\n  primary: reference/rr\n${items('rr')}overrides:\n  - key: reference/rr\n    material: none\n`,
+          ),
+        ).toEqual([needs('reference/rr')]);
+        expect(
+          await run(
+            `output:\n  primary: reference/repo\n${items('repo')}overrides:\n  - key: reference/repo\n    material: copy\n`,
+          ),
+        ).toEqual([needs('reference/repo')]);
+        expect(
+          await run(
+            `output:\n  primary: reference/repo\n${items('repo')}defaults:\n  local-repo:\n    material: none\n`,
+          ),
+        ).toEqual([needs('reference/repo')]);
+        // wrong material for the type (symlink on a remote repo) is reported once; the primary check then
+        // looks at the override as written, and a symlink is not clone
         expect(
           await run(
             `output:\n  primary: reference/rr\n${items('rr')}overrides:\n  - key: reference/rr\n    material: symlink\n`,

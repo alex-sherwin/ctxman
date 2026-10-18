@@ -1,5 +1,5 @@
 // PURE (no fs, no astro:*; browser-safe). The working-directory plan of Context Inflate v2
-// (plans/INFLATE_V2_SPEC.md §6): `planMaterialization` turns an expanded plan plus the gathered paths and the
+// (plans/INFLATE_V2_SPEC.md §6, plans/INFLATE_V3_PLAN.md §6: skill symlink, local-repo copy): `planMaterialization` turns an expanded plan plus the gathered paths and the
 // previous `.ctxman-inflate.json` into an ordered list of steps; the NODE executor (`material-exec.ts`) runs
 // them and the renderer (`render.ts`) describes their outcome. Every type that crosses the API lives here so
 // the island never imports a NODE / SERVER module (spec §2). The only imports from other inflate files that
@@ -15,6 +15,7 @@ import {
   STAGE_DIR,
   STUB_FILES,
   familyOf,
+  isEditEligible,
   materialDest,
   stubDefaults,
 } from './catalog.ts';
@@ -117,7 +118,15 @@ export interface MaterialView {
   depth: number | null;
   branch: string | null;
   sparse: boolean;
+  /** References keep their `owner`; ctxman's own okf entries and local skills are always `'me'`. */
   owner: Owner | null;
+  /**
+   * Editable: may the session change files here? null = not eligible (see `isEditEligible`); otherwise the
+   * item's `edit` (override ?? is the valid primary). Recomputed for the demoted `none` view.
+   */
+  edit: boolean | null;
+  /** remote-skill: 'git' | 'archive' (selects the Clone / Download label); null for every other kind. */
+  uriKind: 'git' | 'archive' | null;
   state: 'planned' | 'ok' | 'failed';
   /** failed: why (shown in the document). */
   reason?: string;
@@ -283,9 +292,15 @@ export function createPathMapper(
 
 /**
  * `.gitignore` of a working directory: the manifest, the staging folder, then one line per distinct "ignore
- * root" in map order (`/repos/`, `/<dataset>/`, each skill destination). `paths` = the placed destinations.
+ * root" in map order (`/repos/`, `/<dataset>/`, each skill destination). `paths` = the placed destinations;
+ * `links` = those among them that are symlinks themselves (a symlinked skill): git does not match a symlink
+ * with a trailing-slash pattern, so these are written without the slash.
  */
-export function gitignoreText(recipe: string, paths: readonly string[]): string {
+export function gitignoreText(
+  recipe: string,
+  paths: readonly string[],
+  links: readonly string[] = [],
+): string {
   const isRepo = (p: string): boolean => p === REPOS_DIR || p.startsWith(`${REPOS_DIR}/`);
   const dataset = (p: string): string | undefined =>
     OKF_DATASET_IDS.find((ds) => p === ds || p.startsWith(`${ds}/`));
@@ -298,7 +313,7 @@ export function gitignoreText(recipe: string, paths: readonly string[]): string 
     if (paths.some((p) => dataset(p) === ds)) add(`/${ds}/`);
   }
   for (const p of paths) {
-    if (!isRepo(p) && dataset(p) === undefined) add(`/${p}/`);
+    if (!isRepo(p) && dataset(p) === undefined) add(links.includes(p) ? `/${p}` : `/${p}/`);
   }
   return (
     [
@@ -376,6 +391,8 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
     const ic = content.items[key];
     const subpath = cleanSubpath(ref?.subpath);
     const opts = seg.materialOptions;
+    const uriKind =
+      family === 'remote-skill' && seg.meta.uriKind !== undefined ? seg.meta.uriKind : null;
     const clone = material === 'clone';
     const branch = opts.branch ?? '';
     const view: MaterialView = {
@@ -399,19 +416,24 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       depth: clone ? (opts.cloneDepth ?? DEFAULT_CLONE_DEPTH) : null,
       branch: (clone || material === 'install') && branch !== '' ? branch : null,
       sparse: clone && opts.subpathOnly === true && subpath !== '',
-      owner: ref?.owner ?? null,
+      owner: ref?.owner ?? (family === 'okf' || family === 'skill' ? 'me' : null),
+      edit: seg.edit,
+      uriKind,
       state: 'planned',
     };
     materials[key] = view;
 
-    const uriKind =
-      family === 'remote-skill' && seg.meta.uriKind !== undefined ? seg.meta.uriKind : null;
     const demote = (code: InflateWarning['code'], message: string): void => {
       view.material = 'none';
       view.dest = null;
       view.depth = null;
       view.branch = null;
       view.sparse = false;
+      // Not placed any more: a local repository is editable at its original path only when asked for (the
+      // primary default needs a placed repository), anything else loses the flag.
+      view.edit = isEditEligible(kind, 'none')
+        ? seg.editSource === 'override' && seg.edit === true
+        : null;
       warnings.push({ code, message: `${key}: ${message}; nothing placed`, key });
     };
 
@@ -435,7 +457,7 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
         }
         break;
       case 'skill':
-        if (material !== 'copy') {
+        if (material !== 'symlink' && material !== 'copy') {
           demote(
             'material-invalid',
             `material "${material}" does not apply to ${ITEM_KIND_LABELS[kind]}`,
@@ -446,7 +468,7 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
         break;
       case 'local-repo': {
         const local = ic?.local;
-        if (material !== 'symlink') {
+        if (material !== 'symlink' && material !== 'copy') {
           demote(
             'material-invalid',
             `material "${material}" does not apply to ${ITEM_KIND_LABELS[kind]}`,
@@ -590,30 +612,57 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
   }
   for (const { view, seg } of group('skill')) {
     const dest = view.dest as string;
-    steps.push({
-      kind: 'copyDir',
-      id: `skill:${view.key}`,
-      path: dest,
-      label: `Copy skill ${seg.slug} → ${dest}`,
-      expect: expectFor(dest),
-      key: view.key,
-      after: [],
-      from: view.sourceAbs as string,
-    });
+    const source = view.sourceAbs as string;
+    steps.push(
+      view.material === 'symlink'
+        ? {
+            kind: 'symlink',
+            id: `skill:${view.key}`,
+            path: dest,
+            label: `Symlink ${dest} → ${source}`,
+            expect: expectFor(dest),
+            key: view.key,
+            after: [],
+            target: source,
+          }
+        : {
+            kind: 'copyDir',
+            id: `skill:${view.key}`,
+            path: dest,
+            label: `Copy skill ${seg.slug} → ${dest}`,
+            expect: expectFor(dest),
+            key: view.key,
+            after: [],
+            from: source,
+          },
+    );
   }
   for (const { view } of group('local-repo')) {
     const dest = view.dest as string;
     const source = view.sourceAbs as string;
-    steps.push({
-      kind: 'symlink',
-      id: `link:${view.key}`,
-      path: dest,
-      label: `Symlink ${dest} → ${source}`,
-      expect: expectFor(dest),
-      key: view.key,
-      after: [],
-      target: source,
-    });
+    steps.push(
+      view.material === 'copy'
+        ? {
+            kind: 'copyDir',
+            id: `link:${view.key}`,
+            path: dest,
+            label: `Copy ${source} → ${dest}`,
+            expect: expectFor(dest),
+            key: view.key,
+            after: [],
+            from: source,
+          }
+        : {
+            kind: 'symlink',
+            id: `link:${view.key}`,
+            path: dest,
+            label: `Symlink ${dest} → ${source}`,
+            expect: expectFor(dest),
+            key: view.key,
+            after: [],
+            target: source,
+          },
+    );
   }
   for (const { view } of group('remote-repo')) {
     const dest = view.dest as string;
@@ -735,7 +784,13 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       role,
       content:
         role === 'gitignore'
-          ? gitignoreText(recipe.name, placedDests)
+          ? gitignoreText(
+              recipe.name,
+              placedDests,
+              candidates
+                .filter((c) => c.family === 'skill' && c.view.material === 'symlink')
+                .map((c) => c.view.dest as string),
+            )
           : stubText(role, recipe.name, contextFile),
     });
   }

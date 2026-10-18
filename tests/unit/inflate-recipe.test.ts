@@ -485,9 +485,17 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
     expect(issues({ defaults: { 'local-repo': { material: 'clone' } } })).toEqual([
       ['defaults.local-repo.material', 'material "clone" does not apply to Local repo items'],
     ]);
-    expect(issues({ defaults: { skill: { material: 'symlink' } } })).toEqual([
-      ['defaults.skill.material', 'material "symlink" does not apply to Skill items'],
+    expect(issues({ defaults: { skill: { material: 'clone' } } })).toEqual([
+      ['defaults.skill.material', 'material "clone" does not apply to Skill items'],
     ]);
+    expect(issues({ defaults: { 'remote-repo': { material: 'copy' } } })).toEqual([
+      ['defaults.remote-repo.material', 'material "copy" does not apply to Remote repo items'],
+    ]);
+    // v3: a skill may be symlinked, a local repository copied
+    expect(parseRecipe({ ...base, defaults: { skill: { material: 'symlink' } } }).ok).toBe(true);
+    expect(parseRecipe({ ...base, defaults: { 'local-repo': { material: 'copy' } } }).ok).toBe(
+      true,
+    );
     expect(parseRecipe({ ...base, defaults: { kb: { material: 'copy' } } }).ok).toBe(true);
     expect(parseRecipe({ ...base, defaults: { skill: { material: 'none' } } }).ok).toBe(true);
     expect(parseRecipe({ ...base, defaults: { 'remote-repo': { material: 'clone' } } }).ok).toBe(
@@ -500,26 +508,50 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
     expect(issues({ overrides: [{ key: 'kb/a', material: 'clone' }] })).toEqual([
       ['overrides.0.material', 'material "clone" does not apply to kb/a'],
     ]);
-    expect(issues({ overrides: [{ key: 'skill/a', material: 'symlink' }] })).toEqual([
-      ['overrides.0.material', 'material "symlink" does not apply to skill/a'],
+    expect(issues({ overrides: [{ key: 'skill/a', material: 'clone' }] })).toEqual([
+      ['overrides.0.material', 'material "clone" does not apply to skill/a'],
     ]);
     expect(parseRecipe({ ...base, overrides: [{ key: 'skill/a', material: 'copy' }] }).ok).toBe(
+      true,
+    );
+    expect(parseRecipe({ ...base, overrides: [{ key: 'skill/a', material: 'symlink' }] }).ok).toBe(
       true,
     );
     expect(parseRecipe({ ...base, overrides: [{ key: 'kb/a', material: 'copy' }] }).ok).toBe(true);
     expect(parseRecipe({ ...base, overrides: [{ key: 'kb/a', material: 'none' }] }).ok).toBe(true);
   });
 
-  it('overrides: a reference key accepts none, symlink, clone, install; not copy', () => {
-    for (const material of ['none', 'symlink', 'clone', 'install']) {
+  it('overrides: edit is a boolean and only applies to reference/<slug> keys', () => {
+    expect(parseRecipe({ ...base, overrides: [{ key: 'reference/r', edit: true }] }).ok).toBe(true);
+    expect(parseRecipe({ ...base, overrides: [{ key: 'reference/r', edit: false }] }).ok).toBe(
+      true,
+    );
+    expect(issues({ overrides: [{ key: 'kb/a', edit: true }] })).toEqual([
+      ['overrides.0.edit', 'edit applies to repositories only (a reference/<slug> key)'],
+    ]);
+    expect(issues({ overrides: [{ key: 'skill/a', edit: false }] }).map(([p]) => p)).toEqual([
+      'overrides.0.edit',
+    ]);
+    // not a boolean: a structural issue (the narrow does not run)
+    expect(parseRecipe({ ...base, overrides: [{ key: 'reference/r', edit: 'yes' }] }).ok).toBe(
+      false,
+    );
+    // an override that only says edit is not stale or empty for the schema
+    expect(parse({ overrides: [{ key: 'reference/r', edit: true }] }).overrides).toEqual([
+      { key: 'reference/r', edit: true },
+    ]);
+  });
+
+  it('overrides: a reference key accepts none, symlink, copy, clone, install; nothing else', () => {
+    for (const material of ['none', 'symlink', 'copy', 'clone', 'install']) {
       expect(
         parseRecipe({ ...base, overrides: [{ key: 'reference/r', material }] }).ok,
         material,
       ).toBe(true);
     }
-    expect(issues({ overrides: [{ key: 'reference/r', material: 'copy' }] })).toEqual([
-      ['overrides.0.material', 'material "copy" does not apply to reference/r'],
-    ]);
+    expect(parseRecipe({ ...base, overrides: [{ key: 'reference/r', material: 'x' }] }).ok).toBe(
+      false,
+    );
     // mode and material are validated independently
     expect(
       issues({ overrides: [{ key: 'kb/a', mode: 'install', material: 'clone' }] }).map(([p]) => p),
@@ -542,6 +574,7 @@ describe('serializeRecipe: output and material (plans/INFLATE_V2_SPEC.md §4.2)'
       {
         key: 'reference/app',
         exclude: true,
+        edit: true,
         materialOptions: { branch: 'trunk', cloneDepth: 0, subpathOnly: undefined },
         material: 'clone',
         options: { sparse: true },
@@ -576,6 +609,7 @@ overrides:
     materialOptions:
       cloneDepth: 0
       branch: trunk
+    edit: true
     exclude: true
 defaults:
   kb:
@@ -584,7 +618,7 @@ defaults:
 `);
   });
 
-  it('puts output between layout and preamble; override keys key, mode, options, material, materialOptions, exclude', () => {
+  it('puts output between layout and preamble; override keys key, mode, options, material, materialOptions, edit, exclude', () => {
     const doc = recipeToYamlObject(parse({ preamble: 'p', output: { dir: '/x' } }));
     expect(Object.keys(doc)).toEqual([
       'name',
@@ -603,6 +637,7 @@ defaults:
       'options',
       'material',
       'materialOptions',
+      'edit',
       'exclude',
     ]);
     const defaults = recipeToYamlObject(demo).defaults as Record<string, Record<string, unknown>>;
@@ -641,6 +676,42 @@ defaults:
       { key: 'reference/b', materialOptions: { cloneDepth: 10 } },
     ]);
     expect(out.defaults).toEqual({ 'remote-repo': { materialOptions: { branch: 'dev' } } });
+  });
+
+  it('edit (plans/INFLATE_V3_PLAN.md §4): written right after materialOptions, true and false, alone is kept', () => {
+    const r = parse({
+      overrides: [
+        { key: 'reference/a', edit: false },
+        { key: 'reference/b', exclude: true, edit: true, material: 'symlink' },
+        { key: 'reference/c' },
+      ],
+    });
+    const out = recipeToYamlObject(r);
+    expect(out.overrides).toEqual([
+      { key: 'reference/a', edit: false },
+      { key: 'reference/b', material: 'symlink', edit: true, exclude: true },
+    ]);
+    expect(Object.keys((out.overrides as Record<string, unknown>[])[1] ?? {})).toEqual([
+      'key',
+      'material',
+      'edit',
+      'exclude',
+    ]);
+    // it round-trips and sameRecipe sees it
+    const reparsed = parseRecipe(parseYaml(serializeRecipe(r)), 'r');
+    expect(reparsed.ok && serializeRecipe(reparsed.recipe)).toBe(serializeRecipe(r));
+    expect(
+      sameRecipe(
+        parse({ overrides: [{ key: 'reference/a' }] }),
+        parse({ overrides: [{ key: 'reference/a', edit: true }] }),
+      ),
+    ).toBe(false);
+    expect(
+      sameRecipe(
+        parse({ overrides: [{ key: 'reference/a', edit: false }] }),
+        parse({ overrides: [{ key: 'reference/a', edit: true }] }),
+      ),
+    ).toBe(false);
   });
 
   it('round-trips and sameRecipe sees output and material changes', () => {
@@ -754,6 +825,32 @@ describe('applyRunOverrides (plans/INFLATE_V2_SPEC.md §4.3)', () => {
     ]);
   });
 
+  it('item edit replaces the recipe override edit (also false); the rest is kept', () => {
+    const out = applyRunOverrides(
+      withOutput,
+      run({ items: { 'reference/app': { edit: false }, 'reference/lib': { edit: true } } }),
+    );
+    expect(out.overrides).toEqual([
+      {
+        key: 'reference/app',
+        mode: 'clone',
+        options: { sparse: true },
+        material: 'clone',
+        materialOptions: { cloneDepth: 10, branch: 'dev' },
+        edit: false,
+      },
+      { key: 'kb/a', exclude: true },
+      { key: 'reference/lib', edit: true },
+    ]);
+    // material and edit together
+    const both = applyRunOverrides(
+      withOutput,
+      run({ items: { 'reference/app': { material: 'symlink', edit: true } } }),
+    );
+    expect(both.overrides[0]).toMatchObject({ material: 'symlink', edit: true });
+    expect(validate(recipeSchema, out).success).toBe(true);
+  });
+
   it('an item without a recipe override gets one appended; only given fields are set', () => {
     const out = applyRunOverrides(
       withOutput,
@@ -806,7 +903,7 @@ describe('runOverrideCount', () => {
   const count = (given: InflateRunOverridesInput) =>
     runOverrideCount(assertValid(runOverridesSchema, given));
 
-  it('counts dir, contextFile, primary (also null), allowNonEmpty and items with a material or options', () => {
+  it('counts dir, contextFile, primary (also null), allowNonEmpty and items with a material, options or edit', () => {
     expect(count({})).toBe(0);
     expect(count({ dir: '/x' })).toBe(1);
     expect(count({ dir: '/x', contextFile: 'C.md' })).toBe(2);
@@ -829,6 +926,11 @@ describe('runOverrideCount', () => {
         items: { 'kb/a': { material: 'none', materialOptions: { cloneDepth: 1 } } },
       }),
     ).toBe(2);
+    // edit counts once per item, also false
+    expect(
+      count({ items: { 'reference/a': { edit: false }, 'reference/b': { edit: true } } }),
+    ).toBe(2);
+    expect(count({ items: { 'reference/a': { material: 'symlink', edit: true } } })).toBe(1);
   });
 });
 
@@ -852,6 +954,24 @@ describe('runOverridesSchema', () => {
     expect(validate(runOverridesSchema, { primary: null }).success).toBe(true);
     expect(dataOf(validate(runOverridesSchema, { dir: ' /x ' }))?.dir).toBe('/x');
   });
+
+  it('edit: a boolean on reference/<slug> keys only', () => {
+    expect(validate(runOverridesSchema, { items: { 'reference/a': { edit: true } } }).success).toBe(
+      true,
+    );
+    expect(
+      validate(runOverridesSchema, { items: { 'reference/a': { edit: false, material: 'copy' } } })
+        .success,
+    ).toBe(true);
+    expect(validate(runOverridesSchema, { items: { 'reference/a': { edit: 1 } } }).success).toBe(
+      false,
+    );
+    const result = validate(runOverridesSchema, { items: { 'kb/a': { edit: true } } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.issues.map((i) => i.path.join('.'))).toEqual(['items.kb/a.edit']);
+    }
+  });
 });
 
 describe('parseRunRequest', () => {
@@ -873,6 +993,27 @@ describe('parseRunRequest', () => {
       dir: '/tmp/w',
       items: { 'kb/a': { material: 'copy' } },
     });
+  });
+
+  it('accepts the edit run override and rejects it on a non-reference key', () => {
+    const given = parseRunRequest({
+      recipe: recipeBody,
+      overrides: { items: { 'reference/app': { edit: true } } },
+    });
+    expect(given.ok && given.overrides).toEqual({ items: { 'reference/app': { edit: true } } });
+    const bad = parseRunRequest({
+      recipe: recipeBody,
+      overrides: { items: { 'kb/a': { edit: true } } },
+    });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.issues.map((i) => i.path)).toEqual(['overrides.items.kb/a.edit']);
+    const recipeBad = parseRunRequest({
+      recipe: { ...recipeBody, overrides: [{ key: 'kb/a', edit: true }] },
+    });
+    expect(recipeBad.ok).toBe(false);
+    if (!recipeBad.ok) {
+      expect(recipeBad.issues.map((i) => i.path)).toEqual(['recipe.overrides.0.edit']);
+    }
   });
 
   it('rejects anything but a plain object with keys recipe / overrides', () => {

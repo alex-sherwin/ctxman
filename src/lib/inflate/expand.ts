@@ -1,5 +1,6 @@
 // PURE (no fs, no astro:*; browser-safe). Expands a recipe into an ordered plan of segments
-// (plans/INFLATE_SPEC.md §5, plans/INFLATE_V2_SPEC.md §5: material and primary). The server renders the plan
+// (plans/INFLATE_SPEC.md §5, plans/INFLATE_V2_SPEC.md §5: material and primary, plans/INFLATE_V3_PLAN.md §5:
+// material before mode, placement-aware modes, Editable). The server renders the plan
 // (render.ts); the Inflate island runs the same function over cached API data for instant feedback, using
 // `ExpandLookup` adapters on both sides.
 import type { LinkableDatasetId, ReferenceType } from '../../datasets/registry.ts';
@@ -12,8 +13,10 @@ import {
   ctxKey,
   defaultMaterialFor,
   defaultModeFor,
+  isEditEligible,
   isMaterialFor,
   isModeFor,
+  isModeForPlacement,
   isPrimaryEligible,
   itemKey,
   itemKindOf,
@@ -114,6 +117,19 @@ export interface ItemSegment {
   materialSource: 'default' | 'recipe' | 'override' | null;
   /** Only the material's own options, resolved like `options`. */
   materialOptions: Partial<MaterialOptions>;
+  /**
+   * Placed in a working directory: the recipe has `output.dir` AND the resolved material is not `none`. It picks
+   * the mode list (`modesForPlacement`) and the built-in mode default. An expansion-time verdict: the planner
+   * may still demote the item to `none` (missing tool, source, collision).
+   */
+  placed: boolean;
+  /**
+   * May the session change files in this repository? `null` = not eligible (not a repository, a copy or a
+   * not-cloned remote: `isEditEligible`), else `override.edit ?? (this item is the valid primary)`.
+   */
+  edit: boolean | null;
+  /** Where `edit` comes from; null with `edit === null`. */
+  editSource: 'default' | 'override' | null;
   status: SegmentStatus;
   group: string | null;
   warnings: InflateWarning[];
@@ -216,6 +232,8 @@ export function applyOrder(defaultOrder: readonly string[], order: readonly stri
   });
   return result;
 }
+
+type ModeSource = NonNullable<ItemSegment['modeSource']>;
 
 interface RegistryEntry {
   dataset: LinkableDatasetId;
@@ -330,7 +348,10 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
     });
   }
 
-  // 6. items
+  // 6. items. `hasDir`: a working directory is set (run overrides are applied before expansion), so an item
+  // whose material is not `none` is PLACED (plans/INFLATE_V3_PLAN.md §3.3).
+  const outputDir = recipe.output?.dir;
+  const hasDir = typeof outputDir === 'string' && outputDir.trim() !== '';
   const defaultModeWarned = new Set<ItemKind>();
   const defaultMaterialWarned = new Set<ItemKind>();
   const buildItem = (key: string, entry: RegistryEntry): ItemSegment => {
@@ -352,6 +373,9 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
       material: null,
       materialSource: null,
       materialOptions: {},
+      placed: false,
+      edit: null,
+      editSource: null,
       status: 'invalid',
       group: null,
       warnings: [],
@@ -394,48 +418,12 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
     }
     segment.kind = kind;
     const label = ITEM_KIND_LABELS[kind];
-    const built = defaultModeFor(kind, recipe.target);
     const kindDefault = recipe.defaults[kind];
     const override = byKey.get(key);
 
-    let mode: ModeId = built;
-    let source: NonNullable<ItemSegment['modeSource']> = 'default';
-    let fallback: ModeId = built;
-    const recipeMode = kindDefault?.mode;
-    if (recipeMode !== undefined) {
-      if (isModeFor(kind, recipeMode)) {
-        mode = recipeMode;
-        source = 'recipe';
-        fallback = recipeMode;
-      } else if (!defaultModeWarned.has(kind)) {
-        defaultModeWarned.add(kind);
-        defaultModeWarnings.push({
-          code: 'mode-invalid',
-          message: `default mode "${recipeMode}" does not apply to ${label} items; using "${built}"`,
-          key: `defaults.${kind}`,
-        });
-      }
-    }
-    const overrideMode = override?.mode;
-    if (overrideMode !== undefined) {
-      if (isModeFor(kind, overrideMode)) {
-        mode = overrideMode;
-        source = 'override';
-      } else {
-        segment.warnings.push({
-          code: 'mode-invalid',
-          message: `mode "${overrideMode}" does not apply to ${key} (${label}); using "${fallback}"`,
-          key,
-        });
-      }
-    }
-    segment.mode = mode;
-    segment.modeSource = source;
-    segment.options = resolveOptions(kind, mode, slug, {
-      ...(kindDefault?.options === undefined ? {} : { recipe: kindDefault.options }),
-      ...(override?.options === undefined ? {} : { override: override.options }),
-    });
-
+    // 6a. material (before the mode: the mode list depends on whether the item is placed). Its warning is
+    // queued and pushed after the mode warning, which keeps the order of v2.
+    const materialWarnings: InflateWarning[] = [];
     const builtMaterial = defaultMaterialFor(kind, recipe.target);
     let material: MaterialId = builtMaterial;
     let materialSource: NonNullable<ItemSegment['materialSource']> = 'default';
@@ -461,7 +449,7 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
         material = overrideMaterial;
         materialSource = 'override';
       } else {
-        segment.warnings.push({
+        materialWarnings.push({
           code: 'material-invalid',
           message: `material "${overrideMaterial}" does not apply to ${key} (${label}); using "${materialFallback}"`,
           key,
@@ -476,6 +464,52 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
         : { recipe: kindDefault.materialOptions }),
       ...(override?.materialOptions === undefined ? {} : { override: override.materialOptions }),
     });
+    const placed = hasDir && material !== 'none';
+    segment.placed = placed;
+
+    // 6b. mode: override ?? defaults[kind].mode ?? built-in default for the placement. A mode of another
+    // family keeps the `mode-invalid` warning and its fallback; a family-valid mode that the placement does
+    // not offer (a stored skill `install` while the skill is symlinked) silently resolves to the placement
+    // default: nothing is lost, switching the material back to `none` brings the stored mode back.
+    const built = defaultModeFor(kind, recipe.target, placed);
+    const place = (candidate: ModeId, candidateSource: ModeSource): [ModeId, ModeSource] =>
+      isModeForPlacement(kind, candidate, placed)
+        ? [candidate, candidateSource]
+        : [built, 'default'];
+    let mode: ModeId = built;
+    let source: ModeSource = 'default';
+    const recipeMode = kindDefault?.mode;
+    if (recipeMode !== undefined) {
+      if (isModeFor(kind, recipeMode)) {
+        [mode, source] = place(recipeMode, 'recipe');
+      } else if (!defaultModeWarned.has(kind)) {
+        defaultModeWarned.add(kind);
+        defaultModeWarnings.push({
+          code: 'mode-invalid',
+          message: `default mode "${recipeMode}" does not apply to ${label} items; using "${built}"`,
+          key: `defaults.${kind}`,
+        });
+      }
+    }
+    const overrideMode = override?.mode;
+    if (overrideMode !== undefined) {
+      if (isModeFor(kind, overrideMode)) {
+        [mode, source] = place(overrideMode, 'override');
+      } else {
+        segment.warnings.push({
+          code: 'mode-invalid',
+          message: `mode "${overrideMode}" does not apply to ${key} (${label}); using "${mode}"`,
+          key,
+        });
+      }
+    }
+    segment.mode = mode;
+    segment.modeSource = source;
+    segment.options = resolveOptions(kind, mode, slug, {
+      ...(kindDefault?.options === undefined ? {} : { recipe: kindDefault.options }),
+      ...(override?.options === undefined ? {} : { override: override.options }),
+    });
+    segment.warnings.push(...materialWarnings);
 
     segment.status = override?.exclude === true ? 'excluded' : 'included';
     return segment;
@@ -578,6 +612,14 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
       primary = { key: primaryKey, status: 'invalid', message };
       primaryWarnings.push({ code: 'primary-invalid', message, key: primaryKey });
     }
+  }
+
+  // 10b. Editable: eligible repositories get override.edit ?? (is the valid primary); every other item null
+  for (const seg of segments) {
+    if (seg.type !== 'item' || !isEditEligible(seg.kind, seg.material)) continue;
+    const given = byKey.get(seg.key)?.edit;
+    seg.edit = given ?? (primary?.status === 'ok' && primary.key === seg.key);
+    seg.editSource = given === undefined ? 'default' : 'override';
   }
 
   // 11. warnings

@@ -211,6 +211,18 @@ function resolveDestination(
   return null;
 }
 
+/**
+ * A path as a markdown link whose text is the path in a code span: ``[`kb/ctxman/index.md`](kb/ctxman/index.md)``
+ * (plans/INFLATE_V3_PLAN.md §7.1). `folder` makes it a folder link: a trailing `/` on the text and the
+ * destination unless there is one already. A destination with whitespace, `(`, `)`, `<` or `>` is written in
+ * the `<…>` form (with `<` and `>` escaped), the only one CommonMark allows for those characters.
+ */
+export function pathLink(path: string, opts: { folder?: boolean } = {}): string {
+  const target = opts.folder === true && !/[\\/]$/.test(path) ? `${path}/` : path;
+  const destination = /[\s()<>]/.test(target) ? `<${target.replace(/[<>]/g, '\\$&')}>` : target;
+  return `[${inlineCode(target)}](${destination})`;
+}
+
 /** Shell-safe word: unchanged when it only holds safe characters, else single-quoted. */
 export function shQuote(s: string): string {
   return /^[A-Za-z0-9._/:@%+=,-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;

@@ -1,6 +1,7 @@
 // PURE (no fs, no astro:*; browser-safe). The Context Inflate catalog: targets, layouts, item kinds,
 // include modes, options and segment keys. This is the contract the recipe schema, the expander, the
-// renderer and the Inflate UI island all share (plans/INFLATE_SPEC.md §4). Imports only the registry.
+// renderer and the Inflate UI island all share (plans/INFLATE_SPEC.md §4, plans/INFLATE_V3_PLAN.md §3). Imports
+// only the registry (and a type from remote-uri).
 import {
   LINKABLE_DATASETS,
   NAME_MAX_LENGTH,
@@ -9,6 +10,7 @@ import {
   datasetDef,
 } from '../../datasets/registry.ts';
 import type { LinkableDatasetId, OkfDatasetId, ReferenceType } from '../../datasets/registry.ts';
+import type { RemoteUriKind } from '../remote-uri.ts';
 
 // ---------------------------------------------------------------- inline code
 
@@ -413,20 +415,70 @@ export function isModeFor(kind: ItemKind, mode: string): mode is ModeId {
   return modesFor(kind).some((m) => m.id === mode);
 }
 
-export function defaultModeFor(kind: ItemKind, target: InflateTarget): ModeId {
+// Placement-aware mode lists (plans/INFLATE_V3_PLAN.md §3.3). `modesFor(kind)` stays the FAMILY list (what the
+// schema accepts); `modesForPlacement` is what the UI offers and the expander honours: an item that is PLACED in a
+// working directory is referenced with relative links instead of being inlined or installed with commands.
+const PLACED_OKF_MODES: readonly ModeDef[] = [
+  {
+    id: 'summary',
+    label: 'Summary + links',
+    description:
+      "Description, state and tags with relative links to the bundle's files; nothing inlined.",
+    options: [],
+  },
+  pointerMode('One line with a link to the entry file.'),
+  ...FAMILY_MODES.okf.filter((m) => m.id === 'inline-main' || m.id === 'inline-bundle'),
+];
+const PLACED_SKILL_MODES: readonly ModeDef[] = [
+  {
+    id: 'pointer',
+    label: 'Link',
+    description: 'Listed with a link to its SKILL.md; the harness discovers it.',
+    options: ['eager'],
+  },
+  ...FAMILY_MODES.skill.filter((m) => m.id === 'inline'),
+];
+const PLACED_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
+  okf: PLACED_OKF_MODES,
+  skill: PLACED_SKILL_MODES,
+  'local-repo': FAMILY_MODES['local-repo'],
+  'remote-repo': FAMILY_MODES['remote-repo'].filter((m) => m.id === 'describe'),
+  'remote-skill': FAMILY_MODES['remote-skill'].filter((m) => m.id === 'describe'),
+};
+
+/**
+ * The modes offered for an item that is `placed` in a working directory (first = default) or not (the family
+ * list of `modesFor`, today's behaviour). Every id is also in `modesFor(kind)`.
+ */
+export function modesForPlacement(kind: ItemKind, placed: boolean): readonly ModeDef[] {
+  const family = familyOf(kind);
+  return placed ? PLACED_MODES[family] : FAMILY_MODES[family];
+}
+
+/** True when `mode` is in `modesForPlacement(kind, placed)`. */
+export function isModeForPlacement(kind: ItemKind, mode: string, placed: boolean): mode is ModeId {
+  return modesForPlacement(kind, placed).some((m) => m.id === mode);
+}
+
+/**
+ * Built-in default mode. `placed` (false = document only, or material none) switches to the referencing
+ * defaults of plans/INFLATE_V3_PLAN.md §3.3: okf `summary`, skill `pointer`, remote-skill `describe`; the
+ * two-argument form is today's behaviour.
+ */
+export function defaultModeFor(kind: ItemKind, target: InflateTarget, placed = false): ModeId {
   switch (familyOf(kind)) {
     case 'okf':
-      // Every okf kind is brought in as its index.md (plans/ROUND3_SPEC.md §H.1); a brief with only a
-      // description for a task or project says too little.
-      return 'inline-main';
+      // Document only: every okf kind is brought in as its index.md (plans/ROUND3_SPEC.md §H.1); a brief with
+      // only a description for a task or project says too little. Placed: the files are right there.
+      return placed ? 'summary' : 'inline-main';
     case 'skill':
-      return target === 'generic' ? 'pointer' : 'install';
+      return placed || target === 'generic' ? 'pointer' : 'install';
     case 'local-repo':
       return 'describe';
     case 'remote-repo':
       return 'describe';
     case 'remote-skill':
-      return target === 'generic' ? 'describe' : 'install';
+      return placed || target === 'generic' ? 'describe' : 'install';
   }
 }
 
@@ -599,6 +651,7 @@ export type MaterialId = (typeof MATERIAL_IDS)[number];
 export const REFERENCE_MATERIAL_IDS = [
   'none',
   'symlink',
+  'copy',
   'clone',
   'install',
 ] as const satisfies readonly MaterialId[];
@@ -621,65 +674,83 @@ export interface MaterialDef {
   options: readonly MaterialOptionId[];
 }
 
-const mention = (description: string): MaterialDef => ({
+const DONT_PLACE = "Don't place";
+const NOT_PLACED = 'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.';
+
+const dontPlace = (): MaterialDef => ({
   id: 'none',
-  label: 'Mention only',
-  description,
+  label: DONT_PLACE,
+  description: NOT_PLACED,
   options: [],
 });
 
-/** Order = Select order. */
+/** Order = Select order; the first entry is the built-in default (plans/INFLATE_V3_PLAN.md §3.1). */
 export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[]>> = {
   okf: [
     {
       id: 'symlink',
       label: 'Symlink',
-      description: 'Link the bundle folder to <dataset>/<slug>; edits change the ctxman entry.',
+      description:
+        'Link to the original bundle at <dataset>/<slug>; edits change the ctxman entry.',
       options: [],
     },
     {
       id: 'copy',
       label: 'Copy',
-      description: 'Copy the bundle folder to <dataset>/<slug> (a snapshot).',
+      description: 'Snapshot at <dataset>/<slug>; replaced on every run.',
       options: [],
     },
-    mention('Nothing placed; the document points at the ctxman data path.'),
+    dontPlace(),
   ],
   skill: [
     {
-      id: 'copy',
-      label: 'Copy',
-      description: 'Copy the skill folder into the harness skills directory.',
+      id: 'symlink',
+      label: 'Symlink',
+      description: 'Link to the original skill folder; edits change the ctxman skill.',
       options: [],
     },
-    mention('Nothing placed; the document points at the ctxman skill path.'),
+    {
+      id: 'copy',
+      label: 'Copy',
+      description: 'Snapshot in the harness skills directory; replaced on every run.',
+      options: [],
+    },
+    dontPlace(),
   ],
   'local-repo': [
-    mention('Nothing placed; the document gives the local path.'),
     {
       id: 'symlink',
       label: 'Symlink',
-      description: 'Link the repository to repos/<name>.',
+      description: 'Link to the original repository at repos/<name>; edits change it.',
       options: [],
     },
+    {
+      id: 'copy',
+      label: 'Copy',
+      description: 'Snapshot without .git and node_modules at repos/<name>; replaced on every run.',
+      options: [],
+    },
+    dontPlace(),
   ],
   'remote-repo': [
-    mention('Nothing placed; the document gives the git URI.'),
     {
       id: 'clone',
       label: 'Clone',
-      description: 'git clone into repos/<name> (pull on re-runs).',
+      description: 'git clone into repos/<name>; later runs pull (fast-forward only).',
       options: ['cloneDepth', 'branch', 'subpathOnly'],
     },
+    dontPlace(),
   ],
   'remote-skill': [
     {
+      // The label depends on the URI kind: use `materialLabel` / `materialDescription`, not these fields.
       id: 'install',
-      label: 'Install',
-      description: 'Clone or download the skill into the harness skills directory.',
+      label: 'Clone or download',
+      description:
+        'Clone the git repository or download the archive, then copy the skill folder into the harness skills directory; replaced on every run.',
       options: ['branch'],
     },
-    mention('Nothing placed; the document gives the URI.'),
+    dontPlace(),
   ],
 };
 
@@ -695,26 +766,72 @@ export function isMaterialFor(kind: ItemKind, material: string): material is Mat
   return materialsFor(kind).some((m) => m.id === material);
 }
 
-/** okf symlink · skill copy · local-repo none · remote-repo none · remote-skill install (all targets). */
+/**
+ * Select label of a material. A remote-skill `install` reads "Clone" for a git URI, "Download" for an archive
+ * URI and "Clone or download" while the kind is unknown; everything else is the static `MaterialDef.label`.
+ * The UI and the renderer use this, never `MaterialDef.label` for remote skills.
+ */
+export function materialLabel(
+  kind: ItemKind,
+  material: MaterialId,
+  uriKind?: RemoteUriKind | null,
+): string {
+  if (kind === 'remote-skill' && material === 'install') {
+    return uriKind === 'git' ? 'Clone' : uriKind === 'archive' ? 'Download' : 'Clone or download';
+  }
+  return materialDef(kind, material)?.label ?? material;
+}
+
+/** Select item description of a material (the remote-skill `install` text follows the URI kind). */
+export function materialDescription(
+  kind: ItemKind,
+  material: MaterialId,
+  uriKind?: RemoteUriKind | null,
+): string {
+  if (kind === 'remote-skill' && material === 'install') {
+    if (uriKind === 'git') {
+      return 'Clone the repository, then copy the skill folder into the harness skills directory; replaced on every run.';
+    }
+    if (uriKind === 'archive') {
+      return 'Download the archive, then copy the skill folder into the harness skills directory; replaced on every run.';
+    }
+  }
+  return materialDef(kind, material)?.description ?? '';
+}
+
+/** okf symlink · skill symlink · local-repo symlink · remote-repo clone · remote-skill install (all targets). */
 export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): MaterialId {
+  // The first entry of each family list (checked by a unit test).
   switch (familyOf(kind)) {
     case 'okf':
-      return 'symlink';
     case 'skill':
-      return 'copy';
     case 'local-repo':
+      return 'symlink';
     case 'remote-repo':
-      return 'none';
+      return 'clone';
     case 'remote-skill':
       return 'install';
   }
 }
 
-/** A primary repository is a remote-repo with material clone, or a local-repo with material symlink. */
+/** A primary repository is a remote-repo with material clone, or a local-repo with material symlink (a copy has no .git). */
 export function isPrimaryEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
   return (
     (kind === 'remote-repo' && material === 'clone') ||
     (kind === 'local-repo' && material === 'symlink')
+  );
+}
+
+/**
+ * May the session change files in this repository (plans/INFLATE_V3_PLAN.md §3.2)? A local repository that is
+ * symlinked or not placed (its original path), or a cloned remote repository. A copy is a snapshot and a
+ * not-cloned remote cannot be edited, so neither is eligible. The default is `true` for the valid primary and
+ * `false` for every other repository.
+ */
+export function isEditEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
+  return (
+    (kind === 'local-repo' && (material === 'symlink' || material === 'none')) ||
+    (kind === 'remote-repo' && material === 'clone')
   );
 }
 

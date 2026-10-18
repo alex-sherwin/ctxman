@@ -695,13 +695,17 @@ describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
         'kb/a=symlink/default',
         'kb/b=symlink/default',
         'task/t=symlink/default',
-        'skill/s=copy/default',
-        'reference/lr=none/default',
-        'reference/rr=none/default',
+        'skill/s=symlink/default',
+        'reference/lr=symlink/default',
+        'reference/rr=clone/default',
         'reference/rs=install/default',
       ]);
       expect(itemOf(plan, 'kb/a').materialOptions).toEqual({});
-      expect(itemOf(plan, 'reference/rr').materialOptions).toEqual({});
+      expect(itemOf(plan, 'reference/rr').materialOptions).toEqual({
+        cloneDepth: 1,
+        branch: '',
+        subpathOnly: false,
+      });
       expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: '' });
     }
   });
@@ -818,9 +822,12 @@ describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
       }),
       world(),
     );
-    expect(itemOf(plan, 'reference/lr')).toMatchObject({ material: 'none' });
+    expect(itemOf(plan, 'reference/lr')).toMatchObject({
+      material: 'symlink',
+      materialSource: 'default',
+    });
     expect(itemOf(plan, 'reference/lr').warnings[0]?.message).toBe(
-      'material "clone" does not apply to reference/lr (Local repo); using "none"',
+      'material "clone" does not apply to reference/lr (Local repo); using "symlink"',
     );
     expect(itemOf(plan, 'reference/rr')).toMatchObject({
       material: 'clone',
@@ -894,6 +901,7 @@ describe('expandRecipe: primary (plans/INFLATE_V2_SPEC.md §5)', () => {
   });
 
   it('ok: remote-repo with clone, local-repo with symlink', () => {
+    // (both are also the built-in materials since v3)
     const remote = expandRecipe(withPrimary('reference/rr', { overrides: clone }), world());
     expect(remote.primary).toEqual({ key: 'reference/rr', status: 'ok' });
     expect(remote.warnings).toEqual([]);
@@ -967,30 +975,51 @@ describe('expandRecipe: primary (plans/INFLATE_V2_SPEC.md §5)', () => {
     }
   });
 
-  it('invalid: material none (the default) or the wrong material for the kind', () => {
-    const noMaterial = expandRecipe(withPrimary('reference/rr'), world());
-    expect(noMaterial.primary).toEqual({
-      key: 'reference/rr',
-      status: 'invalid',
-      message: 'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)',
-    });
-    const localNone = expandRecipe(withPrimary('reference/lr'), world());
-    expect(localNone.primary?.status).toBe('invalid');
+  it('v3: the built-in material of a repository is already a valid primary (clone / symlink)', () => {
+    const remote = expandRecipe(withPrimary('reference/rr'), world());
+    expect(remote.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    const local = expandRecipe(withPrimary('reference/lr'), world());
+    expect(local.primary).toEqual({ key: 'reference/lr', status: 'ok' });
+    expect(remote.warnings).toEqual([]);
+  });
+
+  it('invalid: material none, a copy (no .git) or the wrong material for the kind', () => {
+    const message =
+      'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)';
     const explicitNone = expandRecipe(
       withPrimary('reference/rr', { overrides: [{ key: 'reference/rr', material: 'none' }] }),
       world(),
     );
-    expect(explicitNone.primary?.status).toBe('invalid');
-    // symlink on a remote-repo is not a valid material at all: the segment falls back to none
+    expect(explicitNone.primary).toEqual({ key: 'reference/rr', status: 'invalid', message });
+    const localNone = expandRecipe(
+      withPrimary('reference/lr', { overrides: [{ key: 'reference/lr', material: 'none' }] }),
+      world(),
+    );
+    expect(localNone.primary?.status).toBe('invalid');
+    const localCopy = expandRecipe(
+      withPrimary('reference/lr', { overrides: [{ key: 'reference/lr', material: 'copy' }] }),
+      world(),
+    );
+    expect(localCopy.primary).toEqual({
+      key: 'reference/lr',
+      status: 'invalid',
+      message: 'primary reference/lr needs material clone (remote-repo) or symlink (local-repo)',
+    });
+    // symlink on a remote-repo is not a valid material at all: the segment falls back to the default
+    // (clone), which is a valid primary, so only the material warning remains
     const handmade: RecipeData = {
       ...withPrimary('reference/rr'),
       overrides: [{ key: 'reference/rr', material: 'symlink' }],
     };
     const wrong = expandRecipe(handmade, world());
-    expect(wrong.primary?.message).toBe(
-      'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)',
+    expect(wrong.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    expect(wrong.warnings.map((w) => w.code)).toEqual(['material-invalid']);
+    // a recipe default of none turns the primary invalid again
+    const viaDefault = expandRecipe(
+      withPrimary('reference/rr', { defaults: { 'remote-repo': { material: 'none' } } }),
+      world(),
     );
-    expect(wrong.warnings.map((w) => w.code)).toEqual(['material-invalid', 'primary-invalid']);
+    expect(viaDefault.primary).toEqual({ key: 'reference/rr', status: 'invalid', message });
   });
 
   it('provisional ok while the item or a context is loading, without a warning', () => {
@@ -1063,17 +1092,385 @@ describe('expandRecipe: the seed recipe (plans/INFLATE_V2_SPEC.md §13)', () => 
     const plan = expandRecipe(parsed.recipe, lookup);
     expect(plan.warnings).toEqual([]);
     expect(plan.primary).toEqual({ key: 'reference/astro-docs', status: 'ok' });
+    // the seed stores mode "clone" (shell commands); the repository is PLACED (output.dir is set), so the
+    // mode silently resolves to the placement default
     expect(itemOf(plan, 'reference/astro-docs')).toMatchObject({
-      mode: 'clone',
+      mode: 'describe',
+      modeSource: 'default',
       material: 'clone',
       materialSource: 'override',
       materialOptions: { cloneDepth: 1, branch: '', subpathOnly: true },
+      placed: true,
+      edit: true,
+      editSource: 'default',
     });
+    // the explicit inline-bundle of the seed is a valid placed mode and stays
     expect(itemOf(plan, 'kb/ctxman')).toMatchObject({
+      mode: 'inline-bundle',
+      modeSource: 'override',
       material: 'symlink',
       materialSource: 'default',
+      placed: true,
     });
-    expect(itemOf(plan, 'skill/ctxman-add-entry')).toMatchObject({ material: 'copy' });
+    expect(itemOf(plan, 'skill/ctxman-add-entry')).toMatchObject({
+      material: 'symlink',
+      materialSource: 'default',
+      mode: 'pointer',
+      modeSource: 'default',
+    });
     expect(itemOf(plan, 'bug/stale-badge-timezone').status).toBe('excluded');
+  });
+});
+
+// ---------------------------------------------------------------- v3: placement and Editable
+
+describe('expandRecipe: placement (plans/INFLATE_V3_PLAN.md §3.3 and §5)', () => {
+  const items = [
+    { dataset: 'skill', slug: 's' },
+    { dataset: 'reference', slug: 'lr' },
+    { dataset: 'reference', slug: 'rr' },
+    { dataset: 'reference', slug: 'rs' },
+  ];
+  const withDir = (extra: Record<string, unknown> = {}): RecipeData =>
+    recipe({ contexts: ['c1', 'c2'], items, output: { dir: '/w' }, ...extra });
+  const modes = (plan: ReturnType<typeof expandRecipe>): string[] =>
+    plan.segments
+      .filter((x): x is ItemSegment => x.type === 'item')
+      .map((x) => `${x.key}=${x.mode}/${x.modeSource}/${x.placed}`);
+
+  it('without a directory nothing is placed and the modes are those of v2', () => {
+    const plan = expandRecipe(recipe({ contexts: ['c1', 'c2'], items }), world());
+    expect(modes(plan)).toEqual([
+      'kb/a=inline-main/default/false',
+      'kb/b=inline-main/default/false',
+      'task/t=inline-main/default/false',
+      'skill/s=install/default/false',
+      'reference/lr=describe/default/false',
+      'reference/rr=describe/default/false',
+      'reference/rs=install/default/false',
+    ]);
+    // the generic target
+    const generic = expandRecipe(
+      recipe({ target: 'generic', contexts: ['c1', 'c2'], items }),
+      world(),
+    );
+    expect(modes(generic).filter((m) => /^(skill|reference\/rs)/.test(m))).toEqual([
+      'skill/s=pointer/default/false',
+      'reference/rs=describe/default/false',
+    ]);
+  });
+
+  it('with a directory every item with a material is placed and gets the referencing default', () => {
+    for (const target of ['claude-code', 'codex', 'generic']) {
+      const plan = expandRecipe(withDir({ target }), world());
+      expect(modes(plan), target).toEqual([
+        'kb/a=summary/default/true',
+        'kb/b=summary/default/true',
+        'task/t=summary/default/true',
+        'skill/s=pointer/default/true',
+        'reference/lr=describe/default/true',
+        'reference/rr=describe/default/true',
+        'reference/rs=describe/default/true',
+      ]);
+    }
+  });
+
+  it('a blank directory is no directory', () => {
+    const handmade: RecipeData = {
+      ...withDir(),
+      output: { contextFile: 'LLM_CONTEXT.md', dir: '  ' },
+    };
+    expect(modes(expandRecipe(handmade, world()))[0]).toBe('kb/a=inline-main/default/false');
+  });
+
+  it('material none is not placed: the document-only modes (and the stored mode) apply', () => {
+    const plan = expandRecipe(
+      withDir({
+        defaults: { skill: { material: 'none' }, 'remote-repo': { mode: 'clone' } },
+        overrides: [{ key: 'kb/a', material: 'none' }],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a')).toMatchObject({
+      material: 'none',
+      placed: false,
+      mode: 'inline-main',
+      modeSource: 'default',
+    });
+    expect(itemOf(plan, 'kb/b')).toMatchObject({ placed: true, mode: 'summary' });
+    expect(itemOf(plan, 'skill/s')).toMatchObject({ placed: false, mode: 'install' });
+    // the stored `clone` mode is honoured while the repository is not placed...
+    const unplaced = expandRecipe(
+      withDir({
+        defaults: { 'remote-repo': { mode: 'clone', material: 'none' } },
+      }),
+      world(),
+    );
+    expect(itemOf(unplaced, 'reference/rr')).toMatchObject({
+      placed: false,
+      mode: 'clone',
+      modeSource: 'recipe',
+      options: { cloneDir: '.ctxman/refs/rr', shallow: true, sparse: false },
+    });
+    // ...and silently replaced as soon as it is
+    const placed = expandRecipe(
+      withDir({ defaults: { 'remote-repo': { mode: 'clone' } } }),
+      world(),
+    );
+    expect(itemOf(placed, 'reference/rr')).toMatchObject({
+      placed: true,
+      mode: 'describe',
+      modeSource: 'default',
+      options: {},
+    });
+    expect(placed.warnings).toEqual([]);
+  });
+
+  it('the material is resolved before the mode: a stored skill install falls back while symlinked', () => {
+    const plan = expandRecipe(withDir({ defaults: { skill: { mode: 'install' } } }), world());
+    expect(itemOf(plan, 'skill/s')).toMatchObject({
+      material: 'symlink',
+      placed: true,
+      mode: 'pointer',
+      modeSource: 'default',
+    });
+    expect(plan.warnings).toEqual([]);
+    // an override mode that the placement does not offer falls back the same way, silently
+    const viaOverride = expandRecipe(
+      withDir({ overrides: [{ key: 'skill/s', mode: 'install' }] }),
+      world(),
+    );
+    expect(itemOf(viaOverride, 'skill/s')).toMatchObject({
+      mode: 'pointer',
+      modeSource: 'default',
+    });
+    expect(viaOverride.warnings).toEqual([]);
+    // switching the material back to none brings the stored mode back
+    const back = expandRecipe(
+      withDir({
+        defaults: { skill: { mode: 'install' } },
+        overrides: [{ key: 'skill/s', material: 'none' }],
+      }),
+      world(),
+    );
+    expect(itemOf(back, 'skill/s')).toMatchObject({
+      placed: false,
+      mode: 'install',
+      modeSource: 'recipe',
+    });
+  });
+
+  it('a mode that the placement offers keeps its source', () => {
+    const plan = expandRecipe(
+      withDir({
+        defaults: { kb: { mode: 'pointer' }, skill: { mode: 'inline' } },
+        overrides: [
+          { key: 'kb/b', mode: 'inline-bundle' },
+          { key: 'task/t', mode: 'summary' },
+        ],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ mode: 'pointer', modeSource: 'recipe' });
+    expect(itemOf(plan, 'kb/b')).toMatchObject({ mode: 'inline-bundle', modeSource: 'override' });
+    // task is another kind: the kb default does not apply, summary is the (explicit) override
+    expect(itemOf(plan, 'task/t')).toMatchObject({ mode: 'summary', modeSource: 'override' });
+    expect(itemOf(plan, 'skill/s')).toMatchObject({ mode: 'inline', modeSource: 'recipe' });
+  });
+
+  it('a mode of another family still warns, and the fallback is the placement default', () => {
+    // the schema refuses these, so the recipes are made by hand (a stale or hand-edited document)
+    const hand = (extra: Partial<RecipeData>): RecipeData => ({
+      ...withDir({ contexts: ['c1'] }),
+      ...extra,
+    });
+    const plan = expandRecipe(hand({ overrides: [{ key: 'kb/a', mode: 'clone' }] }), world());
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ mode: 'summary', modeSource: 'default' });
+    expect(itemOf(plan, 'kb/a').warnings).toEqual([
+      {
+        code: 'mode-invalid',
+        message: 'mode "clone" does not apply to kb/a (Knowledge Base); using "summary"',
+        key: 'kb/a',
+      },
+    ]);
+    // with a placement-valid recipe default the fallback is that default
+    const withDefault = expandRecipe(
+      hand({
+        defaults: { kb: { mode: 'inline-main' } },
+        overrides: [{ key: 'kb/a', mode: 'install' }],
+      }),
+      world(),
+    );
+    expect(itemOf(withDefault, 'kb/a')).toMatchObject({
+      mode: 'inline-main',
+      modeSource: 'recipe',
+    });
+    expect(itemOf(withDefault, 'kb/a').warnings[0]?.message).toBe(
+      'mode "install" does not apply to kb/a (Knowledge Base); using "inline-main"',
+    );
+    // a recipe default the placement does not offer is replaced first: the message names the result
+    const placedFallback = expandRecipe(
+      hand({
+        defaults: { skill: { mode: 'install' } },
+        overrides: [{ key: 'skill/s', mode: 'tree' }],
+      }),
+      lookupOf(
+        { c1: readyCtx('c1', [{ dataset: 'skill', slug: 's' }]) },
+        { 'skill/s': ready(meta('skill', 's')) },
+      ),
+    );
+    expect(itemOf(placedFallback, 'skill/s')).toMatchObject({
+      mode: 'pointer',
+      modeSource: 'default',
+    });
+    expect(itemOf(placedFallback, 'skill/s').warnings[0]?.message).toBe(
+      'mode "tree" does not apply to skill/s (Skill); using "pointer"',
+    );
+    // an invalid recipe default names the placement default of the first item of the kind
+    const badDefault = expandRecipe(hand({ defaults: { kb: { mode: 'install' } } }), world());
+    expect(badDefault.warnings.map((w) => w.message)).toEqual([
+      'default mode "install" does not apply to Knowledge Base items; using "summary"',
+    ]);
+  });
+
+  it('options are resolved for the final mode', () => {
+    const plan = expandRecipe(
+      withDir({
+        defaults: { skill: { mode: 'install', options: { symlink: true, eager: true } } },
+      }),
+      world(),
+    );
+    // pointer (the placement default) has `eager`, install's `symlink` is gone
+    expect(itemOf(plan, 'skill/s').options).toEqual({ eager: true });
+    expect(itemOf(plan, 'kb/a').options).toEqual({});
+  });
+
+  it('excluded items are resolved too (placed, mode)', () => {
+    const plan = expandRecipe(withDir({ overrides: [{ key: 'kb/a', exclude: true }] }), world());
+    expect(itemOf(plan, 'kb/a')).toMatchObject({
+      status: 'excluded',
+      placed: true,
+      mode: 'summary',
+    });
+  });
+
+  it('items that could not be read are never placed', () => {
+    const plan = expandRecipe(
+      recipe({ items: [{ dataset: 'kb', slug: 'ghost' }], output: { dir: '/w' } }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/ghost')).toMatchObject({
+      status: 'missing',
+      placed: false,
+      edit: null,
+      editSource: null,
+    });
+  });
+});
+
+describe('expandRecipe: Editable (plans/INFLATE_V3_PLAN.md §3.2 and §5)', () => {
+  const items = [
+    { dataset: 'reference', slug: 'lr' },
+    { dataset: 'reference', slug: 'rr' },
+    { dataset: 'reference', slug: 'rs' },
+  ];
+  const editOf = (plan: ReturnType<typeof expandRecipe>, key: string) => {
+    const seg = itemOf(plan, key);
+    return [seg.edit, seg.editSource];
+  };
+  const make = (extra: Record<string, unknown> = {}): RecipeData =>
+    recipe({ contexts: ['c1'], items, output: { dir: '/w', primary: 'reference/rr' }, ...extra });
+
+  it('defaults: true for the valid primary, false for the other eligible repositories', () => {
+    const plan = expandRecipe(make(), world());
+    expect(plan.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    expect(editOf(plan, 'reference/rr')).toEqual([true, 'default']);
+    expect(editOf(plan, 'reference/lr')).toEqual([false, 'default']);
+    const noPrimary = expandRecipe(make({ output: { dir: '/w' } }), world());
+    expect(editOf(noPrimary, 'reference/rr')).toEqual([false, 'default']);
+    expect(editOf(noPrimary, 'reference/lr')).toEqual([false, 'default']);
+  });
+
+  it('an override wins over the default, in both directions', () => {
+    const plan = expandRecipe(
+      make({
+        overrides: [
+          { key: 'reference/rr', edit: false },
+          { key: 'reference/lr', edit: true },
+        ],
+      }),
+      world(),
+    );
+    expect(editOf(plan, 'reference/rr')).toEqual([false, 'override']);
+    expect(editOf(plan, 'reference/lr')).toEqual([true, 'override']);
+    // an override equal to the default is still an override
+    const same = expandRecipe(make({ overrides: [{ key: 'reference/rr', edit: true }] }), world());
+    expect(editOf(same, 'reference/rr')).toEqual([true, 'override']);
+  });
+
+  it('not eligible is null, an edit override on it is ignored without a warning', () => {
+    const plan = expandRecipe(
+      make({
+        contexts: ['c1', 'c2'],
+        items: [...items, { dataset: 'skill', slug: 's' }],
+        overrides: [
+          { key: 'reference/rs', edit: true },
+          { key: 'reference/lr', material: 'copy', edit: true },
+        ],
+      }),
+      world(),
+    );
+    // remote skill, local copy
+    expect(editOf(plan, 'reference/rs')).toEqual([null, null]);
+    expect(editOf(plan, 'reference/lr')).toEqual([null, null]);
+    // okf entries and skills are not repositories at all
+    expect(editOf(plan, 'kb/a')).toEqual([null, null]);
+    expect(editOf(plan, 'skill/s')).toEqual([null, null]);
+    // a remote repository that is not cloned cannot be edited either
+    const notCloned = expandRecipe(
+      make({ overrides: [{ key: 'reference/rr', material: 'none', edit: true }] }),
+      world(),
+    );
+    expect(editOf(notCloned, 'reference/rr')).toEqual([null, null]);
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('a local repository that is not placed is editable at its original path (default false)', () => {
+    const plain = expandRecipe(
+      make({ overrides: [{ key: 'reference/lr', material: 'none' }] }),
+      world(),
+    );
+    expect(editOf(plain, 'reference/lr')).toEqual([false, 'default']);
+    const asked = expandRecipe(
+      make({ overrides: [{ key: 'reference/lr', material: 'none', edit: true }] }),
+      world(),
+    );
+    expect(editOf(asked, 'reference/lr')).toEqual([true, 'override']);
+  });
+
+  it('an invalid primary gives no default edit', () => {
+    // primary names an item that is not eligible / not in the recipe
+    const plan = expandRecipe(
+      make({
+        output: { dir: '/w', primary: 'reference/lr' },
+        overrides: [{ key: 'reference/lr', material: 'copy' }],
+      }),
+      world(),
+    );
+    expect(plan.primary?.status).toBe('invalid');
+    expect(editOf(plan, 'reference/lr')).toEqual([null, null]);
+    expect(editOf(plan, 'reference/rr')).toEqual([false, 'default']);
+  });
+
+  it('Editable does not depend on a directory', () => {
+    const plan = expandRecipe(recipe({ items, output: { primary: 'reference/rr' } }), world());
+    expect(itemOf(plan, 'reference/rr')).toMatchObject({ placed: false, edit: true });
+  });
+
+  it('the Editable flag changes nothing but edit/editSource', () => {
+    const a = expandRecipe(make(), world());
+    const b = expandRecipe(make({ overrides: [{ key: 'reference/rr', edit: false }] }), world());
+    const strip = (seg: ItemSegment) => ({ ...seg, edit: 0, editSource: 0 });
+    expect(strip(itemOf(b, 'reference/rr'))).toEqual(strip(itemOf(a, 'reference/rr')));
   });
 });

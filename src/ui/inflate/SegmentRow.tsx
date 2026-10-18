@@ -6,12 +6,14 @@ import { useStore } from '@nanostores/react';
 import type { Segment } from '../../lib/inflate/expand.ts';
 import {
   $lastAddedBlock,
+  $outputDir,
+  $referenceInfo,
   insertMarkdownAfter,
   saveIfDirty,
   setExcluded,
   setMarkdownBody,
 } from '../../stores/inflate.ts';
-import { $destByKey, $effectiveDir } from '../../stores/inflate-run.ts';
+import { $destByKey } from '../../stores/inflate-run.ts';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import {
   Badge,
@@ -131,8 +133,10 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
   const notesText = seg.notes.map((n) => `${n.context}: ${n.notes.trim()}`).join('\n\n');
   const refType = seg.meta?.refType;
   const uriKind = seg.meta?.uriKind;
-  const dir = useStore($effectiveDir);
+  const dir = useStore($outputDir);
   const dest = useStore($destByKey).get(seg.key);
+  // The owner is not part of the item meta; the entry list knows it (references only).
+  const owner = useStore($referenceInfo).get(seg.key)?.owner;
   return (
     <div className="cx-seg__body">
       <div className="cx-seg__head">
@@ -156,6 +160,20 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
           </code>
         )}
         {refType !== undefined && <Badge tone="muted">{refType}</Badge>}
+        {owner !== undefined && (
+          <span data-testid="inflate-segment-owner" data-owner={owner}>
+            <Badge
+              tone={owner === 'me' ? 'muted' : 'neutral'}
+              title={
+                owner === 'me'
+                  ? 'Your own repository'
+                  : "Someone else's repository: treat it as reference material"
+              }
+            >
+              {owner === 'me' ? 'mine' : 'not mine'}
+            </Badge>
+          </span>
+        )}
         {uriKind !== undefined && <Badge tone="muted">{uriKind}</Badge>}
         {seg.via.map((slug) => (
           <Badge key={slug} tone="muted" title={`Linked from context ${slug}`}>

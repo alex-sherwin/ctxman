@@ -1,5 +1,5 @@
-// Left pane of the Run view (plans/INFLATE_V2_SPEC.md §11.4): what THIS run does differently from the recipe
-// (directory, context file, primary repository, material per item). Nothing here edits the recipe until
+// Left pane of the Run view (plans/INFLATE_V2_SPEC.md §11.4, INFLATE_V3_PLAN §8): what THIS run does differently
+// from the recipe (directory, context file, primary repository, Place and Editable per item). Nothing here edits the recipe until
 // "Save to recipe"; the dry run on the right always plans the recipe plus these overrides.
 import { useStore } from '@nanostores/react';
 import {
@@ -10,6 +10,8 @@ import {
   isMaterialFor,
   isPortableAbsoluteDir,
   isPrimaryEligible,
+  materialDescription,
+  materialLabel,
   materialsFor,
 } from '../../lib/inflate/catalog.ts';
 import type { ItemSegment } from '../../lib/inflate/expand.ts';
@@ -27,6 +29,7 @@ import {
   setRunAllowNonEmpty,
   setRunContextFile,
   setRunDir,
+  setRunEdit,
   setRunMaterial,
   setRunPrimary,
 } from '../../stores/inflate-run.ts';
@@ -146,7 +149,9 @@ function RunItem({ seg }: { seg: ItemSegment }) {
   const dest = useStore($destByKey).get(seg.key);
   const kind = seg.kind;
   if (kind === null || seg.material === null) return null;
-  const overridden = overrides.items[seg.key]?.material !== undefined;
+  const uriKind = seg.meta?.uriKind;
+  // Material, material options and Editable are all reset together.
+  const overridden = overrides.items[seg.key] !== undefined;
   return (
     <li
       className="cx-run__item"
@@ -160,6 +165,7 @@ function RunItem({ seg }: { seg: ItemSegment }) {
         {dest !== undefined && <code className="cx-seg__dest cx-truncate">{dest}</code>}
       </div>
       <div className="cx-run__itemctl">
+        <span className="cx-seg__optlabel">Place</span>
         <Select
           size="sm"
           aria-label={`Material for ${seg.title}`}
@@ -171,18 +177,36 @@ function RunItem({ seg }: { seg: ItemSegment }) {
           triggerTestId="inflate-run-item-material"
           className="cx-run__itemmaterial"
         >
-          {materialsFor(kind).map((m) => (
-            <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
-              {m.label}
-            </ListBoxItem>
-          ))}
+          {materialsFor(kind).map((m) => {
+            const label = materialLabel(kind, m.id, uriKind);
+            return (
+              <ListBoxItem
+                key={m.id}
+                id={m.id}
+                textValue={label}
+                description={materialDescription(kind, m.id, uriKind)}
+              >
+                {label}
+              </ListBoxItem>
+            );
+          })}
         </Select>
+        {seg.edit !== null && (
+          <Checkbox
+            isSelected={seg.edit}
+            onChange={(on) => setRunEdit(seg.key, on)}
+            data-testid="inflate-run-item-edit"
+            aria-label={`Editable repository: ${seg.title}`}
+          >
+            Editable
+          </Checkbox>
+        )}
         {overridden && (
           <Button
             size="sm"
             variant="ghost"
             iconOnly
-            aria-label={`Reset ${seg.title} to the recipe's material`}
+            aria-label={`Reset ${seg.title} to the recipe`}
             onPress={() => resetRunItem(seg.key)}
             data-testid="inflate-run-item-reset"
           >

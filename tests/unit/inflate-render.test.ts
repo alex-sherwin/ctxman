@@ -1389,7 +1389,7 @@ interface DirWorld {
 }
 
 /** The seed-like tree plus a local repo, a missing local repo, and one remote shape of every kind. */
-function dirWorld(): DirWorld {
+function dirWorld(extra: Record<string, string> = {}): DirWorld {
   const repo = tmp.make({
     'README.md': '',
     'src/index.ts': '',
@@ -1424,6 +1424,7 @@ function dirWorld(): DirWorld {
         'rs-tgz',
         'type: remote-skill\nuri: https://h.test/skill.tar.gz\nowner: me\n',
       ),
+      ...extra,
     }),
   );
   return { D, repo };
@@ -1502,13 +1503,15 @@ function section(markdown: string, name: string): string {
   return markdown.slice(start, next === -1 ? undefined : start + 3 + next).trimEnd();
 }
 
-describe('renderPlan with output: golden document (the spec §9.6 seed example)', () => {
+// ---------------------------------------------------------------- working directory document (plans/INFLATE_V3_PLAN.md §7)
+
+describe('renderPlan with output: golden document (the seed example)', () => {
   const expected = (D: string): string =>
     [
       '# ctxman-dev-brief',
       '',
       '> Prepared by ctxman for a Claude Code session.',
-      `> This directory is the working root (\`${WD}\`). Relative paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
+      `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
       '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
       '> `CLAUDE.md` in this directory loads this file.',
       '',
@@ -1523,7 +1526,7 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       'CLAUDE.md                         loads this file',
       '.gitignore                        ignores the machine-specific paths below',
       'repos/',
-      '  astro-docs/                     git clone, sparse · primary · The Astro documentation source, English content. Consul…',
+      '  astro-docs/                     git clone, sparse · primary · editable · The Astro documentation source, English content. Consul…',
       'kb/',
       '  ctxman/                         symlink · What ctxman is, how it is built, and how to work with i…',
       '  astro-content-layer/            symlink · How Astro 7 content collections, loaders and schemas wo…',
@@ -1538,27 +1541,34 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       'project/',
       '  ctxman-v1/                      symlink · Deliver the first complete version of ctxman with ten d…',
       '.claude/skills/',
-      '  okf-authoring/                  copy · Author and review OKF v0.2 knowledge bundles (kb, rca,…',
-      '  ctxman-add-entry/               copy · Create a new ctxman dataset entry with the add scripts.',
+      '  okf-authoring/                  symlink · Author and review OKF v0.2 knowledge bundles (kb, rca,…',
+      '  ctxman-add-entry/               symlink · Create a new ctxman dataset entry with the add scripts.',
       '```',
+      '',
+      '## Placement',
+      '',
+      '- **symlink**: the original folder, live; edits change the source (your ctxman entry or local repository).',
+      '- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only) and keeps local changes and unpushed commits.',
+      '- **editable** repositories may be changed for this task; **read-only** ones are reference material: read them, do not change them.',
+      '- Knowledge, work items and skills from ctxman are your own notes; `owner` says whether a repository or remote skill is yours.',
       '',
       '## Primary repository',
       '',
-      '**astro-docs** · `repos/astro-docs` · `reference/astro-docs` · owner: not me',
+      '**astro-docs** · [`repos/astro-docs/`](repos/astro-docs/) · `reference/astro-docs` · owner: not me · editable',
       '',
       'The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.',
       '',
       '- Source: git clone of `https://github.com/withastro/docs.git`, shallow (depth 1), sparse checkout of `src/content/docs/en`',
-      '- Start in: `repos/astro-docs/src/content/docs/en`',
+      '- Start in: [`repos/astro-docs/src/content/docs/en/`](repos/astro-docs/src/content/docs/en/)',
       '',
-      'Work in `repos/astro-docs` unless the task says otherwise.',
+      'Work in [`repos/astro-docs/`](repos/astro-docs/) unless the task says otherwise.',
       '',
       '## Skills',
       '',
       'Installed in `.claude/skills/`, where Claude Code discovers them.',
       '',
-      '- `.claude/skills/okf-authoring/` · **okf-authoring** · copy of `skill/okf-authoring` — Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).',
-      '- `.claude/skills/ctxman-add-entry/` · **ctxman-add-entry** · copy of `skill/ctxman-add-entry` — Create a new ctxman dataset entry with the add scripts.',
+      '- [`.claude/skills/okf-authoring/`](.claude/skills/okf-authoring/) · **okf-authoring** · symlink to the ctxman skill · owner: me — Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).',
+      '- [`.claude/skills/ctxman-add-entry/`](.claude/skills/ctxman-add-entry/) · **ctxman-add-entry** · symlink to the ctxman skill · owner: me — Create a new ctxman dataset entry with the add scripts.',
       '',
       '## Ground rules',
       '',
@@ -1570,7 +1580,7 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       '',
       '### ctxman',
       '',
-      '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · `kb/ctxman/index.md`',
+      '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · [`kb/ctxman/index.md`](kb/ctxman/index.md) · symlink',
       '',
       '> **From context `ctxman-dev`:** Start here.',
       '',
@@ -1580,79 +1590,71 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       '',
       '#### Datasets',
       '',
-      '`concepts/datasets.md` · `kb/ctxman/concepts/datasets.md`',
+      '`concepts/datasets.md` · [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md)',
       '',
       'Back to [entry](kb/ctxman/index.md).',
       '',
       '### astro-content-layer',
       '',
-      '`kb/astro-content-layer` · Knowledge Base · `kb/astro-content-layer/index.md`',
+      '`kb/astro-content-layer` · Knowledge Base · [`kb/astro-content-layer/index.md`](kb/astro-content-layer/index.md) · symlink',
       '',
       'How Astro 7 content collections, loaders and schemas work.',
       '',
       '### astro-dev-full-reload-on-save',
       '',
-      '`rca/astro-dev-full-reload-on-save` · Root Cause Analysis · `rca/astro-dev-full-reload-on-save/index.md`',
+      '`rca/astro-dev-full-reload-on-save` · Root Cause Analysis · [`rca/astro-dev-full-reload-on-save/index.md`](rca/astro-dev-full-reload-on-save/index.md) · symlink',
       '',
       'Saving a context in the forge reloaded the whole page, because the loader watched the file.',
       '',
       '### context-inflate',
       '',
-      '`idea/context-inflate` · Idea · state: Pending · `idea/context-inflate/index.md`',
+      '`idea/context-inflate` · Idea · state: Pending · [`idea/context-inflate/index.md`](idea/context-inflate/index.md) · symlink',
       '',
       'A tool that turns selected contexts plus user instructions into one document.',
       '',
       '### write-agents-md',
       '',
-      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/index.md`',
+      '`task/write-agents-md` · Task · state: Pending · [`task/write-agents-md/index.md`](task/write-agents-md/index.md) · symlink',
       '',
       'Write and maintain the agent guide at the repository root.',
       '',
       '### context-forge',
       '',
-      '`feature/context-forge` · Feature · state: In progress · `feature/context-forge/index.md`',
+      '`feature/context-forge` · Feature · state: In progress · [`feature/context-forge/index.md`](feature/context-forge/index.md) · symlink',
       '',
       'A UI at /forge to discover entries across datasets and build contexts.',
       '',
       '### ctxman-v1',
       '',
-      '`project/ctxman-v1` · Project · state: In progress · `project/ctxman-v1/index.md`',
+      '`project/ctxman-v1` · Project · state: In progress · [`project/ctxman-v1/index.md`](project/ctxman-v1/index.md) · symlink',
       '',
       'Deliver the first complete version of ctxman with ten datasets.',
       '',
       '### okf-authoring',
       '',
-      '`skill/okf-authoring` · Skill · `.claude/skills/okf-authoring`',
+      '`skill/okf-authoring` · Skill · [`.claude/skills/okf-authoring/SKILL.md`](.claude/skills/okf-authoring/SKILL.md) · symlink',
       '',
       'Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).',
       '',
-      'Installed at `.claude/skills/okf-authoring/`.',
-      '',
       '### astro-docs',
       '',
-      '`reference/astro-docs` · Remote repo · owner: not me · tags: astro, docs · `repos/astro-docs`',
+      '`reference/astro-docs` · Remote repo · tags: astro, docs · [`repos/astro-docs/`](repos/astro-docs/) · git clone · primary · editable',
       '',
       '> **From context `ctxman-dev`:** Upstream Astro docs.',
       '',
-      'The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.',
-      '',
-      'Cloned at `repos/astro-docs` (the primary repository).',
-      '',
-      'Relevant path `repos/astro-docs/src/content/docs/en`.',
+      'Details: see Primary repository.',
       '',
       '## Additional items',
       '',
       '### ctxman-add-entry',
       '',
-      '`skill/ctxman-add-entry` · Skill · `.claude/skills/ctxman-add-entry`',
+      '`skill/ctxman-add-entry` · Skill · [`.claude/skills/ctxman-add-entry/SKILL.md`](.claude/skills/ctxman-add-entry/SKILL.md) · symlink',
       '',
       'Create a new ctxman dataset entry with the add scripts.',
       '',
-      'Installed at `.claude/skills/ctxman-add-entry/`.',
-      '',
     ].join('\n');
 
-  it('matches the spec example: relative paths, map, primary, skills, then the composition', async () => {
+  it('matches the seed example: relative links, map, legend, primary, skills, then the composition', async () => {
     const w = dirWorld();
     const { result } = await renderDir(w, seedRecipe());
     expect(result.markdown).toBe(expected(w.D));
@@ -1660,7 +1662,15 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
     expect(result.markdown.split(w.D).length - 1).toBe(1);
   });
 
-  it('manifest: output, material and dest per item', async () => {
+  it('is deterministic: same plan and content, same bytes, no timestamp', async () => {
+    const w = dirWorld();
+    const a = await renderDir(w, seedRecipe());
+    const b = await renderDir(w, seedRecipe());
+    expect(b.result.markdown).toBe(a.result.markdown);
+    expect(a.result.markdown).not.toContain(GENERATED_AT);
+  });
+
+  it('manifest: output, material, dest and the placed mode label per item', async () => {
     const w = dirWorld();
     const { result } = await renderDir(w, seedRecipe());
     const m = result.manifest;
@@ -1670,14 +1680,26 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
       primary: 'reference/astro-docs',
     });
     const seg = (key: string) => m.segments.find((s) => s.key === key);
-    expect(seg('kb/ctxman')).toMatchObject({ material: 'symlink', dest: 'kb/ctxman' });
+    expect(seg('kb/ctxman')).toMatchObject({
+      material: 'symlink',
+      dest: 'kb/ctxman',
+      mode: 'inline-bundle',
+      modeLabel: 'Inline bundle',
+    });
+    expect(seg('task/write-agents-md')).toMatchObject({
+      mode: 'summary',
+      modeLabel: 'Summary + links',
+    });
     expect(seg('skill/okf-authoring')).toMatchObject({
-      material: 'copy',
+      material: 'symlink',
       dest: '.claude/skills/okf-authoring',
+      mode: 'pointer',
+      modeLabel: 'Link',
     });
     expect(seg('reference/astro-docs')).toMatchObject({
       material: 'clone',
       dest: 'repos/astro-docs',
+      modeLabel: 'Describe',
       // `source` stays the absolute entry file
       source: expect.stringMatching(/astro-docs\.yaml$/),
     });
@@ -1686,12 +1708,32 @@ describe('renderPlan with output: golden document (the spec §9.6 seed example)'
     expect(seg('ctx:ctxman-dev')?.material).toBeUndefined();
     expect(m.counts).toEqual({ included: 10, excluded: 1, missing: 0 });
   });
+
+  it('the mode label follows the rendered placement: not placed (material none) is "Summary" / "Pointer"', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['task/write-agents-md', 'skill/foo', 'idea/context-inflate'],
+        [
+          { key: 'task/write-agents-md', material: 'none', mode: 'summary' },
+          { key: 'skill/foo', material: 'none', mode: 'pointer' },
+          { key: 'idea/context-inflate', mode: 'pointer' },
+        ],
+      ),
+    );
+    const label = (key: string) => result.manifest.segments.find((s) => s.key === key)?.modeLabel;
+    expect(label('task/write-agents-md')).toBe('Summary');
+    expect(label('skill/foo')).toBe('Pointer');
+    expect(label('idea/context-inflate')).toBe('Pointer');
+  });
 });
 
 describe('renderPlan without output stays the v1 document', () => {
-  it('has absolute paths, the v1 header and neither sections nor manifest output', async () => {
+  it('has absolute paths in code spans, the v1 header and neither sections nor manifest output', async () => {
     const w = dirWorld();
-    const r = seedRecipe();
+    // no output directory: nothing is placed, so the modes are the document-only (v2) defaults
+    const r = seedRecipe({ output: undefined });
     const result = await inflateRecipe(
       r,
       createFsSources({ dataDir: w.D, nowMs: Date.parse(GENERATED_AT), homeDir: '/home/test' }),
@@ -1702,9 +1744,12 @@ describe('renderPlan without output stays the v1 document', () => {
       '> Paths are absolute paths on this machine. Read the referenced files and run the listed commands only when the task needs them.',
     );
     expect(md).not.toContain('Working directory map');
+    expect(md).not.toContain('## Placement');
     expect(md).not.toContain('## Primary repository');
     expect(md).not.toContain('## Skills');
     expect(md).not.toContain('this directory');
+    // no path links (their text is a code span); the links inside the inlined bundle are the author's own
+    expect(md).not.toContain('[`');
     expect(md).toContain(`${w.D}${path.sep}kb${path.sep}ctxman${path.sep}index.md`);
     expect(md).toContain('mkdir -p .claude/skills');
     expect(result.manifest.output).toBeUndefined();
@@ -1724,7 +1769,34 @@ describe('renderPlan without output stays the v1 document', () => {
     ]);
   });
 
-  it('is the same function of (plan, content) as before: with and without output differ only by the directory features', async () => {
+  it('a recipe WITH a directory rendered as the absolute document keeps code spans and the plain summary', async () => {
+    const w = dirWorld();
+    const result = await inflateRecipe(
+      flatDir(['task/write-agents-md', 'skill/foo', 'reference/rr'], [], {
+        output: { dir: WD, primary: 'reference/rr' },
+      }),
+      createFsSources({ dataDir: w.D, nowMs: Date.parse(GENERATED_AT), homeDir: '/home/test' }),
+      new Date(GENERATED_AT),
+    );
+    const md = result.markdown;
+    expect(md).not.toContain('## Placement');
+    expect(md).not.toContain('Files:');
+    expect(md).not.toContain('](');
+    expect(md).toContain(
+      `\`task/write-agents-md\` · Task · state: Pending · \`${path.join(w.D, 'task', 'write-agents-md', 'index.md')}\``,
+    );
+    expect(md).toContain(
+      `\`skill/foo\` · Skill · A local skill. Read \`${path.join(w.D, 'skill', 'foo', 'SKILL.md')}\` and follow it when the task matches.`,
+    );
+    // v1 wording: describe, not the compact "Details" pointer
+    expect(md).toContain('Clone it only if the task needs its contents.');
+    expect(md).not.toContain('Details: see');
+    expect(result.manifest.segments.find((s) => s.key === 'task/write-agents-md')?.modeLabel).toBe(
+      'Summary',
+    );
+  });
+
+  it('is the same function of (plan, content) as before: rendering twice gives the same result', async () => {
     const w = dirWorld();
     const { plan, content } = await prepare(w.D, seedRecipe());
     const v1 = renderPlan(plan, content, { generatedAt: GENERATED_AT });
@@ -1742,7 +1814,7 @@ describe('renderPlan with output: header', () => {
       '# ctxman-dev-brief',
       '',
       '> Prepared by ctxman for a Codex session.',
-      `> This directory is the working root (\`${WD}\`). Relative paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
+      `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
       '> Skills go in `.agents/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
       '> `AGENTS.md` in this directory points to this file.',
     ]);
@@ -1764,7 +1836,7 @@ describe('renderPlan with output: header', () => {
       '# ctxman-dev-brief',
       '',
       '> Prepared by ctxman for an AI coding agent.',
-      `> This directory is the working root (\`${WD}\`). Relative paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
+      `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
     ]);
     expect(section(result.markdown, 'Skills')).toContain('Installed in `.agents/skills/`.');
   });
@@ -1781,7 +1853,7 @@ describe('renderPlan with output: header', () => {
 });
 
 describe('renderPlan with output: working directory map', () => {
-  it('groups repos, okf datasets in registry order and the skills dir; local, remote and installed notes', async () => {
+  it('groups repos, okf datasets in registry order and the skills dir; the notes name the real placement', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
@@ -1793,9 +1865,10 @@ describe('renderPlan with output: working directory map', () => {
           'reference/lr',
           'reference/rr',
           'skill/foo',
+          'reference/rs-tgz',
         ],
         [
-          { key: 'reference/lr', material: 'symlink' },
+          { key: 'reference/lr', edit: true },
           {
             key: 'reference/rr',
             material: 'clone',
@@ -1806,8 +1879,7 @@ describe('renderPlan with output: working directory map', () => {
         { output: { dir: WD, primary: 'reference/rr' } },
       ),
     );
-    const map = section(result.markdown, 'Working directory map');
-    expect(map).toBe(
+    expect(section(result.markdown, 'Working directory map')).toBe(
       [
         '## Working directory map',
         '',
@@ -1816,18 +1888,28 @@ describe('renderPlan with output: working directory map', () => {
         'CLAUDE.md           loads this file',
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
-        '  lr/               symlink · Desc lr.',
-        '  rr/               git clone, sparse, branch trunk · primary · Desc rr.',
+        '  lr/               symlink · editable · Desc lr.',
+        '  rr/               git clone, sparse, branch trunk · primary · editable · Desc rr.',
         'kb/',
         '  ctxman/           copy · What ctxman is, how it is built, and how to work with i…',
         'task/',
         '  write-agents-md/  symlink · Write and maintain the agent guide at the repository ro…',
         '.claude/skills/',
-        '  bar/              installed · Desc rs-git.',
-        '  foo/              copy · A local skill.',
+        '  bar/              cloned · Desc rs-git.',
+        '  foo/              symlink · A local skill.',
+        '  rs-tgz/           downloaded · Desc rs-tgz.',
         '```',
       ].join('\n'),
     );
+  });
+
+  it('a copied local repository is a copy and never editable (not eligible)', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/lr'], [{ key: 'reference/lr', material: 'copy', edit: true }]),
+    );
+    expect(section(result.markdown, 'Working directory map')).toMatch(/ {2}lr\/ +copy · Desc lr\./);
   });
 
   it('lists only what is placed: mention-only, demoted and failed items are not rows', async () => {
@@ -1839,6 +1921,8 @@ describe('renderPlan with output: working directory map', () => {
         [
           { key: 'kb/astro-content-layer', material: 'none' },
           { key: 'reference/lr-gone', material: 'symlink' },
+          // a remote repository is cloned by default since v3
+          { key: 'reference/rr', material: 'none' },
         ],
       ),
       { fail: { 'kb/ctxman': 'symlink failed' } },
@@ -1883,8 +1967,119 @@ describe('renderPlan with output: working directory map', () => {
   });
 });
 
+describe('renderPlan with output: Placement legend', () => {
+  const SYMLINK =
+    '- **symlink**: the original folder, live; edits change the source (your ctxman entry or local repository).';
+  const COPY =
+    '- **copy**: a snapshot taken when this directory was inflated; edits stay here and are replaced by the next inflate.';
+  const CLONE =
+    '- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only) and keeps local changes and unpushed commits.';
+  const NOT_PLACED =
+    '- **not placed**: outside this directory; open the absolute path, or fetch the URI only when the task needs it.';
+  const EDITABLE =
+    '- **editable** repositories may be changed for this task; **read-only** ones are reference material: read them, do not change them.';
+  const OWNERS =
+    '- Knowledge, work items and skills from ctxman are your own notes; `owner` says whether a repository or remote skill is yours.';
+  const FETCHED = (words: string): string =>
+    `- ${words} skill: fetched from its URI and copied in without history; replaced by the next inflate.`;
+
+  const legend = async (
+    items: string[],
+    overrides: Record<string, unknown>[] = [],
+    opts: { fail?: Record<string, string> } = {},
+  ): Promise<string[]> => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(items, overrides), opts);
+    const text = section(result.markdown, 'Placement');
+    return text === '' ? [] : text.split('\n').slice(2);
+  };
+
+  it('sits between the map and the primary repository', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['kb/ctxman', 'reference/rr'], [], { output: { dir: WD, primary: 'reference/rr' } }),
+    );
+    const heads = result.markdown.split('\n').filter((l) => l.startsWith('## '));
+    expect(heads.slice(0, 3)).toEqual([
+      '## Working directory map',
+      '## Placement',
+      '## Primary repository',
+    ]);
+  });
+
+  it('a symlinked bundle: only the symlink row and the ownership line', async () => {
+    expect(await legend(['kb/ctxman'])).toEqual([SYMLINK, OWNERS]);
+  });
+
+  it('lists every placement that occurs, in a fixed order, and nothing else', async () => {
+    const lines = await legend(
+      [
+        'task/write-agents-md',
+        'kb/ctxman',
+        'reference/rr',
+        'reference/rr-plain',
+        'reference/lr',
+        'reference/rs-git',
+        'reference/rs-tgz',
+      ],
+      [
+        { key: 'kb/ctxman', material: 'copy' },
+        { key: 'reference/rr-plain', material: 'none' },
+        { key: 'reference/lr', material: 'copy' },
+      ],
+    );
+    expect(lines).toEqual([
+      SYMLINK,
+      COPY,
+      CLONE,
+      FETCHED('**downloaded** / **cloned**'),
+      NOT_PLACED,
+      EDITABLE,
+      OWNERS,
+    ]);
+  });
+
+  it('absent rows: no copy, no clone, no not-placed when nothing like it is placed', async () => {
+    const lines = await legend(['task/write-agents-md']);
+    expect(lines).not.toContain(COPY);
+    expect(lines).not.toContain(CLONE);
+    expect(lines).not.toContain(NOT_PLACED);
+    expect(lines).not.toContain(EDITABLE);
+  });
+
+  it('names only the way the remote skills were fetched', async () => {
+    expect(await legend(['reference/rs-tgz'])).toEqual([FETCHED('**downloaded**')]);
+    expect(await legend(['reference/rs-git'])).toEqual([FETCHED('**cloned**')]);
+  });
+
+  it('the editable line follows the repositories (placed or not); the ownership line follows ctxman items', async () => {
+    expect(await legend(['reference/rr'])).toEqual([CLONE, EDITABLE]);
+    expect(await legend(['reference/rr'], [{ key: 'reference/rr', material: 'none' }])).toEqual([
+      NOT_PLACED,
+      EDITABLE,
+    ]);
+    expect(await legend(['skill/foo'])).toEqual([SYMLINK, OWNERS]);
+  });
+
+  it('a failed step makes the item "not placed"', async () => {
+    const lines = await legend(['kb/ctxman'], [], { fail: { 'kb/ctxman': 'symlink failed' } });
+    expect(lines).toEqual([NOT_PLACED, OWNERS]);
+  });
+
+  it('is omitted when nothing was included (only markdown blocks)', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir([], [], { markdown: [{ id: 'b1', body: '## Notes\n\nx\n' }] }),
+    );
+    expect(result.markdown).not.toContain('## Placement');
+    expect(result.markdown).toContain('## Working directory map');
+  });
+});
+
 describe('renderPlan with output: primary repository', () => {
-  it('full history, branch and no subpath: no "Start in" line', async () => {
+  it('full history, branch and no subpath: no "Start in" line; editable by default', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
@@ -1904,32 +2099,63 @@ describe('renderPlan with output: primary repository', () => {
       [
         '## Primary repository',
         '',
-        '**rr-plain** · `repos/rr-plain` · `reference/rr-plain` · owner: not me',
+        '**rr-plain** · [`repos/rr-plain/`](repos/rr-plain/) · `reference/rr-plain` · owner: not me · editable',
         '',
         'Desc rr-plain.',
         '',
         '- Source: git clone of `https://github.com/o/plain.git`, full history, branch `v2`',
         '',
-        'Work in `repos/rr-plain` unless the task says otherwise.',
+        'Work in [`repos/rr-plain/`](repos/rr-plain/) unless the task says otherwise.',
       ].join('\n'),
     );
     expect(result.markdown).not.toContain('## Repositories');
+  });
+
+  it('read-only (edit: false): says so and closes with the read-only line', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/rr'], [{ key: 'reference/rr', edit: false }], {
+        output: { dir: WD, primary: 'reference/rr' },
+      }),
+    );
+    expect(section(result.markdown, 'Primary repository')).toBe(
+      [
+        '## Primary repository',
+        '',
+        '**rr** · [`repos/rr/`](repos/rr/) · `reference/rr` · owner: me · read-only',
+        '',
+        'Desc rr.',
+        '',
+        '- Source: git clone of `git@github.com:o/r.git`, shallow (depth 1)',
+        '- Start in: [`repos/rr/docs/`](repos/rr/docs/)',
+        '',
+        'Read it to answer the task; it is read-only.',
+      ].join('\n'),
+    );
+    expect(result.markdown).not.toContain('unless the task says otherwise');
+    // the facts line and the map agree
+    expect(section(result.markdown, 'rr')).toContain('git clone · primary · read-only');
+    expect(section(result.markdown, 'Working directory map')).not.toContain('editable');
   });
 
   it('a symlinked local repository: source is the symlink target, start in the subpath', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
-      flatDir(['reference/lr'], [{ key: 'reference/lr', material: 'symlink' }], {
-        output: { dir: WD, primary: 'reference/lr' },
-      }),
+      flatDir(['reference/lr'], [], { output: { dir: WD, primary: 'reference/lr' } }),
     );
     const primary = section(result.markdown, 'Primary repository');
-    expect(primary).toContain(`- Source: symlink to \`${w.repo}\`\n- Start in: \`repos/lr/src\`\n`);
-    expect(primary).toContain('**lr** · `repos/lr` · `reference/lr` · owner: me');
+    expect(primary).toContain(
+      `- Source: symlink to \`${w.repo}\`\n- Start in: [\`repos/lr/src/\`](repos/lr/src/)\n`,
+    );
+    expect(primary).toContain(
+      '**lr** · [`repos/lr/`](repos/lr/) · `reference/lr` · owner: me · editable',
+    );
+    expect(primary).toContain('Work in [`repos/lr/`](repos/lr/) unless the task says otherwise.');
   });
 
-  it('is omitted when its step failed; the repository is then listed under Repositories', async () => {
+  it('is omitted when its step failed; the repository is then listed under Repositories as read-only', async () => {
     const w = dirWorld();
     const { result, output } = await renderDir(
       w,
@@ -1941,9 +2167,8 @@ describe('renderPlan with output: primary repository', () => {
     expect(output.primary).toBe('reference/rr');
     expect(result.markdown).not.toContain('## Primary repository');
     expect(section(result.markdown, 'Repositories')).toContain(
-      '- **rr** · not placed (git clone failed): `git@github.com:o/r.git` · relevant path `docs` · `reference/rr` · owner: me — Desc rr.',
+      '- **rr** · not placed (git clone failed): `git@github.com:o/r.git` · relevant path `docs` · owner: me · read-only — Desc rr.',
     );
-    expect(result.markdown).not.toContain('(the primary repository)');
     expect(result.markdown).toContain('Not placed in this directory: git clone failed.');
   });
 
@@ -1955,25 +2180,38 @@ describe('renderPlan with output: primary repository', () => {
     );
     expect(result.markdown).not.toContain('## Primary repository');
     expect(section(result.markdown, 'Repositories')).toContain(
-      '- **rr** · `repos/rr` (git clone of `git@github.com:o/r.git`) · relevant path `repos/rr/docs` · `reference/rr` · owner: me — Desc rr.',
+      '- **rr** · [`repos/rr/`](repos/rr/) · git clone of `git@github.com:o/r.git` · relevant path [`repos/rr/docs/`](repos/rr/docs/) · owner: me · read-only — Desc rr.',
     );
-    expect(section(result.markdown, 'rr')).toContain(
-      'Cloned at `repos/rr`.\n\nRelevant path `repos/rr/docs`.',
-    );
+    expect(section(result.markdown, 'rr')).toContain('git clone · read-only');
     expect(section(result.markdown, 'rr')).not.toContain('primary');
   });
 });
 
 describe('renderPlan with output: repositories', () => {
-  it('lists placed, mention-only and demoted repositories in segment order', async () => {
-    const w = dirWorld();
+  it('placement phrase, relevant path, owner and editable|read-only per bullet; not placed ones link the absolute path', async () => {
+    const copied = tmp.make({ 'README.md': '' });
+    const w = dirWorld({
+      'reference/lr-copy.yaml': referenceYaml(
+        'lr-copy',
+        `type: local-repo\npath: ${copied}\nowner: me\n`,
+      ),
+    });
+    const missing = path.join(w.repo, 'missing');
     const { result } = await renderDir(
       w,
       flatDir(
-        ['reference/rr', 'reference/rr-plain', 'reference/lr', 'reference/lr-gone'],
+        [
+          'reference/rr',
+          'reference/rr-plain',
+          'reference/lr',
+          'reference/lr-copy',
+          'reference/lr-gone',
+        ],
         [
           { key: 'reference/rr', material: 'clone' },
-          { key: 'reference/lr', material: 'symlink' },
+          { key: 'reference/rr-plain', material: 'none' },
+          { key: 'reference/lr', material: 'symlink', edit: true },
+          { key: 'reference/lr-copy', material: 'copy' },
           { key: 'reference/lr-gone', material: 'symlink' },
         ],
       ),
@@ -1982,11 +2220,40 @@ describe('renderPlan with output: repositories', () => {
       [
         '## Repositories',
         '',
-        '- **rr** · `repos/rr` (git clone of `git@github.com:o/r.git`) · relevant path `repos/rr/docs` · `reference/rr` · owner: me — Desc rr.',
-        '- **rr-plain** · not cloned: `https://github.com/o/plain.git` · `reference/rr-plain` · owner: not me — Desc rr-plain.',
-        `- **lr** · \`repos/lr\` (symlink to \`${w.repo}\`) · relevant path \`repos/lr/src\` · \`reference/lr\` · owner: me — Desc lr.`,
-        `- **lr-gone** · not linked: \`${path.join(w.repo, 'missing')}\` · \`reference/lr-gone\` · owner: me — Desc lr-gone.`,
+        '- **rr** · [`repos/rr/`](repos/rr/) · git clone of `git@github.com:o/r.git` · relevant path [`repos/rr/docs/`](repos/rr/docs/) · owner: me · read-only — Desc rr.',
+        '- **rr-plain** · not cloned: `https://github.com/o/plain.git` · owner: not me · read-only — Desc rr-plain.',
+        `- **lr** · [\`repos/lr/\`](repos/lr/) · symlink to \`${w.repo}\` · relevant path [\`repos/lr/src/\`](repos/lr/src/) · owner: me · editable — Desc lr.`,
+        `- **lr-copy** · [\`repos/lr-copy/\`](repos/lr-copy/) · copy of \`${copied}\` · owner: me · read-only — Desc lr-copy.`,
+        `- **lr-gone** · not placed: [\`${missing}/\`](${missing}/) · owner: me · read-only — Desc lr-gone.`,
       ].join('\n'),
+    );
+  });
+
+  it('a not placed local repository can still be editable (edit override); a path with spaces uses the <…> destination', async () => {
+    const spaced = tmp.make({ 'my repo/README.md': '' });
+    const repoDir = path.join(spaced, 'my repo');
+    const w = dirWorld({
+      'reference/lr-space.yaml': referenceYaml(
+        'lr-space',
+        `type: local-repo\npath: ${repoDir}\nowner: not-me\n`,
+      ),
+    });
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/lr-space'],
+        [{ key: 'reference/lr-space', material: 'none', edit: true }],
+      ),
+    );
+    expect(section(result.markdown, 'Repositories')).toBe(
+      [
+        '## Repositories',
+        '',
+        `- **lr-space** · not placed: [\`${repoDir}/\`](<${repoDir}/>) · owner: not me · editable — Desc lr-space.`,
+      ].join('\n'),
+    );
+    expect(section(result.markdown, 'lr-space')).toContain(
+      `\`reference/lr-space\` · Local repo · not placed: [\`${repoDir}/\`](<${repoDir}/>) · editable`,
     );
   });
 
@@ -2000,6 +2267,41 @@ describe('renderPlan with output: repositories', () => {
 });
 
 describe('renderPlan with output: skills', () => {
+  it('placed skills: symlink to / copy of the ctxman skill, cloned / downloaded from the URI, with owner', async () => {
+    const w = dirWorld({
+      'reference/rs-zip.yaml': referenceYaml(
+        'rs-zip',
+        'type: remote-skill\nuri: https://h.test/skill.zip\nowner: not-me\n',
+      ),
+    });
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        [
+          'skill/foo',
+          'skill/okf-authoring',
+          'reference/rs-git',
+          'reference/rs-tgz',
+          'reference/rs-zip',
+        ],
+        [{ key: 'skill/okf-authoring', material: 'copy' }],
+      ),
+    );
+    expect(section(result.markdown, 'Skills')).toBe(
+      [
+        '## Skills',
+        '',
+        'Installed in `.claude/skills/`, where Claude Code discovers them.',
+        '',
+        '- [`.claude/skills/foo/`](.claude/skills/foo/) · **foo** · symlink to the ctxman skill · owner: me — A local skill.',
+        '- [`.claude/skills/okf-authoring/`](.claude/skills/okf-authoring/) · **okf-authoring** · copy of the ctxman skill · owner: me — Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).',
+        '- [`.claude/skills/bar/`](.claude/skills/bar/) · **rs-git** · cloned from `https://github.com/o/skills.git` (`skills/bar`) · owner: me — Desc rs-git.',
+        '- [`.claude/skills/rs-tgz/`](.claude/skills/rs-tgz/) · **rs-tgz** · downloaded from `https://h.test/skill.tar.gz` · owner: me — Desc rs-tgz.',
+        '- [`.claude/skills/rs-zip/`](.claude/skills/rs-zip/) · **rs-zip** · downloaded from `https://h.test/skill.zip` · owner: not me — Desc rs-zip.',
+      ].join('\n'),
+    );
+  });
+
   it('placed skills first, then "Not installed:" for mention-only and failed ones', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
@@ -2011,21 +2313,22 @@ describe('renderPlan with output: skills', () => {
           { key: 'reference/rs-tgz', material: 'none' },
         ],
       ),
-      { fail: { 'skill/foo': 'copy failed' } },
+      { fail: { 'skill/foo': 'symlink failed' } },
     );
+    const skill = (name: string): string => path.join(w.D, 'skill', name, 'SKILL.md');
     expect(section(result.markdown, 'Skills')).toBe(
       [
         '## Skills',
         '',
         'Installed in `.claude/skills/`, where Claude Code discovers them.',
         '',
-        '- `.claude/skills/bar/` · **rs-git** · from `https://github.com/o/skills.git` (`skills/bar`) — Desc rs-git.',
+        '- [`.claude/skills/bar/`](.claude/skills/bar/) · **rs-git** · cloned from `https://github.com/o/skills.git` (`skills/bar`) · owner: me — Desc rs-git.',
         '',
         'Not installed:',
         '',
-        `- **foo** · \`skill/foo\` · not installed (copy failed): \`${w.D}${path.sep}skill${path.sep}foo${path.sep}SKILL.md\` — A local skill.`,
-        `- **okf-authoring** · \`skill/okf-authoring\` · \`${w.D}${path.sep}skill${path.sep}okf-authoring${path.sep}SKILL.md\` — Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).`,
-        '- **rs-tgz** · `reference/rs-tgz` · `https://h.test/skill.tar.gz` — Desc rs-tgz.',
+        `- **foo** · not installed (symlink failed): [\`${skill('foo')}\`](${skill('foo')}) · owner: me — A local skill.`,
+        `- **okf-authoring** · [\`${skill('okf-authoring')}\`](${skill('okf-authoring')}) · owner: me — Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).`,
+        '- **rs-tgz** · `https://h.test/skill.tar.gz` · owner: me — Desc rs-tgz.',
       ].join('\n'),
     );
   });
@@ -2039,8 +2342,133 @@ describe('renderPlan with output: skills', () => {
   });
 });
 
-describe('renderPlan with output: item segments', () => {
-  it('okf pointer, summary and the eager clause use relative paths; unmounted ones stay absolute', async () => {
+describe('renderPlan with output: okf items', () => {
+  const many = (): Record<string, string> => {
+    const files: Record<string, string> = {
+      'kb/big/index.md':
+        '---\nokf_version: "0.2"\ntype: Knowledge Base\nname: big\ndescription: Lots of files.\n---\n\n# big\n',
+    };
+    for (let i = 1; i <= 25; i++) {
+      const n = String(i).padStart(2, '0');
+      files[`kb/big/concepts/c${n}.md`] =
+        `---\ntype: Concept\ndescription: C ${n}.\n---\n\n# C ${n}\n`;
+    }
+    return files;
+  };
+
+  it('summary (placed default): facts line, description, then the Files list; nothing inlined', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['kb/ctxman']));
+    expect(section(result.markdown, 'ctxman')).toBe(
+      [
+        '## ctxman',
+        '',
+        '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · [`kb/ctxman/index.md`](kb/ctxman/index.md) · symlink',
+        '',
+        'What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.',
+        '',
+        'Files: [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md)',
+      ].join('\n'),
+    );
+    expect(result.markdown).not.toContain('Back to');
+    expect(result.markdown).not.toContain('See [datasets]');
+  });
+
+  it('summary lists at most 20 files, then "and N more in <folder link>"', async () => {
+    const w = dirWorld(many());
+    const { result } = await renderDir(w, flatDir(['kb/big']));
+    const files = section(result.markdown, 'big')
+      .split('\n')
+      .find((l) => l.startsWith('Files: '));
+    const shown = Array.from({ length: 20 }, (_, i) => {
+      const p = `kb/big/concepts/c${String(i + 1).padStart(2, '0')}.md`;
+      return `[\`${p}\`](${p})`;
+    });
+    expect(files).toBe(`Files: ${shown.join(', ')}, and 5 more in [\`kb/big/\`](kb/big/)`);
+  });
+
+  it('summary with exactly 20 files lists all of them and no "more"', async () => {
+    const files = many();
+    for (let i = 21; i <= 25; i++) delete files[`kb/big/concepts/c${i}.md`];
+    const w = dirWorld(files);
+    const { result } = await renderDir(w, flatDir(['kb/big']));
+    const line = section(result.markdown, 'big')
+      .split('\n')
+      .find((l) => l.startsWith('Files: '));
+    expect(line?.match(/\]\(/g)).toHaveLength(20);
+    expect(line).not.toContain('more in');
+  });
+
+  it('summary follows the index order of the entry before the tree order', async () => {
+    const w = dirWorld({
+      'kb/ordered/index.md':
+        '---\nokf_version: "0.2"\ntype: Knowledge Base\nname: ordered\ndescription: Ordered.\n---\n\n# ordered\n\n## Concepts\n\n- [Zed](/concepts/zed.md)\n- [Alpha](/concepts/alpha.md)\n',
+      'kb/ordered/concepts/alpha.md': '---\ntype: Concept\n---\n\n# Alpha\n',
+      'kb/ordered/concepts/zed.md': '---\ntype: Concept\n---\n\n# Zed\n',
+      'kb/ordered/concepts/mid.md': '---\ntype: Concept\n---\n\n# Mid\n',
+    });
+    const { result } = await renderDir(w, flatDir(['kb/ordered']));
+    expect(section(result.markdown, 'ordered')).toContain(
+      'Files: [`kb/ordered/concepts/zed.md`](kb/ordered/concepts/zed.md), [`kb/ordered/concepts/alpha.md`](kb/ordered/concepts/alpha.md), [`kb/ordered/concepts/mid.md`](kb/ordered/concepts/mid.md)',
+    );
+  });
+
+  it('summary of a bundle without concept files has no Files line', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['kb/astro-content-layer']));
+    expect(section(result.markdown, 'astro-content-layer')).toBe(
+      [
+        '## astro-content-layer',
+        '',
+        '`kb/astro-content-layer` · Knowledge Base · [`kb/astro-content-layer/index.md`](kb/astro-content-layer/index.md) · symlink',
+        '',
+        'How Astro 7 content collections, loaders and schemas work.',
+      ].join('\n'),
+    );
+  });
+
+  it('a copied bundle says copy; the context notes sit between the facts line and the description', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      recipe({
+        layout: 'flat',
+        output: { dir: WD },
+        contexts: ['ctxman-dev'],
+        overrides: [{ key: 'task/write-agents-md', material: 'copy' }],
+      }),
+      { contextFile: 'LLM_CONTEXT.md' },
+    );
+    expect(result.markdown).toContain(
+      '`task/write-agents-md` · Task · state: Pending · [`task/write-agents-md/index.md`](task/write-agents-md/index.md) · copy',
+    );
+    expect(section(result.markdown, 'ctxman')).toContain(
+      '· symlink\n\n> **From context `ctxman-dev`:** Start here.\n\nWhat ctxman is',
+    );
+  });
+
+  it('summary that is not placed (material none) is today\'s summary with "not placed" and an absolute link', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['idea/context-inflate'],
+        [{ key: 'idea/context-inflate', material: 'none', mode: 'summary' }],
+      ),
+    );
+    const abs = path.join(w.D, 'idea', 'context-inflate', 'index.md');
+    expect(section(result.markdown, 'context-inflate')).toBe(
+      [
+        '## context-inflate',
+        '',
+        `\`idea/context-inflate\` · Idea · state: Pending · not placed: [\`${abs}\`](${abs})`,
+        '',
+        'A tool that turns selected contexts plus user instructions into one document.',
+      ].join('\n'),
+    );
+  });
+
+  it('pointer links the entry file; the eager clause keeps the bare @path; not placed points at the absolute path', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
@@ -2050,7 +2478,7 @@ describe('renderPlan with output: item segments', () => {
           { key: 'kb/ctxman', mode: 'pointer', options: { eager: true } },
           { key: 'kb/astro-content-layer', mode: 'pointer' },
           { key: 'task/write-agents-md', mode: 'summary' },
-          { key: 'idea/context-inflate', mode: 'summary', material: 'none' },
+          { key: 'idea/context-inflate', mode: 'pointer', material: 'none' },
         ],
       ),
     );
@@ -2059,19 +2487,19 @@ describe('renderPlan with output: item segments', () => {
       '`kb/ctxman` · Knowledge Base · What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks. Read it before starting: @kb/ctxman/index.md',
     );
     expect(md).toContain(
-      '`kb/astro-content-layer` · Knowledge Base · How Astro 7 content collections, loaders and schemas work. Read `kb/astro-content-layer/index.md` if relevant.',
+      '`kb/astro-content-layer` · Knowledge Base · How Astro 7 content collections, loaders and schemas work. Read [`kb/astro-content-layer/index.md`](kb/astro-content-layer/index.md) if relevant.',
     );
     expect(md).toContain(
-      '`task/write-agents-md` · Task · state: Pending · `task/write-agents-md/index.md`',
+      '`task/write-agents-md` · Task · state: Pending · [`task/write-agents-md/index.md`](task/write-agents-md/index.md) · symlink',
     );
-    // material none: the ctxman data path, absolute as in v1
+    const abs = path.join(w.D, 'idea', 'context-inflate', 'index.md');
     expect(md).toContain(
-      `\`idea/context-inflate\` · Idea · state: Pending · \`${path.join(w.D, 'idea', 'context-inflate', 'index.md')}\``,
+      `\`idea/context-inflate\` · Idea · A tool that turns selected contexts plus user instructions into one document. Read [\`${abs}\`](${abs}) if relevant.`,
     );
   });
 
-  it('inline-bundle: concept paths, the "More"/"Other files" lists and ctxman: links become relative', async () => {
-    const w = dirWorld();
+  it('inline-bundle: concept paths, the "Other files" list and ctxman: links become relative links', async () => {
+    const w = dirWorld({ 'kb/ctxman/assets/data.csv': 'a,b\n' });
     const { result } = await renderDir(
       w,
       flatDir(['kb/ctxman', 'idea/context-inflate'], [{ key: 'kb/ctxman', mode: 'inline-bundle' }]),
@@ -2079,146 +2507,27 @@ describe('renderPlan with output: item segments', () => {
     expect(result.markdown).toContain(
       'See [datasets](kb/ctxman/concepts/datasets.md), the [idea](idea/context-inflate/index.md) and the [docs]',
     );
-    expect(result.markdown).toContain('`concepts/datasets.md` · `kb/ctxman/concepts/datasets.md`');
+    expect(result.markdown).toContain(
+      '`concepts/datasets.md` · [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md)',
+    );
     expect(result.markdown).toContain('Back to [entry](kb/ctxman/index.md).');
+    expect(result.markdown).toContain(
+      'Other files in this bundle:\n\n- `assets/data.csv` — [`kb/ctxman/assets/data.csv`](kb/ctxman/assets/data.csv)',
+    );
   });
 
-  it('inline-main lists the other concepts under the relative bundle path', async () => {
+  it('inline-main lists the other concepts as links under the bundle folder link', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
       flatDir(['kb/ctxman'], [{ key: 'kb/ctxman', mode: 'inline-main' }]),
     );
     expect(result.markdown).toContain(
-      'More in this bundle (under `kb/ctxman`): `concepts/datasets.md`.',
+      'More in this bundle (under [`kb/ctxman/`](kb/ctxman/)): [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md).',
     );
   });
 
-  it('skills: install says where it is installed; inline and pointer use the installed path', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(
-        ['skill/foo', 'skill/okf-authoring', 'skill/ctxman-add-entry'],
-        [
-          { key: 'skill/foo', mode: 'inline' },
-          { key: 'skill/okf-authoring', mode: 'pointer' },
-          { key: 'skill/ctxman-add-entry', mode: 'install' },
-        ],
-      ),
-    );
-    const md = result.markdown;
-    expect(md).toContain('`skill/foo` · Skill · `.claude/skills/foo/SKILL.md`');
-    expect(md).toContain('See [steps](.claude/skills/foo/references/steps.md).');
-    expect(md).toContain('Files in this skill (under `.claude/skills/foo`):');
-    expect(md).toContain('- `references/steps.md` — `.claude/skills/foo/references/steps.md`');
-    expect(md).toContain(
-      'Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project). Read `.claude/skills/okf-authoring/SKILL.md` and follow it when the task matches.',
-    );
-    expect(md).toContain(
-      '`skill/ctxman-add-entry` · Skill · `.claude/skills/ctxman-add-entry`\n\nCreate a new ctxman dataset entry with the add scripts.\n\nInstalled at `.claude/skills/ctxman-add-entry/`.',
-    );
-    expect(md).not.toContain('cp -R');
-  });
-
-  it('skill with material none keeps the v1 install block, run from "this directory"', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(['skill/foo'], [{ key: 'skill/foo', material: 'none', mode: 'install' }]),
-    );
-    expect(result.markdown).toContain(
-      `Install this skill into the project (run from this directory):\n\n\`\`\`sh\nmkdir -p .claude/skills\ncp -R ${path.join(w.D, 'skill', 'foo')} .claude/skills/foo\n\`\`\``,
-    );
-    expect(result.markdown).not.toContain('the project root');
-  });
-
-  it('local repository: linked, with the tree titled by the relative path', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(['reference/lr'], [{ key: 'reference/lr', material: 'symlink', mode: 'tree' }]),
-    );
-    expect(section(result.markdown, 'lr')).toBe(
-      [
-        '## lr',
-        '',
-        '`reference/lr` · Local repo · owner: me · `repos/lr`',
-        '',
-        'Desc lr.',
-        '',
-        `Linked at \`repos/lr\` → \`${w.repo}\`.`,
-        '',
-        'Top-level entries of `repos/lr/src` (2 of 2):',
-        '',
-        '```text',
-        'index.ts',
-        'util.ts',
-        '```',
-      ].join('\n'),
-    );
-  });
-
-  it('local repository without a placement keeps the v1 text with absolute paths', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(w, flatDir(['reference/lr']));
-    expect(section(result.markdown, 'lr')).toContain(
-      `Read the code at \`${path.join(w.repo, 'src')}\` (inside the repository \`${w.repo}\`) when the task needs it.`,
-    );
-    expect(result.markdown).not.toContain('Linked at');
-  });
-
-  it('remote repository mention-only: v1 text; clone mode says "run from this directory"', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(['reference/rr', 'reference/rr-plain'], [{ key: 'reference/rr', mode: 'clone' }]),
-    );
-    expect(section(result.markdown, 'rr')).toContain(
-      'Clone it into the project (run from this directory; keep `.ctxman/` out of version control):',
-    );
-    expect(section(result.markdown, 'rr-plain')).toContain(
-      'Git repository `https://github.com/o/plain.git`. Clone it only if the task needs its contents.',
-    );
-  });
-
-  it('remote skill: installed at the dest from the URI, in every mode', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(
-        ['reference/rs-git', 'reference/rs-tgz'],
-        [{ key: 'reference/rs-tgz', mode: 'describe' }],
-      ),
-    );
-    expect(section(result.markdown, 'rs-git')).toBe(
-      [
-        '## rs-git',
-        '',
-        '`reference/rs-git` · Remote skill · git · owner: me · `.claude/skills/bar`',
-        '',
-        'Desc rs-git.',
-        '',
-        'Installed at `.claude/skills/bar/` from `https://github.com/o/skills.git`.',
-      ].join('\n'),
-    );
-    expect(section(result.markdown, 'rs-tgz')).toContain(
-      'Installed at `.claude/skills/rs-tgz/` from `https://h.test/skill.tar.gz`.',
-    );
-  });
-
-  it('remote skill without a placement keeps the v1 install block, run from "this directory"', async () => {
-    const w = dirWorld();
-    const { result } = await renderDir(
-      w,
-      flatDir(['reference/rs-tgz'], [{ key: 'reference/rs-tgz', material: 'none' }]),
-    );
-    expect(section(result.markdown, 'rs-tgz')).toContain(
-      'Install this skill into `.claude/skills/rs-tgz/` (run from this directory):',
-    );
-  });
-
-  it('a failed item renders as material none and says why', async () => {
+  it('a failed item renders as not placed: absolute links and the reason at the end', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
       w,
@@ -2226,12 +2535,14 @@ describe('renderPlan with output: item segments', () => {
       { fail: { 'kb/ctxman': 'source /x does not exist' } },
     );
     const md = result.markdown;
-    // absolute again (not mounted), reason at the end of the segment
-    expect(md).toContain(`\`${path.join(w.D, 'kb', 'ctxman', 'index.md')}\``);
+    const index = path.join(w.D, 'kb', 'ctxman', 'index.md');
+    const root = path.join(w.D, 'kb', 'ctxman');
+    expect(md).toContain(`not placed: [\`${index}\`](${index})`);
     expect(md).toContain('Not placed in this directory: source /x does not exist.');
-    expect(md).toContain(`(under \`${path.join(w.D, 'kb', 'ctxman')}\`)`);
+    expect(md).toContain(`(under [\`${root}/\`](${root}/))`);
     expect(section(result.markdown, 'Working directory map')).not.toContain('ctxman/');
   });
+
   it('unresolved links are reported in a working-directory render too (the description is printed first)', async () => {
     const w = dirWorld();
     mkdirSync(path.join(w.D, 'kb/broken'), { recursive: true });
@@ -2239,7 +2550,10 @@ describe('renderPlan with output: item segments', () => {
       path.join(w.D, 'kb/broken/index.md'),
       '---\ntype: Knowledge Base\nname: broken\ndescription: Has a dead link.\n---\n\n# Broken\n\nSee [gone](ctxman:kb/gone) and [ctxman](ctxman:kb/ctxman).\n',
     );
-    const { result } = await renderDir(w, flatDir(['kb/broken']));
+    const { result } = await renderDir(
+      w,
+      flatDir(['kb/broken'], [{ key: 'kb/broken', mode: 'inline-main' }]),
+    );
     expect(section(result.markdown, 'broken')).toContain(
       'Has a dead link.\n\nSee [gone](ctxman:kb/gone) and [ctxman](',
     );
@@ -2250,5 +2564,545 @@ describe('renderPlan with output: item segments', () => {
         message: 'kb/broken/index.md: link "ctxman:kb/gone" does not resolve (no such entry)',
       },
     ]);
+  });
+
+  it('the summary default adds no unresolved-link warnings (nothing is rewritten or inlined)', async () => {
+    const w = dirWorld();
+    mkdirSync(path.join(w.D, 'kb/broken'), { recursive: true });
+    writeFileSync(
+      path.join(w.D, 'kb/broken/index.md'),
+      '---\ntype: Knowledge Base\nname: broken\ndescription: Has a dead link.\n---\n\nSee [gone](ctxman:kb/gone).\n',
+    );
+    const { result } = await renderDir(w, flatDir(['kb/broken']));
+    expect(result.manifest.warnings).toEqual([]);
+  });
+});
+
+describe('renderPlan with output: skill items', () => {
+  it('pointer (placed default): the facts line links SKILL.md, then the description; no "Read" sentence', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['skill/okf-authoring']));
+    expect(section(result.markdown, 'okf-authoring')).toBe(
+      [
+        '## okf-authoring',
+        '',
+        '`skill/okf-authoring` · Skill · [`.claude/skills/okf-authoring/SKILL.md`](.claude/skills/okf-authoring/SKILL.md) · symlink',
+        '',
+        'Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).',
+      ].join('\n'),
+    );
+  });
+
+  it('pointer with eager keeps the one line and the bare @path', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['skill/okf-authoring'], [{ key: 'skill/okf-authoring', options: { eager: true } }]),
+    );
+    expect(section(result.markdown, 'okf-authoring')).toContain(
+      '`skill/okf-authoring` · Skill · Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project). Read it before starting: @.claude/skills/okf-authoring/SKILL.md',
+    );
+  });
+
+  it('inline: the body and a Files list of links under the installed folder', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['skill/foo'], [{ key: 'skill/foo', mode: 'inline' }]),
+    );
+    const md = result.markdown;
+    expect(md).toContain(
+      '`skill/foo` · Skill · [`.claude/skills/foo/SKILL.md`](.claude/skills/foo/SKILL.md) · symlink',
+    );
+    expect(md).toContain('See [steps](.claude/skills/foo/references/steps.md).');
+    expect(md).toContain(
+      'Files in this skill (under [`.claude/skills/foo/`](.claude/skills/foo/)):',
+    );
+    expect(md).toContain(
+      '- `references/steps.md` — [`.claude/skills/foo/references/steps.md`](.claude/skills/foo/references/steps.md)',
+    );
+  });
+
+  it('a stored install mode falls back to the link while the skill is placed (no commands)', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['skill/ctxman-add-entry'], [{ key: 'skill/ctxman-add-entry', mode: 'install' }]),
+    );
+    expect(section(result.markdown, 'ctxman-add-entry')).toContain(
+      '`skill/ctxman-add-entry` · Skill · [`.claude/skills/ctxman-add-entry/SKILL.md`](.claude/skills/ctxman-add-entry/SKILL.md) · symlink',
+    );
+    expect(result.markdown).not.toContain('cp -R');
+  });
+
+  it('material none, mode pointer: one line with an absolute link', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['skill/foo'], [{ key: 'skill/foo', material: 'none', mode: 'pointer' }]),
+    );
+    const abs = path.join(w.D, 'skill', 'foo', 'SKILL.md');
+    expect(section(result.markdown, 'foo')).toBe(
+      `## foo\n\n\`skill/foo\` · Skill · A local skill. Read [\`${abs}\`](${abs}) and follow it when the task matches.`,
+    );
+  });
+
+  it('material none keeps the v1 install block, run from "this directory"', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['skill/foo'], [{ key: 'skill/foo', material: 'none', mode: 'install' }]),
+    );
+    const abs = path.join(w.D, 'skill', 'foo', 'SKILL.md');
+    expect(section(result.markdown, 'foo')).toBe(
+      [
+        '## foo',
+        '',
+        `\`skill/foo\` · Skill · not placed: [\`${abs}\`](${abs})`,
+        '',
+        'A local skill.',
+        '',
+        'Install this skill into the project (run from this directory):',
+        '',
+        '```sh',
+        'mkdir -p .claude/skills',
+        `cp -R ${path.join(w.D, 'skill', 'foo')} .claude/skills/foo`,
+        '```',
+      ].join('\n'),
+    );
+    expect(result.markdown).not.toContain('the project root');
+  });
+});
+
+describe('renderPlan with output: repository items (compact)', () => {
+  it('local repository: facts line with placement and editable|read-only, then Details; no description', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['reference/lr']));
+    expect(section(result.markdown, 'lr')).toBe(
+      [
+        '## lr',
+        '',
+        '`reference/lr` · Local repo · [`repos/lr/`](repos/lr/) · symlink · read-only',
+        '',
+        'Details: see Repositories.',
+      ].join('\n'),
+    );
+  });
+
+  it('the primary points to its own section and carries the primary marker', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/lr', 'reference/rr'], [], {
+        output: { dir: WD, primary: 'reference/rr' },
+      }),
+    );
+    expect(section(result.markdown, 'rr')).toBe(
+      [
+        '## rr',
+        '',
+        '`reference/rr` · Remote repo · [`repos/rr/`](repos/rr/) · git clone · primary · editable',
+        '',
+        'Details: see Primary repository.',
+      ].join('\n'),
+    );
+  });
+
+  it('local repository, tree: the tree stays here, titled with the folder link', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/lr'], [{ key: 'reference/lr', mode: 'tree', edit: true }]),
+    );
+    expect(section(result.markdown, 'lr')).toBe(
+      [
+        '## lr',
+        '',
+        '`reference/lr` · Local repo · [`repos/lr/`](repos/lr/) · symlink · editable',
+        '',
+        'Details: see Repositories.',
+        '',
+        'Top-level entries of [`repos/lr/src/`](repos/lr/src/) (2 of 2):',
+        '',
+        '```text',
+        'index.ts',
+        'util.ts',
+        '```',
+      ].join('\n'),
+    );
+  });
+
+  it('local repository that is not placed: absolute link, still compact; tree is printed with an absolute title; a missing path is said', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/lr', 'reference/lr-gone'],
+        [
+          { key: 'reference/lr', material: 'none', mode: 'tree' },
+          { key: 'reference/lr-gone', material: 'none' },
+        ],
+      ),
+    );
+    const root = w.repo;
+    const src = path.join(w.repo, 'src');
+    expect(section(result.markdown, 'lr')).toBe(
+      [
+        '## lr',
+        '',
+        `\`reference/lr\` · Local repo · not placed: [\`${root}/\`](${root}/) · read-only`,
+        '',
+        'Details: see Repositories.',
+        '',
+        `Top-level entries of [\`${src}/\`](${src}/) (2 of 2):`,
+        '',
+        '```text',
+        'index.ts',
+        'util.ts',
+        '```',
+      ].join('\n'),
+    );
+    const missing = path.join(w.repo, 'missing');
+    expect(section(result.markdown, 'lr-gone')).toContain(
+      `The path \`${missing}\` does not exist on this machine.`,
+    );
+  });
+
+  it('remote repository, placed: compact', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['reference/rr']));
+    expect(section(result.markdown, 'rr')).toBe(
+      [
+        '## rr',
+        '',
+        '`reference/rr` · Remote repo · [`repos/rr/`](repos/rr/) · git clone · read-only',
+        '',
+        'Details: see Repositories.',
+      ].join('\n'),
+    );
+  });
+
+  it('remote repository, not placed: the URI, read-only, no commands in describe mode', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/rr-plain'], [{ key: 'reference/rr-plain', material: 'none' }]),
+    );
+    expect(section(result.markdown, 'rr-plain')).toBe(
+      [
+        '## rr-plain',
+        '',
+        '`reference/rr-plain` · Remote repo · not placed: `https://github.com/o/plain.git` · read-only',
+        '',
+        'Details: see Repositories.',
+      ].join('\n'),
+    );
+  });
+
+  it('remote repository, not placed, mode clone: the commands still print, run from this directory', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/rr'],
+        [{ key: 'reference/rr', mode: 'clone', material: 'none', options: { sparse: true } }],
+      ),
+    );
+    expect(section(result.markdown, 'rr')).toBe(
+      [
+        '## rr',
+        '',
+        '`reference/rr` · Remote repo · not placed: `git@github.com:o/r.git` · read-only',
+        '',
+        'Details: see Repositories.',
+        '',
+        'Clone it into the project (run from this directory; keep `.ctxman/` out of version control):',
+        '',
+        '```sh',
+        'git clone --depth 1 --filter=blob:none --sparse git@github.com:o/r.git .ctxman/refs/rr',
+        'git -C .ctxman/refs/rr sparse-checkout set docs',
+        '```',
+        '',
+        'Then read `.ctxman/refs/rr/docs`.',
+      ].join('\n'),
+    );
+  });
+
+  it('a failed clone is read-only and says why at the end', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['reference/rr']), {
+      fail: { 'reference/rr': 'git clone failed' },
+    });
+    expect(section(result.markdown, 'rr')).toBe(
+      [
+        '## rr',
+        '',
+        '`reference/rr` · Remote repo · not placed: `git@github.com:o/r.git` · read-only',
+        '',
+        'Details: see Repositories.',
+        '',
+        'Not placed in this directory: git clone failed.',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps the context notes between the facts line and the details', async () => {
+    const w = dirWorld({
+      'context/repos.yaml':
+        'name: repos\ndescription: Repos.\nlinks:\n  - dataset: reference\n    slug: lr\n    notes: |\n      Look at src first.\n',
+    });
+    const { result } = await renderDir(
+      w,
+      recipe({ layout: 'flat', contexts: ['repos'], output: { dir: WD } }),
+    );
+    expect(section(result.markdown, 'lr')).toBe(
+      [
+        '## lr',
+        '',
+        '`reference/lr` · Local repo · [`repos/lr/`](repos/lr/) · symlink · read-only',
+        '',
+        '> **From context `repos`:** Look at src first.',
+        '',
+        'Details: see Repositories.',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('renderPlan with output: remote skill items (compact)', () => {
+  it('placed: the folder link and how it was fetched; Details point to Skills', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['reference/rs-git', 'reference/rs-tgz']));
+    expect(section(result.markdown, 'rs-git')).toBe(
+      [
+        '## rs-git',
+        '',
+        '`reference/rs-git` · Remote skill · [`.claude/skills/bar/`](.claude/skills/bar/) · cloned',
+        '',
+        'Details: see Skills.',
+      ].join('\n'),
+    );
+    expect(section(result.markdown, 'rs-tgz')).toContain(
+      '`reference/rs-tgz` · Remote skill · [`.claude/skills/rs-tgz/`](.claude/skills/rs-tgz/) · downloaded',
+    );
+  });
+
+  it('not placed, mode install: the commands still print, run from this directory', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/rs-tgz'], [{ key: 'reference/rs-tgz', material: 'none' }]),
+    );
+    const md = section(result.markdown, 'rs-tgz');
+    expect(md).toContain(
+      '`reference/rs-tgz` · Remote skill · not placed: `https://h.test/skill.tar.gz`\n\nDetails: see Skills.\n\nInstall this skill into `.claude/skills/rs-tgz/` (run from this directory):',
+    );
+    expect(md).toContain('curl -fsSL https://h.test/skill.tar.gz -o .ctxman/tmp/rs-tgz.tgz');
+    expect(md).toContain('The skill folder is the one that contains SKILL.md');
+  });
+
+  it('not placed, mode describe: no commands', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/rs-git'],
+        [{ key: 'reference/rs-git', material: 'none', mode: 'describe' }],
+      ),
+    );
+    expect(section(result.markdown, 'rs-git')).toBe(
+      [
+        '## rs-git',
+        '',
+        '`reference/rs-git` · Remote skill · not placed: `https://github.com/o/skills.git`',
+        '',
+        'Details: see Skills.',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('renderPlan with output: items the planner demoted', () => {
+  it('a destination collision leaves the second item not placed, whatever mode the expansion gave it', async () => {
+    // skills/foo installs as .claude/skills/foo, the destination of the local skill foo (first wins)
+    const w = dirWorld({
+      'reference/rs-foo.yaml': referenceYaml(
+        'rs-foo',
+        'type: remote-skill\nuri: https://github.com/o/skills.git\nsubpath: skills/foo\nowner: not-me\n',
+      ),
+    });
+    const { plan, result } = await renderDir(w, flatDir(['skill/foo', 'reference/rs-foo']));
+    expect(plan.warnings.map((x) => x.code)).toEqual(['dest-collision']);
+    expect(plan.materials['reference/rs-foo']).toMatchObject({ material: 'none', dest: null });
+    expect(section(result.markdown, 'rs-foo')).toBe(
+      [
+        '## rs-foo',
+        '',
+        '`reference/rs-foo` · Remote skill · not placed: `https://github.com/o/skills.git`',
+        '',
+        'Details: see Skills.',
+      ].join('\n'),
+    );
+    expect(section(result.markdown, 'Skills')).toContain(
+      'Not installed:\n\n- **rs-foo** · `https://github.com/o/skills.git` (`skills/foo`) · owner: not me — Desc rs-foo.',
+    );
+    expect(section(result.markdown, 'Placement')).toContain('- **not placed**:');
+    // the placed skill keeps its link
+    expect(
+      result.manifest.segments.find((x) => x.key === 'reference/rs-foo')?.dest,
+    ).toBeUndefined();
+    expect(result.manifest.segments.find((x) => x.key === 'skill/foo')?.dest).toBe(
+      '.claude/skills/foo',
+    );
+  });
+
+  it('a missing git leaves the repository not placed (and read-only), still in the Repositories list', async () => {
+    const w = dirWorld();
+    const { plan, content } = await prepare(w.D, flatDir(['reference/rr']));
+    const mp = planMaterialization({
+      plan,
+      content,
+      dir: WD,
+      dirExists: false,
+      previous: null,
+      tools: { git: false, tar: true, unzip: true },
+    });
+    const result = renderPlan(plan, content, {
+      generatedAt: GENERATED_AT,
+      output: {
+        dir: WD,
+        contextFile: 'LLM_CONTEXT.md',
+        primary: mp.primary,
+        target: 'claude-code',
+        materials: mp.materials,
+        files: mp.files,
+      },
+    });
+    expect(mp.warnings.map((x) => x.code)).toEqual(['tool-missing']);
+    expect(section(result.markdown, 'Repositories')).toBe(
+      '## Repositories\n\n- **rr** · not cloned: `git@github.com:o/r.git` · relevant path `docs` · owner: me · read-only — Desc rr.',
+    );
+    expect(section(result.markdown, 'rr')).toContain(
+      'not placed: `git@github.com:o/r.git` · read-only',
+    );
+  });
+});
+
+describe('renderPlan with output: realistic working directory', () => {
+  const work = (): string =>
+    [
+      'name: work',
+      'description: Everything for the task.',
+      'links:',
+      '  - dataset: kb',
+      '    slug: ctxman',
+      '    notes: |',
+      '      Start here.',
+      '  - dataset: task',
+      '    slug: write-agents-md',
+      '  - dataset: skill',
+      '    slug: foo',
+      '  - dataset: reference',
+      '    slug: rs-tgz',
+      '  - dataset: reference',
+      '    slug: rr',
+      '    notes: |',
+      '      The code to change.',
+      '  - dataset: reference',
+      '    slug: lr',
+      '  - dataset: reference',
+      '    slug: rr-plain',
+      '',
+    ].join('\n');
+
+  it('mixes a symlinked bundle, a copied task, a symlinked skill, a downloaded skill, a cloned primary, a symlinked editable repository and a not placed repository', async () => {
+    const w = dirWorld({ 'context/work.yaml': work() });
+    const { result } = await renderDir(
+      w,
+      seedRecipe({
+        name: 'work-brief',
+        layout: 'grouped',
+        preamble: 'Fix the agent guide.\n',
+        contexts: ['work'],
+        items: [],
+        markdown: [],
+        order: [],
+        output: { dir: WD, primary: 'reference/rr' },
+        overrides: [
+          { key: 'task/write-agents-md', material: 'copy' },
+          { key: 'reference/lr', edit: true },
+          { key: 'reference/rr-plain', material: 'none' },
+        ],
+      }),
+    );
+    const md = result.markdown;
+    // placement of every item, in the map
+    expect(section(md, 'Working directory map')).toBe(
+      [
+        '## Working directory map',
+        '',
+        '```text',
+        'LLM_CONTEXT.md      this file',
+        'CLAUDE.md           loads this file',
+        '.gitignore          ignores the machine-specific paths below',
+        'repos/',
+        '  rr/               git clone · primary · editable · Desc rr.',
+        '  lr/               symlink · editable · Desc lr.',
+        'kb/',
+        '  ctxman/           symlink · What ctxman is, how it is built, and how to work with i…',
+        'task/',
+        '  write-agents-md/  copy · Write and maintain the agent guide at the repository ro…',
+        '.claude/skills/',
+        '  foo/              symlink · A local skill.',
+        '  rs-tgz/           downloaded · Desc rs-tgz.',
+        '```',
+      ].join('\n'),
+    );
+    expect(section(md, 'Placement').split('\n').slice(2)).toHaveLength(7);
+    // primary: cloned, editable, with its start path
+    expect(section(md, 'Primary repository')).toContain(
+      '**rr** · [`repos/rr/`](repos/rr/) · `reference/rr` · owner: me · editable',
+    );
+    expect(section(md, 'Primary repository')).toContain(
+      'Work in [`repos/rr/`](repos/rr/) unless the task says otherwise.',
+    );
+    // other repositories: the editable symlink and the not placed remote
+    expect(section(md, 'Repositories')).toBe(
+      [
+        '## Repositories',
+        '',
+        `- **lr** · [\`repos/lr/\`](repos/lr/) · symlink to \`${w.repo}\` · relevant path [\`repos/lr/src/\`](repos/lr/src/) · owner: me · editable — Desc lr.`,
+        '- **rr-plain** · not cloned: `https://github.com/o/plain.git` · owner: not me · read-only — Desc rr-plain.',
+      ].join('\n'),
+    );
+    // items inside their context group
+    expect(md).toContain('## Context: work\n\nEverything for the task.\n\n### ctxman\n');
+    expect(md).toContain(
+      '`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · [`kb/ctxman/index.md`](kb/ctxman/index.md) · symlink\n\n> **From context `work`:** Start here.',
+    );
+    expect(md).toContain(
+      'Files: [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md)',
+    );
+    expect(md).toContain(
+      '`task/write-agents-md` · Task · state: Pending · [`task/write-agents-md/index.md`](task/write-agents-md/index.md) · copy',
+    );
+    expect(md).toContain(
+      '`skill/foo` · Skill · [`.claude/skills/foo/SKILL.md`](.claude/skills/foo/SKILL.md) · symlink',
+    );
+    expect(md).toContain(
+      '`reference/rs-tgz` · Remote skill · [`.claude/skills/rs-tgz/`](.claude/skills/rs-tgz/) · downloaded\n\nDetails: see Skills.',
+    );
+    expect(md).toContain(
+      '`reference/rr` · Remote repo · [`repos/rr/`](repos/rr/) · git clone · primary · editable\n\n> **From context `work`:** The code to change.\n\nDetails: see Primary repository.',
+    );
+    expect(md).toContain(
+      '`reference/lr` · Local repo · [`repos/lr/`](repos/lr/) · symlink · editable\n\nDetails: see Repositories.',
+    );
+    expect(md).toContain(
+      '`reference/rr-plain` · Remote repo · not placed: `https://github.com/o/plain.git` · read-only\n\nDetails: see Repositories.',
+    );
+    // nothing of the data directory leaks: every placed path is relative
+    expect(md).not.toContain(w.D);
+    expect(result.manifest.warnings).toEqual([]);
   });
 });

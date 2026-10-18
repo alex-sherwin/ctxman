@@ -45,6 +45,7 @@ import {
   setRunAllowNonEmpty,
   setRunContextFile,
   setRunDir,
+  setRunEdit,
   setRunMaterial,
   setRunPrimary,
   startRun,
@@ -87,7 +88,8 @@ const base: RecipeData = {
   markdown: [],
   overrides: [{ key: 'reference/repo-a', material: 'clone' }],
   order: [],
-  defaults: {},
+  // v3 clones a remote repository by default: the recipe default keeps repo-b "not placed" (repo-a is cloned)
+  defaults: { 'remote-repo': { material: 'none' } },
   output: {
     dir: '~/ctxman-inflate/demo',
     contextFile: 'LLM_CONTEXT.md',
@@ -292,7 +294,7 @@ describe('run overrides', () => {
   });
 
   it('material per item: a value equal to the recipe drops it, reset and clear remove it', () => {
-    // repo-b: built-in material "none"; repo-a: the recipe says "clone"
+    // repo-b: the recipe default says "none"; repo-a: the recipe says "clone"
     setRunMaterial('reference/repo-b', 'clone');
     expect($runOverrides.get().items).toEqual({ 'reference/repo-b': { material: 'clone' } });
     const plan = $effectivePlan.get();
@@ -350,6 +352,113 @@ describe('run overrides', () => {
     expect($inflateUrl.get()).toMatchObject({ view: 'preview', job: null });
     selectView('run');
     expect($inflateUrl.get()).toMatchObject({ view: 'run', job: JOB_ID });
+  });
+});
+
+describe('run override: Editable (v3)', () => {
+  const effectiveEdit = (key: string): boolean | null | undefined => {
+    const seg = $effectivePlan.get()?.segments.find((s) => s.key === key);
+    return seg?.type === 'item' ? seg.edit : undefined;
+  };
+
+  it('a value equal to what the recipe gives drops the override; the primary is editable by default', () => {
+    // repo-a: cloned and the recipe primary -> editable
+    expect(effectiveEdit('reference/repo-a')).toBe(true);
+    setRunEdit('reference/repo-a', true);
+    expect($runOverrides.get().items).toEqual({});
+    setRunEdit('reference/repo-a', false);
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-a': { edit: false } });
+    expect($runOverrideCount.get()).toBe(1);
+    expect(effectiveEdit('reference/repo-a')).toBe(false);
+    setRunEdit('reference/repo-a', true);
+    expect($runOverrides.get().items).toEqual({});
+    expect($runOverrideCount.get()).toBe(0);
+  });
+
+  it('is refused for an item that cannot be edited, until its material allows it', () => {
+    setRunEdit('kb/one', true); // not a repository
+    setRunEdit('reference/repo-b', true); // not placed: a remote repository is not cloned
+    expect($runOverrides.get().items).toEqual({});
+    setRunMaterial('reference/repo-b', 'clone');
+    expect(effectiveEdit('reference/repo-b')).toBe(false);
+    setRunEdit('reference/repo-b', true);
+    expect($runOverrides.get().items).toEqual({
+      'reference/repo-b': { material: 'clone', edit: true },
+    });
+    setRunEdit('reference/repo-b', false); // the default of a repository that is not the primary
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-b': { material: 'clone' } });
+  });
+
+  it('the per-item reset and Clear remove the edit flag with the material', () => {
+    setRunMaterial('reference/repo-b', 'clone');
+    setRunEdit('reference/repo-b', true);
+    setRunEdit('reference/repo-a', false);
+    expect($runOverrideCount.get()).toBe(2);
+    resetRunItem('reference/repo-b');
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-a': { edit: false } });
+    clearRunOverrides();
+    expect($runOverrides.get()).toEqual({ items: {} });
+  });
+
+  it('a run material that turns an item into a snapshot makes Editable unavailable', () => {
+    setRunMaterial('reference/repo-a', 'none');
+    expect(effectiveEdit('reference/repo-a')).toBeNull();
+    setRunEdit('reference/repo-a', false);
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-a': { material: 'none' } });
+  });
+
+  it('a changed run primary drops the edit flags that now equal the default', () => {
+    setRunMaterial('reference/repo-b', 'clone');
+    setRunEdit('reference/repo-b', true); // explicit: editable although not the primary
+    setRunPrimary('reference/repo-b'); // the default says editable now
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-b': { material: 'clone' } });
+    expect(effectiveEdit('reference/repo-b')).toBe(true);
+    expect(effectiveEdit('reference/repo-a')).toBe(false); // lost the primary
+    setRunEdit('reference/repo-a', true);
+    expect($runOverrides.get().items['reference/repo-a']).toEqual({ edit: true });
+    setRunPrimary('reference/repo-a'); // the recipe's own again: repo-a is editable by default
+    expect($runOverrides.get().items).toEqual({ 'reference/repo-b': { material: 'clone' } });
+  });
+
+  it('saveRunOverrides carries edit into the recipe override', () => {
+    setRunEdit('reference/repo-a', false);
+    setRunMaterial('reference/repo-b', 'clone');
+    setRunEdit('reference/repo-b', true);
+    saveRunOverrides();
+    expect($runOverrides.get()).toEqual({ items: {} });
+    expect($working.get()?.overrides).toEqual([
+      { key: 'reference/repo-a', material: 'clone', edit: false },
+      { key: 'reference/repo-b', material: 'clone', edit: true },
+    ]);
+    expect($dirty.get()).toBe(true);
+  });
+
+  it('saving drops a recipe edit flag that the saved run primary makes redundant', () => {
+    const w = $working.get();
+    if (w === null) throw new Error('no working recipe');
+    $working.set({
+      ...w,
+      overrides: [
+        { key: 'reference/repo-a', material: 'clone' },
+        { key: 'reference/repo-b', material: 'clone', edit: true },
+      ],
+    });
+    setRunPrimary('reference/repo-b');
+    saveRunOverrides();
+    expect($working.get()?.output?.primary).toBe('reference/repo-b');
+    expect($working.get()?.overrides).toEqual([
+      { key: 'reference/repo-a', material: 'clone' },
+      { key: 'reference/repo-b', material: 'clone' },
+    ]);
+  });
+
+  it('the dry run request carries the edit flag', async () => {
+    const fetchMock = vi.fn(async () => respond(200, planResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    setRunEdit('reference/repo-a', false);
+    await planNow();
+    const sent = bodyOf(fetchMock.mock.calls[0] as unknown[]);
+    expect(sent.overrides).toEqual({ items: { 'reference/repo-a': { edit: false } } });
   });
 });
 

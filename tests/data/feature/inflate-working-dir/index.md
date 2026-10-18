@@ -44,3 +44,7 @@ Context Inflate v1 produces one markdown document that tells an agent where thin
 - [x] A non-empty directory without a manifest is refused unless `allowNonEmpty` is set.
 - [x] A cancelled run still writes a valid manifest.
 - [x] `pnpm run check` reports no warnings for the new recipe rules (`recipe-output-dir-relative`, `recipe-material-invalid`, `recipe-primary-invalid`).
+
+## Inflate v3 (2026-10-18)
+
+A follow-up reworked how an item is placed and presented; the full description is the concept `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman). In short: every item answers **Place** (symlink, copy, clone, download, don't place) and then **In LLM_CONTEXT.md**; a placed item is referenced with relative links instead of being inlined; the defaults moved (knowledge, skills and local repositories are symlinked, remote repositories cloned, remote skills cloned or downloaded) and a local repository can be copied; repositories carry an **Editable** flag (recipe override `edit`, on by default for the primary). The requirements and criteria above describe the first version.

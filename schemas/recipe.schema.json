@@ -385,6 +385,7 @@
           "properties": {
             "material": {
               "enum": [
+                "copy",
                 "none",
                 "symlink"
               ]
@@ -802,7 +803,8 @@
             "material": {
               "enum": [
                 "copy",
-                "none"
+                "none",
+                "symlink"
               ]
             },
             "materialOptions": {
@@ -1089,6 +1091,9 @@
             "description": "must be <dataset>/<slug> of a linkable dataset",
             "pattern": "^(kb|rca|idea|task|bug|feature|project|skill|reference)\\/[a-z0-9]+(?:-[a-z0-9]+)*$",
             "patternErrorMessage": "must be <dataset>/<slug> of a linkable dataset"
+          },
+          "edit": {
+            "type": "boolean"
           },
           "exclude": {
             "type": "boolean"

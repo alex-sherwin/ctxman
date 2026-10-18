@@ -133,8 +133,8 @@ export function setRunPrimary(key: string | null): void {
   const w = $working.get();
   if (w === null) return;
   const r = $runOverrides.get();
-  if (key === (w.output?.primary ?? null)) setRun(omit(r, 'primary'));
-  else if (r.primary !== key) setRun({ ...r, primary: key });
+  if (key === (w.output?.primary ?? null)) setRun(tidyRunEdits(omit(r, 'primary')));
+  else if (r.primary !== key) setRun(tidyRunEdits({ ...r, primary: key }));
 }
 
 export function setRunAllowNonEmpty(on: boolean): void {
@@ -153,14 +153,74 @@ function recipeMaterial(key: string): string | null {
   return null;
 }
 
+type RunItemOverride = InflateRunOverrides['items'][string];
+
+const isEmptyRunItem = (item: RunItemOverride): boolean =>
+  item.material === undefined && item.materialOptions === undefined && item.edit === undefined;
+
 export function setRunMaterial(key: string, material: MaterialId): void {
   const r = $runOverrides.get();
   const { [key]: current, ...others } = r.items;
   const nextItem = { ...current };
   if (material === recipeMaterial(key)) delete nextItem.material;
   else nextItem.material = material;
-  const empty = nextItem.material === undefined && nextItem.materialOptions === undefined;
-  setRun({ ...r, items: empty ? others : { ...others, [key]: nextItem } });
+  setRun(
+    tidyRunEdits({
+      ...r,
+      items: isEmptyRunItem(nextItem) ? others : { ...others, [key]: nextItem },
+    }),
+  );
+}
+
+/**
+ * What `key` gets for Editable when its own run `edit` is left out: the recipe plus every other run override
+ * (a run primary, a run material). `null` = the item cannot be edited (not a repository, a copy, a remote
+ * repository that is not cloned) or is not in the composition.
+ */
+function resolvedEdit(key: string, r: InflateRunOverrides): boolean | null {
+  const w = $working.get();
+  if (w === null) return null;
+  const given = r.items[key];
+  let without = r;
+  if (given?.edit !== undefined) {
+    const { edit: _removed, ...rest } = given;
+    without = { ...r, items: { ...r.items, [key]: rest } };
+  }
+  const plan = expandRecipe(
+    applyRunOverrides(w, without),
+    browserLookup($contextDocs.get(), $entries.get()),
+  );
+  for (const s of plan.segments) {
+    if (s.type === 'item' && s.key === key) return s.edit;
+  }
+  return null;
+}
+
+/** Drop the run `edit` overrides that equal what the item gets anyway (a changed run primary moves the default). */
+function tidyRunEdits(r: InflateRunOverrides): InflateRunOverrides {
+  let items = r.items;
+  for (const [key, given] of Object.entries(r.items)) {
+    if (given.edit === undefined || resolvedEdit(key, r) !== given.edit) continue;
+    const { edit: _removed, ...rest } = given;
+    const { [key]: _item, ...others } = items;
+    items = isEmptyRunItem(rest) ? others : { ...others, [key]: rest };
+  }
+  return items === r.items ? r : { ...r, items };
+}
+
+/**
+ * Editable of a repository for this run. A value equal to what the recipe (with the other run overrides) gives
+ * drops the override. Refused for an item that cannot be edited.
+ */
+export function setRunEdit(key: string, on: boolean): void {
+  const r = $runOverrides.get();
+  const base = resolvedEdit(key, r);
+  if (base === null) return;
+  const { [key]: current, ...others } = r.items;
+  const nextItem = { ...current };
+  if (on === base) delete nextItem.edit;
+  else nextItem.edit = on;
+  setRun({ ...r, items: isEmptyRunItem(nextItem) ? others : { ...others, [key]: nextItem } });
 }
 
 export function resetRunItem(key: string): void {

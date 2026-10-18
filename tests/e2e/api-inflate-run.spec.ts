@@ -224,8 +224,14 @@ test.describe('plan (dry run)', () => {
       path: 'kb/okf-format',
       expect: 'create',
     });
+    // v3 default: a skill is symlinked, not copied
+    expect(body.steps.find((s) => s.id === 'skill:skill/okf-authoring')).toMatchObject({
+      kind: 'symlink',
+      path: '.claude/skills/okf-authoring',
+      expect: 'create',
+    });
     expect(body.document.markdown).toContain('## Working directory map');
-    expect(body.document.markdown).toContain('`kb/okf-format`');
+    expect(body.document.markdown).toContain('[`kb/okf-format/index.md`](kb/okf-format/index.md)');
     expect(existsSync(dir)).toBe(false);
   });
 
@@ -331,10 +337,14 @@ test.describe('run', () => {
     expect(realpathSync(path.join(dir, 'kb', 'okf-format'))).toBe(
       realpathSync(path.join(E2E_DATA_DIR, 'kb', 'okf-format')),
     );
+    // the skill default is a symlink to the ctxman skill folder (v3), so SKILL.md is reached through the link
+    expect(isLink(path.join(dir, '.claude', 'skills', 'okf-authoring'))).toBe(true);
+    expect(realpathSync(path.join(dir, '.claude', 'skills', 'okf-authoring'))).toBe(
+      realpathSync(path.join(E2E_DATA_DIR, 'skill', 'okf-authoring')),
+    );
     expect(
       lstatSync(path.join(dir, '.claude', 'skills', 'okf-authoring', 'SKILL.md')).isFile(),
     ).toBe(true);
-    expect(isLink(path.join(dir, '.claude', 'skills', 'okf-authoring'))).toBe(false);
     expect(isLink(path.join(dir, 'repos', LOCAL_REF))).toBe(true);
     expect(realpathSync(path.join(dir, 'repos', LOCAL_REF))).toBe(realpathSync(E2E_LOCAL_FIXTURE));
     if (HAS_GIT) {
@@ -344,7 +354,10 @@ test.describe('run', () => {
     const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain(HAS_GIT ? '## Primary repository' : '## Repositories');
-    expect(context).toContain(`\`repos/${REPO_REF}\``);
+    // placed paths are relative markdown links, never the absolute ctxman data path
+    expect(context).toContain(`[\`repos/${REPO_REF}/\`](repos/${REPO_REF}/)`);
+    expect(context).toContain('[`kb/okf-format/index.md`](kb/okf-format/index.md)');
+    expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
     expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@LLM_CONTEXT.md\n')).toBe(
       true,
@@ -391,10 +404,8 @@ test.describe('run', () => {
     expect(status['context']).toBe('unchanged');
     expect(status['stub:CLAUDE.md']).toBe('unchanged');
     expect(status['stub:.gitignore']).toBe('unchanged');
-    expect(job.steps.find((s) => s.id === 'skill:skill/okf-authoring')).toMatchObject({
-      status: 'ok',
-      action: 'replaced',
-    });
+    // a symlinked skill is idempotent like an okf link (v3 default); a skill COPY is replaced (own test below)
+    expect(status['skill:skill/okf-authoring']).toBe('unchanged');
     const after = readManifest(dir);
     expect(stable(after)).toEqual(stable(before));
     expect(after.jobId).toBe(job.id);
@@ -499,6 +510,132 @@ test.describe('busy and cancel', () => {
     const next = await runToEnd(request, { recipe: recipe(dir) });
     expect(next.status).toBe('done');
     expect(readManifest(dir).entries.length).toBeGreaterThanOrEqual(HAS_GIT ? 7 : 6);
+  });
+});
+
+test.describe('placement and editable (v3)', () => {
+  test('Editable: the primary defaults to editable; edit run overrides flip repositories in the document', async ({
+    request,
+  }) => {
+    test.skip(!HAS_GIT, 'git is not available (the primary repository needs its clone)');
+    const dir = freshDir('editable');
+    const byDefault = (await (await plan(request, { recipe: recipe(dir) })).json()) as PlanBody;
+    const text = byDefault.document.markdown;
+    expect(text).toContain(`**${REPO_REF}** · [\`repos/${REPO_REF}/\`](repos/${REPO_REF}/)`);
+    expect(text).toMatch(new RegExp(`reference/${REPO_REF}\`? · owner: me · editable\\n`));
+    expect(text).toContain(
+      `Work in [\`repos/${REPO_REF}/\`](repos/${REPO_REF}/) unless the task says`,
+    );
+    expect(text).toMatch(new RegExp(`\\*\\*${LOCAL_REF}\\*\\* · .* · owner: me · read-only — `));
+    expect(text).toContain('- **editable** repositories may be changed for this task');
+    expect(byDefault.applied).toEqual([]);
+
+    const flipped = (await (
+      await plan(request, {
+        recipe: recipe(dir),
+        overrides: {
+          items: {
+            [`reference/${REPO_REF}`]: { edit: false },
+            [`reference/${LOCAL_REF}`]: { edit: true },
+          },
+        },
+      })
+    ).json()) as PlanBody;
+    expect(flipped.blocking).toEqual([]);
+    expect([...flipped.applied].sort()).toEqual([
+      `reference/${LOCAL_REF}`,
+      `reference/${REPO_REF}`,
+    ]);
+    const after = flipped.document.markdown;
+    expect(after).toContain('Read it to answer the task; it is read-only.');
+    expect(after).not.toContain('unless the task says otherwise');
+    expect(after).toMatch(new RegExp(`\\*\\*${LOCAL_REF}\\*\\* · .* · owner: me · editable — `));
+    // the map names it too
+    expect(after).toMatch(new RegExp(`${LOCAL_REF}/ +symlink · editable · `));
+    // the map row only says what is special: `primary`, and `editable` when it is
+    expect(after).toMatch(new RegExp(`${REPO_REF}/ +git clone · primary · Fixture`));
+  });
+
+  test('edit on a key that is not a repository is 400 invalid, and nothing runs', async ({
+    request,
+  }) => {
+    const dir = freshDir('bad-edit');
+    for (const call of [plan, run]) {
+      const bad = await call(request, {
+        recipe: recipe(dir),
+        overrides: { items: { 'kb/okf-format': { edit: true } } },
+      });
+      expect(bad.status()).toBe(400);
+      const body = await errorOf(bad);
+      expect(body.error).toBe('invalid');
+      expect(
+        body.issues?.some((i) => i.path.startsWith('overrides.items') && i.path.endsWith('edit')),
+      ).toBe(true);
+      expect(body.issues?.some((i) => i.message.includes('repositories only'))).toBe(true);
+    }
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  test('Copy places a skill and a local repository as snapshots; a second run replaces them', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'copies');
+    const body = {
+      recipe: recipe(dir),
+      overrides: {
+        primary: null,
+        items: {
+          'skill/okf-authoring': { material: 'copy' },
+          [`reference/${LOCAL_REF}`]: { material: 'copy' },
+          [`reference/${REPO_REF}`]: { material: 'none' },
+        },
+      },
+    };
+    const planned = (await (await plan(request, body)).json()) as PlanBody;
+    expect(planned.blocking).toEqual([]);
+    expect(planned.steps.find((s) => s.id === 'skill:skill/okf-authoring')?.kind).toBe('copyDir');
+    expect(planned.steps.find((s) => s.id === `link:reference/${LOCAL_REF}`)).toMatchObject({
+      kind: 'copyDir',
+      path: `repos/${LOCAL_REF}`,
+    });
+    expect(planned.steps.find((s) => s.id === 'okf:kb/okf-format')?.kind).toBe('symlink');
+
+    const first = await runToEnd(request, body);
+    expect(first.status, JSON.stringify(first.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    const skillDir = path.join(dir, '.claude', 'skills', 'okf-authoring');
+    const repoDir = path.join(dir, 'repos', LOCAL_REF);
+    for (const copied of [skillDir, repoDir]) {
+      expect(isLink(copied), copied).toBe(false);
+      expect(lstatSync(copied).isDirectory(), copied).toBe(true);
+    }
+    expect(lstatSync(path.join(skillDir, 'SKILL.md')).isFile()).toBe(true);
+    expect(readFileSync(path.join(repoDir, 'README.md'), 'utf8')).toBe('# local folder\n');
+    expect(isLink(path.join(dir, 'kb', 'okf-format'))).toBe(true);
+    expect(existsSync(path.join(repoDir, '.git'))).toBe(false);
+
+    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    expect(context).toContain(
+      '- **copy**: a snapshot taken when this directory was inflated; edits stay here and are replaced by the next inflate.',
+    );
+    expect(context).toContain('copy of the ctxman skill');
+    expect(context).toContain(`copy of \`${E2E_LOCAL_FIXTURE}\``);
+    expect(readManifest(dir).entries.map((e) => e.path)).toEqual(
+      expect.arrayContaining(['.claude/skills/okf-authoring', `repos/${LOCAL_REF}`]),
+    );
+
+    // a snapshot is replaced by the next run (a link would be unchanged)
+    const second = await runToEnd(request, body);
+    expect(second.status).toBe('done');
+    for (const id of ['skill:skill/okf-authoring', `link:reference/${LOCAL_REF}`]) {
+      expect(
+        second.steps.find((s) => s.id === id),
+        id,
+      ).toMatchObject({
+        status: 'ok',
+        action: 'replaced',
+      });
+    }
+    expect(stepStatus(second)['okf:kb/okf-format']).toBe('unchanged');
   });
 });
 

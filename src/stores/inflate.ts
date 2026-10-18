@@ -8,7 +8,7 @@
 // localStorage on every change (`inflate:<slug>`) and restored on the next load, with a banner.
 import { atom, computed, map, onMount } from 'nanostores';
 import { LINKABLE_DATASETS } from '../datasets/registry.ts';
-import type { DatasetId, LinkableDatasetId } from '../datasets/registry.ts';
+import type { DatasetId, LinkableDatasetId, Owner } from '../datasets/registry.ts';
 import type {
   InflateOptionsInput,
   MaterialOptionsInput,
@@ -26,7 +26,7 @@ import {
   defaultMaterialFor,
   defaultModeFor,
   isMaterialFor,
-  isModeFor,
+  isModeForPlacement,
   isPrimaryEligible,
   mdKey,
   nextBlockId,
@@ -56,6 +56,7 @@ import type { InflateResult } from '../lib/inflate/render.ts';
 import { filterEntries } from '../lib/entry-filter.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
 import { clone, omit } from '../lib/object.ts';
+import type { RemoteUriKind } from '../lib/remote-uri.ts';
 import { reorderKeys } from '../lib/reorder.ts';
 import type { DropPosition } from '../lib/reorder.ts';
 import { parseInflateUrl, withParams } from '../lib/url-state.ts';
@@ -136,6 +137,82 @@ export const $plan = computed(
   [$working, $contextDocs, $entries],
   (w, docs, entries): ExpandedPlan | null =>
     w === null ? null : expandRecipe(w, browserLookup(docs, entries)),
+);
+
+/** The working directory of the recipe being edited (trimmed), or null for a document-only recipe. */
+export const $outputDir = computed($working, (w): string | null => {
+  const dir = w?.output?.dir?.trim();
+  return dir === undefined || dir === '' ? null : dir;
+});
+
+/** What the browser knows about a `reference/<slug>` entry beyond `ItemMeta`: its owner and, for a remote skill, the URI kind. */
+export interface ReferenceInfo {
+  owner?: Owner;
+  uriKind?: RemoteUriKind;
+}
+/** `reference/<slug>` -> owner / uriKind, from the cached entry list (the owner is not part of `ItemMeta`). */
+export const $referenceInfo = computed($entries, (entries): ReadonlyMap<string, ReferenceInfo> => {
+  const out = new Map<string, ReferenceInfo>();
+  for (const e of entries.reference?.entries ?? []) {
+    const info: ReferenceInfo = {};
+    if (e.owner !== undefined) info.owner = e.owner;
+    if (e.uriKind !== undefined) info.uriKind = e.uriKind;
+    out.set(`reference/${e.slug}`, info);
+  }
+  return out;
+});
+
+/** The "Placement" strip above the composition (a recipe with a working directory): what a run does with the items. */
+export interface PlacementSummary {
+  dir: string;
+  /** Included items by placement; a remote-skill `install` counts as clone (git URI) or download (archive). */
+  counts: { symlink: number; copy: number; clone: number; download: number; none: number };
+  /** Title of the valid primary repository. */
+  primary: string | null;
+  /** Titles of the repositories the session may change (the primary unless told otherwise). */
+  editable: string[];
+}
+
+export function summarizePlacement(plan: ExpandedPlan): PlacementSummary | null {
+  const dir = plan.recipe.output?.dir?.trim();
+  if (dir === undefined || dir === '') return null;
+  const counts: PlacementSummary['counts'] = {
+    symlink: 0,
+    copy: 0,
+    clone: 0,
+    download: 0,
+    none: 0,
+  };
+  const editable: string[] = [];
+  let primary: string | null = null;
+  const primaryKey = plan.primary?.status === 'ok' ? plan.primary.key : null;
+  for (const seg of plan.segments) {
+    if (seg.type !== 'item' || seg.status !== 'included' || seg.kind === null) continue;
+    switch (seg.material) {
+      case 'symlink':
+        counts.symlink++;
+        break;
+      case 'copy':
+        counts.copy++;
+        break;
+      case 'clone':
+        counts.clone++;
+        break;
+      case 'install':
+        if (seg.meta?.uriKind === 'archive') counts.download++;
+        else counts.clone++;
+        break;
+      default:
+        counts.none++;
+    }
+    if (seg.key === primaryKey) primary = seg.title;
+    if (seg.edit === true) editable.push(seg.title);
+  }
+  return { dir, counts, primary, editable };
+}
+
+export const $placementSummary = computed($plan, (plan): PlacementSummary | null =>
+  plan === null ? null : summarizePlacement(plan),
 );
 
 export const $render = atom<RenderState>({ status: 'idle', result: null });
@@ -589,7 +666,7 @@ function commit(next: RecipeData): void {
 
 /** For the run store: replace the working copy like an edit does ("Save overrides to recipe"). */
 export function commitWorking(next: RecipeData): void {
-  commit(tidyOutput(next));
+  commit(tidyOutput(tidyEdit(next)));
 }
 
 // ---------------------------------------------------------------- output (working directory) helpers
@@ -743,11 +820,13 @@ function cleanOverride(o: RecipeOverride): RecipeOverride | null {
       out.materialOptions = materialOptions as MaterialOptionsInput;
     }
   }
+  if (o.edit !== undefined) out.edit = o.edit;
   if (o.exclude === true) out.exclude = true;
   return out.mode !== undefined ||
     out.options !== undefined ||
     out.material !== undefined ||
     out.materialOptions !== undefined ||
+    out.edit !== undefined ||
     out.exclude === true
     ? out
     : null;
@@ -772,12 +851,22 @@ function editOverride(
   return { ...w, overrides };
 }
 
-/** The mode an item of `kind` gets without an override: the recipe default, else the built-in one. */
-function baseMode(w: RecipeData, kind: ItemKind): ModeId {
+/**
+ * The mode an item of `kind` gets without an override: the recipe default when it applies to the placement, else
+ * the built-in default of the placement (`placed` = a working directory is set and the item's material is not
+ * `none`; the expander resolves it the same way, plans/INFLATE_V3_PLAN.md §5).
+ */
+function baseMode(w: RecipeData, kind: ItemKind, placed: boolean): ModeId {
   const recipeDefault = w.defaults[kind]?.mode;
-  return recipeDefault !== undefined && isModeFor(kind, recipeDefault)
+  return recipeDefault !== undefined && isModeForPlacement(kind, recipeDefault, placed)
     ? recipeDefault
-    : defaultModeFor(kind, w.target);
+    : defaultModeFor(kind, w.target, placed);
+}
+
+/** Would an item of `kind` that takes the recipe's default material be placed in the working directory? */
+function placedByDefault(w: RecipeData, kind: ItemKind): boolean {
+  const dir = w.output?.dir;
+  return typeof dir === 'string' && dir.trim() !== '' && baseMaterial(w, kind) !== 'none';
 }
 
 export function setExcluded(key: string, on: boolean): void {
@@ -795,7 +884,7 @@ export function setMode(key: string, mode: ModeId): void {
   const w = $working.get();
   const seg = itemSegment(key);
   if (w === null || seg === undefined || seg.kind === null) return;
-  const same = mode === baseMode(w, seg.kind);
+  const same = mode === baseMode(w, seg.kind, seg.placed);
   commit(
     editOverride(w, key, (o) => {
       const { mode: _removed, ...rest } = o;
@@ -824,7 +913,10 @@ export function setDefaultMode(kind: ItemKind, mode: ModeId | null): void {
   if (w === null) return;
   const current = w.defaults[kind];
   const next: NonNullable<RecipeData['defaults'][ItemKind]> = {};
-  if (mode !== null && mode !== defaultModeFor(kind, w.target)) next.mode = mode;
+  // The built-in default depends on the placement of the kind's default material (document only: today's lists).
+  if (mode !== null && mode !== defaultModeFor(kind, w.target, placedByDefault(w, kind))) {
+    next.mode = mode;
+  }
   if (current?.options !== undefined) next.options = current.options;
   // The material fields of the kind default are not this action's business: keep them.
   if (current?.material !== undefined) next.material = current.material;
@@ -857,7 +949,7 @@ export function setMaterial(key: string, material: MaterialId): void {
   if (next.output?.primary === key && !isPrimaryEligible(seg.kind, material)) {
     next = withOutput(next, (o) => omit(o, 'primary'));
   }
-  commit(next);
+  commit(tidyEdit(next));
 }
 
 export function setMaterialOption(
@@ -896,6 +988,58 @@ export function setDefaultMaterial(kind: ItemKind, material: MaterialId | null):
   const defaults: RecipeData['defaults'] =
     Object.keys(next).length > 0 ? { ...others, [kind]: next } : others;
   commit({ ...w, defaults });
+}
+
+/**
+ * Editable flag of a repository (plans/INFLATE_V3_PLAN.md §3.2). The default is "is the valid primary", so a value
+ * equal to it drops the override. Refused for an item that cannot be edited (a copy, a remote repository that is
+ * not cloned, a non-repository).
+ */
+export function setEdit(key: string, on: boolean): void {
+  const w = $working.get();
+  const plan = $plan.get();
+  const seg = itemSegment(key);
+  if (w === null || plan === null || seg === undefined || seg.edit === null) return;
+  const isPrimary = plan.primary?.status === 'ok' && plan.primary.key === key;
+  commit(
+    editOverride(w, key, (o) => {
+      const { edit: _removed, ...rest } = o;
+      return on === isPrimary ? rest : { ...rest, edit: on };
+    }),
+  );
+}
+
+/**
+ * Drop the `edit` overrides that say what the item gets anyway (valid primary: true, other repository: false).
+ * Needed after anything that moves the primary. Skipped while a lookup is still loading.
+ */
+function tidyEdit(w: RecipeData): RecipeData {
+  if (!w.overrides.some((o) => o.edit !== undefined)) return w;
+  const plan = expandRecipe(w, currentLookup());
+  if (plan.pending) return w;
+  const primary = plan.primary?.status === 'ok' ? plan.primary.key : null;
+  const redundant = new Set<string>();
+  for (const seg of plan.segments) {
+    if (
+      seg.type === 'item' &&
+      seg.editSource === 'override' &&
+      seg.edit === (seg.key === primary)
+    ) {
+      redundant.add(seg.key);
+    }
+  }
+  if (redundant.size === 0) return w;
+  const overrides: RecipeOverride[] = [];
+  for (const o of w.overrides) {
+    if (!redundant.has(o.key)) {
+      overrides.push(o);
+      continue;
+    }
+    const { edit: _removed, ...rest } = o;
+    const cleaned = cleanOverride(rest);
+    if (cleaned !== null) overrides.push(cleaned);
+  }
+  return { ...w, overrides };
 }
 
 // ---------------------------------------------------------------- output directory actions
@@ -943,7 +1087,10 @@ export function setAllowNonEmpty(on: boolean): void {
 export function setPrimary(key: string | null): void {
   const w = $working.get();
   if (w === null || (w.output?.primary ?? null) === key) return;
-  commit(withOutput(w, (o) => (key === null ? omit(o, 'primary') : { ...o, primary: key })));
+  // The Editable default follows the primary: an `edit` override that now equals it goes.
+  commit(
+    tidyEdit(withOutput(w, (o) => (key === null ? omit(o, 'primary') : { ...o, primary: key }))),
+  );
 }
 
 /** Swap `key` with its neighbour in the composition; the whole order becomes explicit. */

@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -154,7 +155,7 @@ describe('planInflateDir: directory mode', () => {
     const md = result.document.markdown;
     expect(md).toContain('## Working directory map');
     expect(md).toContain('## Primary repository');
-    expect(md).toContain('`repos/astro-docs`');
+    expect(md).toContain('[`repos/astro-docs/`](repos/astro-docs/)');
   });
 
   it('is deterministic and never writes anything', async () => {
@@ -188,6 +189,12 @@ describe('planInflateDir: directory mode', () => {
     expect(copy?.kind).toBe('copyDir');
     expect(result.steps.find((s) => s.id === 'context')?.path).toBe('CONTEXT.md');
     expect(result.document.markdown).not.toContain('## Primary repository');
+  });
+
+  it('lists an edit-only run override in applied too', async () => {
+    const { plan } = setup();
+    const result = await plan({ items: { 'reference/astro-docs': { edit: false } } });
+    expect(result.applied).toEqual(['dir', 'reference/astro-docs']);
   });
 
   it('blocks a non-empty directory without a manifest, still returns the steps; allowNonEmpty unblocks', async () => {
@@ -387,11 +394,15 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     expect(realpathSync(path.join(work, 'kb', 'ctxman'))).toBe(
       realpathSync(path.join(dataDir, 'kb', 'ctxman')),
     );
+    // v3: a skill is symlinked by default (the file is reachable through the link)
     expect(
       lstatSync(path.join(work, '.claude', 'skills', 'okf-authoring', 'SKILL.md')).isFile(),
     ).toBe(true);
     expect(lstatSync(path.join(work, '.claude', 'skills', 'okf-authoring')).isSymbolicLink()).toBe(
-      false,
+      true,
+    );
+    expect(realpathSync(path.join(work, '.claude', 'skills', 'okf-authoring'))).toBe(
+      realpathSync(path.join(dataDir, 'skill', 'okf-authoring')),
     );
     const clone = path.join(work, 'repos', 'astro-docs');
     expect(existsSync(path.join(clone, '.git'))).toBe(true);
@@ -401,7 +412,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     const context = readFileSync(path.join(work, 'LLM_CONTEXT.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain('## Primary repository');
-    expect(context).toContain('`repos/astro-docs`');
+    expect(context).toContain('[`repos/astro-docs/`](repos/astro-docs/)');
     // mounted items are relative; only the unmounted reference link keeps its absolute data path
     for (const ds of ['kb', 'rca', 'idea', 'task', 'feature', 'project', 'skill']) {
       expect(context).not.toContain(path.join(dataDir, ds));
@@ -429,7 +440,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
       'task/write-agents-md',
     ]);
 
-    // the same run again: nothing duplicated, links kept, clone pulled (unchanged), copies replaced
+    // the same run again: nothing duplicated, links kept, clone pulled (unchanged)
     const spawn = (await import('../../src/lib/proc.ts')).spawnCapture;
     const second = await runPlanned(
       await plan({}, seedRecipe(), spawn),
@@ -440,10 +451,8 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     expect(second.status['context']).toBe('unchanged');
     expect(second.status['stub:CLAUDE.md']).toBe('unchanged');
     expect(second.status['stub:.gitignore']).toBe('unchanged');
-    expect(second.status['skill:skill/okf-authoring']).toBe('ok');
-    expect(second.results.find((r) => r.id === 'skill:skill/okf-authoring')?.action).toBe(
-      'replaced',
-    );
+    expect(second.status['skill:skill/okf-authoring']).toBe('unchanged');
+    expect(second.status['okf:kb/ctxman']).toBe('unchanged');
     expect(second.results.some((r) => r.status === 'failed')).toBe(false);
     const replanned = await plan({}, seedRecipe(), spawn);
     expect(replanned.dirState?.hasManifest).toBe(true);
@@ -470,6 +479,111 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     expect(third.results.find((r) => r.id === 'rm:.claude/skills/ctxman-add-entry')?.action).toBe(
       'removed',
     );
+  });
+
+  it('v3: a symlinked skill and a copied local repository are placed, replaced and cleaned up', async () => {
+    const repo = tmp.make({
+      'README.md': 'readme',
+      'old.md': 'old',
+      'src/index.ts': 'code',
+      '.git/HEAD': 'ref: refs/heads/trunk',
+      'node_modules/dep/index.js': 'dep',
+      '.DS_Store': 'junk',
+    });
+    const { dataDir, work, plan } = setup({
+      'reference/lr.yaml': `name: lr\ndescription: A local repository.\ntype: local-repo\npath: ${repo}\nowner: me\n`,
+    });
+    const spawn = (await import('../../src/lib/proc.ts')).spawnCapture;
+    const recipe = (items: string[]) =>
+      seedRecipe({
+        layout: 'flat',
+        contexts: [],
+        markdown: [],
+        order: [],
+        overrides: [{ key: 'reference/lr', material: 'copy' }],
+        output: { dir: work },
+        items: items.map((key) => {
+          const [dataset, slug] = key.split('/');
+          return { dataset, slug };
+        }),
+      });
+    const skillLink = path.join(work, '.claude', 'skills', 'okf-authoring');
+    const repoCopy = path.join(work, 'repos', 'lr');
+    const both = ['skill/okf-authoring', 'reference/lr'];
+
+    // run 1: the skill is a symlink, the repository a snapshot without .git and node_modules
+    const first = await runPlanned(await plan({}, recipe(both), spawn));
+    expect(first.status).toMatchObject({
+      'skill:skill/okf-authoring': 'ok',
+      'link:reference/lr': 'ok',
+    });
+    expect(first.results.some((r) => r.status === 'failed')).toBe(false);
+    expect(lstatSync(skillLink).isSymbolicLink()).toBe(true);
+    expect(realpathSync(skillLink)).toBe(
+      realpathSync(path.join(dataDir, 'skill', 'okf-authoring')),
+    );
+    expect(lstatSync(repoCopy).isSymbolicLink()).toBe(false);
+    expect(readFileSync(path.join(repoCopy, 'src', 'index.ts'), 'utf8')).toBe('code');
+    expect(existsSync(path.join(repoCopy, '.git'))).toBe(false);
+    expect(existsSync(path.join(repoCopy, 'node_modules'))).toBe(false);
+    expect(existsSync(path.join(repoCopy, '.DS_Store'))).toBe(false);
+    const manifest = JSON.parse(readFileSync(path.join(work, '.ctxman-inflate.json'), 'utf8')) as {
+      entries: { path: string; type: string }[];
+    };
+    const typeOf = (p: string) => manifest.entries.find((e) => e.path === p)?.type;
+    expect(typeOf('.claude/skills/okf-authoring')).toBe('symlink');
+    expect(typeOf('repos/lr')).toBe('copy');
+    // a symlinked skill is ignored without the directory-only trailing slash
+    const ignore = readFileSync(path.join(work, '.gitignore'), 'utf8');
+    expect(ignore).toContain('\n/.claude/skills/okf-authoring\n');
+    expect(ignore).toContain('\n/repos/\n');
+
+    // run 2: the link is unchanged, the snapshot follows the source (new file in, removed file out)
+    writeFileSync(path.join(repo, 'new.md'), 'new');
+    rmSync(path.join(repo, 'old.md'));
+    const second = await runPlanned(
+      await plan({}, recipe(both), spawn),
+      'fedcba98-0000-4000-8000-000000000000',
+    );
+    expect(second.status['skill:skill/okf-authoring']).toBe('unchanged');
+    expect(second.results.find((r) => r.id === 'link:reference/lr')).toMatchObject({
+      status: 'ok',
+      action: 'replaced',
+    });
+    expect(existsSync(path.join(repoCopy, 'new.md'))).toBe(true);
+    expect(existsSync(path.join(repoCopy, 'old.md'))).toBe(false);
+
+    // run 3: the materials are swapped by run overrides (skill copy, repository symlink); sources untouched
+    const swapped = await runPlanned(
+      await plan(
+        {
+          items: {
+            'skill/okf-authoring': { material: 'copy' },
+            'reference/lr': { material: 'symlink' },
+          },
+        },
+        recipe(both),
+        spawn,
+      ),
+      '01234567-0000-4000-8000-000000000000',
+    );
+    expect(swapped.results.some((r) => r.status === 'failed')).toBe(false);
+    expect(lstatSync(skillLink).isSymbolicLink()).toBe(false);
+    expect(readFileSync(path.join(skillLink, 'SKILL.md'), 'utf8')).toContain('okf-authoring');
+    expect(lstatSync(repoCopy).isSymbolicLink()).toBe(true);
+    expect(realpathSync(repoCopy)).toBe(realpathSync(repo));
+    expect(existsSync(path.join(dataDir, 'skill', 'okf-authoring', 'SKILL.md'))).toBe(true);
+
+    // run 4: both items leave the recipe; the copy is deleted, the symlink unlinked, the sources stay
+    const gone = await runPlanned(
+      await plan({}, recipe([]), spawn),
+      '76543210-0000-4000-8000-000000000000',
+    );
+    expect(gone.results.some((r) => r.status === 'failed')).toBe(false);
+    expect(existsSync(skillLink)).toBe(false);
+    expect(existsSync(repoCopy)).toBe(false);
+    expect(existsSync(path.join(repo, 'src', 'index.ts'))).toBe(true);
+    expect(existsSync(path.join(dataDir, 'skill', 'okf-authoring', 'SKILL.md'))).toBe(true);
   });
 
   it('a failing clone is reported in the written context file', async () => {

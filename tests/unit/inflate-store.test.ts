@@ -4,6 +4,7 @@ import type { DatasetId } from '../../src/datasets/registry.ts';
 import { LINKABLE_DATASETS } from '../../src/datasets/registry.ts';
 import type { RecipeData } from '../../src/datasets/schemas.ts';
 import type { EntrySummary } from '../../src/lib/entry-summary.ts';
+import { parseRecipe } from '../../src/lib/inflate/recipe.ts';
 import { $entries } from '../../src/stores/entries.ts';
 import type { EntriesState } from '../../src/stores/entries.ts';
 import {
@@ -13,8 +14,11 @@ import {
   $dirty,
   $inflateUrl,
   $lastAddedBlock,
+  $outputDir,
+  $placementSummary,
   $plan,
   $recipeLoad,
+  $referenceInfo,
   $render,
   $saveStatus,
   $segmentBytes,
@@ -42,6 +46,7 @@ import {
   setDataset,
   setDefaultMode,
   setDescription,
+  setEdit,
   setExcluded,
   setLayout,
   setMarkdownBody,
@@ -531,26 +536,25 @@ describe('materials', () => {
 
   it('setMaterial keeps the mode and the options of the override', () => {
     setMode('reference/refs-a', 'clone');
-    setMaterial('reference/refs-a', 'clone');
+    setMaterial('reference/refs-a', 'none'); // differs from the built-in clone of a remote repo
     expect(working().overrides).toEqual([
-      { key: 'reference/refs-a', mode: 'clone', material: 'clone' },
+      { key: 'reference/refs-a', mode: 'clone', material: 'none' },
     ]);
-    setMaterial('reference/refs-a', 'none'); // the built-in default of a remote repo
+    setMaterial('reference/refs-a', 'clone'); // the built-in default of a remote repo
     expect(working().overrides).toEqual([{ key: 'reference/refs-a', mode: 'clone' }]);
   });
 
   it('setMaterialOption stores a value and drops it when it equals the base value', () => {
-    setMaterial('reference/refs-a', 'clone');
+    // clone is the built-in material of a remote repo: only the options are stored
     setMaterialOption('reference/refs-a', 'cloneDepth', 0);
     setMaterialOption('reference/refs-a', 'branch', 'dev');
     expect(working().overrides[0]).toEqual({
       key: 'reference/refs-a',
-      material: 'clone',
       materialOptions: { cloneDepth: 0, branch: 'dev' },
     });
     setMaterialOption('reference/refs-a', 'cloneDepth', 1); // the built-in depth
     setMaterialOption('reference/refs-a', 'branch', '');
-    expect(working().overrides[0]).toEqual({ key: 'reference/refs-a', material: 'clone' });
+    expect(working().overrides).toEqual([]);
     const segment = $plan.get()?.segments.find((s) => s.key === 'reference/refs-a');
     expect(segment?.type === 'item' && segment.materialOptions).toEqual({
       cloneDepth: 1,
@@ -606,6 +610,282 @@ describe('materials', () => {
     setPrimary('reference/refs-a');
     removeItem('reference/refs-a');
     expect(working().output?.primary).toBe('reference/refs-a');
+  });
+});
+
+describe('placement-aware modes (v3)', () => {
+  it('setMode compares against the default of the placement: summary while placed, inline-main otherwise', () => {
+    setOutputDir('/work'); // kb/one is symlinked by default, so it is placed
+    setMode('kb/one', 'inline-main'); // the document-only default is not the placed one
+    expect(working().overrides).toEqual([{ key: 'kb/one', mode: 'inline-main' }]);
+    setMode('kb/one', 'summary'); // the placed default
+    expect(working().overrides).toEqual([]);
+    expect($dirty.get()).toBe(true); // the directory is still an edit
+
+    setMaterial('kb/one', 'none'); // not placed any more: the document-only default applies
+    setMode('kb/one', 'summary');
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'none', mode: 'summary' }]);
+    setMode('kb/one', 'inline-main');
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'none' }]);
+  });
+
+  it("without a directory nothing is placed: today's defaults", () => {
+    setMode('kb/one', 'summary');
+    expect(working().overrides).toEqual([{ key: 'kb/one', mode: 'summary' }]);
+    setMode('kb/one', 'inline-main');
+    expect(working().overrides).toEqual([]);
+  });
+
+  it('a recipe default that the placement does not offer is not the base', () => {
+    // skill `install` is in the family list but not in the placed one: the placed default is `pointer`
+    setDefaultMode('skill', 'install');
+    expect(working().defaults).toEqual({}); // the document-only default, nothing stored
+    $working.set({ ...working(), defaults: { skill: { mode: 'install' } } });
+    setOutputDir('/work');
+    const seg = $plan.get()?.segments.find((s) => s.key === 'skill/my-skill');
+    expect(seg?.type === 'item' && [seg.placed, seg.mode, seg.modeSource]).toEqual([
+      true,
+      'pointer',
+      'default',
+    ]);
+    setMode('skill/my-skill', 'pointer');
+    expect(working().overrides).toEqual([]);
+    setMode('skill/my-skill', 'inline');
+    expect(working().overrides).toEqual([{ key: 'skill/my-skill', mode: 'inline' }]);
+  });
+
+  it("setDefaultMode uses the placement of the kind's default material", () => {
+    setOutputDir('/work');
+    setDefaultMode('kb', 'summary'); // the placed default of an okf kind
+    expect(working().defaults).toEqual({});
+    setDefaultMode('kb', 'inline-main');
+    expect(working().defaults).toEqual({ kb: { mode: 'inline-main' } });
+    setDefaultMode('kb', null);
+
+    setDefaultMaterial('kb', 'none'); // nothing placed for kb: back to the document-only default
+    setDefaultMode('kb', 'summary');
+    expect(working().defaults).toEqual({ kb: { material: 'none', mode: 'summary' } });
+    setDefaultMode('kb', 'inline-main');
+    expect(working().defaults).toEqual({ kb: { material: 'none' } });
+  });
+
+  it("setDefaultMode without a directory keeps today's default", () => {
+    setDefaultMode('kb', 'summary');
+    expect(working().defaults).toEqual({ kb: { mode: 'summary' } });
+    setDefaultMode('kb', 'inline-main');
+    expect(working().defaults).toEqual({});
+  });
+});
+
+describe('Editable (v3)', () => {
+  const sourceEntries = (): void => {
+    $entries.set({
+      ...$entries.get(),
+      reference: ready(
+        summary('reference', 'refs-a', { refType: 'remote-repo', owner: 'me' }),
+        summary('reference', 'local-a', { refType: 'local-repo', owner: 'not-me' }),
+        summary('reference', 'skill-git', { refType: 'remote-skill', uriKind: 'git' }),
+        summary('reference', 'skill-zip', { refType: 'remote-skill', uriKind: 'archive' }),
+      ),
+    });
+  };
+  const edit = (key: string): boolean | null | undefined => {
+    const seg = $plan.get()?.segments.find((s) => s.key === key);
+    return seg?.type === 'item' ? seg.edit : undefined;
+  };
+
+  beforeEach(() => {
+    sourceEntries();
+    addItem('reference', 'local-a');
+    setOutputDir('/work');
+  });
+
+  it('is off for a repository that is not the primary, on for the primary', () => {
+    expect(edit('reference/refs-a')).toBe(false);
+    expect(edit('reference/local-a')).toBe(false);
+    setPrimary('reference/refs-a');
+    expect(edit('reference/refs-a')).toBe(true);
+    expect(edit('reference/local-a')).toBe(false);
+    expect(edit('kb/one')).toBeNull(); // not a repository
+  });
+
+  it('setEdit stores a value that differs from the default and drops one that equals it', () => {
+    setEdit('reference/refs-a', true);
+    expect(working().overrides).toEqual([{ key: 'reference/refs-a', edit: true }]);
+    expect(edit('reference/refs-a')).toBe(true);
+    setEdit('reference/refs-a', false); // the default of a repository that is not the primary
+    expect(working().overrides).toEqual([]);
+
+    setPrimary('reference/refs-a');
+    setEdit('reference/refs-a', false); // the primary may be read-only
+    expect(working().overrides).toEqual([{ key: 'reference/refs-a', edit: false }]);
+    expect(edit('reference/refs-a')).toBe(false);
+    setEdit('reference/refs-a', true);
+    expect(working().overrides).toEqual([]);
+  });
+
+  it('setEdit is refused for an item that cannot be edited', () => {
+    setEdit('kb/one', true); // not a repository
+    setEdit('reference/skill-git', true); // a skill
+    setMaterial('reference/local-a', 'copy'); // a snapshot
+    setEdit('reference/local-a', true);
+    setMaterial('reference/refs-a', 'none'); // a remote repository that is not cloned
+    setEdit('reference/refs-a', true);
+    expect(working().overrides).toEqual([
+      { key: 'reference/local-a', material: 'copy' },
+      { key: 'reference/refs-a', material: 'none' },
+    ]);
+    setMaterial('reference/local-a', 'none'); // the original path of a local repository is editable
+    setEdit('reference/local-a', true);
+    expect(working().overrides).toContainEqual({
+      key: 'reference/local-a',
+      material: 'none',
+      edit: true,
+    });
+  });
+
+  it('the other override fields survive an edit flag and the other way round', () => {
+    setEdit('reference/refs-a', true);
+    setMaterialOption('reference/refs-a', 'cloneDepth', 0);
+    setMode('reference/refs-a', 'clone');
+    setExcluded('reference/refs-a', true);
+    setExcluded('reference/refs-a', false);
+    expect(working().overrides).toEqual([
+      {
+        key: 'reference/refs-a',
+        mode: 'clone',
+        materialOptions: { cloneDepth: 0 },
+        edit: true,
+      },
+    ]);
+    setEdit('reference/refs-a', false);
+    expect(working().overrides[0]).not.toHaveProperty('edit');
+    expect(working().overrides[0]?.materialOptions).toEqual({ cloneDepth: 0 });
+  });
+
+  it('an override that only says edit is kept, and the recipe it makes is valid', () => {
+    setEdit('reference/local-a', true);
+    expect(working().overrides).toEqual([{ key: 'reference/local-a', edit: true }]);
+    expect($dirty.get()).toBe(true);
+    expect(parseRecipe(working(), 'demo').ok).toBe(true);
+  });
+
+  it('moving the primary drops the edit flags that now equal the default', () => {
+    setEdit('reference/refs-a', true); // explicit: editable although not the primary
+    setPrimary('reference/refs-a'); // now the default says so too
+    expect(working().overrides).toEqual([]);
+
+    setEdit('reference/refs-a', false); // explicit read-only primary
+    setPrimary(null); // no primary: the default is read-only again
+    expect(working().overrides).toEqual([]);
+
+    setEdit('reference/local-a', true);
+    setPrimary('reference/refs-a');
+    expect(working().overrides).toEqual([{ key: 'reference/local-a', edit: true }]); // still different
+  });
+
+  it('a material change that frees the primary drops an edit flag that became redundant', () => {
+    setPrimary('reference/local-a');
+    setEdit('reference/local-a', false);
+    // a local repository at its original path is still editable, but it cannot be the primary any more:
+    // the primary goes, and with it the default that `edit: false` differed from
+    setMaterial('reference/local-a', 'none');
+    expect(working().output?.primary).toBeUndefined();
+    expect(working().overrides).toEqual([{ key: 'reference/local-a', material: 'none' }]);
+  });
+
+  it('an edit flag on an item that cannot be edited stays in the recipe (it applies again with the material)', () => {
+    setEdit('reference/refs-a', true);
+    setMaterial('reference/refs-a', 'none');
+    expect(working().overrides).toEqual([
+      { key: 'reference/refs-a', material: 'none', edit: true },
+    ]);
+    expect(edit('reference/refs-a')).toBeNull();
+    setMaterial('reference/refs-a', 'clone');
+    expect(working().overrides).toEqual([{ key: 'reference/refs-a', edit: true }]);
+    expect(edit('reference/refs-a')).toBe(true);
+  });
+
+  it('$outputDir follows the directory of the working copy', () => {
+    expect($outputDir.get()).toBe('/work');
+    setOutputDir(null);
+    expect($outputDir.get()).toBeNull();
+    setOutputDir('  /elsewhere ');
+    expect($outputDir.get()).toBe('/elsewhere');
+  });
+
+  it('$referenceInfo carries the owner and the URI kind of the cached references', () => {
+    const info = $referenceInfo.get();
+    expect(info.get('reference/refs-a')).toEqual({ owner: 'me' });
+    expect(info.get('reference/local-a')).toEqual({ owner: 'not-me' });
+    expect(info.get('reference/skill-git')).toEqual({ uriKind: 'git' });
+    expect(info.get('reference/skill-zip')).toEqual({ uriKind: 'archive' });
+    expect(info.get('kb/one')).toBeUndefined();
+  });
+});
+
+describe('placement summary (v3)', () => {
+  beforeEach(() => {
+    $entries.set({
+      ...$entries.get(),
+      reference: ready(
+        summary('reference', 'refs-a', { refType: 'remote-repo' }),
+        summary('reference', 'local-a', { refType: 'local-repo' }),
+        summary('reference', 'skill-git', { refType: 'remote-skill', uriKind: 'git' }),
+        summary('reference', 'skill-zip', { refType: 'remote-skill', uriKind: 'archive' }),
+      ),
+    });
+  });
+
+  it('is null for a document-only recipe', () => {
+    expect($placementSummary.get()).toBeNull();
+  });
+
+  it('counts the included items by placement', () => {
+    setOutputDir('/work');
+    // kb/one, task/two, skill/my-skill symlinked; refs-a cloned
+    expect($placementSummary.get()).toEqual({
+      dir: '/work',
+      counts: { symlink: 3, copy: 0, clone: 1, download: 0, none: 0 },
+      primary: null,
+      editable: [],
+    });
+
+    setMaterial('kb/one', 'copy');
+    setMaterial('task/two', 'none');
+    addItem('reference', 'skill-git');
+    addItem('reference', 'skill-zip');
+    addItem('reference', 'local-a');
+    expect($placementSummary.get()?.counts).toEqual({
+      symlink: 2, // my-skill, local-a
+      copy: 1,
+      clone: 2, // refs-a, the git skill
+      download: 1,
+      none: 1,
+    });
+  });
+
+  it('names the primary and the editable repositories', () => {
+    setOutputDir('/work');
+    addItem('reference', 'local-a');
+    setPrimary('reference/refs-a');
+    setEdit('reference/local-a', true);
+    const summary = $placementSummary.get();
+    expect(summary?.primary).toBe('refs-a');
+    expect(summary?.editable).toEqual(['refs-a', 'local-a']);
+    setEdit('reference/refs-a', false);
+    expect($placementSummary.get()?.editable).toEqual(['local-a']);
+  });
+
+  it('leaves out excluded items', () => {
+    setOutputDir('/work');
+    setExcluded('task/two', true);
+    expect($placementSummary.get()?.counts.symlink).toBe(2);
+  });
+
+  it('trims the directory', () => {
+    setOutputDir('  /work ');
+    expect($placementSummary.get()?.dir).toBe('/work');
   });
 });
 

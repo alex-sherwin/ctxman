@@ -41,9 +41,11 @@ import {
   defaultModeFor,
   familyOf,
   inlineCode,
+  isEditEligible,
   isInflateTarget,
   isMaterialFor,
   isModeFor,
+  isModeForPlacement,
   isPortableAbsoluteDir,
   isPrimaryEligible,
   isSafeGitRef,
@@ -51,11 +53,14 @@ import {
   itemKey,
   itemKindOf,
   materialDef,
+  materialDescription,
   materialDest,
+  materialLabel,
   materialsFor,
   mdKey,
   modeDef,
   modesFor,
+  modesForPlacement,
   nextBlockId,
   parseItemKey,
   remoteSkillDirName,
@@ -295,8 +300,103 @@ describe('defaultModeFor (spec 4.3, ROUND3 §H.1: every okf kind is inline-main)
   it.each(ITEM_KINDS.map((k) => [k]))('%s', (kind) => {
     targets.forEach((target, i) => {
       expect(defaultModeFor(kind, target), `${kind}/${target}`).toBe(table[kind][i]);
+      expect(defaultModeFor(kind, target, false), `${kind}/${target}`).toBe(table[kind][i]);
       expect(isModeFor(kind, defaultModeFor(kind, target))).toBe(true);
     });
+  });
+});
+
+describe('modes per placement (plans/INFLATE_V3_PLAN.md §3.3)', () => {
+  const ids = (kind: ItemKind, placed: boolean) => modesForPlacement(kind, placed).map((m) => m.id);
+
+  it('not placed: the family list, unchanged', () => {
+    for (const kind of ITEM_KINDS) {
+      expect(modesForPlacement(kind, false), kind).toBe(modesFor(kind));
+    }
+    expect(ids('kb', false)).toEqual(['inline-main', 'inline-bundle', 'summary', 'pointer']);
+    expect(ids('skill', false)).toEqual(['install', 'inline', 'pointer']);
+    expect(ids('remote-repo', false)).toEqual(['describe', 'clone']);
+    expect(ids('remote-skill', false)).toEqual(['install', 'describe']);
+  });
+
+  it('placed okf: summary (Summary + links) first, then pointer, inline-main, inline-bundle', () => {
+    for (const kind of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const) {
+      expect(ids(kind, true), kind).toEqual(['summary', 'pointer', 'inline-main', 'inline-bundle']);
+    }
+    const [summary, pointer, main, bundle] = modesForPlacement('kb', true);
+    expect(summary).toEqual({
+      id: 'summary',
+      label: 'Summary + links',
+      description:
+        "Description, state and tags with relative links to the bundle's files; nothing inlined.",
+      options: [],
+    });
+    expect(pointer?.options).toEqual(['eager']);
+    // the inline modes are the family definitions, untouched
+    expect(main).toBe(FAMILY_MODES.okf.find((m) => m.id === 'inline-main'));
+    expect(bundle).toBe(FAMILY_MODES.okf.find((m) => m.id === 'inline-bundle'));
+  });
+
+  it('placed skill: pointer labelled Link, then inline', () => {
+    expect(ids('skill', true)).toEqual(['pointer', 'inline']);
+    expect(modesForPlacement('skill', true)[0]).toEqual({
+      id: 'pointer',
+      label: 'Link',
+      description: 'Listed with a link to its SKILL.md; the harness discovers it.',
+      options: ['eager'],
+    });
+  });
+
+  it('placed repositories and remote skills', () => {
+    expect(ids('local-repo', true)).toEqual(['describe', 'tree']);
+    expect(ids('remote-repo', true)).toEqual(['describe']);
+    expect(ids('remote-skill', true)).toEqual(['describe']);
+  });
+
+  it('every placed mode is a family mode with the family options', () => {
+    for (const kind of ITEM_KINDS) {
+      for (const placed of [false, true]) {
+        for (const mode of modesForPlacement(kind, placed)) {
+          expect(isModeFor(kind, mode.id), `${kind}/${mode.id}`).toBe(true);
+          expect([...mode.options], `${kind}/${mode.id}`).toEqual([
+            ...(modeDef(kind, mode.id)?.options ?? []),
+          ]);
+        }
+      }
+    }
+  });
+
+  it('isModeForPlacement', () => {
+    expect(isModeForPlacement('skill', 'install', false)).toBe(true);
+    expect(isModeForPlacement('skill', 'install', true)).toBe(false);
+    expect(isModeForPlacement('kb', 'summary', true)).toBe(true);
+    expect(isModeForPlacement('remote-repo', 'clone', true)).toBe(false);
+    expect(isModeForPlacement('remote-repo', 'clone', false)).toBe(true);
+    expect(isModeForPlacement('kb', 'nope', true)).toBe(false);
+  });
+
+  it('defaultModeFor(kind, target, placed): the first placed mode; summary, pointer and describe', () => {
+    const placed: Record<ItemKind, [ModeId, ModeId, ModeId]> = {
+      kb: ['summary', 'summary', 'summary'],
+      rca: ['summary', 'summary', 'summary'],
+      idea: ['summary', 'summary', 'summary'],
+      task: ['summary', 'summary', 'summary'],
+      bug: ['summary', 'summary', 'summary'],
+      feature: ['summary', 'summary', 'summary'],
+      project: ['summary', 'summary', 'summary'],
+      skill: ['pointer', 'pointer', 'pointer'],
+      'local-repo': ['describe', 'describe', 'describe'],
+      'remote-repo': ['describe', 'describe', 'describe'],
+      'remote-skill': ['describe', 'describe', 'describe'],
+    };
+    for (const kind of ITEM_KINDS) {
+      INFLATE_TARGETS.forEach((target, i) => {
+        const mode = defaultModeFor(kind, target, true);
+        expect(mode, `${kind}/${target}`).toBe(placed[kind][i]);
+        expect(modesForPlacement(kind, true)[0]?.id, `${kind}/${target}`).toBe(mode);
+        expect(isModeForPlacement(kind, mode, true)).toBe(true);
+      });
+    }
   });
 });
 
@@ -623,7 +723,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
 
   it('lists the ids, the reference subset and the option ids', () => {
     expect([...MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install']);
-    expect([...REFERENCE_MATERIAL_IDS]).toEqual(['none', 'symlink', 'clone', 'install']);
+    expect([...REFERENCE_MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install']);
     expect([...MATERIAL_OPTION_IDS]).toEqual(['cloneDepth', 'branch', 'subpathOnly']);
     expect(Object.keys(FAMILY_MATERIALS)).toEqual([
       'okf',
@@ -634,7 +734,14 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     ]);
   });
 
-  it('okf kinds: symlink, copy, mention only', () => {
+  const notPlaced = [
+    'none',
+    "Don't place",
+    'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.',
+    [],
+  ];
+
+  it("okf kinds: symlink, copy, Don't place", () => {
     for (const kind of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const) {
       expect(materialsFor(kind)).toBe(FAMILY_MATERIALS.okf);
     }
@@ -642,41 +749,100 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       [
         'symlink',
         'Symlink',
-        'Link the bundle folder to <dataset>/<slug>; edits change the ctxman entry.',
+        'Link to the original bundle at <dataset>/<slug>; edits change the ctxman entry.',
         [],
       ],
-      ['copy', 'Copy', 'Copy the bundle folder to <dataset>/<slug> (a snapshot).', []],
-      ['none', 'Mention only', 'Nothing placed; the document points at the ctxman data path.', []],
+      ['copy', 'Copy', 'Snapshot at <dataset>/<slug>; replaced on every run.', []],
+      notPlaced,
     ]);
   });
 
-  it('skill, local-repo, remote-repo, remote-skill', () => {
+  it("skill: symlink (new, default), copy, Don't place", () => {
     expect(row('skill')).toEqual([
-      ['copy', 'Copy', 'Copy the skill folder into the harness skills directory.', []],
-      ['none', 'Mention only', 'Nothing placed; the document points at the ctxman skill path.', []],
+      [
+        'symlink',
+        'Symlink',
+        'Link to the original skill folder; edits change the ctxman skill.',
+        [],
+      ],
+      ['copy', 'Copy', 'Snapshot in the harness skills directory; replaced on every run.', []],
+      notPlaced,
     ]);
+  });
+
+  it("local-repo: symlink, copy (new), Don't place", () => {
     expect(row('local-repo')).toEqual([
-      ['none', 'Mention only', 'Nothing placed; the document gives the local path.', []],
-      ['symlink', 'Symlink', 'Link the repository to repos/<name>.', []],
+      [
+        'symlink',
+        'Symlink',
+        'Link to the original repository at repos/<name>; edits change it.',
+        [],
+      ],
+      [
+        'copy',
+        'Copy',
+        'Snapshot without .git and node_modules at repos/<name>; replaced on every run.',
+        [],
+      ],
+      notPlaced,
     ]);
+  });
+
+  it("remote-repo: clone, Don't place", () => {
     expect(row('remote-repo')).toEqual([
-      ['none', 'Mention only', 'Nothing placed; the document gives the git URI.', []],
       [
         'clone',
         'Clone',
-        'git clone into repos/<name> (pull on re-runs).',
+        'git clone into repos/<name>; later runs pull (fast-forward only).',
         ['cloneDepth', 'branch', 'subpathOnly'],
       ],
+      notPlaced,
     ]);
+  });
+
+  it("remote-skill: install (Clone or download), Don't place", () => {
     expect(row('remote-skill')).toEqual([
       [
         'install',
-        'Install',
-        'Clone or download the skill into the harness skills directory.',
+        'Clone or download',
+        'Clone the git repository or download the archive, then copy the skill folder into the harness skills directory; replaced on every run.',
         ['branch'],
       ],
-      ['none', 'Mention only', 'Nothing placed; the document gives the URI.', []],
+      notPlaced,
     ]);
+  });
+
+  it('no material is called "Mention only" any more', () => {
+    for (const kind of ITEM_KINDS) {
+      expect(materialsFor(kind).map((m) => m.label)).not.toContain('Mention only');
+      expect(materialDef(kind, 'none')?.label, kind).toBe("Don't place");
+    }
+  });
+
+  it('materialLabel / materialDescription: remote-skill install follows the URI kind', () => {
+    expect(materialLabel('remote-skill', 'install', 'git')).toBe('Clone');
+    expect(materialLabel('remote-skill', 'install', 'archive')).toBe('Download');
+    expect(materialLabel('remote-skill', 'install')).toBe('Clone or download');
+    expect(materialLabel('remote-skill', 'install', null)).toBe('Clone or download');
+    expect(materialDescription('remote-skill', 'install', 'git')).toMatch(/^Clone the repository/);
+    expect(materialDescription('remote-skill', 'install', 'archive')).toMatch(
+      /^Download the archive/,
+    );
+    expect(materialDescription('remote-skill', 'install')).toBe(
+      materialDef('remote-skill', 'install')?.description,
+    );
+    // everything else is the static text, whatever the URI kind
+    expect(materialLabel('remote-skill', 'none', 'git')).toBe("Don't place");
+    expect(materialLabel('remote-repo', 'clone', 'archive')).toBe('Clone');
+    expect(materialLabel('kb', 'symlink')).toBe('Symlink');
+    expect(materialLabel('skill', 'copy')).toBe('Copy');
+    expect(materialLabel('local-repo', 'none')).toBe("Don't place");
+    expect(materialDescription('local-repo', 'copy')).toBe(
+      'Snapshot without .git and node_modules at repos/<name>; replaced on every run.',
+    );
+    expect(materialDescription('kb', 'none')).toBe(
+      'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.',
+    );
   });
 
   it('every material id is used by some family; reference ids are the non-okf/skill ones', () => {
@@ -693,7 +859,10 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
   it('isMaterialFor / materialDef', () => {
     expect(isMaterialFor('kb', 'symlink')).toBe(true);
     expect(isMaterialFor('kb', 'clone')).toBe(false);
-    expect(isMaterialFor('skill', 'symlink')).toBe(false);
+    expect(isMaterialFor('skill', 'symlink')).toBe(true);
+    expect(isMaterialFor('skill', 'clone')).toBe(false);
+    expect(isMaterialFor('local-repo', 'copy')).toBe(true);
+    expect(isMaterialFor('remote-repo', 'copy')).toBe(false);
     expect(isMaterialFor('remote-repo', 'clone')).toBe(true);
     expect(isMaterialFor('remote-skill', 'install')).toBe(true);
     expect(isMaterialFor('remote-skill', 'clone')).toBe(false);
@@ -713,14 +882,16 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
         bug: 'symlink',
         feature: 'symlink',
         project: 'symlink',
-        skill: 'copy',
-        'local-repo': 'none',
-        'remote-repo': 'none',
+        skill: 'symlink',
+        'local-repo': 'symlink',
+        'remote-repo': 'clone',
         'remote-skill': 'install',
       });
     }
     for (const kind of ITEM_KINDS) {
       expect(isMaterialFor(kind, defaultMaterialFor(kind, 'claude-code')), kind).toBe(true);
+      // the default is the first entry of the Select list
+      expect(materialsFor(kind)[0]?.id, kind).toBe(defaultMaterialFor(kind, 'claude-code'));
     }
   });
 
@@ -734,6 +905,22 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     expect(isPrimaryEligible('kb', 'symlink')).toBe(false);
     expect(isPrimaryEligible(null, 'clone')).toBe(false);
     expect(isPrimaryEligible('remote-repo', null)).toBe(false);
+    // a copy has no .git
+    expect(isPrimaryEligible('local-repo', 'copy')).toBe(false);
+  });
+
+  it('isEditEligible: local-repo symlink or none, remote-repo clone (plans/INFLATE_V3_PLAN.md §3.2)', () => {
+    expect(isEditEligible('local-repo', 'symlink')).toBe(true);
+    expect(isEditEligible('local-repo', 'none')).toBe(true);
+    expect(isEditEligible('remote-repo', 'clone')).toBe(true);
+    // a copy is a snapshot, a not-cloned remote cannot be edited
+    expect(isEditEligible('local-repo', 'copy')).toBe(false);
+    expect(isEditEligible('remote-repo', 'none')).toBe(false);
+    expect(isEditEligible('remote-skill', 'install')).toBe(false);
+    expect(isEditEligible('skill', 'symlink')).toBe(false);
+    expect(isEditEligible('kb', 'symlink')).toBe(false);
+    expect(isEditEligible(null, 'clone')).toBe(false);
+    expect(isEditEligible('remote-repo', null)).toBe(false);
   });
 
   it('MATERIAL_OPTION_DEFS: controls, labels, defaults, help', () => {

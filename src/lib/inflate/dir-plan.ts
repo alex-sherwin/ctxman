@@ -76,7 +76,13 @@ function appliedOverrides(run: InflateRunOverrides): string[] {
   if (run.primary !== undefined) applied.push('primary');
   if (run.allowNonEmpty !== undefined) applied.push('allowNonEmpty');
   for (const [key, given] of Object.entries(run.items)) {
-    if (given.material !== undefined || given.materialOptions !== undefined) applied.push(key);
+    if (
+      given.material !== undefined ||
+      given.materialOptions !== undefined ||
+      given.edit !== undefined
+    ) {
+      applied.push(key);
+    }
   }
   return applied;
 }

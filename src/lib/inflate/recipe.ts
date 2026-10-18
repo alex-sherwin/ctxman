@@ -117,7 +117,7 @@ function outputObject(output: RecipeOutput | undefined): Record<string, unknown>
 /**
  * Plain object in serializer key order: name, description, tags (non-empty), target, layout,
  * output (non-empty), preamble (non-blank), contexts, items, markdown (non-empty), overrides (non-empty,
- * no-op entries dropped; each key, mode, options, material, materialOptions, exclude), order (non-empty),
+ * no-op entries dropped; each key, mode, options, material, materialOptions, edit, exclude), order (non-empty),
  * defaults (at least one kind with a mode, option, material or material option).
  */
 export function recipeToYamlObject(r: RecipeData): Record<string, unknown> {
@@ -144,6 +144,7 @@ export function recipeToYamlObject(r: RecipeData): Record<string, unknown> {
     if (override.material !== undefined) entry.material = override.material;
     const materialOptions = materialOptionsObject(override.materialOptions);
     if (materialOptions !== undefined) entry.materialOptions = materialOptions;
+    if (override.edit !== undefined) entry.edit = override.edit;
     if (override.exclude === true) entry.exclude = true;
     if (Object.keys(entry).length > 1) overrides.push(entry);
   }
@@ -185,7 +186,8 @@ export function sameRecipe(a: RecipeData | null, b: RecipeData | null): boolean 
  * or `run`. `output` = { contextFile: default, ...r.output } with `run.dir` / `contextFile` / `allowNonEmpty`
  * replacing, `run.primary === null` deleting `primary` and a string setting it; `output` is only present when
  * the recipe had one or the run gave anything. Per `run.items[key]`: the recipe override of `key` (appended
- * as `{ key }` when absent) gets `material` replaced and `materialOptions` merged over the existing ones.
+ * as `{ key }` when absent) gets `material` replaced, `materialOptions` merged over the existing ones and
+ * `edit` replaced.
  */
 export function applyRunOverrides(r: RecipeData, run: InflateRunOverrides): RecipeData {
   const next: RecipeData = { ...r };
@@ -207,7 +209,7 @@ export function applyRunOverrides(r: RecipeData, run: InflateRunOverrides): Reci
 
   const overrides = r.overrides.map((o) => ({ ...o }));
   for (const [key, given] of Object.entries(run.items)) {
-    if (given.material === undefined && given.materialOptions === undefined) continue;
+    if (!givesItemOverride(given)) continue;
     let override = overrides.find((o) => o.key === key);
     if (override === undefined) {
       override = { key };
@@ -217,12 +219,20 @@ export function applyRunOverrides(r: RecipeData, run: InflateRunOverrides): Reci
     if (given.materialOptions !== undefined) {
       override.materialOptions = { ...override.materialOptions, ...given.materialOptions };
     }
+    if (given.edit !== undefined) override.edit = given.edit;
   }
   next.overrides = overrides;
   return next;
 }
 
-/** 1 each for dir, contextFile, primary (incl. null), allowNonEmpty, plus 1 per item key with a material or options. */
+/** True when a run override of one item sets anything (material, material options or the Editable flag). */
+function givesItemOverride(given: InflateRunOverrides['items'][string]): boolean {
+  return (
+    given.material !== undefined || given.materialOptions !== undefined || given.edit !== undefined
+  );
+}
+
+/** 1 each for dir, contextFile, primary (incl. null), allowNonEmpty, plus 1 per item key with a material, options or edit. */
 export function runOverrideCount(run: InflateRunOverrides): number {
   let count = 0;
   if (run.dir !== undefined) count++;
@@ -230,7 +240,7 @@ export function runOverrideCount(run: InflateRunOverrides): number {
   if (run.primary !== undefined) count++;
   if (run.allowNonEmpty !== undefined) count++;
   for (const given of Object.values(run.items)) {
-    if (given.material !== undefined || given.materialOptions !== undefined) count++;
+    if (givesItemOverride(given)) count++;
   }
   return count;
 }

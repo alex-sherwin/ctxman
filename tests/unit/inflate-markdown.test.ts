@@ -8,6 +8,7 @@ import {
   headingText,
   inlineCode,
   nestHeadings,
+  pathLink,
   rewriteLinks,
   shQuote,
   shiftHeadings,
@@ -20,6 +21,46 @@ import type { EntryRef } from '../../src/lib/inflate/pipeline.ts';
 describe('inlineCode (re-export)', () => {
   it('wraps text', () => {
     expect(inlineCode('/a/b')).toBe('`/a/b`');
+  });
+});
+
+describe('pathLink', () => {
+  it('is a relative link whose text is the path in a code span', () => {
+    expect(pathLink('kb/ctxman/index.md')).toBe('[`kb/ctxman/index.md`](kb/ctxman/index.md)');
+    expect(pathLink('.claude/skills/foo/SKILL.md')).toBe(
+      '[`.claude/skills/foo/SKILL.md`](.claude/skills/foo/SKILL.md)',
+    );
+  });
+
+  it('a folder link ends in a slash, in the text and the destination, without doubling it', () => {
+    expect(pathLink('repos/astro-docs', { folder: true })).toBe(
+      '[`repos/astro-docs/`](repos/astro-docs/)',
+    );
+    expect(pathLink('repos/astro-docs/', { folder: true })).toBe(
+      '[`repos/astro-docs/`](repos/astro-docs/)',
+    );
+    expect(pathLink('repos/astro-docs', { folder: false })).toBe(
+      '[`repos/astro-docs`](repos/astro-docs)',
+    );
+  });
+
+  it('an absolute path is an absolute destination', () => {
+    expect(pathLink('/Users/me/code/app/', { folder: true })).toBe(
+      '[`/Users/me/code/app/`](/Users/me/code/app/)',
+    );
+  });
+
+  it('uses the <…> destination for whitespace, parentheses and angle brackets', () => {
+    expect(pathLink('/Users/me/my repo', { folder: true })).toBe(
+      '[`/Users/me/my repo/`](</Users/me/my repo/>)',
+    );
+    expect(pathLink('kb/a(1)/index.md')).toBe('[`kb/a(1)/index.md`](<kb/a(1)/index.md>)');
+    expect(pathLink('kb/a)b.md')).toBe('[`kb/a)b.md`](<kb/a)b.md>)');
+    expect(pathLink('kb/a<b>.md')).toBe('[`kb/a<b>.md`](<kb/a\\<b\\>.md>)');
+  });
+
+  it('a path with a backtick still gets a valid code span', () => {
+    expect(pathLink('kb/a`b.md')).toBe('[``kb/a`b.md``](kb/a`b.md)');
   });
 });
 

@@ -66,11 +66,17 @@ test.describe('recipe detail', () => {
     const astroOverride = composition.locator(
       '[data-testid="recipe-override"][data-key="reference/astro-docs"]',
     );
-    await expect(astroOverride.getByTestId('recipe-override-material')).toContainText('clone');
+    await expect(astroOverride.getByTestId('recipe-override-material')).toContainText('Clone');
     await expect(astroOverride.getByTestId('recipe-override-material')).toContainText(
       'subpathOnly=true',
     );
     await expect(astroOverride.getByTestId('recipe-override-primary')).toHaveText('primary');
+    // Editable: the primary is editable by default (no `edit` stored), so the override says nothing but the
+    // Output panel lists it.
+    await expect(astroOverride.getByTestId('recipe-override-edit')).toHaveText('');
+    await expect(output.getByTestId('recipe-output-editable')).toContainText(
+      'reference/astro-docs',
+    );
     await expect(
       composition
         .locator('[data-testid="recipe-override"][data-key="kb/ctxman"]')

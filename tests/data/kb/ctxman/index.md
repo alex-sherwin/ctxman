@@ -78,7 +78,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 
 ## Context inflate
 
-The tool at `/inflate` expands selected contexts, extra items and your own instructions into one markdown document plus a manifest, with a target-specific header and include mode per item. Given an output directory it can also inflate into a working directory: knowledge symlinked, skills copied, repositories cloned or linked, remote skills installed, plus an `LLM_CONTEXT.md` map and optional `CLAUDE.md` / `AGENTS.md` stubs, ready to start an agent in. It reads the linked entries when you generate, so contexts stay evergreen. The saved compositions are `recipe` entries. Details are in [Context inflate](/concepts/context-inflate.md); the origin is the idea [context-inflate](ctxman:idea/context-inflate) and the delivery plan is the project [ctxman-v1](ctxman:project/ctxman-v1).
+The tool at `/inflate` expands selected contexts, extra items and your own instructions into one markdown document plus a manifest, with a target-specific header and include mode per item. Given an output directory it can also inflate into a working directory: knowledge and skills symlinked, repositories cloned, linked or copied (with an Editable flag), remote skills cloned or downloaded, plus an `LLM_CONTEXT.md` that links to all of it and maps the directory, and optional `CLAUDE.md` / `AGENTS.md` stubs, ready to start an agent in. It reads the linked entries when you generate, so contexts stay evergreen. The saved compositions are `recipe` entries. Details are in [Context inflate](/concepts/context-inflate.md); the origin is the idea [context-inflate](ctxman:idea/context-inflate) and the delivery plan is the project [ctxman-v1](ctxman:project/ctxman-v1).
 
 ## Design
 
@@ -91,7 +91,7 @@ The tool at `/inflate` expands selected contexts, extra items and your own instr
 ## Features
 
 * [Context forge](/concepts/context-forge.md) - How contexts work and how to build one in the forge UI, including the All tab, add with children and drafts.
-* [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document, or into a working directory (symlinks, copies, clones, installed skills, an LLM_CONTEXT.md map) for Claude Code, Codex or a generic agent: modes, materials, targets, runs, safety rules and API.
+* [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document, or into a working directory (symlinks, copies, clones, downloaded skills, an LLM_CONTEXT.md that links to them) for Claude Code, Codex or a generic agent: Place and mode per item, Editable repositories, materials, targets, runs, safety rules and API.
 * [Search](/concepts/search.md) - The global fuzzy search: what is indexed (built from the disk per request), how it ranks, and its URL parameters.
 * [MCP server](/concepts/mcp.md) - The embedded MCP endpoint at `POST /mcp`: client setup, the read and write tools, the resources, and its loopback-only safety.
 * [Routes and API](/concepts/routes-and-api.md) - Every page route, URL parameter and JSON endpoint, including the entry PATCH and create APIs, the MCP endpoint and the 503 while the data directory is unusable.

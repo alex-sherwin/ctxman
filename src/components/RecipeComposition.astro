@@ -8,8 +8,10 @@ import {
   OPTION_IDS,
   STUB_IDS,
   STUB_LABELS,
+  materialLabel,
   stubDefaults,
 } from '../lib/inflate/catalog.ts';
+import type { ItemKind, MaterialId } from '../lib/inflate/catalog.ts';
 import type { RecipeContextRef, RecipeItemRef } from '../lib/entries.ts';
 import { PREAMBLE_TARGET_ID, blockTargetId } from '../ui/markdown/targets.ts';
 import DatasetBadge from './DatasetBadge.astro';
@@ -44,6 +46,23 @@ const materialOptionText = (options: Record<string, unknown> | undefined): strin
     .map((id) => `${id}=${String(options?.[id])}`)
     .join(', ');
 
+// "Place" label of a material (INFLATE_V3_PLAN §3.1). An override names a key, not a kind: for a reference the
+// kind follows from the material (clone: remote repository, install: remote skill, else a local repository), and
+// the URI kind of a remote skill is unknown here, so its install reads "Clone or download".
+const overrideMaterialText = (key: string, material: MaterialId | undefined): string => {
+  if (material === undefined) return '';
+  const dataset = key.slice(0, key.indexOf('/'));
+  const kind: ItemKind =
+    dataset !== 'reference'
+      ? (dataset as ItemKind)
+      : material === 'clone'
+        ? 'remote-repo'
+        : material === 'install'
+          ? 'remote-skill'
+          : 'local-repo';
+  return materialLabel(kind, material);
+};
+
 const defaults = ITEM_KINDS.flatMap((kind) => {
   const d = data.defaults[kind];
   const material = d?.material;
@@ -67,6 +86,13 @@ const stubDefaultsFor = stubDefaults(data.target);
 const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]).map(
   (id) => STUB_LABELS[id],
 );
+// Repositories the session may change: the primary (unless told otherwise) and every `edit: true` override.
+// A static reading of the file: whether the material allows editing is decided when the recipe is inflated.
+const editFlag = (key: string): boolean | undefined => data.overrides.find((o) => o.key === key)?.edit;
+const editable = [
+  ...(output?.primary !== undefined && editFlag(output.primary) !== false ? [output.primary] : []),
+  ...data.overrides.filter((o) => o.edit === true && o.key !== output?.primary).map((o) => o.key),
+];
 ---
 
 <section class="cx-recipe" aria-label="Composition" data-testid="recipe-composition" data-slug={slug}>
@@ -173,6 +199,25 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
             </tr>
             <tr class="ck-table__row">
               <th class="ck-table__th" scope="row">
+                Editable
+              </th>
+              <td class="ck-table__td" data-testid="recipe-output-editable">
+                {editable.length > 0 ? (
+                  editable.map((key, i) => (
+                    <>
+                      {i > 0 && ', '}
+                      <a href={`/${key}`}>
+                        <code>{key}</code>
+                      </a>
+                    </>
+                  ))
+                ) : (
+                  <span class="cx-subtle">none</span>
+                )}
+              </td>
+            </tr>
+            <tr class="ck-table__row">
+              <th class="ck-table__th" scope="row">
                 Generated files
               </th>
               <td class="ck-table__td">{stubs.length > 0 ? stubs.join(', ') : 'none'}</td>
@@ -252,6 +297,9 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 Material
               </th>
               <th class="ck-table__th" scope="col">
+                Editable
+              </th>
+              <th class="ck-table__th" scope="col">
                 Excluded
               </th>
             </tr>
@@ -265,13 +313,20 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 <td class="ck-table__td cx-mono">{o.mode ?? ''}</td>
                 <td class="ck-table__td cx-mono">{optionText(o.options)}</td>
                 <td class="ck-table__td cx-mono" data-testid="recipe-override-material">
-                  {o.material ?? ''}
+                  {overrideMaterialText(o.key, o.material)}
                   {materialOptionText(o.materialOptions) !== '' && (
                     <span class="cx-subtle"> {materialOptionText(o.materialOptions)}</span>
                   )}
                   {output?.primary === o.key && (
                     <span class="ck-badge ck-badge--info" data-testid="recipe-override-primary">
                       primary
+                    </span>
+                  )}
+                </td>
+                <td class="ck-table__td" data-testid="recipe-override-edit">
+                  {o.edit !== undefined && (
+                    <span class={`ck-badge ${o.edit ? 'ck-badge--info' : 'ck-badge--muted'}`}>
+                      {o.edit ? 'editable' : 'read-only'}
                     </span>
                   )}
                 </td>
@@ -315,7 +370,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 <td class="ck-table__td cx-mono">{d.mode ?? ''}</td>
                 <td class="ck-table__td cx-mono">{d.options}</td>
                 <td class="ck-table__td cx-mono">
-                  {d.material ?? ''}
+                  {d.material === undefined ? '' : materialLabel(d.kind, d.material)}
                   {d.materialOptions !== '' && <span class="cx-subtle"> {d.materialOptions}</span>}
                 </td>
               </tr>

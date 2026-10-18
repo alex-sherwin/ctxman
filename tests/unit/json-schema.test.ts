@@ -6,6 +6,7 @@ import {
   INFLATE_LAYOUTS,
   INFLATE_TARGETS,
   ITEM_KINDS,
+  materialsFor,
   modesFor,
 } from '../../src/lib/inflate/catalog.ts';
 import {
@@ -177,6 +178,29 @@ describe('recipe schema', () => {
           .sort(),
       );
     }
+  });
+
+  it('defaults.<kind>.material.enum = that kind materials (v3: skill symlink, local-repo copy)', () => {
+    const defaults = props.defaults as Node & {
+      properties: Record<string, { properties: { material: { enum: string[] } } }>;
+    };
+    for (const kind of ITEM_KINDS) {
+      expect([...defaults.properties[kind].properties.material.enum].sort(), kind).toEqual(
+        materialsFor(kind)
+          .map((m) => m.id)
+          .sort(),
+      );
+    }
+    expect(defaults.properties.skill.properties.material.enum).toContain('symlink');
+    expect(defaults.properties['local-repo'].properties.material.enum).toContain('copy');
+  });
+
+  it('an override carries the boolean edit (Editable) next to exclude', () => {
+    const overrides = props.overrides as Node & {
+      items: { properties: Record<string, Node> };
+    };
+    expect(overrides.items.properties.edit).toEqual({ type: 'boolean' });
+    expect(overrides.items.properties.exclude).toEqual({ type: 'boolean' });
   });
 
   it('target and layout are enums', () => {

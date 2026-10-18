@@ -200,17 +200,22 @@ test.describe('composition edits', () => {
     await openInflate(page, name);
     await expect(segmentRow(page, 'kb/astro-content-layer')).toBeVisible();
 
+    // The bundle is symlinked (v3 default), so it is referenced with links: "Summary + links" is the default.
+    const mode = segmentRow(page, 'kb/astro-content-layer').getByTestId('inflate-segment-mode');
+    await expect(mode).toContainText('Summary + links');
+
     const rendered = renderWith(
       page,
-      (recipe) => overrideIn(recipe, 'kb/astro-content-layer')?.mode === 'summary',
+      (recipe) => overrideIn(recipe, 'kb/astro-content-layer')?.mode === 'inline-main',
     );
-    await segmentRow(page, 'kb/astro-content-layer').getByTestId('inflate-segment-mode').click();
-    await page.getByRole('option', { name: /^Summary/ }).click();
+    await mode.click();
+    await page.getByRole('option', { name: /^Inline entry/ }).click();
     expect((await rendered).ok()).toBe(true);
+    await expect(mode).toContainText('Inline entry');
 
     await page.getByTestId('inflate-view-preview').click();
     await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready');
-    await expect(manifestRow(page, 'kb/astro-content-layer')).toContainText('Summary');
+    await expect(manifestRow(page, 'kb/astro-content-layer')).toContainText('Inline entry');
   });
 
   test('an option checkbox saves an override and the preview picks it up', async ({
@@ -393,13 +398,18 @@ test.describe('composition edits', () => {
   }) => {
     const name = await newCopy(request);
     await openInflate(page, name);
-    const clone = segmentRow(page, 'reference/astro-docs').getByTestId('inflate-opt-cloneDir');
+    // With a working directory the remote repository is cloned by the run (Place), so its text input is the
+    // branch of the clone; the `clone` mode with its cloneDir input only exists for a document-only recipe.
+    const clone = segmentRow(page, 'reference/astro-docs').getByTestId('inflate-mopt-branch');
     await expect(clone).toBeVisible();
     await entriesLoaded(page);
-    const original = await clone.inputValue();
 
     await clone.click();
     await expect(clone).toBeFocused();
+    // A branch is empty by default; type a valid name long enough for the mouse selection below.
+    await page.keyboard.type('feature/a-branch-name-long-enough-to-select');
+    await expect(clone).toHaveValue('feature/a-branch-name-long-enough-to-select');
+    const original = await clone.inputValue();
     // The click puts the caret mid-text; an End pressed while the row is still settling is lost, so retry it.
     await expect(async () => {
       await clone.press('End');
@@ -414,7 +424,9 @@ test.describe('composition edits', () => {
     await expect(clone).toHaveValue(`${original}-xQ y`);
     await expectSegmentKeys(page, SEED_ORDER);
 
-    // A mouse drag inside the input selects text instead of dragging the row.
+    // A mouse drag inside the input selects text instead of dragging the row. hover() waits until the input has
+    // stopped moving (the row settles while the dry run answers), so the press lands on it.
+    await clone.hover();
     const box = await clone.boundingBox();
     if (box === null) throw new Error('input is not laid out');
     await page.mouse.move(box.x + 6, box.y + box.height / 2);
@@ -432,12 +444,12 @@ test.describe('composition edits', () => {
   test('Cmd/Ctrl+S saves while the focus is inside a row control', async ({ page, request }) => {
     const name = await newCopy(request);
     await openInflate(page, name);
-    const clone = segmentRow(page, 'reference/astro-docs').getByTestId('inflate-opt-cloneDir');
-    await expect(clone).toBeVisible();
+    const branch = segmentRow(page, 'reference/astro-docs').getByTestId('inflate-mopt-branch');
+    await expect(branch).toBeVisible();
 
-    await clone.click();
+    await branch.click();
     await page.keyboard.press('End');
-    await page.keyboard.type('-s');
+    await page.keyboard.type('release-s');
     await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
     // Rows stop the propagation of their key events; the shortcut still has to reach the store.
     const put = page.waitForResponse(
@@ -447,7 +459,7 @@ test.describe('composition edits', () => {
     expect((await put).status()).toBe(200);
     await expect(page.getByTestId('inflate-status')).toHaveText(/^Saved/);
     const saved = overrideIn(readRecipeYaml(name), 'reference/astro-docs');
-    expect(saved?.options?.cloneDir).toContain('-s');
+    expect(saved?.materialOptions?.branch).toBe('release-s');
   });
 
   test('unchecking a context removes its items; checking it again restores them', async ({
@@ -497,6 +509,12 @@ test.describe('composition edits', () => {
     const name = await newCopy(request);
     await openInflate(page, name);
     const skill = segmentRow(page, 'skill/ctxman-add-entry');
+    // A symlinked skill is listed with a link in either target: the placement decides, not the target.
+    await expect(skill.getByTestId('inflate-segment-mode')).toContainText('Link');
+
+    // Document only: nothing is placed, so the skill is installed by commands for Claude Code and only
+    // pointed at for a generic agent.
+    await page.getByTestId('inflate-output-clear').click();
     await expect(skill.getByTestId('inflate-segment-mode')).toContainText('Install');
 
     await page.getByTestId('inflate-target').click();
@@ -754,9 +772,10 @@ test.describe('output directory', () => {
         .materialOptions,
     ).not.toHaveProperty('subpathOnly');
 
-    // Mention only: no options, no Primary, and the primary pick goes with it
+    // Don't place: no options, no Primary, no Editable, and the primary pick goes with it
     await row.getByTestId('inflate-segment-material').click();
-    await page.getByRole('option', { name: /^Mention only/ }).click();
+    await page.getByRole('option', { name: /^Don't place/ }).click();
+    await expect(row.getByTestId('inflate-segment-edit')).toHaveCount(0);
     await expect(row.getByTestId('inflate-segment-primary')).toHaveCount(0);
     await expect(row.getByTestId('inflate-mopt-cloneDepth')).toHaveCount(0);
     await expect(row.getByTestId('inflate-segment-dest')).toHaveCount(0);

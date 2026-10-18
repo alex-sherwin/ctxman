@@ -69,6 +69,10 @@ export const CLONE_DIR_PATTERN =
 export const GIT_REF_PATTERN =
   /^(?:|(?!.*\.\.)(?!.*\/\/)(?!.*\/$)(?!.*\.lock$)[A-Za-z0-9][A-Za-z0-9._/-]{0,199})$/;
 
+/** `edit` (the Editable flag of a repository) is only meaningful on a `reference/<slug>` key. */
+const EDIT_KEY_PREFIX = 'reference/';
+const EDIT_KEY_MESSAGE = 'edit applies to repositories only (a reference/<slug> key)';
+
 export const NAME_MESSAGE =
   'must be kebab-case: a-z, 0-9, single hyphens, no leading/trailing hyphen (max 64 characters)';
 
@@ -333,6 +337,8 @@ export const recipeOverrideSchema = type({
   'options?': inflateOptionsSchema,
   'material?': type.enumerated(...MATERIAL_IDS),
   'materialOptions?': materialOptionsSchema,
+  /** Repositories only (`reference/<slug>` keys): may the session change files there? Default: true for the primary. */
+  'edit?': 'boolean',
   'exclude?': 'boolean',
 });
 
@@ -421,6 +427,9 @@ export const recipeSchema = type({
     (k) => `duplicate order key ${k}`,
   );
   r.overrides.forEach((override, index) => {
+    if (override.edit !== undefined && !override.key.startsWith(EDIT_KEY_PREFIX)) {
+      ok = ctx.reject({ path: ['overrides', index, 'edit'], message: EDIT_KEY_MESSAGE });
+    }
     const parsed = parseItemKey(override.key);
     if (parsed === null) return;
     if (override.mode !== undefined) {
@@ -453,11 +462,12 @@ export const recipeSchema = type({
 
 // ---------------------------------------------------------------- run overrides (API only, never stored)
 
-/** One item's run-time material choice (plans/INFLATE_V2_SPEC.md §4.1). */
+/** One item's run-time material choice (plans/INFLATE_V2_SPEC.md §4.1) and, for a repository, its Editable flag. */
 export const runItemOverrideSchema = type({
   '+': 'reject',
   'material?': type.enumerated(...MATERIAL_IDS),
   'materialOptions?': materialOptionsSchema,
+  'edit?': 'boolean',
 });
 /** Run-time overrides of a working-directory run: applied by applyRunOverrides before anything else. */
 export const runOverridesSchema = type({
@@ -470,12 +480,14 @@ export const runOverridesSchema = type({
   items: type({ '[string]': runItemOverrideSchema })
     .narrow((items, ctx) => {
       let ok = true;
-      for (const key of Object.keys(items)) {
+      for (const [key, given] of Object.entries(items)) {
         if (!ITEM_KEY_PATTERN.test(key)) {
           ok = ctx.reject({
             path: [...ctx.path, key],
             message: 'must be <dataset>/<slug> of a linkable dataset',
           });
+        } else if (given.edit !== undefined && !key.startsWith(EDIT_KEY_PREFIX)) {
+          ok = ctx.reject({ path: [...ctx.path, key, 'edit'], message: EDIT_KEY_MESSAGE });
         }
       }
       return ok;

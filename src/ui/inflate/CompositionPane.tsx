@@ -1,10 +1,13 @@
-// Right pane (compose view) of Inflate: the ordered segments of the document with per-item mode and option
-// controls (INFLATE_SPEC §9.3). The list is `$plan`: the working recipe expanded in the browser.
+// Right pane (compose view) of Inflate: the ordered segments of the document with per-item place, mode and option
+// controls (INFLATE_SPEC §9.3, INFLATE_V3_PLAN §8), under the placement summary of a recipe with a working
+// directory. The list is `$plan`: the working recipe expanded in the browser.
 import { useStore } from '@nanostores/react';
-import { useCallback, useRef } from 'react';
+import { Fragment, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { Segment } from '../../lib/inflate/expand.ts';
 import {
+  $placementSummary,
   $plan,
   $segmentBytes,
   $working,
@@ -19,6 +22,52 @@ import {
 import { Button, EmptyState, Notice, OrderedList } from '../kit/index.ts';
 import { labelOf, plural } from './format.ts';
 import { SegmentRow } from './SegmentRow.tsx';
+
+/** `<dir> · 4 symlink · 1 copy · 2 clone · 1 download · 1 not placed · primary: X · editable: X, Y` (non-zero parts only). */
+function PlacementStrip() {
+  const summary = useStore($placementSummary);
+  if (summary === null) return null;
+  const { counts } = summary;
+  const parts: ReactNode[] = [
+    <code key="dir" className="cx-placement__dir" title="Working directory">
+      {summary.dir}
+    </code>,
+  ];
+  const counted: [number, string][] = [
+    [counts.symlink, 'symlink'],
+    [counts.copy, 'copy'],
+    [counts.clone, 'clone'],
+    [counts.download, 'download'],
+    [counts.none, 'not placed'],
+  ];
+  for (const [n, label] of counted) {
+    if (n > 0) parts.push(`${n} ${label}`);
+  }
+  if (summary.primary !== null) {
+    parts.push(
+      <Fragment key="primary">
+        primary: <strong>{summary.primary}</strong>
+      </Fragment>,
+    );
+  }
+  if (summary.editable.length > 0) {
+    parts.push(
+      <Fragment key="editable">
+        editable: <strong>{summary.editable.join(', ')}</strong>
+      </Fragment>,
+    );
+  }
+  return (
+    <p className="cx-placement" data-testid="inflate-placement-summary">
+      {parts.map((part, i) => (
+        <Fragment key={typeof part === 'string' ? part : i}>
+          {i > 0 && ' · '}
+          {part}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
 
 export function CompositionPane() {
   const plan = useStore($plan);
@@ -99,6 +148,7 @@ export function CompositionPane() {
         </Button>
       </header>
       <div className="cx-forge__pane-body">
+        <PlacementStrip />
         {(plan.warnings.length > 0 || canPrune) && (
           <Notice tone="warn" role="none" className="cx-comp__warnings">
             {plan.warnings.length > 0 && (

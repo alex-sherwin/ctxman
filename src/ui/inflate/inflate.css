@@ -106,11 +106,18 @@
     gap: var(--sp-2);
     padding: 0 var(--sp-2);
   }
+  /* kind | Include as, or kind | Place | In <context file> when a working directory is set */
   .cx-defrow {
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 84px minmax(0, 1fr);
     align-items: center;
     gap: var(--sp-3);
+  }
+  .cx-defrow[data-dir='true'] {
+    grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .cx-defrow--head {
+    margin-bottom: calc(-1 * var(--sp-1));
   }
   .cx-defrow__label {
     font-size: var(--fs-sm);
@@ -172,6 +179,24 @@
   }
 
   /* ---------- composition ---------- */
+  /* the placement summary above the rows: directory, counts per placement, primary, editable */
+  .cx-placement {
+    margin: var(--sp-3) var(--sp-4) 0;
+    padding: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+    background: var(--bg-deep);
+    border-left: var(--bar-w) solid var(--accent-line);
+    overflow-wrap: anywhere;
+  }
+  .cx-placement strong {
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+  }
+  .cx-placement__dir {
+    font-size: var(--fs-xs);
+    color: var(--fg);
+  }
   /* the Notice of the Composition / Plan / Run panes: pane margin, the Prune button under the list */
   .cx-comp__warnings {
     display: flex;
@@ -285,6 +310,11 @@
   }
   .cx-seg__mode {
     min-width: 170px;
+  }
+  /* the mode list has one entry: shown as text instead of a Select */
+  .cx-seg__static {
+    font-size: var(--fs-sm);
+    color: var(--fg);
   }
   .cx-seg__material {
     min-width: 130px;

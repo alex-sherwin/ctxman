@@ -101,7 +101,10 @@ export interface ItemContent {
   files?: BundleFileRef[];
   /** rel → text (null = unreadable). */
   texts?: Record<string, string | null>;
-  /** inline-main / inline-bundle: concept files in index order. */
+  /**
+   * inline-main / inline-bundle, and `summary` of an item placed in a working directory (its "Summary + links"
+   * file list): concept files in index order.
+   */
   concepts?: string[];
   local?: { root: string; target: string; exists: boolean };
   /** null = target is not a directory. */
@@ -153,7 +156,10 @@ const unreadable = (key: string, rel: string): InflateWarning => ({
   key,
 });
 
-/** Reads what the renderer needs for every INCLUDED item segment (see spec §6.2 table). */
+/**
+ * Reads what the renderer needs for every INCLUDED item segment (see spec §6.2 table; plans/INFLATE_V3_PLAN.md
+ * §6: an okf item placed in a directory in `summary` mode also lists its bundle files and concept order).
+ */
 export async function gatherContent(
   plan: ExpandedPlan,
   sources: InflateSources,
@@ -211,8 +217,19 @@ export async function gatherContent(
     if (kind === 'remote-repo' || kind === 'remote-skill') return;
 
     // okf: kb, rca, idea, task, bug, feature, project
-    if (mode !== 'inline-main' && mode !== 'inline-bundle') return;
     const dataset = seg.dataset as OkfDatasetId;
+    if (mode === 'summary' && seg.placed) {
+      // "Summary + links": only the file list and the concept order, nothing is inlined (no unreadable
+      // warning, no link targets: the entry text just orders the files).
+      const files = await sources.listFiles(dataset, seg.slug);
+      content.files = files;
+      content.concepts = conceptFiles(
+        files,
+        await sources.readText(dataset, seg.slug, OKF_ENTRY_FILE),
+      );
+      return;
+    }
+    if (mode !== 'inline-main' && mode !== 'inline-bundle') return;
     const files = await sources.listFiles(dataset, seg.slug);
     content.files = files;
     const texts: Record<string, string | null> = {};

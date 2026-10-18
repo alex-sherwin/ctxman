@@ -5,6 +5,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -356,6 +357,185 @@ describe('copyDir step', () => {
     const missing = path.join(tmp.make(), 'nope');
     const { results } = await h.run([dirStep(), copyStep('kb/x', 'kb/x', missing)]);
     expect(find(results, 'okf:kb/x').status).toBe('failed');
+  });
+});
+
+// ---------------------------------------------------------------- v3: skill symlink, local-repo copy
+
+describe('skill symlink and local-repo copy steps (plans/INFLATE_V3_PLAN.md §6)', () => {
+  const skillLink = (key: string, rel: string, target: string): MaterialStep =>
+    step('symlink', `skill:${key}`, rel, { key, target });
+  const repoCopy = (key: string, rel: string, from: string): MaterialStep =>
+    step('copyDir', `link:${key}`, rel, { key, from });
+
+  it('a skill symlink is recorded as a symlink entry, unchanged on a re-run, unlinked on cleanup', async () => {
+    const source = tmp.make({ 'SKILL.md': 'skill' });
+    const h = harness();
+    const steps = [dirStep(), skillLink('skill/x', '.claude/skills/x', source), manifestStep()];
+    const first = await h.run(steps);
+    expect(find(first.results, 'skill:skill/x')).toMatchObject({ status: 'ok', action: 'created' });
+    expect(find(first.results, 'skill:skill/x').entry).toEqual({
+      path: '.claude/skills/x',
+      type: 'symlink',
+      key: 'skill/x',
+      target: source,
+    });
+    expect(isLink(path.join(h.dir, '.claude', 'skills', 'x'))).toBe(true);
+    expect(readFileSync(path.join(h.dir, '.claude', 'skills', 'x', 'SKILL.md'), 'utf8')).toBe(
+      'skill',
+    );
+    const second = await h.run(steps, { previous: first.manifest });
+    expect(find(second.results, 'skill:skill/x')).toMatchObject({ status: 'unchanged' });
+
+    const entry = first.manifest?.entries.find((e) => e.path === '.claude/skills/x');
+    if (entry === undefined) throw new Error('no entry');
+    const removed = await h.run([dirStep(), removeStep(entry)], { previous: first.manifest });
+    expect(find(removed.results, 'rm:.claude/skills/x')).toMatchObject({
+      status: 'ok',
+      action: 'removed',
+    });
+    expect(isLink(path.join(h.dir, '.claude', 'skills', 'x'))).toBe(false);
+    // the ctxman skill behind the link is never touched
+    expect(readFileSync(path.join(source, 'SKILL.md'), 'utf8')).toBe('skill');
+  });
+
+  it('replaces a recorded skill copy with a symlink and back', async () => {
+    const source = tmp.make({ 'SKILL.md': 'skill' });
+    const h = harness();
+    const copied = await h.run([
+      dirStep(),
+      step('copyDir', 'skill:skill/x', '.claude/skills/x', { key: 'skill/x', from: source }),
+      manifestStep(),
+    ]);
+    const linked = await h.run(
+      [dirStep(), skillLink('skill/x', '.claude/skills/x', source), manifestStep()],
+      { previous: copied.manifest },
+    );
+    expect(find(linked.results, 'skill:skill/x')).toMatchObject({
+      status: 'ok',
+      action: 'replaced',
+    });
+    expect(isLink(path.join(h.dir, '.claude', 'skills', 'x'))).toBe(true);
+    const back = await h.run(
+      [
+        dirStep(),
+        step('copyDir', 'skill:skill/x', '.claude/skills/x', { key: 'skill/x', from: source }),
+        manifestStep(),
+      ],
+      { previous: linked.manifest },
+    );
+    expect(find(back.results, 'skill:skill/x')).toMatchObject({ status: 'ok', action: 'replaced' });
+    expect(isLink(path.join(h.dir, '.claude', 'skills', 'x'))).toBe(false);
+    expect(existsSync(path.join(source, 'SKILL.md'))).toBe(true);
+  });
+
+  it('a local-repo copy leaves out .git, node_modules and .DS_Store, and follows the source on a re-run', async () => {
+    const repo = tmp.make({
+      'README.md': 'v1',
+      'old.md': 'old',
+      'src/a.ts': 'a',
+      '.git/HEAD': 'ref',
+      'node_modules/x/index.js': 'x',
+      '.DS_Store': 'junk',
+    });
+    const h = harness();
+    const steps = [dirStep(), repoCopy('reference/r', 'repos/r', repo), manifestStep()];
+    const first = await h.run(steps);
+    expect(find(first.results, 'link:reference/r')).toMatchObject({
+      status: 'ok',
+      action: 'created',
+    });
+    expect(find(first.results, 'link:reference/r').entry).toEqual({
+      path: 'repos/r',
+      type: 'copy',
+      key: 'reference/r',
+      source: repo,
+    });
+    expect(listTree(path.join(h.dir, 'repos'))).toEqual([
+      'r',
+      'r/README.md',
+      'r/old.md',
+      'r/src',
+      'r/src/a.ts',
+    ]);
+
+    writeFileSync(path.join(repo, 'README.md'), 'v2');
+    writeFileSync(path.join(repo, 'new.md'), 'new');
+    rmSync(path.join(repo, 'old.md'));
+    writeFileSync(path.join(h.dir, 'repos', 'r', 'local.md'), 'edit in the snapshot');
+    const second = await h.run(steps, { previous: first.manifest });
+    expect(find(second.results, 'link:reference/r')).toMatchObject({
+      status: 'ok',
+      action: 'replaced',
+    });
+    expect(listTree(path.join(h.dir, 'repos'))).toEqual([
+      'r',
+      'r/README.md',
+      'r/new.md',
+      'r/src',
+      'r/src/a.ts',
+    ]);
+    expect(readFileSync(path.join(h.dir, 'repos', 'r', 'README.md'), 'utf8')).toBe('v2');
+    // no temp sibling is left behind
+    expect(listTree(h.dir).some((p) => p.includes('.ctxman-abcdef12'))).toBe(false);
+
+    // removed again: the snapshot goes, the repository stays
+    const entry = second.manifest?.entries.find((e) => e.path === 'repos/r');
+    if (entry === undefined) throw new Error('no entry');
+    const gone = await h.run([dirStep(), removeStep(entry)], { previous: second.manifest });
+    expect(find(gone.results, 'rm:repos/r').action).toBe('removed');
+    expect(existsSync(path.join(h.dir, 'repos', 'r'))).toBe(false);
+    expect(existsSync(path.join(repo, 'README.md'))).toBe(true);
+  });
+
+  it('a local-repo copy refuses an unrecorded destination and fails for a missing root', async () => {
+    const repo = tmp.make({ 'README.md': 'r' });
+    const h = harness();
+    mkdirSync(path.join(h.dir, 'repos', 'r'), { recursive: true });
+    writeFileSync(path.join(h.dir, 'repos', 'r', 'mine.md'), 'mine');
+    const { results } = await h.run([
+      dirStep(),
+      repoCopy('reference/r', 'repos/r', repo),
+      repoCopy('reference/m', 'repos/m', path.join(repo, 'nope')),
+    ]);
+    expect(find(results, 'link:reference/r')).toMatchObject({
+      status: 'failed',
+      message: 'repos/r exists and was not created by ctxman',
+    });
+    expect(find(results, 'link:reference/m').status).toBe('failed');
+    expect(readFileSync(path.join(h.dir, 'repos', 'r', 'mine.md'), 'utf8')).toBe('mine');
+  });
+
+  it('the item state in the rendered context follows the terminal skill: / link: step', async () => {
+    const source = tmp.make({ 'SKILL.md': 's' });
+    const repo = tmp.make({ 'README.md': 'r' });
+    const missing = path.join(tmp.make(), 'nope');
+    const seen: MaterialView[] = [];
+    const h = harness({
+      materials: {
+        'skill/ok': view('skill/ok', '.claude/skills/ok', { kind: 'skill' }),
+        'skill/bad': view('skill/bad', '.claude/skills/bad', { kind: 'skill' }),
+        'reference/r': view('reference/r', 'repos/r', { kind: 'local-repo', material: 'copy' }),
+      },
+      renderContext: (materials) => {
+        seen.push(...Object.values(materials));
+        return 'doc\n';
+      },
+    });
+    await h.run([
+      dirStep(),
+      skillLink('skill/ok', '.claude/skills/ok', source),
+      skillLink('skill/bad', '.claude/skills/bad', missing),
+      repoCopy('reference/r', 'repos/r', repo),
+      step('writeContext', 'context', 'LLM_CONTEXT.md'),
+    ]);
+    const byKey = Object.fromEntries(seen.map((v) => [v.key, v]));
+    expect(byKey['skill/ok']?.state).toBe('ok');
+    expect(byKey['skill/bad']).toMatchObject({
+      state: 'failed',
+      reason: `source ${missing} does not exist`,
+    });
+    expect(byKey['reference/r']?.state).toBe('ok');
   });
 });
 

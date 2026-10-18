@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Context inflate
-description: How recipes turn contexts and extra items into one markdown document, or into a working directory (symlinks, copies, clones, installed skills and an LLM_CONTEXT.md map) for Claude Code, Codex or a generic agent, including modes, materials, targets, runs, safety rules and API.
+description: How recipes turn contexts and extra items into one markdown document, or into a working directory (items symlinked, copied, cloned or downloaded, plus an LLM_CONTEXT.md that links to them) for Claude Code, Codex or a generic agent, including the Place / In LLM_CONTEXT.md model, Editable repositories, modes, materials, targets, runs, safety rules and API.
 tags: [inflate, recipe, context, agents, working-directory]
 generated:
-  by: claude-code/ctxman-inflate-v2-docs
+  by: claude-code/ctxman-inflate-v3-docs
   at: 2026-10-18T02:00:00Z
 ---
 
@@ -17,9 +17,16 @@ Contexts stay evergreen. A recipe stores slugs, never content, and expansion hap
 ## What it does: two outputs
 
 1. **A document** (always available). One markdown document plus a JSON manifest, with absolute paths. Copy it, download it or write it to an absolute `.md` path. This is the "no directory" case and works without `output.dir`.
-2. **A working directory** (when the recipe or the run sets a directory). A run places material in a directory `<W>` that you start your AI coding harness in: symlinks to knowledge bundles, copied skills, cloned or symlinked repositories, installed remote skills, an `LLM_CONTEXT.md` that is the same document with paths relative to `<W>` plus a map of the directory, optional `CLAUDE.md` / `AGENTS.md` / `.gitignore` stubs, and a `.ctxman-inflate.json` file that records what ctxman owns there. Re-running updates the directory and removes what the recipe no longer places.
+2. **A working directory** (when the recipe or the run sets a directory). A run places material in a directory `<W>` that you start your AI coding harness in: symlinks to knowledge bundles and skills, symlinked or copied local repositories, cloned remote repositories, cloned or downloaded remote skills, an `LLM_CONTEXT.md` that links to all of it (paths relative to `<W>`) and maps the directory, optional `CLAUDE.md` / `AGENTS.md` / `.gitignore` stubs, and a `.ctxman-inflate.json` file that records what ctxman owns there. Re-running updates the directory and removes what the recipe no longer places.
 
-Two axes decide what happens to each item. The **mode** says how the item is represented in the document (inline, summary, pointer, ...); the **material** says what is physically placed in `<W>` (symlink, copy, clone, install, nothing). Material only matters when a directory is set.
+### Two questions per item: Place, then In LLM_CONTEXT.md
+
+In a working directory every item answers two questions, in this order:
+
+1. **Place** (the item's *material*): how it gets into `<W>`. Symlink, Copy, Clone, Download or Don't place.
+2. **In LLM_CONTEXT.md** (the item's *mode*): how the context file presents it. An item that is placed is **referenced with relative markdown links, not inlined**, unless you ask for inlining: its files are right there, and `CLAUDE.md` loads the whole context file at the start of every session, so every inlined byte costs tokens every time. An item that is not placed keeps the document-only modes (inline, summary, install or clone commands, ...).
+
+Repositories add two more choices: **Primary** (one per recipe; the session starts there) and **Editable** (may the session change files in it, or is it reference material). Without a directory nothing changes: only the mode applies (the UI calls it "Include as") and the defaults are the ones of the original document. The choices are stored as before (`mode`, `material`, `materialOptions`) plus one new optional override key, `edit`; every earlier recipe still parses and keeps its explicit choices, only the built-in defaults moved.
 
 ## What a recipe holds
 
@@ -75,7 +82,7 @@ order:
 | `contexts` | Context slugs, in order. Always written, also as `[]`. |
 | `items` | Ad hoc `{dataset, slug}` entries that are not (necessarily) linked by a context. Any dataset a context may link to; recipes cannot be linked. |
 | `markdown` | Injected blocks `{id, body}`; `id` is kebab-case, new blocks are named `b1`, `b2` and so on. |
-| `overrides` | Per-item `{key, mode?, options?, material?, materialOptions?, exclude?}`, where `key` is `<dataset>/<slug>`. Entries that set nothing are dropped when saving. |
+| `overrides` | Per-item `{key, mode?, options?, material?, materialOptions?, edit?, exclude?}`, where `key` is `<dataset>/<slug>`. `edit` (the Editable flag of a repository) is only valid on a `reference/<slug>` key. Entries that set nothing are dropped when saving. |
 | `order` | Segment keys that pin the order (see below). Written only when non-empty. |
 | `defaults` | Per item kind `{mode?, options?, material?, materialOptions?}`, keyed by `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `local-repo`, `remote-repo` or `remote-skill`. |
 
@@ -104,15 +111,16 @@ Expansion is a pure function (`src/lib/inflate/expand.ts`) shared by the server 
 5. `order` is applied on top: keys listed keep your order, keys that no longer exist are ignored, and a key the recipe has never seen (a link added to a context later) is inserted right after its default predecessor. New links therefore show up without editing the recipe.
 6. A missing or unreadable item is skipped with a warning; the document still renders.
 7. `overrides` with `exclude: true` drop an item. An override whose key matches nothing in the recipe is stale: it is ignored with a warning.
-8. Mode and options resolve in layers: built-in default for the item kind and target, then `defaults[kind]`, then the item's override. A mode that does not apply to the kind falls back with a `mode-invalid` warning.
-9. Material and material options resolve the same way (built-in, `defaults[kind]`, override); an invalid one falls back with a `material-invalid` warning.
+8. Material and material options resolve in layers: built-in default for the item kind (see Materials), then `defaults[kind]`, then the item's override. An invalid one falls back with a `material-invalid` warning. The material is resolved **before** the mode, because it decides whether the item is placed.
+9. An item is **placed** when the recipe has `output.dir` (run overrides are applied before expansion) and its material is not `none`. Mode and options resolve next: built-in default for the kind, target and placement, then `defaults[kind]`, then the item's override. A mode of another item family falls back with a `mode-invalid` warning. A mode of the right family that the placement does not offer (a stored skill `install` while the skill is symlinked) silently resolves to the placement default; it stays in the recipe and applies again when the material goes back to Don't place.
 10. `output.primary` is checked after expansion: it must be an included remote-repo item with material `clone` or a local-repo item with material `symlink`, otherwise a `primary-invalid` warning is added and the recipe has no primary.
+11. **Editable** is resolved last, for the repositories that can be edited (see Materials): `override.edit`, else true for the valid primary and false for every other repository. All other items have no flag. An `edit` stored for an item that cannot be edited right now (a copy, an uncloned remote) is kept and ignored without a warning, like a stored mode the placement does not offer.
 
 ## Brief quality
 
 The inline modes shape each entry body so the document is a usable brief and not a pile of template headings:
 
-* **Defaults**: every okf kind (kb, rca, idea, task, bug, feature, project) defaults to `inline-main`. Use `summary` or `pointer` per kind or per item when a short brief is wanted.
+* **Defaults**: in a document, and for an item that is not placed, every okf kind (kb, rca, idea, task, bug, feature, project) defaults to `inline-main`. Use `summary` or `pointer` per kind or per item when a short brief is wanted. An item that is placed in a working directory defaults to `summary` ("Summary + links"): its files are linked, not inlined.
 * **Description**: an inline okf item (`inline-main` or `inline-bundle`) prints its frontmatter `description` ahead of the body when the description is not already part of the body (compared ignoring case and whitespace). The same text is what `summary` shows.
 * **Empty sections dropped**: an ATX heading with nothing under it (end of text, or a heading of the same or a higher level next) is removed, repeatedly, so the empty `## Steps` of a fresh task disappears together with sections that only held empty subsections. Code blocks are never touched.
 * **Markdown blocks** nest under their group: `###` inside a context group, `##` outside one, a block whose shallowest heading is above that level is shifted down to it, deeper headings are left alone. The manifest titles a block by its first heading, else `Markdown <id>`.
@@ -120,30 +128,33 @@ The inline modes shape each entry body so the document is a usable brief and not
 
 ## Include modes
 
-Which modes exist depends on the item kind. The first mode of a family is not necessarily the default; see the default column.
+The **mode** says how the document presents an item. Which modes exist depends on the item kind **and on whether the item is placed** (a working directory is set and its material is not `none`). The first mode of a list is its default.
 
-| Item kind | Modes (option ids) | Default (claude-code, codex / generic) |
+| Item kind | Not placed (a document, or Don't place) | Placed in a directory |
 | --- | --- | --- |
-| `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | `inline-main`, `inline-bundle`, `summary`, `pointer` | `inline-main` |
-| `skill` | `install`, `inline`, `pointer` | `install` / `pointer` |
-| reference `local-repo` | `describe`, `tree` | `describe` |
+| `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | `inline-main`, `inline-bundle`, `summary`, `pointer` | `summary` ("Summary + links"), `pointer`, `inline-main`, `inline-bundle` |
+| `skill` | `install` (`pointer` for the generic target), `inline`, `pointer` | `pointer` ("Link"), `inline` |
+| reference `local-repo` | `describe`, `tree` | `describe`, `tree` |
 | reference `remote-repo` | `describe`, `clone` | `describe` |
-| reference `remote-skill` | `install`, `describe` | `install` / `describe` |
+| reference `remote-skill` | `install` (`describe` for the generic target), `describe` | `describe` |
+
+The schema accepts every mode of the family in either case; a stored mode the placement does not offer is not applied (see Expansion rules). The UI offers only the list that fits, and shows a one-entry list as plain text.
 
 What each mode writes:
 
 | Mode | Output |
 | --- | --- |
-| `inline-main` | The entry's `index.md` body (the id stays `inline-main`, shown as "Inline entry"), plus a line listing the bundle's other concept files by relative path. The entry's `description` is printed first when the body does not already contain it, so a task or project whose template body is empty still says what it is. |
+| `inline-main` | The entry's `index.md` body (the id stays `inline-main`, shown as "Inline entry"), plus a line listing the bundle's other concept files (relative links when placed, paths otherwise). The entry's `description` is printed first when the body does not already contain it, so a task or project whose template body is empty still says what it is. |
 | `inline-bundle` | `index.md` (the entry), then every concept file under its own heading, in `index.md` order, then non-markdown files as a path list. |
-| `summary` | Meta line plus the description. |
-| `pointer` | One line with the description and the path to read. |
-| `install` (skill) | A shell block that copies (or symlinks) the skill folder into the target's skills directory. |
+| `summary` | Not placed: meta line plus the description. Placed ("Summary + links"): the description and a `Files:` line with relative links to the bundle's concept files (at most 20, then "and N more in" the folder link); nothing is inlined. |
+| `pointer` (okf) | One line with the description and the path to read (a link when placed). |
+| `install` (skill) | Not placed only: a shell block that copies (or symlinks) the skill folder into the target's skills directory. |
+| `pointer` (skill) | Not placed: description plus the `SKILL.md` path. Placed ("Link"): the description; the facts line links `<skillsDir>/<slug>/SKILL.md`, which the harness discovers by itself. |
 | `inline` (skill) | `SKILL.md` body plus a list of the skill's other files. |
 | `describe` | Description and where the thing is (path or URI). |
 | `tree` | `describe`, then the top-level entries of the local path (`treeLimit`). |
-| `clone` | `git clone` commands into the project. |
-| `install` (remote-skill) | Commands that clone or download the skill into the skills directory. |
+| `clone` | Not placed only: `git clone` commands into the project. |
+| `install` (remote-skill) | Not placed only: commands that clone or download the skill into the skills directory. |
 
 Options a mode accepts (others are ignored and not stored):
 
@@ -154,34 +165,36 @@ Options a mode accepts (others are ignored and not stored):
 | `shiftHeadings` | checkbox | on | the inline modes: nests the item's headings under its section |
 | `rewriteLinks` ("Resolve links") | checkbox | on | the inline modes: bundle and `ctxman:` links become file paths (relative to the directory when the item is placed in one, absolute otherwise) |
 | `eager` | checkbox | off | `pointer`: load the file up front (see targets) |
-| `symlink` | checkbox | off | skill `install` |
+| `symlink` | checkbox | off | skill `install` (the commands) |
 | `treeLimit` | select 10, 25, 50, 100, 200, 500 | 50 | `tree` |
 | `cloneDir` | text | `.ctxman/refs/{name}` | `clone`; project-relative, letters, digits, `. _ -` and `/`, no `..`; `{name}` is the reference name |
 | `shallow` | checkbox | on | `clone`: `--depth 1` |
 | `sparse` | checkbox | off | `clone`: sparse checkout of the reference's `subpath` |
 
-In a working-directory document the install and clone commands are replaced by statements about what the run placed ("Installed at `.claude/skills/x/`", "Cloned at `repos/y`"), whatever the mode.
+In a working-directory document an item the run placed never prints install or clone commands: its facts line says how it was placed and links to it, whatever the stored mode. A remote repository or skill that is **not** placed (Don't place, or its step failed) keeps its commands when its mode is `clone` / `install`, and an item whose step failed says `Not placed in this directory: <reason>.`
 
 ## Materials: what a run places in the directory
 
-The material of an item is independent of its mode. The same catalog (`src/lib/inflate/catalog.ts`) drives the UI, the planner and the checks.
+The material of an item is independent of its mode, and it comes first: it decides whether the item is placed, which in turn decides which modes apply. The same catalog (`src/lib/inflate/catalog.ts`) drives the UI, the planner and the checks. In the UI the material is the **Place** select; `none` reads **Don't place**.
 
-| Item kind | Materials | Default | Destination in `<W>` |
-| --- | --- | --- | --- |
-| `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | `symlink`, `copy`, `none` | `symlink` | `<dataset>/<slug>` |
-| `skill` | `copy`, `none` | `copy` | `<skillsDir>/<slug>` |
-| reference `local-repo` | `none`, `symlink` | `none` | `repos/<slug>` |
-| reference `remote-repo` | `none`, `clone` | `none` | `repos/<slug>` |
-| reference `remote-skill` | `install`, `none` | `install` | `<skillsDir>/<last subpath segment, or the slug>` |
+| Item kind | Place (materials, first = default) | Destination in `<W>` |
+| --- | --- | --- |
+| `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | Symlink (`symlink`), Copy (`copy`), Don't place (`none`) | `<dataset>/<slug>` |
+| `skill` | Symlink, Copy, Don't place | `<skillsDir>/<slug>` |
+| reference `local-repo` | Symlink, Copy, Don't place | `repos/<slug>` |
+| reference `remote-repo` | Clone (`clone`), Don't place | `repos/<slug>` |
+| reference `remote-skill` | Clone for a git URI or Download for an archive (`install`), Don't place | `<skillsDir>/<last subpath segment, or the slug>` |
 
-`none` is shown as "Mention only": nothing is placed and the document points at the original location. The defaults are the same for every target; the target only decides `<skillsDir>`.
+The defaults are the same for every target (the target only decides `<skillsDir>`): knowledge, skills and local repositories are symlinked, remote repositories and remote skills are fetched. `install` of a remote skill is labelled by the URI kind (Clone, Download, or "Clone or download" while the kind is unknown). Don't place means nothing is placed and `LLM_CONTEXT.md` points at the original path or URI.
 
-* **symlink** links the folder to the ctxman entry (edits to the link edit the entry; on Windows a junction). **copy** is a snapshot made through a temporary sibling and a rename, so files removed from the source disappear on the next run; `.git`, `node_modules` and `.DS_Store` are not copied.
-* **clone** runs `git clone` into `repos/<slug>` and `git pull --ff-only` on later runs. Options: `cloneDepth` (1, 10, 50 or 0 for full history; default 1), `branch` (a branch or tag; default the remote's default branch) and `subpathOnly` (a sparse checkout of the reference's `subpath`; offered in the UI only for a reference that has a subpath).
-* **install** (remote-skill): a git URI is cloned shallowly into the stage folder `.ctxman-tmp/<slug>` (sparse when there is a subpath), an https archive is downloaded (limit 256 MiB, 10 minutes) and extracted with the system `tar`. The skill folder is then located (the subpath, else `SKILL.md` at the root, else the single wrapper folder of an archive), copied to the destination without symbolic links, and the stage folder is removed. The destination folder name is the last subpath segment when that is a valid entry name (so `skills/skill-creator` installs as `skill-creator`, as agentskills.io requires the folder to equal the skill name), else the reference slug.
-* **Primary repository**: `output.primary` names one `reference/<slug>`, a remote-repo with `clone` or a local-repo with `symlink`. The document then leads with a "Primary repository" section (source, a "Start in" path when the reference has a subpath, "Work in `repos/<slug>` unless the task says otherwise"). It is single-select in the UI: ticking Primary on another item moves it.
+* **Symlink** links the folder to the original (a ctxman entry, a ctxman skill folder or the repository root; on Windows a junction). Edits through the link change the source, and a re-run leaves it `unchanged`.
+* **Copy** is a snapshot made through a temporary sibling and a rename, so files removed from the source disappear on the next run (it is `replaced` every run). `.git`, `node_modules` and `.DS_Store` are not copied, so a copied repository has no history and can be neither primary nor editable.
+* **Clone** runs `git clone` into `repos/<slug>` and `git pull --ff-only` on later runs. Options: `cloneDepth` (1, 10, 50 or 0 for full history; default 1), `branch` (a branch or tag; default the remote's default branch) and `subpathOnly` (a sparse checkout of the reference's `subpath`; offered in the UI only for a reference that has a subpath).
+* **Clone or Download** (remote-skill `install`): a git URI is cloned shallowly into the stage folder `.ctxman-tmp/<slug>` (sparse when there is a subpath), an https archive is downloaded (limit 256 MiB, 10 minutes) and extracted with the system `tar`. The skill folder is then located (the subpath, else `SKILL.md` at the root, else the single wrapper folder of an archive), copied to the destination without symbolic links, and the stage folder is removed. The destination folder name is the last subpath segment when that is a valid entry name (so `skills/skill-creator` installs as `skill-creator`, as agentskills.io requires the folder to equal the skill name), else the reference slug. The branch option does not apply to an archive.
+* **Primary repository**: `output.primary` names one `reference/<slug>`, a remote-repo with `clone` or a local-repo with `symlink`. The document then leads with a "Primary repository" section (source, a "Start in" link when the reference has a subpath, and "Work in `repos/<slug>` unless the task says otherwise"). It is single-select in the UI: ticking Primary on another item moves it.
+* **Editable**: whether the session may change files in a repository. Eligible: a `local-repo` that is symlinked or not placed (it lives at its original path) and a cloned `remote-repo`. A copy is a snapshot that the next run replaces, and a remote repository that is not cloned has nothing to edit, so neither has the flag. The default is **on for the valid primary and off for every other repository**. It is stored as the `edit` field of the `reference/<slug>` override (only a value that differs from the default is kept; the override is invalid on any other key), or given for one run as a run override. The document says `editable` or `read-only` for every repository, the Placement legend says what that means, and a read-only primary ends with "Read it to answer the task; it is read-only." instead of "Work in ...". Editable is guidance for the agent: nothing is made read-only on disk.
 
-A material that cannot be placed is demoted to `none` with a warning and nothing is done for it: `dest-collision` (two items want the same destination; the first wins), `source-missing` (a local repository path or an unknown URI kind), `tool-missing` (git, or tar / unzip for an archive, is not installed).
+A material that cannot be placed is demoted to `none` with a warning and nothing is done for it: `dest-collision` (two items want the same destination; the first wins), `source-missing` (a local repository path or an unknown URI kind), `tool-missing` (git, or tar / unzip for an archive, is not installed). The renderer follows the outcome, not the intention: a demoted or failed item is written as not placed.
 
 ## Targets
 
@@ -191,11 +204,11 @@ A material that cannot be placed is demoted to `none` with a warning and nothing
 | Skills directory | `.claude/skills` | `.agents/skills` | `.agents/skills` |
 | Instructions file named in the header | `CLAUDE.md` | `AGENTS.md` | none (no skills line) |
 | `eager` pointer | `Read it before starting: @/abs/path` | ``Read `/abs/path` before starting.`` | same as codex |
-| Default skill mode | `install` | `install` | `pointer` |
-| Default remote-skill mode | `install` | `install` | `describe` |
+| Default skill mode (not placed) | `install` | `install` | `pointer` |
+| Default remote-skill mode (not placed) | `install` | `install` | `describe` |
 | Stub written by default | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
-Everything else is identical across targets; `.gitignore` is a default stub for all of them. Only an `eager` pointer uses the bare `@path` form, because Claude Code loads a file the moment it sees `@path`; every other path is in backticks, which suppresses that expansion.
+Everything else is identical across targets; `.gitignore` is a default stub for all of them. A placed skill (`pointer`) and a placed remote skill (`describe`) have the same default in every target. Only an `eager` pointer uses the bare `@path` form, because Claude Code loads a file the moment it sees `@path`; every other path is in backticks (or, in a working-directory document, a markdown link whose text is the backticked path), which suppresses that expansion.
 
 ## Output format
 
@@ -251,23 +264,34 @@ Details:
 
 ### LLM_CONTEXT.md (working directory)
 
-The file written by a run is the same document with every path that points into `<W>` made relative to it. Paths outside `<W>` (an item with material `none`, a symlink target) stay absolute. The generation time is NOT printed, so an unchanged recipe produces an identical file. Section order:
+The file written by a run (and the relative document of the Preview and of `POST /api/inflate/plan`) is the same brief with every path into `<W>` turned into a **relative markdown link** and the placement spelled out. The generation time is NOT printed, so an unchanged recipe produces an identical file.
 
-1. Header: the title, the session line, a note that `<W>` is the working root (printed once, the only absolute path of the directory), the skills line, and which stub loads the file.
+**Links.** The link text is the path in a code span and a folder ends in `/`: ``[`kb/ctxman/index.md`](kb/ctxman/index.md)``, ``[`repos/astro-docs/`](repos/astro-docs/)``. A destination with whitespace, parentheses or angle brackets uses the `<...>` form. A path outside `<W>` (an item that is not placed) is an absolute link; a symlink target and the working root stay in code spans; git and https URIs stay in code spans. Only an `eager` pointer keeps a bare `@path` (Claude Code), so nothing else is force-loaded.
+
+Section order:
+
+1. Header: the title, the session line, a note that `<W>` is the working root (printed once, the only absolute path of the directory; "Links and paths below are relative to it"), the skills line, and which stub loads the file.
 2. The preamble.
-3. `## Working directory map`: a `text` block listing the context file and stubs, then one group per folder (`repos/`, one per knowledge dataset, the skills directory) with what each entry is (`symlink`, `copy`, `git clone, sparse`, `installed`), a `primary` marker and the first words of its description.
-4. `## Primary repository` (only with a valid primary), `## Repositories` (the other repositories, including ones only mentioned) and `## Skills` (installed skills, then a "Not installed" list).
-5. The ordinary segments in plan order. An item that failed during the run is written as not placed, with the reason.
+3. `## Working directory map`: a `text` block listing the context file and stubs, then one group per folder (`repos/`, one per knowledge dataset, the skills directory) with what each entry is (`symlink`, `copy`, `git clone[, sparse][, branch x]`, `cloned` / `downloaded` for a remote skill), a `primary` and an `editable` marker (read-only is the default and not repeated) and the first words of its description.
+4. `## Placement`: a legend with one line per placement kind that occurs (**symlink**, **copy**, **git clone**, **downloaded** / **cloned** skill, **not placed**), what **editable** and **read-only** mean when a repository is listed, and a line saying that ctxman knowledge, work items and skills are the user's own notes (`owner` says whether a repository or remote skill is theirs).
+5. `## Primary repository` (only with a valid primary): title, link, key, `owner: me|not me`, `editable` or `read-only`; the description; `Source:` (symlink to a path, or git clone of a URI with depth, branch and sparse path); `Start in:` as a link when the reference has a subpath; and the closing line (`Work in <link> unless the task says otherwise.` or `Read it to answer the task; it is read-only.`).
+6. `## Repositories`: every other repository, placed or not, one bullet each: title, link (or `not cloned` / `not placed` with the URI or absolute link), the placement phrase, `owner`, `editable` or `read-only`, the description.
+7. `## Skills`: the placed skills first, under a line naming the skills directory (a link to the skill folder, the title, `symlink to the ctxman skill` / `copy of the ctxman skill` / `downloaded from <uri>` / `cloned from <uri>`, `owner`, the description), then a "Not installed:" list.
+8. The segments in plan order. An item starts with a **facts line**, `` `key` · kind · state, stale, tags · link to the file or folder (or "not placed: <absolute link>") · placement word [· primary] [· editable | read-only] ``, then the context notes (as blockquotes) and the content of its mode: an okf `summary` prints the description and the `Files:` links (at most 20, then "and N more in <folder>"), a skill in `pointer` mode the description, the inline modes the bodies (the "More in this bundle" and "Other files" lists use links). **Repositories and remote skills are compact**: the facts line and the notes, then `Details: see Primary repository.` / `see Repositories.` / `see Skills.`, because those sections carry the details; a local repository in `tree` mode still prints its tree. An item that failed during the run is written as not placed, with the reason.
 
-A trimmed example for the seed recipe (`<W>` = `~/ctxman-inflate/ctxman-dev-brief`, the Astro docs cloned as primary):
+A trimmed example, generated by a dry run of the seed recipe with two extra items (the local repository `ctxman-repo` and the remote skill `anthropic-skills`) and without the seed's `inline-bundle` override of `kb/ctxman` (`<W>` = `~/ctxman-inflate/ctxman-dev-brief`, the Astro docs cloned as primary and editable, the local repository read-only; `...` marks cut text):
 
 ~~~~markdown
 # ctxman-dev-brief
 
 > Prepared by ctxman for a Claude Code session.
-> This directory is the working root (`/Users/me/ctxman-inflate/ctxman-dev-brief`). Relative paths below are relative to it; absolute paths point outside it. ...
+> This directory is the working root (`/Users/me/ctxman-inflate/ctxman-dev-brief`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.
 > Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.
 > `CLAUDE.md` in this directory loads this file.
+
+You are working on ctxman, a local-only Astro app. Use pnpm only, never npm.
+
+...
 
 ## Working directory map
 
@@ -276,28 +300,92 @@ LLM_CONTEXT.md                    this file
 CLAUDE.md                         loads this file
 .gitignore                        ignores the machine-specific paths below
 repos/
-  astro-docs/                     git clone, sparse · primary · The Astro documentation source, English content. Consul…
+  astro-docs/                     git clone, sparse · primary · editable · The Astro documentation source, English content. Consul…
+  ctxman-repo/                    symlink · This repository on the local machine, the home of the c…
 kb/
   ctxman/                         symlink · What ctxman is, how it is built, and how to work with i…
+  astro-content-layer/            symlink · How Astro 7 content collections, loaders and schemas wo…
+  ...
 .claude/skills/
-  ctxman-add-entry/               copy · Create a new ctxman dataset entry (kb, rca, idea, task,…
+  okf-authoring/                  symlink · Author and review OKF v0.2 knowledge bundles (kb, rca,…
+  ctxman-add-entry/               symlink · Create a new ctxman dataset entry (kb, rca, idea, task,…
+  skill-creator/                  cloned · Anthropic's public skills repository; the skill-creator…
 ```
+
+## Placement
+
+- **symlink**: the original folder, live; edits change the source (your ctxman entry or local repository).
+- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only) and keeps local changes and unpushed commits.
+- **cloned** skill: fetched from its URI and copied in without history; replaced by the next inflate.
+- **editable** repositories may be changed for this task; **read-only** ones are reference material: read them, do not change them.
+- Knowledge, work items and skills from ctxman are your own notes; `owner` says whether a repository or remote skill is yours.
 
 ## Primary repository
 
-**astro-docs** · `repos/astro-docs` · `reference/astro-docs` · owner: not me
+**astro-docs** · [`repos/astro-docs/`](repos/astro-docs/) · `reference/astro-docs` · owner: not me · editable
+
+The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.
 
 - Source: git clone of `https://github.com/withastro/docs.git`, shallow (depth 1), sparse checkout of `src/content/docs/en`
-- Start in: `repos/astro-docs/src/content/docs/en`
+- Start in: [`repos/astro-docs/src/content/docs/en/`](repos/astro-docs/src/content/docs/en/)
 
-Work in `repos/astro-docs` unless the task says otherwise.
+Work in [`repos/astro-docs/`](repos/astro-docs/) unless the task says otherwise.
+
+## Repositories
+
+- **ctxman-repo** · [`repos/ctxman-repo/`](repos/ctxman-repo/) · symlink to `/Users/me/repos/ctxman` · owner: me · read-only — This repository on the local machine, the home of the ctxman app, its scripts and all datasets.
+
+## Skills
+
+Installed in `.claude/skills/`, where Claude Code discovers them.
+
+- [`.claude/skills/okf-authoring/`](.claude/skills/okf-authoring/) · **okf-authoring** · symlink to the ctxman skill · owner: me — Author and review…
+- [`.claude/skills/skill-creator/`](.claude/skills/skill-creator/) · **anthropic-skills** · cloned from `https://github.com/anthropics/skills.git`…
+
+...
+
+## Context: ctxman-dev
+
+Everything an agent needs to work on ctxman itself, from architecture and datasets to open work and sources of truth.
+
+### ctxman
+
+`kb/ctxman` · Knowledge Base · tags: ctxman, architecture, docs · [`kb/ctxman/index.md`](kb/ctxman/index.md) · symlink
+
+> **From context `ctxman-dev`:** Start here. Read the architecture and datasets concepts before touching code or data.
+
+What ctxman is, how it is built, and how to work with its datasets, context forge, search and checks.
+
+Files: [`kb/ctxman/concepts/mcp.md`](kb/ctxman/concepts/mcp.md), [`kb/ctxman/concepts/datasets.md`](kb/ctxman/concepts/datasets.md), …
+
+...
+
+### okf-authoring
+
+`skill/okf-authoring` · Skill · [`.claude/skills/okf-authoring/SKILL.md`](.claude/skills/okf-authoring/SKILL.md) · symlink
+
+> **From context `ctxman-dev`:** Follow its checklist whenever you edit markdown under `data/`.
+
+Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature and project entries) under ctxman's data/ directory. Use when…
+
+...
+
+### astro-docs
+
+`reference/astro-docs` · Remote repo · tags: astro, docs · [`repos/astro-docs/`](repos/astro-docs/) · git clone · primary · editable
+
+> **From context `ctxman-dev`:** Upstream Astro docs; the content collection pages live under `guides/` and `reference/`.
+
+Details: see Primary repository.
+
+...
 ~~~~
 
 ### Stubs
 
 * `CLAUDE.md` (default for `claude-code`): a title, one sentence naming the recipe and the context file, and a bare `@LLM_CONTEXT.md` line, which Claude Code loads at session start.
 * `AGENTS.md` (default for `codex` and `generic`): the same sentence, "read it first", and a note that paths are relative to the directory.
-* `.gitignore` (default for all): `/.ctxman-inflate.json`, `/.ctxman-tmp/` and the folders that hold placed material (`/repos/`, `/kb/`, `/.claude/skills/<name>/`, ...), so the directory can be a git repository of your own notes without committing machine-specific content.
+* `.gitignore` (default for all): `/.ctxman-inflate.json`, `/.ctxman-tmp/` and the folders that hold placed material (`/repos/`, `/kb/`, `/.claude/skills/<name>/`, ...), so the directory can be a git repository of your own notes without committing machine-specific content. A symlinked skill is listed without the trailing slash (`/.claude/skills/<name>`), because git does not match a symlink with a directory pattern.
 
 Stubs are only written when absent or when the file still has the hash ctxman recorded; an edited or foreign stub is kept and reported. `LLM_CONTEXT.md` is output: it is always regenerated, with a warning (`context-file-edited`) when local edits are replaced. A stub whose name equals the context file name (case-insensitive) is not written.
 
@@ -315,7 +403,7 @@ Steps run in this order, with these ids (the seed's dry run has 15):
 | --- | --- |
 | `dir` | Create the directory (or use the existing one). A failure aborts everything else. |
 | `rm:<path>` | Remove a path the previous manifest lists and the new plan no longer places. |
-| `okf:<key>`, `skill:<key>`, `link:<key>` | Symlink or copy knowledge bundles, copy skills, symlink local repositories. |
+| `okf:<key>`, `skill:<key>`, `link:<key>` | Symlink or copy knowledge bundles, symlink or copy skills, symlink or copy local repositories. |
 | `clone:<key>` | `git clone` (or `git pull --ff-only` when the same clone exists). |
 | `stage:<key>`, `dl:<key>`, `x:<key>`, `skill:<key>` | Remote skill: clone or download into `.ctxman-tmp/`, extract, place. |
 | `stage-cleanup` | Remove `.ctxman-tmp/`. |
@@ -339,7 +427,7 @@ The ownership record, JSON with 2-space indentation: `format: "ctxman-inflate"`,
 { "path": "CLAUDE.md", "type": "file", "role": "claude-md", "sha256": "..." }
 ```
 
-Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`, `gitignore`). Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
+Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`, `gitignore`). A symlinked skill or local repository is a `symlink` entry, a copy a `copy` entry. Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
 
 ### Cleanup rule
 
@@ -356,7 +444,7 @@ ctxman deletes or replaces ONLY paths recorded in the previous manifest. A recor
 
 ## Run overrides
 
-A run can change settings without editing the recipe. The Run view sends them next to the working recipe and the server applies them before anything else (`applyRunOverrides`, a pure function), so the planner, renderer and checks only ever see one effective recipe. Overridable: `dir`, `contextFile`, `primary` (including "none"), `allowNonEmpty`, and per item `material` and `materialOptions`. A value equal to the recipe's removes the override. The banner "N run overrides (not saved)" offers **Save to recipe** (the overrides become ordinary edits of the recipe, which you then save) and **Clear**. Unsaved recipe edits are included in a run: the working copy is what is sent, not the file.
+A run can change settings without editing the recipe. The Run view sends them next to the working recipe and the server applies them before anything else (`applyRunOverrides`, a pure function), so the planner, renderer and checks only ever see one effective recipe. Overridable: `dir`, `contextFile`, `primary` (including "none"), `allowNonEmpty`, and per item `material`, `materialOptions` and `edit` (the Editable flag; like in the recipe only on `reference/<slug>` keys, 400 `invalid` otherwise). A value equal to the recipe's removes the override. The banner "N run overrides (not saved)" offers **Save to recipe** (the overrides become ordinary edits of the recipe, which you then save) and **Clear**; each item row has a reset. Unsaved recipe edits are included in a run: the working copy is what is sent, not the file.
 
 ## API
 
@@ -370,7 +458,7 @@ All routes use the shared JSON conventions (see [Routes and API](/concepts/route
 | `DELETE /api/recipe/<slug>` | Delete a recipe (204). |
 | `POST /api/inflate/render` | Body is a recipe, saved or not. Returns `{ markdown, manifest }` with absolute paths (the output directory is ignored); 400 `invalid` with `issues` when the recipe fails its schema. Nothing is written. |
 | `POST /api/inflate/write` | Body `{ recipe, path }`. Renders, writes the markdown to `path`, returns `{ path, bytes, manifest }`. Errors: 400 `invalid` (recipe issues are prefixed `recipe.`), 400 `bad-path`, 400 `write-failed`. |
-| `POST /api/inflate/plan` | Body `{ recipe, overrides? }` (`overrides`: `{ dir?, contextFile?, primary?, allowNonEmpty?, items? }`). Dry run: `{ dir, dirInput, contextFile, dirState, blocking, steps, warnings, document, applied }`. A bad directory is a `blocking` entry (`bad-dir`, `dir-not-directory`, `dir-not-empty`, `manifest-invalid`), not an HTTP error; with no directory the document is the absolute one and `steps` is empty. 400 `invalid` for a bad body. |
+| `POST /api/inflate/plan` | Body `{ recipe, overrides? }` (`overrides`: `{ dir?, contextFile?, primary?, allowNonEmpty?, items? }`, where `items[key]` is `{ material?, materialOptions?, edit? }`). Dry run: `{ dir, dirInput, contextFile, dirState, blocking, steps, warnings, document, applied }`. A bad directory is a `blocking` entry (`bad-dir`, `dir-not-directory`, `dir-not-empty`, `manifest-invalid`), not an HTTP error; with no directory the document is the absolute one and `steps` is empty. 400 `invalid` for a bad body. |
 | `POST /api/inflate/run` | Same body. 202 `{ jobId, job }` with `Location: /api/inflate/jobs/<id>`. 400 `no-dir`, `bad-dir`, `dir-not-directory`; 409 `dir-not-empty`, `manifest-invalid`, `busy` (with the running `jobId`). |
 | `GET /api/inflate/jobs/<id>` | The job (`InflateJob`). 400 `bad-id`, 404 `not-found` (unknown or lost in a restart). |
 | `POST /api/inflate/jobs/<id>/cancel` | Empty body or `{}`. 200 `{ job }` (status `running` with `cancelRequested`, or `cancelled`); 409 `not-running` for a finished job. |
@@ -394,13 +482,13 @@ The file is written to a temporary sibling and renamed, parent directories are c
 
 One React island with three views, selected by the URL parameter `view`:
 
-* **Compose** (default). A sources pane (description, an **Output directory** disclosure with the directory field, "Use default" (`~/ctxman-inflate/<name>`), "Document only", context file, the three stub checkboxes and "Allow a non-empty directory"; preamble editor, contexts to tick, default mode and material per item kind, ad hoc search and "+ Markdown block") and a composition pane (each segment with up and down buttons, exclude or remove, a mode select and the mode's options, and, when a directory is set, its destination, a **Material** select with its options and a **Primary** checkbox for eligible repositories; markdown editors, warnings). The list is the same pure expansion the server runs, so reordering and mode changes show immediately.
+* **Compose** (default). A sources pane (description, an **Output directory** disclosure with the directory field, "Use default" (`~/ctxman-inflate/<name>`), "Document only", context file, the three stub checkboxes and "Allow a non-empty directory"; preamble editor, contexts to tick, **Default modes**, ad hoc search and "+ Markdown block") and a composition pane. The disclosure starts open when a directory is set. **Default modes** lists only the item kinds the recipe has (included or excluded items, plus any kind with a stored default), one row each: with a directory a **Place** select (the default material, "Default (Symlink)" and so on) and an **In LLM_CONTEXT.md** select, without one an **Include as** select. The composition pane starts, when a directory is set, with the **placement summary** (`~/ctxman-inflate/x · 4 symlink · 1 copy · 2 clone · 1 download · 1 not placed · primary: astro-docs · editable: astro-docs`, only the non-zero parts) and then lists each segment with up and down buttons, exclude or remove. A row with a directory has two lines of controls: **Place** (the material select with Symlink / Copy / Clone / Download / Don't place, its options, and for a repository **Primary** and **Editable**; Editable is hidden when the repository cannot be edited) and **In LLM_CONTEXT.md** (the mode select over the list that fits the placement, plain text when there is only one choice, and the mode's options). Without a directory a row has the single **Include as** select. The row head shows the destination, the reference type, an owner badge (`mine` / `not mine`) and, for a remote skill, `git` or `archive`. Markdown editors and warnings complete the pane. The list is the same pure expansion the server runs, so reordering and mode changes show immediately.
 * **Preview**. Renders the real document through the server about 400 ms after the last edit, with Copy, Download .md and the manifest table (with a Material column when a directory is set). With a directory it shows the relative document of the dry run (`paths=relative`, default) and a button that opens the Run view; `paths=absolute` shows the single-document render and the "Write to path" box.
-* **Run**. Run settings on the left (run overrides, the directory, context file, primary and a material select per included item), the plan on the right (status line, blocking problems, warnings, the step list, the **Run** button); after starting, the job progress replaces the plan (status, **Cancel**, one row per step with its action, duration and collapsible output, and at the end the directory with "Open in IDE", "Copy path" and "Back to plan").
+* **Run**. Run settings on the left (run overrides, the directory, context file, primary, and for every included item a **Place** select plus, for a repository that can be edited, an **Editable** checkbox, with a reset per item), the plan on the right (status line, blocking problems, warnings, the step list, the **Run** button); after starting, the job progress replaces the plan (status, **Cancel**, one row per step with its action, duration and collapsible output, and at the end the directory with "Open in IDE", "Copy path" and "Back to plan").
 
 The ad hoc discovery list has the same tabs as the Forge, **All** first (`dataset=all`: entries of every linkable dataset together, with a dataset badge on each row). Unsaved edits of the working recipe are kept as a draft in `localStorage` (14 days) and restored after a reload with a "Restored unsaved changes" banner and a Discard button (a recipe changed on disk meanwhile is restored with a warning); there is no native leave prompt, and switching recipes still asks first. A never-saved `new` recipe is not persisted. The markdown block and preamble editors complete `ctxman:` links like every markdown editor (see [Editing](/concepts/editing.md)).
 
-URL parameters: `recipe` (a recipe name, or `new` for the create dialog), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc discovery tab, a linkable dataset or `all`), `q` (its text filter), `job` (the job being watched; only kept with `view=run`) and `paths` (`absolute`; relative is the default and omitted). Save with the button or Cmd/Ctrl+S; unsaved edits are guarded when you switch recipes or leave. A recipe's own page at `/recipe/<name>` shows its composition read-only (including the output directory, a Material column and the primary marker) with an "Open in Inflate" button.
+URL parameters: `recipe` (a recipe name, or `new` for the create dialog), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc discovery tab, a linkable dataset or `all`), `q` (its text filter), `job` (the job being watched; only kept with `view=run`) and `paths` (`absolute`; relative is the default and omitted). Save with the button or Cmd/Ctrl+S; unsaved edits are guarded when you switch recipes or leave. A recipe's own page at `/recipe/<name>` shows its composition read-only (including the output directory, the primary marker, an Editable column and an Editable row in the Output panel) with an "Open in Inflate" button.
 
 ## Code map
 
@@ -408,11 +496,11 @@ All under `src/lib/inflate/` unless noted:
 
 | File | Kind | Role |
 | --- | --- | --- |
-| `catalog.ts` | pure | Targets, layouts, item kinds, modes, options, materials, destinations, output constants, segment keys |
-| `recipe.ts` | pure | Parse, normalize and serialize a recipe; `sameRecipe` for the dirty check; `applyRunOverrides` and `parseRunRequest` |
-| `expand.ts` | pure | `expandRecipe` (modes, materials, primary) and `applyOrder` |
+| `catalog.ts` | pure | Targets, layouts, item kinds, modes (also per placement: `modesForPlacement`), options, materials (`materialLabel`), `isEditEligible`, destinations, output constants, segment keys |
+| `recipe.ts` | pure | Parse, normalize and serialize a recipe (override key order `key, mode, options, material, materialOptions, edit, exclude`); `sameRecipe` for the dirty check; `applyRunOverrides` and `parseRunRequest` |
+| `expand.ts` | pure | `expandRecipe` (material, then placement-aware mode, primary, Editable) and `applyOrder` |
 | `material-plan.ts` | pure | `planMaterialization` (the ordered steps), `.gitignore` and stub texts, path mapping, and every type that crosses the API |
-| `markdown.ts` | node (no fs) | Heading shifting, link rewriting, fences, quoting |
+| `markdown.ts` | node (no fs) | Heading shifting, link rewriting, path links (`pathLink`), fences, quoting |
 | `render.ts` | node (no fs) | Plan plus gathered content to document and manifest, also the working-directory document |
 | `pipeline.ts` | node (no fs) | Loads inputs, gathers file content, runs expand and render |
 | `fs-sources.ts` | node | The filesystem implementation of the pipeline's sources |

@@ -188,15 +188,16 @@ describe('planMaterialization: seed-shaped recipe', () => {
       after: [],
       target: path.join(w.D, 'kb', 'ctxman'),
     });
+    // v3: a skill is symlinked by default
     expect(step('skill:skill/okf-authoring')).toEqual({
-      kind: 'copyDir',
+      kind: 'symlink',
       id: 'skill:skill/okf-authoring',
       path: '.claude/skills/okf-authoring',
-      label: 'Copy skill okf-authoring → .claude/skills/okf-authoring',
+      label: `Symlink .claude/skills/okf-authoring → ${path.join(w.D, 'skill', 'okf-authoring')}`,
       expect: 'create',
       key: 'skill/okf-authoring',
       after: [],
-      from: path.join(w.D, 'skill', 'okf-authoring'),
+      target: path.join(w.D, 'skill', 'okf-authoring'),
     });
     expect(step('clone:reference/astro-docs')).toEqual({
       kind: 'gitClone',
@@ -232,18 +233,26 @@ describe('planMaterialization: seed-shaped recipe', () => {
     });
     expect(step('stub:.gitignore')).toMatchObject({
       role: 'gitignore',
-      content: gitignoreText('ctxman-dev-brief', [
-        'kb/ctxman',
-        'kb/astro-content-layer',
-        'rca/astro-dev-full-reload-on-save',
-        'idea/context-inflate',
-        'task/write-agents-md',
-        'feature/context-forge',
-        'project/ctxman-v1',
-        '.claude/skills/okf-authoring',
-        '.claude/skills/ctxman-add-entry',
-        'repos/astro-docs',
-      ]),
+      content: gitignoreText(
+        'ctxman-dev-brief',
+        [
+          'kb/ctxman',
+          'kb/astro-content-layer',
+          'rca/astro-dev-full-reload-on-save',
+          'idea/context-inflate',
+          'task/write-agents-md',
+          'feature/context-forge',
+          'project/ctxman-v1',
+          '.claude/skills/okf-authoring',
+          '.claude/skills/ctxman-add-entry',
+          'repos/astro-docs',
+        ],
+        [
+          // symlinked skills are ignored without the directory-only trailing slash
+          '.claude/skills/okf-authoring',
+          '.claude/skills/ctxman-add-entry',
+        ],
+      ),
     });
     expect(step('manifest')).toEqual({
       kind: 'writeManifest',
@@ -287,6 +296,8 @@ describe('planMaterialization: seed-shaped recipe', () => {
       branch: null,
       sparse: true,
       owner: 'not-me',
+      edit: true,
+      uriKind: null,
       state: 'planned',
     });
     expect(p.materials['kb/ctxman']).toMatchObject({
@@ -294,7 +305,9 @@ describe('planMaterialization: seed-shaped recipe', () => {
       dest: 'kb/ctxman',
       sourceAbs: path.join(w.D, 'kb', 'ctxman'),
       uri: null,
-      owner: null,
+      owner: 'me',
+      edit: null,
+      uriKind: null,
       depth: null,
       sparse: false,
     });
@@ -519,7 +532,7 @@ describe('planMaterialization: demotion to none with a warning', () => {
       subpath: 'skills/foo',
     });
     expect(p.materials['skill/foo']).toMatchObject({
-      material: 'copy',
+      material: 'symlink',
       dest: '.claude/skills/foo',
     });
   });
@@ -665,10 +678,35 @@ describe('planMaterialization: primary', () => {
     // material none -> not eligible
     const p = await plan(
       w,
-      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }),
+      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }, [
+        { key: 'reference/rr', material: 'none' },
+      ]),
     );
     expect(p.primary).toBeNull();
     expect(p.warnings).toEqual([]);
+    // a copy of a local repository has no .git: not a primary either
+    const copy = await plan(
+      w,
+      adhoc(['reference/lr'], { output: { dir: W, primary: 'reference/lr' } }, [
+        { key: 'reference/lr', material: 'copy' },
+      ]),
+    );
+    expect(copy.primary).toBeNull();
+    expect(copy.warnings).toEqual([]);
+  });
+
+  it('the built-in materials make a plain remote or local repository a valid primary', async () => {
+    const w = world();
+    const remote = await plan(
+      w,
+      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }),
+    );
+    expect(remote.primary).toBe('reference/rr');
+    const local = await plan(
+      w,
+      adhoc(['reference/lr'], { output: { dir: W, primary: 'reference/lr' } }),
+    );
+    expect(local.primary).toBe('reference/lr');
   });
 });
 
@@ -895,6 +933,351 @@ describe('planMaterialization: step groups', () => {
   });
 });
 
+// ---------------------------------------------------------------- v3 (plans/INFLATE_V3_PLAN.md §6)
+
+describe('planMaterialization: skill symlink and local-repo copy', () => {
+  it('a skill is symlinked by default: a symlink step to the ctxman skill folder, id skill:<key>', async () => {
+    const w = world();
+    const p = await plan(w, adhoc(['skill/foo']));
+    const source = path.join(w.D, 'skill', 'foo');
+    expect(p.steps.find((s) => s.id === 'skill:skill/foo')).toEqual({
+      kind: 'symlink',
+      id: 'skill:skill/foo',
+      path: '.claude/skills/foo',
+      label: `Symlink .claude/skills/foo → ${source}`,
+      expect: 'create',
+      key: 'skill/foo',
+      after: [],
+      target: source,
+    });
+    expect(p.materials['skill/foo']).toMatchObject({
+      material: 'symlink',
+      dest: '.claude/skills/foo',
+      sourceAbs: source,
+      uri: null,
+      owner: 'me',
+      edit: null,
+    });
+    const codex = await plan(w, adhoc(['skill/foo'], { target: 'codex' }));
+    expect(codex.steps.find((s) => s.id === 'skill:skill/foo')).toMatchObject({
+      kind: 'symlink',
+      path: '.agents/skills/foo',
+    });
+    expect(p.warnings).toEqual([]);
+  });
+
+  it('skill copy is unchanged: a copyDir step with the v2 label', async () => {
+    const w = world();
+    const p = await plan(w, adhoc(['skill/foo'], {}, [{ key: 'skill/foo', material: 'copy' }]));
+    expect(p.steps.find((s) => s.id === 'skill:skill/foo')).toEqual({
+      kind: 'copyDir',
+      id: 'skill:skill/foo',
+      path: '.claude/skills/foo',
+      label: 'Copy skill foo → .claude/skills/foo',
+      expect: 'create',
+      key: 'skill/foo',
+      after: [],
+      from: path.join(w.D, 'skill', 'foo'),
+    });
+    expect(p.materials['skill/foo']).toMatchObject({ material: 'copy', owner: 'me' });
+  });
+
+  it('a symlinked skill: expect replace over a previous copy (and the other way round)', async () => {
+    const w = world();
+    const previous = manifest([
+      { path: '.claude/skills/foo', type: 'copy', key: 'skill/foo', source: '/old' },
+    ]);
+    const p = await plan(w, adhoc(['skill/foo']), { previous });
+    expect(p.steps.find((s) => s.id === 'skill:skill/foo')).toMatchObject({
+      kind: 'symlink',
+      expect: 'replace',
+    });
+    const back = await plan(w, adhoc(['skill/foo'], {}, [{ key: 'skill/foo', material: 'copy' }]), {
+      previous: manifest([
+        { path: '.claude/skills/foo', type: 'symlink', key: 'skill/foo', target: '/old' },
+      ]),
+    });
+    expect(back.steps.find((s) => s.id === 'skill:skill/foo')).toMatchObject({
+      kind: 'copyDir',
+      expect: 'replace',
+    });
+  });
+
+  it('a local repository is symlinked by default (link:<key>), and a remote repository cloned', async () => {
+    const w = world();
+    const p = await plan(w, adhoc(['reference/lr', 'reference/rr']));
+    expect(ids(p)).toEqual([
+      'dir',
+      'link:reference/lr',
+      'clone:reference/rr',
+      'context',
+      'stub:CLAUDE.md',
+      'stub:.gitignore',
+      'manifest',
+    ]);
+    expect(p.steps.find((s) => s.id === 'link:reference/lr')).toMatchObject({
+      kind: 'symlink',
+      target: w.repo,
+    });
+    expect(p.warnings).toEqual([]);
+  });
+
+  it('local-repo copy: a copyDir step of the repository ROOT with id link:<key>', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/lr'], {}, [{ key: 'reference/lr', material: 'copy' }]),
+    );
+    expect(p.steps.find((s) => s.id === 'link:reference/lr')).toEqual({
+      kind: 'copyDir',
+      id: 'link:reference/lr',
+      path: 'repos/lr',
+      label: `Copy ${w.repo} → repos/lr`,
+      expect: 'create',
+      key: 'reference/lr',
+      after: [],
+      from: w.repo,
+    });
+    // the view keeps the subpath (relevant path) and has no edit flag: a snapshot
+    expect(p.materials['reference/lr']).toMatchObject({
+      material: 'copy',
+      dest: 'repos/lr',
+      sourceAbs: w.repo,
+      subpath: 'src',
+      owner: 'me',
+      edit: null,
+    });
+    expect(p.warnings).toEqual([]);
+    const replaced = await plan(
+      w,
+      adhoc(['reference/lr'], {}, [{ key: 'reference/lr', material: 'copy' }]),
+      {
+        previous: manifest([
+          { path: 'repos/lr', type: 'symlink', key: 'reference/lr', target: w.repo },
+        ]),
+      },
+    );
+    expect(replaced.steps.find((s) => s.id === 'link:reference/lr')?.expect).toBe('replace');
+  });
+
+  it('local-repo copy keeps the source-missing rules of the symlink', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/lr-gone'], {}, [{ key: 'reference/lr-gone', material: 'copy' }]),
+    );
+    expect(p.warnings).toEqual([
+      {
+        code: 'source-missing',
+        message: `reference/lr-gone: ${path.join(w.repo, 'missing')} does not exist; nothing placed`,
+        key: 'reference/lr-gone',
+      },
+    ]);
+    expect(ids(p)).not.toContain('link:reference/lr-gone');
+    expect(p.materials['reference/lr-gone']).toMatchObject({
+      material: 'none',
+      dest: null,
+      // a demoted local repository is not placed: editable at its original path only when asked for
+      edit: false,
+    });
+  });
+
+  it('a copy and a symlink of two local repositories collide on nothing; one repo name, one dest', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/lr', 'reference/lr-gone'], {}, [{ key: 'reference/lr', material: 'copy' }]),
+    );
+    expect(p.steps.find((s) => s.id === 'link:reference/lr')?.kind).toBe('copyDir');
+    expect(codes(p.warnings)).toEqual(['source-missing']);
+  });
+});
+
+describe('planMaterialization: MaterialView edit, owner and uriKind', () => {
+  it('owner: me for okf entries and local skills, the reference owner otherwise', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc([
+        'kb/ctxman',
+        'skill/foo',
+        'reference/lr',
+        'reference/rr',
+        'reference/rs-git',
+        'reference/rs-git-root',
+      ]),
+    );
+    const owners = Object.fromEntries(Object.entries(p.materials).map(([k, v]) => [k, v.owner]));
+    expect(owners).toEqual({
+      'kb/ctxman': 'me',
+      'skill/foo': 'me',
+      'reference/lr': 'me',
+      'reference/rr': 'me',
+      'reference/rs-git': 'me',
+      'reference/rs-git-root': 'not-me',
+    });
+  });
+
+  it('uriKind: git or archive for remote skills, null for everything else', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc([
+        'reference/rs-git',
+        'reference/rs-tgz',
+        'reference/rs-zip',
+        'reference/rr',
+        'kb/ctxman',
+      ]),
+    );
+    const kinds = Object.fromEntries(Object.entries(p.materials).map(([k, v]) => [k, v.uriKind]));
+    expect(kinds).toEqual({
+      'reference/rs-git': 'git',
+      'reference/rs-tgz': 'archive',
+      'reference/rs-zip': 'archive',
+      'reference/rr': null,
+      'kb/ctxman': null,
+    });
+    // also for a remote skill that is not placed (the label reads Clone / Download either way)
+    const none = await plan(
+      w,
+      adhoc(['reference/rs-tgz'], {}, [{ key: 'reference/rs-tgz', material: 'none' }]),
+    );
+    expect(none.materials['reference/rs-tgz']).toMatchObject({
+      material: 'none',
+      uriKind: 'archive',
+    });
+  });
+
+  it('edit: true for the primary, false for another eligible repository, null otherwise', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/rr', 'reference/lr', 'reference/rs-git', 'kb/ctxman', 'skill/foo'], {
+        output: { dir: W, primary: 'reference/rr' },
+      }),
+    );
+    const edits = Object.fromEntries(Object.entries(p.materials).map(([k, v]) => [k, v.edit]));
+    expect(edits).toEqual({
+      'reference/rr': true,
+      'reference/lr': false,
+      'reference/rs-git': null,
+      'kb/ctxman': null,
+      'skill/foo': null,
+    });
+  });
+
+  it('edit follows the override and the material', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(
+        ['reference/rr', 'reference/lr', 'reference/lr-gone'],
+        { output: { dir: W, primary: 'reference/rr' } },
+        [
+          { key: 'reference/rr', edit: false },
+          { key: 'reference/lr', edit: true },
+          // symlink (the default) of a missing path: demoted to a not-placed local repository, which is
+          // editable at its original path when asked for
+          { key: 'reference/lr-gone', edit: true },
+        ],
+      ),
+    );
+    expect(p.materials['reference/rr']?.edit).toBe(false);
+    expect(p.materials['reference/lr']?.edit).toBe(true);
+    expect(p.materials['reference/lr-gone']).toMatchObject({ material: 'none', edit: true });
+    // a copy is a snapshot: the override is ignored, also after the copy is demoted
+    const copy = await plan(
+      w,
+      adhoc(['reference/lr', 'reference/lr-gone'], {}, [
+        { key: 'reference/lr', material: 'copy', edit: true },
+        { key: 'reference/lr-gone', material: 'copy', edit: true },
+      ]),
+    );
+    expect(copy.materials['reference/lr']).toMatchObject({ material: 'copy', edit: null });
+    expect(copy.materials['reference/lr-gone']).toMatchObject({ material: 'none', edit: false });
+  });
+
+  it('a demoted remote repository (git missing) loses the flag; a not-placed local repo is false', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }),
+      {
+        tools: { git: false, tar: true, unzip: true },
+      },
+    );
+    expect(p.primary).toBeNull();
+    expect(p.materials['reference/rr']).toMatchObject({ material: 'none', edit: null });
+    const gone = await plan(
+      w,
+      adhoc(['reference/lr-gone'], { output: { dir: W, primary: 'reference/lr-gone' } }),
+    );
+    expect(gone.primary).toBeNull();
+    expect(gone.materials['reference/lr-gone']).toMatchObject({ material: 'none', edit: false });
+  });
+
+  it('edit never changes the steps (it only changes the document)', async () => {
+    const w = world();
+    const a = await plan(
+      w,
+      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }),
+    );
+    const b = await plan(
+      w,
+      adhoc(['reference/rr'], { output: { dir: W, primary: 'reference/rr' } }, [
+        { key: 'reference/rr', edit: false },
+      ]),
+    );
+    expect(b.steps).toEqual(a.steps);
+  });
+});
+
+describe('planMaterialization: .gitignore of symlinked skills', () => {
+  const stubOf = (p: MaterialPlan) => {
+    const step = p.steps.find((s) => s.id === 'stub:.gitignore');
+    return step !== undefined && step.kind === 'writeFile' ? step.content : '';
+  };
+
+  it('a symlink is not a directory to git: its line has no trailing slash; copies keep it', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['skill/foo', 'skill/okf-authoring', 'kb/ctxman', 'reference/lr'], {}, [
+        { key: 'skill/okf-authoring', material: 'copy' },
+      ]),
+    );
+    expect(stubOf(p)).toBe(
+      [
+        '# Generated by ctxman (recipe ctxman-dev-brief): machine-specific content.',
+        '/.ctxman-inflate.json',
+        '/.ctxman-tmp/',
+        '/repos/',
+        '/kb/',
+        '/.claude/skills/foo',
+        '/.claude/skills/okf-authoring/',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('gitignoreText takes the symlinked paths as a third argument; the default is none', () => {
+    expect(
+      gitignoreText('demo', ['.claude/skills/a', '.claude/skills/b'], ['.claude/skills/a']),
+    ).toBe(
+      [
+        '# Generated by ctxman (recipe demo): machine-specific content.',
+        '/.ctxman-inflate.json',
+        '/.ctxman-tmp/',
+        '/.claude/skills/a',
+        '/.claude/skills/b/',
+        '',
+      ].join('\n'),
+    );
+    expect(gitignoreText('demo', ['.claude/skills/a'])).toContain('/.claude/skills/a/\n');
+  });
+});
+
 // ---------------------------------------------------------------- context file + stubs
 
 describe('planMaterialization: context file and stubs', () => {
@@ -1061,6 +1444,8 @@ describe('createPathMapper (mount mapping)', () => {
     branch: null,
     sparse: false,
     owner: null,
+    edit: null,
+    uriKind: null,
     state,
   });
   const mapper = (views: MaterialView[]) =>
