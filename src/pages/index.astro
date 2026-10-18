@@ -87,7 +87,7 @@ const recipeMeta = (r: EntrySummary): string =>
         }
       </Panel>
       <Panel title="Contexts" count={contexts.length} id="h-contexts" testid="dashboard-contexts">
-        <a slot="actions" class="ck-button ck-button--ghost ck-button--sm" href="/forge?context=new">
+        <a slot="actions" class="ck-button ck-button--ghost ck-button--sm ck-button--glow" href="/forge?context=new">
           <span class="ck-button__label">New</span>
         </a>
         {
@@ -103,7 +103,7 @@ const recipeMeta = (r: EntrySummary): string =>
                   </span>
                   <span class="cx-mono cx-subtle">{c.linkCount ?? 0} links</span>
                   <a
-                    class="ck-button ck-button--ghost ck-button--sm"
+                    class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
                     href={`/forge?context=${c.slug}`}
                   >
                     <span class="ck-button__label">Forge</span>
@@ -127,7 +127,7 @@ const recipeMeta = (r: EntrySummary): string =>
       <Panel title="Recipes" count={recipes.length} id="h-recipes" testid="dashboard-recipes">
         <a
           slot="actions"
-          class="ck-button ck-button--ghost ck-button--sm"
+          class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
           href="/inflate?recipe=new"
           data-testid="dashboard-recipe-new"
         >
@@ -146,7 +146,7 @@ const recipeMeta = (r: EntrySummary): string =>
                   </span>
                   <span class="cx-mono cx-subtle">{recipeMeta(r)}</span>
                   <a
-                    class="ck-button ck-button--ghost ck-button--sm"
+                    class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
                     href={`/inflate?recipe=${r.slug}`}
                   >
                     <span class="ck-button__label">Inflate</span>

@@ -2,6 +2,7 @@
 import Breadcrumbs from '../../../components/Breadcrumbs.astro';
 import ChildrenPanel from '../../../components/ChildrenPanel.astro';
 import ContextLinkList from '../../../components/ContextLinkList.astro';
+import CopyButton from '../../../components/CopyButton.astro';
 import DatasetBadge from '../../../components/DatasetBadge.astro';
 import DetailAside from '../../../components/DetailAside.astro';
 import Freshness from '../../../components/Freshness.astro';
@@ -102,14 +103,7 @@ const tools =
       <PageHeader title={title}>
         <Fragment slot="meta">
           <code class="cx-detail__slug" data-testid="detail-slug">{slug}</code>
-          <button
-            type="button"
-            class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-            data-copy={slug}
-            aria-label="Copy slug"
-          >
-            <span class="ck-button__label">Copy</span>
-          </button>
+          <CopyButton text={slug} ariaLabel="Copy slug" />
           <DatasetBadge dataset={def.id} />
           {
             detail.kind === 'okf' && def.states && (

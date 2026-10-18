@@ -524,7 +524,7 @@
   }
   .cx-detail__slug {
     font-family: var(--font-mono);
-    font-size: var(--fs-mono);
+    font-size: var(--fs-sm);
   }
   .cx-detail__lede {
     margin-bottom: var(--sp-5);

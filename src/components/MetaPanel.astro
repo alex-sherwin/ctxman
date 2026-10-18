@@ -15,6 +15,7 @@ import {
 import type { InflateLayout } from '../lib/inflate/catalog.ts';
 import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
 import { stringifyYaml } from '../lib/yaml.ts';
+import CopyButton from './CopyButton.astro';
 import Freshness from './Freshness.astro';
 import MetaRow from './MetaRow.astro';
 import OkfStatusBadge from './OkfStatusBadge.astro';
@@ -130,7 +131,7 @@ const filePath = `data/${file}`;
         <span class="cx-panel__actions">
           <button
             type="button"
-            class="ck-button ck-button--ghost ck-button--sm"
+            class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
             disabled
             data-entry-action="frontmatter"
             data-testid="meta-edit"
@@ -314,14 +315,7 @@ const filePath = `data/${file}`;
     <MetaRow label="File">
       <code class="cx-mono">{filePath}</code>
       {" "}
-      <button
-        type="button"
-        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-        data-copy={filePath}
-        aria-label="Copy file path"
-      >
-        <span class="ck-button__label">Copy</span>
-      </button>
+      <CopyButton text={filePath} ariaLabel="Copy file path" />
     </MetaRow>
   </dl>
 </section>

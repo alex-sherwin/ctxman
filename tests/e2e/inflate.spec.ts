@@ -880,7 +880,8 @@ test.describe('copy and download', () => {
     // swallows; bring the page to front so the click is the only thing that decides the outcome.
     await page.bringToFront();
     await page.getByTestId('inflate-copy').click();
-    await expect(page.getByTestId('inflate-copy')).toHaveText('Copied');
+    // the label gives way to a check (same width) while `data-copied` is set
+    await expect(page.getByTestId('inflate-copy')).toHaveAttribute('data-copied', '');
     const clipboard = await page.evaluate(() => navigator.clipboard.readText());
     expect(clipboard.startsWith(`# ${SEED_RECIPE}\n`)).toBe(true);
 

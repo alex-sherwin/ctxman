@@ -24,7 +24,8 @@ if (MAC.test(navigator.platform || navigator.userAgent)) {
   for (const el of document.querySelectorAll('[data-kbd-mod]')) el.textContent = '⌘';
 }
 
-// 2. Copy buttons: <button data-copy="text">. The label swaps to "Copied" for a moment.
+// 2. Copy buttons (src/components/CopyButton.astro): <button data-copy="text">. For a moment `data-copied` swaps
+//    the label for a centered check (CSS, same width) and the sibling `[data-copy-status]` live region says "Copied".
 const copyTimers = new WeakMap<HTMLElement, number>();
 
 async function copyFrom(button: HTMLElement): Promise<void> {
@@ -34,17 +35,16 @@ async function copyFrom(button: HTMLElement): Promise<void> {
   } catch {
     return; // clipboard unavailable (insecure context / permission): leave the button untouched
   }
-  const label = button.querySelector<HTMLElement>('.ck-button__label') ?? button;
-  if (!copyTimers.has(button)) button.dataset.label = label.textContent ?? '';
+  const next = button.nextElementSibling;
+  const status = next instanceof HTMLElement && next.matches('[data-copy-status]') ? next : null;
   window.clearTimeout(copyTimers.get(button));
   button.dataset.copied = '';
-  label.textContent = 'Copied';
+  if (status) status.textContent = 'Copied';
   copyTimers.set(
     button,
     window.setTimeout(() => {
-      label.textContent = button.dataset.label ?? '';
       delete button.dataset.copied;
-      delete button.dataset.label;
+      if (status) status.textContent = '';
       copyTimers.delete(button);
     }, COPIED_MS),
   );

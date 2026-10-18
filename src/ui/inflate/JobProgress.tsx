@@ -2,11 +2,10 @@
 // tail of its output, a Cancel button while it runs, and a summary with "Open in IDE" / "Copy path" when it is
 // over. The job document comes from polling `GET /api/inflate/jobs/:id` (src/stores/inflate-run.ts).
 import { useStore } from '@nanostores/react';
-import { useRef, useState } from 'react';
 import type { InflateJob, JobStep, StepStatus } from '../../lib/inflate/material-plan.ts';
 import { $now } from '../../stores/now.ts';
 import { $ide, $job, attachJob, cancelRun, closeJob, openInIde } from '../../stores/inflate-run.ts';
-import { Button, Disclosure } from '../kit/index.ts';
+import { Button, CopyButton, Disclosure } from '../kit/index.ts';
 import { formatDuration, plural } from './format.ts';
 
 const GLYPHS: Record<Exclude<StepStatus, 'running'>, string> = {
@@ -110,20 +109,6 @@ function elapsed(job: InflateJob, now: number): number {
 
 function Summary({ job }: { job: InflateJob }) {
   const ide = useStore($ide);
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  async function onCopy() {
-    try {
-      await navigator.clipboard.writeText(job.dir);
-    } catch {
-      return; // clipboard blocked: nothing to confirm
-    }
-    setCopied(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  }
-
   const counts = job.summary;
   return (
     <div className="cx-job__summary" data-testid="inflate-job-summary">
@@ -151,9 +136,12 @@ function Summary({ job }: { job: InflateJob }) {
             Open in IDE
           </Button>
         )}
-        <Button size="sm" onPress={() => void onCopy()} data-testid="inflate-job-copy-path">
-          {copied ? 'Copied' : 'Copy path'}
-        </Button>
+        <CopyButton
+          size="sm"
+          text={job.dir}
+          label="Copy path"
+          data-testid="inflate-job-copy-path"
+        />
         <Button size="sm" variant="ghost" onPress={closeJob} data-testid="inflate-job-back">
           Back to plan
         </Button>

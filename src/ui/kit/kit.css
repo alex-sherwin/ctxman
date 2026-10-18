@@ -1,6 +1,7 @@
 /* Kit stylesheet: every kit component's CSS, each file wrapped in `@layer cx-kit { ... }`.
    Imported once from src/styles/global.css (kit .tsx files never import CSS: UI_SPEC §0.2). */
 @import './Button.css';
+@import './CopyButton.css';
 @import './Chip.css';
 @import './Field.css';
 @import './Select.css';

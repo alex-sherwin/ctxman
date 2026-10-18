@@ -2,6 +2,7 @@
 import { OWNER_LABELS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
 import type { ReferenceData } from '../datasets/schemas.ts';
 import { classifyRemoteUri } from '../lib/remote-uri.ts';
+import CopyButton from './CopyButton.astro';
 
 // Reference records have no markdown: their fields are the content (main column of the detail page).
 interface Props {
@@ -44,14 +45,7 @@ const isUrl = /^https?:\/\//i.test(where.value);
       )
     }
     {" "}
-    <button
-      type="button"
-      class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-      data-copy={where.value}
-      aria-label={`Copy ${where.label.toLowerCase()}`}
-    >
-      <span class="ck-button__label">Copy</span>
-    </button>
+    <CopyButton text={where.value} ariaLabel={`Copy ${where.label.toLowerCase()}`} />
   </dd>
   <dt>Subpath</dt>
   <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{uriKind === 'archive' ? 'archive root' : 'repo root'}</span>}</dd>

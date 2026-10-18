@@ -5,14 +5,7 @@ import { stripAnsi } from '../../lib/ansi.ts';
 import { $run, clearRun } from '../../stores/tools.ts';
 import { Badge } from '../kit/Badge.tsx';
 import { Button, Spinner } from '../kit/Button.tsx';
-
-async function copyAll(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // clipboard unavailable (insecure context / permissions): nothing to do
-  }
-}
+import { CopyButton } from '../kit/CopyButton.tsx';
 
 export function OutputPanel() {
   const run = useStore($run);
@@ -60,16 +53,14 @@ export function OutputPanel() {
           )}
         </span>
         <span className="cx-output__spacer" />
-        <Button
+        <CopyButton
           variant="ghost"
           size="sm"
           glow
-          onPress={() => void copyAll(clipboard)}
+          text={clipboard}
           isDisabled={!done}
           data-testid="tools-output-copy"
-        >
-          Copy
-        </Button>
+        />
         <Button
           variant="ghost"
           size="sm"

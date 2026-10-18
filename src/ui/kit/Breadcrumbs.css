@@ -3,7 +3,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--sp-2);
-    font-size: var(--fs-xs);
+    font-size: var(--fs-sm);
     color: var(--fg-subtle);
   }
   .ck-breadcrumbs__item {
@@ -36,6 +36,6 @@
   }
   .ck-breadcrumbs__link--mono {
     font-family: var(--font-mono);
-    font-size: var(--fs-mono);
+    font-size: var(--fs-sm);
   }
 }

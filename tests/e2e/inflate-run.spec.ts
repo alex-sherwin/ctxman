@@ -282,7 +282,7 @@ test.describe('Run view', () => {
     // Chromium rejects clipboard writes from an unfocused page, which the app swallows: bring it to front.
     await page.bringToFront();
     await page.getByTestId('inflate-job-copy-path').click();
-    await expect(page.getByTestId('inflate-job-copy-path')).toHaveText(/copied/i);
+    await expect(page.getByTestId('inflate-job-copy-path')).toHaveAttribute('data-copied', '');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(workDir());
   });
 

@@ -16,7 +16,10 @@ export default defineConfig({
   vite: {
     // Monaco's editor chunk is ~4 MB (+ ~1 MB yaml worker); it is loaded only by editor islands, locally.
     // Silence the 500 kB warning.
-    build: { chunkSizeWarningLimit: 6000 },
+    build: {
+      chunkSizeWarningLimit: 6000,
+      sourcemap: false,
+    },
     resolve: {
       alias: [
         {

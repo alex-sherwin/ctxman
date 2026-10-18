@@ -254,7 +254,8 @@ test.describe('clickable rows', () => {
       context.waitForEvent('page'),
       cell.click({ force: true, modifiers: ['ControlOrMeta'] }),
     ]);
-    expect(tab.url()).toMatch(/\/kb\/ctxman$/);
+    // the new tab can still be on about:blank when the `page` event fires: wait for its navigation
+    await tab.waitForURL(/\/kb\/ctxman$/);
     await tab.close();
     await expect(page).toHaveURL(/\/kb$/);
 

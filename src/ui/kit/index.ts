@@ -8,6 +8,7 @@ export {
   type ButtonVariant,
   type ButtonSize,
 } from './Button.tsx';
+export { CopyButton, COPIED_MS, type CopyButtonProps } from './CopyButton.tsx';
 export { Chip, ChipGroup, type ChipProps, type ChipGroupProps } from './Chip.tsx';
 export {
   TextField,

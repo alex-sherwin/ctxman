@@ -39,7 +39,7 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
     <span class="cx-panel__actions">
       <button
         type="button"
-        class="ck-button ck-button--ghost ck-button--sm"
+        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
         disabled
         data-entry-action="add-child"
         data-testid="children-add"
@@ -48,7 +48,7 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
       </button>
       <button
         type="button"
-        class="ck-button ck-button--ghost ck-button--sm"
+        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
         disabled
         data-entry-action="build-context"
         data-testid="entry-build-context"
@@ -109,7 +109,7 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
       {
         NEW_DATASETS.map((ds) => (
           <a
-            class="ck-button ck-button--ghost ck-button--sm"
+            class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
             href={`/new/${ds}?parent=${slug}`}
             data-testid={`children-new-${ds}`}
           >
@@ -124,7 +124,7 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
           <span class="cx-label">View</span>
           {views.map(({ dataset, count }) => (
             <a
-              class="ck-button ck-button--ghost ck-button--sm"
+              class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
               href={`/${dataset}?project=${slug}`}
               aria-label={`View ${datasetDef(dataset).plural} of this project`}
               data-testid={`children-view-${dataset}`}

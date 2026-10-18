@@ -1,0 +1,24 @@
+/* Copy buttons: kit `CopyButton` (CopyButton.tsx) and its SSR twin (src/components/CopyButton.astro, toggled by
+   src/scripts/shell.ts). The label and a check icon share one grid cell, so the button keeps the label's width
+   while `[data-copied]` swaps the label for the centered check. */
+@layer cx-kit {
+  .ck-copy__face {
+    display: inline-grid;
+    place-items: center;
+  }
+  .ck-copy__face > * {
+    grid-area: 1 / 1;
+  }
+  .ck-copy__check {
+    width: 13px;
+    height: 13px;
+    color: var(--success-fg);
+    visibility: hidden;
+  }
+  .ck-copy[data-copied] .ck-copy__text {
+    visibility: hidden;
+  }
+  .ck-copy[data-copied] .ck-copy__check {
+    visibility: visible;
+  }
+}

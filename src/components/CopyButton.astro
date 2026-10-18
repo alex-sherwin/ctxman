@@ -1,0 +1,30 @@
+---
+import Icon from './Icon.astro';
+
+// SSR twin of the kit `CopyButton` (src/ui/kit/CopyButton.tsx): src/scripts/shell.ts copies `data-copy` on click,
+// sets `data-copied` for a moment (the label gives way to a centered check, the width stays) and writes "Copied"
+// into the sibling `[data-copy-status]` live region.
+interface Props {
+  text: string;
+  /** Accessible name, e.g. "Copy slug". */
+  ariaLabel: string;
+  /** Visible label. Default "Copy". */
+  label?: string;
+  testid?: string;
+}
+
+const { text, ariaLabel, label = 'Copy', testid } = Astro.props;
+---
+
+<button
+  type="button"
+  class="ck-button ck-button--ghost ck-button--sm ck-button--glow ck-copy"
+  data-copy={text}
+  aria-label={ariaLabel}
+  data-testid={testid}
+  ><span class="ck-button__label"
+    ><span class="ck-copy__face"
+      ><span class="ck-copy__text">{label}</span><Icon name="check" size={13} class="ck-copy__check" /></span
+    ></span
+  ></button
+><span class="ck-sr-only" role="status" data-copy-status></span>

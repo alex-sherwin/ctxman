@@ -8,8 +8,8 @@
     --font-sans: var(--font-body); /* our alias */
 
     /* ---- type (dense; px so cybercore's fluid --text-* never leaks in) ---- */
-    --fs-xs: 11px; /* badges, table headers, legends, kbd */
-    --fs-sm: 12px; /* metadata, descriptions, chips, secondary text */
+    --fs-xs: 11px; /* table headers, legends, kbd */
+    --fs-sm: 12px; /* badges, breadcrumbs, metadata, descriptions, chips, secondary text */
     --fs-md: 13px; /* base UI text, inputs, buttons-as-text */
     --fs-lg: 14px; /* prose body, search result titles */
     --fs-xl: 16px; /* prose h2, search input */

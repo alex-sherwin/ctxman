@@ -245,6 +245,9 @@
     letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
   }
+  .cx-nowrap {
+    white-space: nowrap;
+  }
   .cx-truncate {
     overflow: hidden;
     text-overflow: ellipsis;

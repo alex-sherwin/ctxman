@@ -3,7 +3,6 @@
 // server render (`$render`, absolute paths). With one, it is the dry run's document with paths relative to the
 // directory (`$dirPlan`) unless `paths=absolute` asks for the v1 render.
 import { useStore } from '@nanostores/react';
-import { useRef, useState } from 'react';
 import { materialDef } from '../../lib/inflate/catalog.ts';
 import type { InflateManifest, InflateResult } from '../../lib/inflate/render.ts';
 import {
@@ -24,6 +23,7 @@ import {
   ChipGroup,
   CodeEditor,
   Column,
+  CopyButton,
   Row,
   Table,
   TableBody,
@@ -80,31 +80,14 @@ function download(name: string, text: string): void {
 }
 
 function PreviewActions({ name, markdown }: { name: string; markdown: string | null }) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  async function onCopy() {
-    if (markdown === null) return;
-    try {
-      await navigator.clipboard.writeText(markdown);
-    } catch {
-      return; // clipboard blocked (permissions / insecure context): nothing to confirm
-    }
-    setCopied(true);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
-  }
-
   return (
     <>
-      <Button
+      <CopyButton
         size="sm"
-        onPress={() => void onCopy()}
+        text={markdown ?? ''}
         isDisabled={markdown === null}
         data-testid="inflate-copy"
-      >
-        {copied ? 'Copied' : 'Copy'}
-      </Button>
+      />
       <Button
         size="sm"
         onPress={() => {
