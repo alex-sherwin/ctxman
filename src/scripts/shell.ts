@@ -5,6 +5,10 @@ const MAC = /Mac|iPhone|iPad/;
 const COPIED_MS = 1200;
 /** How long the search island gets to react to `ctxman:search-open` before we fall back to the link. */
 const SEARCH_FALLBACK_MS = 300;
+/** How long "Opened in VS Code" stays in the IDE status line. */
+const IDE_OK_MS = 4000;
+const IDE_NOT_FOUND =
+  "VS Code `code` command not found — install it from VS Code: Shell Command: Install 'code' command in PATH";
 
 // 1. Modifier key label: "Ctrl" in the markup, the command symbol on Apple platforms
 //    (same test as src/stores/platform.ts).
@@ -47,9 +51,97 @@ function searchOpened(): boolean {
   );
 }
 
+// 4. Open in IDE: <button data-ide-open data-dataset data-slug data-path> + a [data-ide-status] sibling.
+//    On load, GET /api/ide/open says whether an IDE command exists (disable the buttons when not); a click POSTs
+//    { dataset, slug, path } (the server opens the entry folder plus that file) and reports the result inline.
+const ideTimers = new WeakMap<HTMLElement, number>();
+
+function ideStatusOf(button: HTMLElement): HTMLElement | null {
+  return button.parentElement?.querySelector<HTMLElement>('[data-ide-status]') ?? null;
+}
+
+function setIdeStatus(button: HTMLElement, kind: 'ok' | 'error' | '', text: string): void {
+  const el = ideStatusOf(button);
+  if (!el) return;
+  window.clearTimeout(ideTimers.get(el));
+  el.textContent = text;
+  if (kind === '') delete el.dataset.kind;
+  else el.dataset.kind = kind;
+  if (kind === 'ok') {
+    ideTimers.set(
+      el,
+      window.setTimeout(() => setIdeStatus(button, '', ''), IDE_OK_MS),
+    );
+  }
+}
+
+async function openInIde(button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  setIdeStatus(button, '', '');
+  try {
+    const response = await fetch('/api/ide/open', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        dataset: button.dataset.dataset,
+        slug: button.dataset.slug,
+        path: button.dataset.path,
+      }),
+    });
+    if (response.ok) {
+      setIdeStatus(button, 'ok', 'Opened in VS Code');
+    } else if (response.status === 501) {
+      setIdeStatus(button, 'error', IDE_NOT_FOUND);
+    } else {
+      let message = "Couldn't open the IDE";
+      try {
+        const body: unknown = await response.json();
+        if (body !== null && typeof body === 'object' && 'message' in body) {
+          const text = (body as { message: unknown }).message;
+          if (typeof text === 'string' && text !== '') message = text;
+        }
+      } catch {
+        // not JSON: keep the generic message
+      }
+      setIdeStatus(button, 'error', message);
+    }
+  } catch {
+    setIdeStatus(button, 'error', "Couldn't open the IDE");
+  } finally {
+    button.disabled = button.dataset.ideUnavailable !== undefined;
+  }
+}
+
+async function probeIde(): Promise<void> {
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-ide-open]');
+  if (buttons.length === 0) return;
+  try {
+    const response = await fetch('/api/ide/open', { headers: { accept: 'application/json' } });
+    const body: unknown = response.ok ? await response.json() : null;
+    const available =
+      body !== null && typeof body === 'object' && (body as { available?: unknown }).available;
+    if (available === false) {
+      for (const button of buttons) {
+        button.dataset.ideUnavailable = '';
+        button.disabled = true;
+        button.title = IDE_NOT_FOUND;
+      }
+    }
+  } catch {
+    // availability unknown: leave the buttons enabled, a click reports the real error
+  }
+}
+void probeIde();
+
 document.addEventListener('click', (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  const ide = target.closest<HTMLButtonElement>('[data-ide-open]');
+  if (ide) {
+    if (!ide.disabled) void openInIde(ide);
+    return;
+  }
 
   const copy = target.closest<HTMLElement>('[data-copy]');
   if (copy) {

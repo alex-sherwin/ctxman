@@ -13,10 +13,11 @@ import {
   reloadSources,
   removeItem,
   removeMarkdown,
+  reorderSegments,
   resetOrder,
 } from '../../stores/inflate.ts';
-import { Button, EmptyState } from '../kit/index.ts';
-import { plural } from './format.ts';
+import { Button, EmptyState, OrderedList } from '../kit/index.ts';
+import { labelOf, plural } from './format.ts';
 import { SegmentRow } from './SegmentRow.tsx';
 
 export function CompositionPane() {
@@ -24,18 +25,14 @@ export function CompositionPane() {
   const working = useStore($working);
   const bytes = useStore($segmentBytes);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const listRef = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   /** The action button of the row `key` (the DOM is the source of truth for focus targets). */
   const buttonOf = useCallback((key: string, testId: string): HTMLButtonElement | null => {
-    const rows = listRef.current?.children ?? [];
-    for (const row of rows) {
-      if (row instanceof HTMLElement && row.dataset.key === key) {
-        const button = row.querySelector(`[data-testid="${testId}"]`);
-        return button instanceof HTMLButtonElement ? button : null;
-      }
-    }
-    return null;
+    const button = listRef.current?.querySelector(
+      `[role="row"][data-key="${CSS.escape(key)}"] [data-testid="${testId}"]`,
+    );
+    return button instanceof HTMLButtonElement ? button : null;
   }, []);
 
   if (plan === null || working === null) return null;
@@ -123,15 +120,26 @@ export function CompositionPane() {
             Check a context or add items in the Sources pane.
           </EmptyState>
         ) : (
-          <ol
+          <OrderedList
             className="cx-segs"
             aria-labelledby="inflate-composition-h"
-            data-testid="inflate-segments"
+            items={segments}
+            getKey={(s) => s.key}
+            getLabel={labelOf}
+            onReorder={reorderSegments}
+            testId="inflate-segments"
+            rowTestId="inflate-segment"
+            handleTestId="inflate-segment-handle"
+            rowAttrs={(s) => ({
+              'data-type': s.type,
+              'data-status': s.status,
+              'data-ds': s.type === 'item' ? s.dataset : undefined,
+            })}
+            dependencies={[bytes]}
             ref={listRef}
           >
-            {segments.map((segment, i) => (
+            {(segment, i) => (
               <SegmentRow
-                key={segment.key}
                 segment={segment}
                 index={i}
                 count={segments.length}
@@ -139,8 +147,8 @@ export function CompositionPane() {
                 onMove={onMove}
                 onRemove={onRemove}
               />
-            ))}
-          </ol>
+            )}
+          </OrderedList>
         )}
       </div>
     </section>

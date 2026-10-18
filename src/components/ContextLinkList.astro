@@ -1,0 +1,80 @@
+---
+import type { ResolvedLink } from '../lib/entries.ts';
+import { noteTargetId } from '../ui/markdown/targets.ts';
+import DatasetBadge from './DatasetBadge.astro';
+import EmptyState from './EmptyState.astro';
+import MdEditButton from './MdEditButton.astro';
+import StateBadge from './StateBadge.astro';
+
+// The links of a context in their stored order (no grouping): one row per link with the dataset badge before
+// the title, a left border in the dataset color, the rendered notes below and a pencil button per row. The
+// pencil buttons (`data-md-edit`) are enabled by the MarkdownTargets island, which the PAGE mounts once with
+// `contextNoteTargets(slug, links)` from src/ui/markdown/targets.ts. Rows are whole-row links (`cx-rowlink`).
+interface Props {
+  slug: string;
+  links: ResolvedLink[];
+}
+
+const { slug, links } = Astro.props;
+---
+
+<section class="cx-ctxlinks" aria-labelledby="h-links" data-testid="context-links">
+  <h2 id="h-links">Links <span class="cx-subtle">({links.length})</span></h2>
+  {
+    links.length === 0 ? (
+      <EmptyState title="No links yet.">
+        <a
+          slot="action"
+          class="ck-button ck-button--primary ck-button--sm"
+          href={`/forge?context=${slug}`}
+        >
+          <span class="ck-button__label">Open in Forge</span>
+        </a>
+      </EmptyState>
+    ) : (
+      <ol class="cx-ctxlinks__list">
+        {links.map((l, i) => (
+          <li
+            class="cx-ctxlink cx-rowlink"
+            data-ds={l.dataset}
+            data-testid="context-link"
+            data-slug={l.slug}
+            data-key={`${l.dataset}:${l.slug}`}
+            data-missing={l.missing ? '' : undefined}
+          >
+            <div class="cx-ctxlink__line">
+              <span class="cx-ctxlink__num">{i + 1}</span>
+              <DatasetBadge dataset={l.dataset} />
+              {l.missing ? (
+                <span class="cx-ctxlink__title cx-ctxlink__title--missing">{l.slug}</span>
+              ) : (
+                <a class="cx-ctxlink__title cx-rowlink__main cx-truncate" href={l.url}>
+                  {l.title ?? l.slug}
+                </a>
+              )}
+              {l.title !== undefined && l.title !== l.slug && (
+                <code class="cx-ctxlink__slug">{l.slug}</code>
+              )}
+              {l.state && <StateBadge dataset={l.dataset} state={l.state} />}
+              {l.missing && <span class="ck-badge ck-badge--danger">missing</span>}
+              <span class="cx-ctxlink__actions">
+                <MdEditButton
+                  id={noteTargetId(l.dataset, l.slug)}
+                  label={`notes for ${l.title ?? l.slug}`}
+                  testid="context-link-edit-notes"
+                />
+              </span>
+            </div>
+            {l.notesHtml && (
+              <div
+                class="cx-ctxlink__notes cx-prose cx-prose--compact"
+                data-testid="context-link-notes"
+                set:html={l.notesHtml}
+              />
+            )}
+          </li>
+        ))}
+      </ol>
+    )
+  }
+</section>

@@ -153,6 +153,23 @@ describe('summarize', () => {
     it('ignores an invalid type', () => {
       expect(summarize('reference', 'x', { type: 'ftp' }, MODIFIED, NOW).refType).toBeUndefined();
     });
+
+    it('sets owner for me / not-me and omits it when absent or invalid', () => {
+      const owner = (data: Record<string, unknown>) =>
+        summarize('reference', 'x', { type: 'local-repo', ...data }, MODIFIED, NOW).owner;
+      expect(owner({ owner: 'me' })).toBe('me');
+      expect(owner({ owner: 'not-me' })).toBe('not-me');
+      expect(owner({})).toBeUndefined();
+      expect(owner({ owner: 'someone' })).toBeUndefined();
+      expect(owner({ owner: 3 })).toBeUndefined();
+      expect('owner' in summarize('reference', 'x', {}, MODIFIED, NOW)).toBe(false);
+    });
+
+    it('owner is reference-only', () => {
+      for (const dataset of ['kb', 'skill', 'context', 'recipe'] as const) {
+        expect(summarize(dataset, 'x', { owner: 'me' }, MODIFIED, NOW).owner).toBeUndefined();
+      }
+    });
   });
 
   describe('context', () => {

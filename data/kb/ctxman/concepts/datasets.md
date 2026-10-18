@@ -57,6 +57,8 @@ A reference points outside the repo. Its `type` selects the field set:
 
 `owner` is `me` or `not-me`. All reference types also carry `name`, `description` and optional `tags`.
 
+References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Unlike contexts and recipes, references keep their watched collection, so the dev server reloads the page after a write and server-rendered lists catch up about 0.6 s later; list summaries carry the `owner` of a reference.
+
 ### URI rules
 
 One pure helper, `src/lib/remote-uri.ts` (`isGitUri`, `isArchiveUri`, `classifyRemoteUri`), backs the schema, `add-entry`, the search text and the badges. A git URI is SCP-style SSH (`git@github.com:org/repo.git`), `ssh://git@host/org/repo.git`, or HTTPS `https://host/org/repo` with or without `.git`; credentials, query strings and fragments are rejected. A `remote-skill` `uri` may instead be an HTTPS URL whose path ends in `.tar.gz`, `.tgz` or `.zip`. The two kinds never overlap, and `remote-repo` accepts git URIs only. The `git` or `archive` badge on list rows, the detail page and the search body is derived from the URI, never stored.
@@ -69,6 +71,19 @@ A context aggregates links to the other nine linkable datasets (everything excep
 
 A recipe is the saved input of the [Context inflate](/concepts/context-inflate.md) tool: which contexts to expand, extra items, how each item is included, the order, injected markdown and a preamble, for one target (`claude-code`, `codex` or `generic`). Like a context it is a pointer file: it stores slugs and settings, never the linked content. Fields: `name`, `description`, `tags`, `target`, `layout`, `preamble`, `contexts`, `items`, `markdown`, `overrides`, `order`, `defaults`. The schema is strict and rejects duplicates and modes that do not fit an item kind. A recipe may list contexts and items of any linkable dataset but is not itself linkable: a context cannot link to a recipe, so recipes do not appear in the Forge or in the Inflate item search (a `ctxman:recipe/<name>` link in markdown still resolves to the recipe page). The name cannot be changed after creation. Recipes are always read and written through `src/lib/recipe-io.ts` (atomic write), never through `getCollection('recipe')`.
 
+## JSON Schemas and the magic comment
+
+`reference`, `context` and `recipe` also exist as generated JSON Schemas in `schemas/<dataset>.schema.json`. They come from the arktype models in `src/datasets/arktypes.ts` (which mirror the zod schemas; the zod schemas stay the runtime validator) via `pnpm run gen:schemas`, and `pnpm run check:schemas` fails when a file is stale. Rules JSON Schema cannot express (duplicate links, name equals file stem, URI shapes) remain zod checks and are listed in each schema's `$comment`.
+
+Every file of these three datasets starts with the yaml-language-server comment on line 1, which points editors at the schema so the Red Hat YAML extension (and the browser YAML editors) validate as you type:
+
+```yaml
+# yaml-language-server: $schema=../../schemas/context.schema.json
+name: ctxman-dev
+```
+
+The file writers add it (context-io, recipe-io, reference-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong and `pnpm run fix:yaml-comments` repairs a hand-made file. See [Editing](/concepts/editing.md).
+
 ## Links between entries
 
 * Inside a bundle, use bundle-root paths (`/concepts/x.md`) or relative paths (`./x.md`). The link check requires the target file to exist.
@@ -78,3 +93,4 @@ A recipe is the saved input of the [Context inflate](/concepts/context-inflate.m
 
 * [Adding entries](/concepts/adding-entries.md) scaffolds each shape correctly.
 * [Compliance checks](/concepts/compliance-checks.md) enforces them.
+* [Editing](/concepts/editing.md) covers changing them in the browser.

@@ -24,6 +24,10 @@ Reference entries also take `--type local-repo|remote-repo|remote-skill`, `--pat
 
 The script validates the name (kebab-case, at most 64 characters) and the state, refuses to overwrite anything that exists, writes the files, then re-validates them against the schemas. The same operation is available on the `/tools` page.
 
+## Forms and the Tools page
+
+References, contexts and recipes can also be created in the browser at `/new/reference`, `/new/context` and `/new/recipe` (a form with typed fields and a YAML tab); the other datasets need the script. The `/tools` page runs the same add script, and after a successful run it opens the new entry automatically, waiting until the dev server has indexed it (an okf, skill or reference entry appears about 0.6 s after the write). A built server keeps its snapshot, so there it shows the created path and asks you to restart instead. See [Editing](/concepts/editing.md).
+
 ## What gets created
 
 | Dataset kind | Files |
@@ -34,6 +38,7 @@ The script validates the name (kebab-case, at most 64 characters) and the state,
 | `context` | `<name>.yaml` with an empty `links` list |
 | `recipe` | `<name>.yaml` with target `claude-code`, layout `grouped` and empty `contexts` and `items` lists |
 
+Every yaml file starts with the line `# yaml-language-server: $schema=../../schemas/<dataset>.schema.json`. The script and the forms write it; never strip it, and run `pnpm run fix:yaml-comments` for a file made by hand.
 The first state in the dataset's list is the default, so new tasks start as `pending`. Descriptions default to a `TODO:` placeholder; replace it. A new reference also gets placeholder locations (`~/repos/<name>` for `local-repo`, `https://github.com/TODO/<name>.git` for the others) that pass the checks, so replace those too.
 
 Recipes are normally authored in the [Inflate](/concepts/context-inflate.md) UI (`/inflate?recipe=new`), which also offers "Open in Inflate" after creating one on the tools page; `pnpm run add:recipe my-brief --description "..."` creates the same starter file, which you then edit in the UI. Like contexts, recipes have no lifecycle state, so `--state` is refused; `--title` only shapes the default description. The template does not take a target flag: change `target` in the UI or the file.

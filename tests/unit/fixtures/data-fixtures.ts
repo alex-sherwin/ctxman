@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Finding } from '../../../src/lib/findings.ts';
+import { fixSchemaComment, isSchemaDatasetId } from '../../../src/lib/schema-comment.ts';
 
 /** Creates temp dirs and removes them all in `cleanup()` (call from afterEach). */
 export function trackTemp(): { make(files?: Record<string, string>): string; cleanup(): void } {
@@ -36,6 +37,24 @@ export const ruleIds = (findings: readonly Finding[]): string[] =>
 export const byRule = (findings: readonly Finding[], rule: string): Finding[] =>
   findings.filter((f) => f.rule === rule);
 
+/**
+ * Gives every `reference|context|recipe/<name>.yaml` of a fixture tree its yaml-language-server schema comment
+ * (line 1) so tests about other rules do not see `collections/yaml-schema-comment` warnings. Files that
+ * already start with the comment, and every other file, are left as they are.
+ */
+export function withYamlComments(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(files).map(([rel, content]) => {
+      const [dataset, name] = rel.split('/');
+      const isYaml = rel.split('/').length === 2 && name?.endsWith('.yaml');
+      return [
+        rel,
+        isYaml && isSchemaDatasetId(dataset) ? fixSchemaComment(dataset, content) : content,
+      ];
+    }),
+  );
+}
+
 /** A bundle that passes every check (kb/demo). */
 export function validKbBundle(name = 'demo'): Record<string, string> {
   return {
@@ -48,7 +67,7 @@ export function validKbBundle(name = 'demo'): Record<string, string> {
 
 /** A complete tiny data dir (every dataset represented) that passes every check. */
 export function validDataTree(): Record<string, string> {
-  return {
+  return withYamlComments({
     ...validKbBundle('demo'),
     'task/do-it/index.md': `---\nokf_version: "0.2"\n---\n# Do it\n\n* [Do it](/main.md) - Task.\n`,
     'task/do-it/main.md': `---\ntype: Task\nname: do-it\ndescription: Do the thing.\nstate: in-progress\n---\n\n# Do it\n`,
@@ -57,5 +76,5 @@ export function validDataTree(): Record<string, string> {
     'reference/repo.yaml': `name: repo\ndescription: A repo.\ntype: local-repo\npath: /tmp/repo\nowner: me\n`,
     'context/ctx.yaml': `name: ctx\ndescription: A context.\nlinks:\n  - dataset: kb\n    slug: demo\n    notes: |\n      Read this.\n  - dataset: task\n    slug: do-it\n`,
     'recipe/brief.yaml': `name: brief\ndescription: A brief.\ntarget: claude-code\nlayout: grouped\ncontexts:\n  - ctx\nitems:\n  - dataset: skill\n    slug: my-skill\noverrides:\n  - key: kb/demo\n    mode: inline-bundle\norder:\n  - ctx:ctx\n  - kb/demo\n`,
-  };
+  });
 }

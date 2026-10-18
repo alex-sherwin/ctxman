@@ -23,6 +23,9 @@
 @import '../ui/forge/forge.css'; /* @layer cx-app (P7) */
 @import '../ui/inflate/inflate.css'; /* @layer cx-app (Inflate) */
 @import '../ui/tools/tools.css'; /* @layer cx-app (P7) */
+@import '../ui/edit/edit.css'; /* @layer cx-app (round 2: SaveBar, dialogs, TagEditor, YamlIssues) */
+@import '../ui/markdown/markdown.css'; /* @layer cx-app (round 2: DocEditor, markdown popups) */
+@import '../ui/forms/forms.css'; /* @layer cx-app (round 2: DataForm) */
 @import './prose.css'; /* @layer cx-prose */
 
 /* 5. Then the cx-base and cx-utilities layer blocks (UI_SPEC §A.2). */

@@ -155,3 +155,28 @@ export function guidance(notes: readonly Note[]): string {
 export function headingText(level: number, text: string): string {
   return `${'#'.repeat(clamp(level, 1, 6))} ${text.replace(/\s+/g, ' ').trim()}`;
 }
+
+/**
+ * `text` with whitespace runs collapsed to one space; longer than `max` characters it is cut to `max - 1`
+ * characters (trailing space dropped) plus `…`.
+ */
+export function truncateText(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * Rows as aligned plain-text lines: the name column is padded to `min(maxWidth, longest name + 2)` characters
+ * (at least two spaces always separate a longer name from its note); rows without a note are just the name.
+ */
+export function alignRows(
+  rows: readonly { name: string; note?: string | null }[],
+  maxWidth = 40,
+): string[] {
+  const width = Math.min(maxWidth, Math.max(0, ...rows.map((r) => r.name.length)) + 2);
+  return rows.map(({ name, note }) =>
+    note === undefined || note === null || note === ''
+      ? name
+      : `${name}${' '.repeat(Math.max(2, width - name.length))}${note}`,
+  );
+}

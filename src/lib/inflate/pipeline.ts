@@ -259,13 +259,22 @@ function sortWarnings(warnings: InflateWarning[], order: readonly ItemSegment[])
     .map(({ w }) => w);
 }
 
-/** expand → gather → render. */
+/** expand → gather: everything a render or a working-directory plan needs (plans/INFLATE_V2_SPEC.md §8.1). */
+export async function prepareInflate(
+  recipe: RecipeData,
+  sources: InflateSources,
+): Promise<{ plan: ExpandedPlan; content: PlanContent }> {
+  const plan = expandRecipe(recipe, lookupFrom(await loadExpandInputs(recipe, sources)));
+  const content = await gatherContent(plan, sources);
+  return { plan, content };
+}
+
+/** expand → gather → render (the v1 single document with absolute paths). */
 export async function inflateRecipe(
   recipe: RecipeData,
   sources: InflateSources,
   now: Date,
 ): Promise<InflateResult> {
-  const plan = expandRecipe(recipe, lookupFrom(await loadExpandInputs(recipe, sources)));
-  const content = await gatherContent(plan, sources);
+  const { plan, content } = await prepareInflate(recipe, sources);
   return renderPlan(plan, content, { generatedAt: now.toISOString() });
 }

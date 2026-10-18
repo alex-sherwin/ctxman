@@ -9,6 +9,7 @@ import type { ContextData } from '../datasets/schemas.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { describeIssue, issuePath } from './findings.ts';
 import type { PathIssue } from './findings.ts';
+import { withSchemaComment } from './schema-comment.ts';
 import { parseYaml, stringifyYaml } from './yaml.ts';
 
 export interface ContextRecord {
@@ -196,7 +197,10 @@ export async function createContext(
   const abs = contextFile(slug, dataDir);
   await mkdir(path.dirname(abs), { recursive: true });
   try {
-    await writeFile(abs, serializeContext(context), { encoding: 'utf8', flag: 'wx' });
+    await writeFile(abs, withSchemaComment('context', serializeContext(context)), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
       throw new ContextIoError('exists', `context "${slug}" already exists`);
@@ -236,7 +240,7 @@ export async function writeContext(
   }
   const tmp = `${abs}.${process.pid}.tmp`;
   try {
-    await writeFile(tmp, serializeContext(result.context), 'utf8');
+    await writeFile(tmp, withSchemaComment('context', serializeContext(result.context)), 'utf8');
     await rename(tmp, abs);
   } catch (error) {
     await unlink(tmp).catch(() => undefined);

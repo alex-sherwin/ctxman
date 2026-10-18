@@ -9,6 +9,7 @@ import {
   $baseline,
   $contextDocs,
   $dirty,
+  $inflateUrl,
   $lastAddedBlock,
   $plan,
   $recipeLoad,
@@ -23,26 +24,39 @@ import {
   insertMarkdownAfter,
   loadRecipe,
   moveSegment,
+  patchInflateUrl,
   pruneStale,
   removeItem,
   removeMarkdown,
   renderNow,
+  reorderSegments,
   resetOrder,
   revert,
   save,
+  setAllowNonEmpty,
+  setContextFile,
+  setDefaultDir,
+  setDefaultMaterial,
   setDefaultMode,
   setDescription,
   setExcluded,
   setLayout,
   setMarkdownBody,
+  setMaterial,
+  setMaterialOption,
   setMode,
   setOption,
+  setOutputDir,
+  setPaths,
   setPreamble,
+  setPrimary,
+  setStub,
   setTarget,
+  setView,
   toggleContext,
   writeOutput,
 } from '../../src/stores/inflate.ts';
-import { formatBytes, recipeNameProblem } from '../../src/ui/inflate/format.ts';
+import { formatBytes, formatDuration, recipeNameProblem } from '../../src/ui/inflate/format.ts';
 
 function summary(
   dataset: DatasetId,
@@ -334,11 +348,322 @@ describe('modes, options, defaults, exclude', () => {
     expect($dirty.get()).toBe(false);
   });
 
+  it('editing an override keeps its material and material options (they are never lost)', () => {
+    const w = working();
+    $working.set({
+      ...w,
+      overrides: [
+        {
+          key: 'reference/refs-a',
+          material: 'clone',
+          materialOptions: { cloneDepth: 0, branch: 'dev' },
+        },
+      ],
+    });
+    setMode('reference/refs-a', 'clone');
+    setOption('reference/refs-a', 'sparse', true);
+    expect(working().overrides).toEqual([
+      {
+        key: 'reference/refs-a',
+        mode: 'clone',
+        options: { sparse: true },
+        material: 'clone',
+        materialOptions: { cloneDepth: 0, branch: 'dev' },
+      },
+    ]);
+    setExcluded('reference/refs-a', true);
+    setExcluded('reference/refs-a', false);
+    setOption('reference/refs-a', 'sparse', false); // back to the base value
+    setMode('reference/refs-a', 'describe'); // back to the built-in mode
+    // nothing but the material is left, and an override that only has a material is kept
+    expect(working().overrides).toEqual([
+      {
+        key: 'reference/refs-a',
+        material: 'clone',
+        materialOptions: { cloneDepth: 0, branch: 'dev' },
+      },
+    ]);
+  });
+
+  it('an override that only carries a material is not dropped; undefined material options are', () => {
+    const w = working();
+    $working.set({
+      ...w,
+      overrides: [{ key: 'kb/one', material: 'copy', materialOptions: { branch: undefined } }],
+    });
+    setExcluded('kb/one', true);
+    setExcluded('kb/one', false);
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'copy' }]);
+  });
+
+  it('setDefaultMode keeps the material fields of the kind default', () => {
+    const w = working();
+    $working.set({
+      ...w,
+      defaults: {
+        kb: { material: 'copy' },
+        'remote-repo': { materialOptions: { cloneDepth: 10 } },
+      },
+    });
+    setDefaultMode('kb', 'summary');
+    expect(working().defaults.kb).toEqual({ mode: 'summary', material: 'copy' });
+    setDefaultMode('kb', null);
+    expect(working().defaults.kb).toEqual({ material: 'copy' });
+    setDefaultMode('remote-repo', 'clone');
+    setDefaultMode('remote-repo', null);
+    expect(working().defaults['remote-repo']).toEqual({ materialOptions: { cloneDepth: 10 } });
+  });
+
   it('an override keeps its position in the list when edited', () => {
     setMode('kb/one', 'summary');
     setMode('task/two', 'pointer');
     setOption('kb/one', 'eager', true); // kb/one is in summary: option not applicable, still stored
     expect(working().overrides.map((o) => o.key)).toEqual(['kb/one', 'task/two']);
+  });
+});
+
+describe('output directory', () => {
+  it('setOutputDir sets and clears the directory; an emptied output disappears', () => {
+    setOutputDir('~/ctxman-inflate/demo');
+    expect(working().output).toEqual({
+      contextFile: 'LLM_CONTEXT.md',
+      dir: '~/ctxman-inflate/demo',
+    });
+    expect($dirty.get()).toBe(true);
+    setOutputDir('  ');
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+    expect($dirty.get()).toBe(false);
+    setOutputDir('/work');
+    setOutputDir(null);
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+  });
+
+  it('setDefaultDir uses the default directory of the recipe name', () => {
+    setDefaultDir();
+    expect(working().output?.dir).toBe('~/ctxman-inflate/demo');
+  });
+
+  it('setContextFile commits only valid names; the default name leaves nothing behind', () => {
+    setContextFile('CONTEXT.md');
+    expect(working().output?.contextFile).toBe('CONTEXT.md');
+    setContextFile('a/b.md');
+    setContextFile('notes.txt');
+    setContextFile('');
+    expect(working().output?.contextFile).toBe('CONTEXT.md');
+    setContextFile('LLM_CONTEXT.md');
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+    expect($dirty.get()).toBe(false);
+  });
+
+  it('setStub stores only what differs from the target defaults', () => {
+    // claude-code: CLAUDE.md and .gitignore on, AGENTS.md off
+    setStub('claudeMd', true); // already the default
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+    setStub('agentsMd', true);
+    setStub('gitignore', false);
+    expect(working().output?.stubs).toEqual({ agentsMd: true, gitignore: false });
+    setStub('agentsMd', false); // back to the default: dropped
+    expect(working().output?.stubs).toEqual({ gitignore: false });
+    setStub('gitignore', true);
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+    expect($dirty.get()).toBe(false);
+  });
+
+  it('setAllowNonEmpty stores true only', () => {
+    setAllowNonEmpty(true);
+    expect(working().output?.allowNonEmpty).toBe(true);
+    setAllowNonEmpty(false);
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+  });
+
+  it('setPrimary holds one key: choosing another replaces it, null clears it', () => {
+    setPrimary('reference/refs-a');
+    expect(working().output?.primary).toBe('reference/refs-a');
+    setPrimary('reference/other');
+    expect(working().output?.primary).toBe('reference/other');
+    setPrimary(null);
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+  });
+
+  it('output edits keep the rest of the output and never mutate the previous copy', () => {
+    setOutputDir('/work');
+    setPrimary('reference/refs-a');
+    const before = working();
+    const snapshot = JSON.stringify(before);
+    setContextFile('CONTEXT.md');
+    setStub('agentsMd', true);
+    expect(JSON.stringify(before)).toBe(snapshot);
+    expect(working().output).toEqual({
+      contextFile: 'CONTEXT.md',
+      dir: '/work',
+      primary: 'reference/refs-a',
+      stubs: { agentsMd: true },
+    });
+  });
+});
+
+describe('materials', () => {
+  it('setMaterial stores an override and drops it when it equals the built-in default', () => {
+    // kb: symlink by default
+    setMaterial('kb/one', 'copy');
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'copy' }]);
+    const seg = $plan.get()?.segments.find((s) => s.key === 'kb/one');
+    expect(seg?.type === 'item' && seg.material).toBe('copy');
+    setMaterial('kb/one', 'symlink');
+    expect(working().overrides).toEqual([]);
+    expect($dirty.get()).toBe(false);
+  });
+
+  it('setMaterial compares against the recipe default and ignores a material the kind cannot have', () => {
+    setDefaultMaterial('kb', 'copy');
+    expect(working().defaults).toEqual({ kb: { material: 'copy' } });
+    setMaterial('kb/one', 'copy');
+    expect(working().overrides).toEqual([]);
+    setMaterial('kb/one', 'symlink');
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'symlink' }]);
+    setMaterial('kb/one', 'clone'); // not a kb material
+    setMaterial('reference/refs-a', 'install'); // not a remote-repo material
+    expect(working().overrides).toEqual([{ key: 'kb/one', material: 'symlink' }]);
+  });
+
+  it('setMaterial keeps the mode and the options of the override', () => {
+    setMode('reference/refs-a', 'clone');
+    setMaterial('reference/refs-a', 'clone');
+    expect(working().overrides).toEqual([
+      { key: 'reference/refs-a', mode: 'clone', material: 'clone' },
+    ]);
+    setMaterial('reference/refs-a', 'none'); // the built-in default of a remote repo
+    expect(working().overrides).toEqual([{ key: 'reference/refs-a', mode: 'clone' }]);
+  });
+
+  it('setMaterialOption stores a value and drops it when it equals the base value', () => {
+    setMaterial('reference/refs-a', 'clone');
+    setMaterialOption('reference/refs-a', 'cloneDepth', 0);
+    setMaterialOption('reference/refs-a', 'branch', 'dev');
+    expect(working().overrides[0]).toEqual({
+      key: 'reference/refs-a',
+      material: 'clone',
+      materialOptions: { cloneDepth: 0, branch: 'dev' },
+    });
+    setMaterialOption('reference/refs-a', 'cloneDepth', 1); // the built-in depth
+    setMaterialOption('reference/refs-a', 'branch', '');
+    expect(working().overrides[0]).toEqual({ key: 'reference/refs-a', material: 'clone' });
+    const segment = $plan.get()?.segments.find((s) => s.key === 'reference/refs-a');
+    expect(segment?.type === 'item' && segment.materialOptions).toEqual({
+      cloneDepth: 1,
+      branch: '',
+      subpathOnly: false,
+    });
+  });
+
+  it('setMaterialOption uses the recipe default as the base value', () => {
+    $working.set({
+      ...working(),
+      defaults: { 'remote-repo': { materialOptions: { cloneDepth: 10 } } },
+    });
+    setMaterial('reference/refs-a', 'clone');
+    setMaterialOption('reference/refs-a', 'cloneDepth', 10);
+    expect(working().overrides[0]?.materialOptions).toBeUndefined();
+    setMaterialOption('reference/refs-a', 'cloneDepth', 1);
+    expect(working().overrides[0]?.materialOptions).toEqual({ cloneDepth: 1 });
+  });
+
+  it('setDefaultMaterial sets and clears a per-kind default and keeps the mode fields', () => {
+    setDefaultMode('kb', 'summary');
+    setDefaultMaterial('kb', 'copy');
+    expect(working().defaults.kb).toEqual({ mode: 'summary', material: 'copy' });
+    setDefaultMaterial('kb', null);
+    expect(working().defaults.kb).toEqual({ mode: 'summary' });
+    setDefaultMaterial('kb', 'symlink'); // equals the built-in default
+    expect(working().defaults.kb).toEqual({ mode: 'summary' });
+    setDefaultMaterial('kb', 'clone'); // not a kb material
+    expect(working().defaults.kb).toEqual({ mode: 'summary' });
+  });
+
+  it('a primary repository goes when its material can no longer be primary', () => {
+    setMaterial('reference/refs-a', 'clone');
+    setPrimary('reference/refs-a');
+    setMaterial('reference/refs-a', 'none');
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
+  });
+
+  it('prune clears the primary together with its item', () => {
+    setMaterial('reference/refs-a', 'clone');
+    setPrimary('reference/refs-a');
+    setOutputDir('/work');
+    toggleContext('ctx-a', false); // refs-a was only linked by ctx-a
+    expect(keys()).not.toContain('reference/refs-a');
+    expect(working().output).toEqual({ contextFile: 'LLM_CONTEXT.md', dir: '/work' });
+    expect(working().overrides).toEqual([]);
+  });
+
+  it('a primary whose item stays in the recipe is kept', () => {
+    addItem('reference', 'refs-a'); // ad hoc AND linked by ctx-a
+    setMaterial('reference/refs-a', 'clone');
+    setPrimary('reference/refs-a');
+    removeItem('reference/refs-a');
+    expect(working().output?.primary).toBe('reference/refs-a');
+  });
+});
+
+describe('view, job and paths in the URL', () => {
+  let unbind: () => void = () => {};
+  beforeEach(() => {
+    vi.stubGlobal('location', { pathname: '/inflate', search: '?recipe=demo', hash: '' });
+    vi.stubGlobal('history', { state: null, replaceState: vi.fn(), pushState: vi.fn() });
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    // Mounting the URL store registers the window listeners and reads `location`; do it before the test sets it.
+    unbind = $inflateUrl.listen(() => {});
+    $inflateUrl.set({
+      recipe: 'demo',
+      view: 'compose',
+      dataset: 'kb',
+      q: '',
+      job: null,
+      paths: 'relative',
+    });
+  });
+  afterEach(() => unbind());
+
+  const replaced = (): string[] =>
+    (history.replaceState as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) =>
+      String(c[2]),
+    );
+  const JOB = '0b9f3c1e-5a7d-4e21-9c0a-3f6d8b2a1e47';
+
+  it('setView and setPaths replace the entry and omit defaults', () => {
+    setView('preview');
+    setPaths('absolute');
+    setView('compose');
+    setPaths('relative');
+    expect(replaced()).toEqual([
+      '/inflate?recipe=demo&view=preview',
+      '/inflate?recipe=demo&view=preview&paths=absolute',
+      '/inflate?recipe=demo&paths=absolute',
+      '/inflate?recipe=demo',
+    ]);
+    expect(history.pushState).not.toHaveBeenCalled();
+    expect($inflateUrl.get()).toMatchObject({ view: 'compose', paths: 'relative', job: null });
+  });
+
+  it('the job lives with view=run only', () => {
+    patchInflateUrl({ view: 'run', job: JOB }, 'replace');
+    expect($inflateUrl.get()).toMatchObject({ view: 'run', job: JOB });
+    expect(replaced().at(-1)).toBe(`/inflate?recipe=demo&view=run&job=${JOB}`);
+    setView('preview');
+    expect($inflateUrl.get().job).toBeNull();
+    expect(replaced().at(-1)).toBe('/inflate?recipe=demo&view=preview');
+    patchInflateUrl({ job: JOB }, 'replace'); // not in the run view: ignored
+    expect($inflateUrl.get().job).toBeNull();
+  });
+
+  it('push mode adds a history entry; an unchanged patch writes nothing', () => {
+    patchInflateUrl({ view: 'run' }, 'push');
+    expect(history.pushState).toHaveBeenCalledTimes(1);
+    patchInflateUrl({ view: 'run' }, 'push');
+    setView('run');
+    expect(history.pushState).toHaveBeenCalledTimes(1);
+    expect(history.replaceState).not.toHaveBeenCalled();
   });
 });
 
@@ -351,6 +676,23 @@ describe('order and markdown', () => {
     moveSegment('md:b1', 1); // already last: no-op
     expect(keys()[0]).toBe('ctx:ctx-a');
     expect(keys().at(-1)).toBe('md:b1');
+  });
+
+  it('reorderSegments (drag and drop) moves keys before / after a target and fixes the order', () => {
+    reorderSegments(['task/two'], 'ctx:ctx-a', 'after');
+    expect(keys().slice(0, 3)).toEqual(['ctx:ctx-a', 'task/two', 'kb/one']);
+    expect(working().order).toEqual(keys());
+    reorderSegments(['kb/one', 'md:b1'], 'ctx:ctx-a', 'before');
+    expect(keys().slice(0, 3)).toEqual(['kb/one', 'md:b1', 'ctx:ctx-a']);
+    expect(working().order).toEqual(keys());
+  });
+
+  it('reorderSegments leaves the recipe alone when the drop changes nothing', () => {
+    reorderSegments(['kb/one'], 'ctx:ctx-a', 'after'); // already right after it
+    reorderSegments(['kb/one'], 'kb/one', 'before'); // onto itself
+    reorderSegments(['kb/one'], 'kb/ghost', 'before'); // unknown target
+    expect(working().order).toEqual([]);
+    expect($dirty.get()).toBe(false);
   });
 
   it('resetOrder clears the explicit order', () => {
@@ -567,6 +909,17 @@ describe('format helpers', () => {
     expect(formatBytes(1024)).toBe('1.0 KB');
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(1048576)).toBe('1.0 MB');
+  });
+
+  it('formatDuration: ms, seconds with one decimal, minutes and seconds', () => {
+    expect(formatDuration(0)).toBe('0 ms');
+    expect(formatDuration(999)).toBe('999 ms');
+    expect(formatDuration(1000)).toBe('1.0 s');
+    expect(formatDuration(3456)).toBe('3.5 s');
+    expect(formatDuration(59_949)).toBe('59.9 s');
+    expect(formatDuration(60_000)).toBe('1 min 0 s');
+    expect(formatDuration(125_400)).toBe('2 min 5 s');
+    expect(formatDuration(119_600)).toBe('2 min 0 s');
   });
 
   it('recipeNameProblem: entry-name rule, reserved "new", uniqueness', () => {

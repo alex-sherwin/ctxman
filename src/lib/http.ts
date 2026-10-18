@@ -3,7 +3,9 @@
 // No astro:* imports, so it is unit-testable (tests/unit/http.test.ts).
 import { ContextIoError } from './context-io.ts';
 import type { Issue } from './context-io.ts';
+import { DocIoError } from './doc-io.ts';
 import { RecipeIoError } from './recipe-io.ts';
+import { ReferenceIoError } from './reference-io.ts';
 
 /** Statuses that must not carry a body (a `Response` with a body and one of these throws). */
 const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([101, 204, 205, 304]);
@@ -111,7 +113,7 @@ export async function readJson(
   }
 }
 
-/** The slice of `ContextIoError` / `RecipeIoError` the shared mapper reads (the two classes have the same shape). */
+/** The slice of `ContextIoError` / `RecipeIoError` / `ReferenceIoError` the shared mapper reads (same shape). */
 interface IoErrorLike {
   code: 'not-found' | 'exists' | 'invalid' | 'bad-slug' | 'name-mismatch' | 'parse';
   message: string;
@@ -119,8 +121,9 @@ interface IoErrorLike {
 }
 
 /**
- * Maps a context-io / recipe-io failure to its API response (PLAN §G). `read` (GET): a file that exists
- * but fails parsing/schema is 422 `invalid-file`; `write` (POST/PUT): schema problems are 400 `invalid`.
+ * Maps a context-io / recipe-io / reference-io failure to its API response (PLAN §G). `read` (GET): a file
+ * that exists but fails parsing/schema is 422 `invalid-file`; `write` (POST/PUT): schema problems are 400
+ * `invalid`.
  */
 function ioErrorResponse(error: IoErrorLike, mode: 'read' | 'write'): Response {
   const issues = error.issues.length > 0 ? error.issues : undefined;
@@ -151,4 +154,38 @@ export function contextErrorResponse(error: unknown, mode: 'read' | 'write'): Re
 export function recipeErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
   if (!(error instanceof RecipeIoError)) return internalError(error);
   return ioErrorResponse(error, mode);
+}
+
+/** Maps a reference-io failure to its API response (same table as contexts); anything else is a 500. */
+export function referenceErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
+  if (!(error instanceof ReferenceIoError)) return internalError(error);
+  return ioErrorResponse(error, mode);
+}
+
+/**
+ * Maps a doc-io failure to its API response (ROUND2_BACKEND_SPEC §A.4): bad-dataset / bad-slug / bad-path /
+ * invalid 400, not-found 404, conflict 409 (body carries the CURRENT `lastModified`), too-large 413,
+ * not-text 422; anything that is not a `DocIoError` is a 500.
+ */
+export function docErrorResponse(error: unknown): Response {
+  if (!(error instanceof DocIoError)) return internalError(error);
+  switch (error.code) {
+    case 'bad-dataset':
+    case 'bad-slug':
+    case 'bad-path':
+      return apiError(400, error.code, error.message);
+    case 'invalid':
+      return apiError(400, 'invalid', error.message, error.issues);
+    case 'not-found':
+      return apiError(404, 'not-found', error.message);
+    case 'conflict':
+      return json(
+        { error: 'conflict', message: error.message, lastModified: error.lastModified },
+        409,
+      );
+    case 'too-large':
+      return apiError(413, 'too-large', error.message);
+    case 'not-text':
+      return apiError(422, 'not-text', error.message);
+  }
 }

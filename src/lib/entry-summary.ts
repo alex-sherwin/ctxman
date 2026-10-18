@@ -1,7 +1,7 @@
 // PURE shared shapes + builders (UI_SPEC §0.5, PLAN §E.15). Islands import ONLY the types
 // (`import type`); `summarize` runs in SSR (src/lib/entries.ts) and scripts/tests.
-import { datasetDef, entryUrl, isReferenceType } from '../datasets/registry.ts';
-import type { DatasetId, ReferenceType } from '../datasets/registry.ts';
+import { datasetDef, entryUrl, isReferenceType, OWNERS } from '../datasets/registry.ts';
+import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import type { ContextInput, ContextLink } from '../datasets/schemas.ts';
 import { isInflateTarget } from './inflate/catalog.ts';
 import type { InflateTarget } from './inflate/catalog.ts';
@@ -33,6 +33,8 @@ export interface EntrySummary {
   refType?: ReferenceType;
   /** reference remote-skill only, derived from `uri`: 'git' repo or https 'archive'. */
   uriKind?: RemoteUriKind;
+  /** reference only: `me` | `not-me` (omitted when absent or not a valid owner). */
+  owner?: Owner;
   /** context only. */
   linkCount?: number;
   /** recipe only (from `data.target`). */
@@ -122,6 +124,12 @@ export function summarize(
     }
   }
 
+  if (dataset === 'reference') {
+    const owner = data.owner;
+    if (typeof owner === 'string' && (OWNERS as readonly string[]).includes(owner)) {
+      summary.owner = owner as Owner;
+    }
+  }
   if (dataset === 'reference' && isReferenceType(data.type)) {
     summary.refType = data.type;
     if (data.type === 'remote-skill' && typeof data.uri === 'string') {

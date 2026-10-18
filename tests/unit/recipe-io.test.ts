@@ -12,6 +12,7 @@ import {
   validateRecipe,
   writeRecipe,
 } from '../../src/lib/recipe-io.ts';
+import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 
@@ -112,7 +113,7 @@ describe('create / read / write / delete cycle', () => {
     expect(created.file).toBe('recipe/my-recipe.yaml');
     const file = path.join(dir, 'recipe', 'my-recipe.yaml');
     const text = readFileSync(file, 'utf8');
-    expect(text).toBe(serializeRecipe(created.recipe));
+    expect(text).toBe(withSchemaComment('recipe', serializeRecipe(created.recipe)));
     expect(text).toContain('preamble: |\n  Line one.\n  Line two.\n');
 
     const read = await readRecipe('my-recipe', dir);
@@ -125,6 +126,9 @@ describe('create / read / write / delete cycle', () => {
       dir,
     );
     expect(written.recipe.description).toBe('Changed');
+    expect(readFileSync(file, 'utf8')).toBe(
+      withSchemaComment('recipe', serializeRecipe(written.recipe)),
+    );
     expect((await readRecipe('my-recipe', dir)).recipe.contexts).toEqual([]);
 
     await deleteRecipe('my-recipe', dir);

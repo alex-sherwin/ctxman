@@ -4,16 +4,20 @@ import { useStore } from '@nanostores/react';
 import {
   ITEM_KINDS,
   ITEM_KIND_LABELS,
+  defaultMaterialFor,
   defaultModeFor,
+  materialDef,
+  materialsFor,
   modeDef,
   modesFor,
 } from '../../lib/inflate/catalog.ts';
-import type { InflateTarget, ItemKind, ModeId } from '../../lib/inflate/catalog.ts';
+import type { InflateTarget, ItemKind, MaterialId, ModeId } from '../../lib/inflate/catalog.ts';
 import { $entries } from '../../stores/entries.ts';
 import {
   $working,
   insertMarkdownAfter,
   saveIfDirty,
+  setDefaultMaterial,
   setDefaultMode,
   setDescription,
   setPreamble,
@@ -31,6 +35,7 @@ import {
 } from '../kit/index.ts';
 import { AdhocDiscover } from './AdhocDiscover.tsx';
 import { lineCount, plural } from './format.ts';
+import { OutputPanel } from './OutputPanel.tsx';
 
 const DEFAULT_ITEM = '__default__';
 
@@ -104,13 +109,17 @@ function DefaultModeRow({
   kind,
   target,
   mode,
+  material,
 }: {
   kind: ItemKind;
   target: InflateTarget;
   mode: ModeId | undefined;
+  material: MaterialId | undefined;
 }) {
   const builtIn = defaultModeFor(kind, target);
   const builtInLabel = modeDef(kind, builtIn)?.label ?? builtIn;
+  const builtInMaterial = defaultMaterialFor(kind, target);
+  const builtInMaterialLabel = materialDef(kind, builtInMaterial)?.label ?? builtInMaterial;
   const label = ITEM_KIND_LABELS[kind];
   return (
     <div className="cx-defrow">
@@ -125,11 +134,33 @@ function DefaultModeRow({
           setDefaultMode(kind, next === DEFAULT_ITEM ? null : (next as ModeId));
         }}
         triggerTestId={`inflate-default-${kind}`}
+        pinnedKeys={[DEFAULT_ITEM]}
       >
         <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInLabel})`}>
           Default ({builtInLabel})
         </ListBoxItem>
         {modesFor(kind).map((m) => (
+          <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
+            {m.label}
+          </ListBoxItem>
+        ))}
+      </Select>
+      <Select
+        aria-label={`Default material for ${label} items`}
+        size="sm"
+        value={material ?? DEFAULT_ITEM}
+        onChange={(key) => {
+          if (key === null) return;
+          const next = String(key);
+          setDefaultMaterial(kind, next === DEFAULT_ITEM ? null : (next as MaterialId));
+        }}
+        triggerTestId={`inflate-default-material-${kind}`}
+        pinnedKeys={[DEFAULT_ITEM]}
+      >
+        <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInMaterialLabel})`}>
+          Default ({builtInMaterialLabel})
+        </ListBoxItem>
+        {materialsFor(kind).map((m) => (
           <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
             {m.label}
           </ListBoxItem>
@@ -143,7 +174,9 @@ export function SourcesPane() {
   const working = useStore($working);
   if (working === null) return null;
   const preamble = working.preamble ?? '';
-  const customDefaults = ITEM_KINDS.filter((k) => working.defaults[k]?.mode !== undefined).length;
+  const customDefaults = ITEM_KINDS.filter(
+    (k) => working.defaults[k]?.mode !== undefined || working.defaults[k]?.material !== undefined,
+  ).length;
   return (
     <section
       className="cx-forge__pane cx-forge__pane--discover"
@@ -166,6 +199,7 @@ export function SourcesPane() {
           errorMessage="Required"
           inputTestId="inflate-description"
         />
+        <OutputPanel working={working} />
         <Disclosure
           title="Instructions (preamble)"
           meta={preamble.trim() === '' ? 'none' : plural(lineCount(preamble), 'line')}
@@ -199,6 +233,7 @@ export function SourcesPane() {
                 kind={kind}
                 target={working.target}
                 mode={working.defaults[kind]?.mode}
+                material={working.defaults[kind]?.material}
               />
             ))}
           </div>

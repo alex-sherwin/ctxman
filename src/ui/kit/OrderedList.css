@@ -1,0 +1,89 @@
+@layer cx-kit {
+  .ck-olist {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    outline: none;
+  }
+  .ck-olist__row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: start;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--ds-c, var(--border-strong));
+    outline: none;
+  }
+  .ck-olist__row:last-child {
+    border-bottom: 0;
+  }
+  .ck-olist__row[data-focus-visible] {
+    box-shadow: inset 0 0 0 1px var(--accent-line);
+  }
+  .ck-olist__row[data-dragging] {
+    opacity: 0.4;
+  }
+  .ck-olist__grip {
+    align-self: stretch;
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    cursor: grab;
+  }
+  .ck-olist__grip:active {
+    cursor: grabbing;
+  }
+  .ck-olist__handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 18px;
+    padding: 0 2px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-subtle);
+    background: none;
+    border: 0;
+    border-radius: var(--r-sm);
+  }
+  .ck-olist__handle[data-focus-visible] {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: 0;
+    color: var(--accent-text);
+  }
+  .ck-olist__gripicon {
+    color: var(--fg-subtle);
+    opacity: 0.45;
+  }
+  .ck-olist__row:hover .ck-olist__gripicon,
+  .ck-olist__row:focus-within .ck-olist__gripicon {
+    opacity: 1;
+    color: var(--accent);
+  }
+  .ck-olist__body {
+    min-width: 0;
+    padding-right: var(--sp-3);
+  }
+  .ck-olist__drop {
+    position: relative;
+    height: 0;
+    outline: none;
+  }
+  .ck-olist__drop[data-drop-target] {
+    z-index: 1;
+    height: 2px;
+    margin: -1px 0;
+    background: var(--accent);
+    box-shadow: var(--glow-sm);
+  }
+  .ck-olist__preview {
+    padding: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--fg);
+    background: var(--surface-raised);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-sm);
+  }
+}

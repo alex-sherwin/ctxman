@@ -1,0 +1,64 @@
+/* DataForm island (src/ui/forms): create / edit a reference, context or recipe. Imported by src/styles/global.css. */
+@layer cx-app {
+  .cx-dform {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    max-width: 760px;
+  }
+  .cx-dform__bar,
+  .cx-dform__footer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .cx-dform__form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+  .cx-dform__editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+  }
+  .cx-dform__summary {
+    font-size: var(--fs-sm);
+  }
+  .cx-dform__problems {
+    margin: 0;
+    padding-left: var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  .cx-dform__fatal {
+    color: var(--danger-fg);
+  }
+  .cx-dform__body[data-view='yaml'] {
+    height: calc(100dvh - var(--header-h) - 260px);
+    min-height: 360px;
+    display: flex;
+  }
+  .cx-dform__yaml {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .cx-dform__help {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-dform__footer {
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--border);
+  }
+  .cx-dform__footer .ck-button--danger {
+    margin-left: auto;
+  }
+}

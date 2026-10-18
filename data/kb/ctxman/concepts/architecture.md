@@ -18,29 +18,31 @@ ctxman is an Astro 7.4.0 site in `output: 'server'` mode with the Node adapter (
 | --- | --- |
 | UI | React islands built from react-aria-components, styled with vanilla CSS in a small kit |
 | Theme | cybercore-css as the base layer, Inter for text and Hack for monospace (both self-hosted) |
-| Editing | Monaco for every multi-line markdown, JSON or YAML input; plain text fields for single-line values |
+| Editing | Monaco for every multi-line markdown, JSON or YAML input; plain text fields for single-line values; monaco-yaml gives YAML editors schema diagnostics (see [Editing](/concepts/editing.md)) |
 | State | nanostores with @nanostores/react; the URL carries all page state so deep links and back/forward work |
-| Data | Astro content collections, validated by zod 4 schemas |
+| Data | Astro content collections, validated by zod 4 schemas (zod is the only runtime validator; arktype models only generate the JSON Schemas in `schemas/`) |
 | Search | fuse.js over an index built server-side |
 | Scripts | TypeScript executed directly by Node 24 (erasable syntax only, `.ts` extensions in imports) |
 | Tooling | TypeScript 7.1 nightly `tsc`, oxlint, oxfmt, vitest, playwright, pnpm |
 
-There are exactly four React islands, all `client:only="react"`: the search widget, the context forge, the [Context inflate](/concepts/context-inflate.md) tool and the tools runner. Everything else is server-rendered Astro with a little vanilla script.
+There are exactly seven React islands, all `client:only="react"`: the search widget (every page), the context forge, the [Context inflate](/concepts/context-inflate.md) tool, the tools runner, the DocEditor (okf and skill detail and sub-doc pages), MarkdownTargets (the markdown popups of context and recipe pages) and DataForm (the reference, context and recipe forms). The last three load Monaco lazily, so a detail page does not fetch the editor until it is needed. Everything else is server-rendered Astro with a little vanilla script, such as the Open in IDE button and the whole-row links (a CSS stretched-link pattern, no click handlers). See [Editing](/concepts/editing.md).
 
 ## Repository layout
 
 ```text
 data/        all datasets (see datasets concept)
-scripts/     add-entry.ts and the check scripts, run by node
+schemas/     generated JSON Schemas of reference, context and recipe (committed; not linted or formatted)
+scripts/     add-entry.ts, the check scripts, gen-schemas.ts and fix-yaml-comments.ts, run by node
 out/         default output folder of Context inflate (gitignored, not linted or formatted)
 src/
   content.config.ts      one collection per dataset, plus a docs collection
   datasets/registry.ts   single source of truth for dataset ids, states and labels
   datasets/schemas.ts    zod schemas for every dataset
-  lib/                   shared TypeScript modules (lib/inflate/ holds the Context inflate pipeline)
+  datasets/arktypes.ts   arktype mirror of the three yaml datasets, used only to generate schemas/
+  lib/                   shared TypeScript modules (lib/inflate/ holds the Context inflate pipeline, lib/forms/ the DataForm fields)
   pages/                 routes and API endpoints
   layouts/, components/  Astro layout and server-rendered components
-  ui/, stores/           React islands, kit, Monaco editor wrapper, nanostores
+  ui/, stores/           React islands (ui/markdown, ui/forms, ...), kit, shared editing pieces (ui/edit), Monaco wrappers (ui/editor), nanostores
   styles/                global.css (the only stylesheet entry), tokens, app and prose CSS
 tests/unit/  vitest
 tests/e2e/   playwright
@@ -58,9 +60,15 @@ Every module is one of four kinds, named in its header comment, and the kind dec
 
 `src/lib/inflate/` follows the same rules. The catalog (targets, modes, options), the recipe parser and serializer, and the expander are pure, so the Inflate island imports them for instant feedback. The markdown helpers, the renderer and the pipeline are Node-kind modules without filesystem calls of their own (they read through an injected `InflateSources` and import the OKF and link helpers); `fs-sources.ts` and `write.ts` are the only ones that touch the disk, next to `src/lib/recipe-io.ts`. Those Node-kind files must never be imported by an island. There is no barrel file in that folder.
 
-Browser-only code lives in `src/ui` and `src/stores`. The Monaco wrapper in `src/ui/editor` touches `self` when loaded, so only `client:only` islands may import it.
+The editing support follows the same rules. Pure and browser-safe: `reference-yaml.ts` (the deterministic reference serializer), `schema-comment.ts` (the yaml-language-server comment), `yaml-doc.ts` (YAML text to a validated document with source positions), `names.ts`, `reorder.ts` and `lib/forms/*`. Node with fs: `doc-io.ts` (read and save one existing markdown file), `reference-io.ts` (like `context-io.ts` and `recipe-io.ts`) and `schema-check.ts`; `skill-check.ts` is Node without fs calls so the compliance check and the doc editor report the same findings. `ide.ts` is a Server module because it spawns the IDE command. `json-schema.ts` and `datasets/arktypes.ts` are used by scripts and tests only.
+
+Browser-only code lives in `src/ui` and `src/stores`. The Monaco wrapper in `src/ui/editor` touches `self` when loaded, so only `client:only` islands may import it. `src/ui/edit` holds the pieces every editor shares (save bar, conflict dialog, draft backup, the remembered "Saved") and imports no Monaco; the lazy-Monaco islands and the search island import kit parts by file, never through the kit barrel, which pulls Monaco in. The kit (react-aria-components wrappers) provides a searchable Select, an `OrderedList` with drag and drop, a Table, Icon and a Disclosure with a one-line preview.
 
 `src/datasets/schemas.ts` imports plain `zod` (not `astro:content`) precisely so Node scripts can validate files with the same schemas Astro uses.
+
+## Two validators, one source of truth each
+
+zod (`src/datasets/schemas.ts`) validates everything at runtime, in Astro, the scripts and the browser forms. The arktype models in `src/datasets/arktypes.ts` mirror the three yaml schemas and exist only to generate `schemas/*.schema.json`, which the IDEs and the browser YAML editors (monaco-yaml) read; a parity test keeps the two in step and arktype is a dev dependency never imported by pages, API routes or islands. monaco-yaml needs three shims with the current Monaco (a worker-creation adapter, a Vite alias and optimizeDeps entries); the details are in AGENTS.md.
 
 ## One registry, everything derived
 
@@ -71,4 +79,5 @@ Browser-only code lives in `src/ui` and `src/stores`. The Monaco wrapper in `src
 * [Datasets](/concepts/datasets.md) for what lives under `data/`.
 * [Routes and API](/concepts/routes-and-api.md) for the pages and endpoints.
 * [Runtime modes](/concepts/runtime-modes.md) for dev versus built behaviour.
+* [Editing](/concepts/editing.md) for the in-browser editors and the Save model.
 * [Context inflate](/concepts/context-inflate.md) for the recipe pipeline under `src/lib/inflate/`.

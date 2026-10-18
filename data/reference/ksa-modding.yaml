@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schemas/reference.schema.json
 name: ksa-modding
 description: KSA modding skill bundle (agentskills.io skill folder) distributed as a tarball
 type: remote-skill

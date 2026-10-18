@@ -3,6 +3,7 @@ import BackRefs from '../../../../components/BackRefs.astro';
 import Breadcrumbs from '../../../../components/Breadcrumbs.astro';
 import DatasetBadge from '../../../../components/DatasetBadge.astro';
 import FileTree from '../../../../components/FileTree.astro';
+import IdeOpenButton from '../../../../components/IdeOpenButton.astro';
 import Freshness from '../../../../components/Freshness.astro';
 import MetaPanel from '../../../../components/MetaPanel.astro';
 import OkfStatusBadge from '../../../../components/OkfStatusBadge.astro';
@@ -11,7 +12,9 @@ import StaleBadge from '../../../../components/StaleBadge.astro';
 import { entryUrl, getDataset, isOkfDatasetId } from '../../../../datasets/registry.ts';
 import { getDocDetail } from '../../../../lib/entries.ts';
 import { isStale, toYmd } from '../../../../lib/time.ts';
+import { parseEditUrl } from '../../../../lib/url-state.ts';
 import Base from '../../../../layouts/Base.astro';
+import DocEditor from '../../../../ui/markdown/DocEditor.tsx';
 
 // Any markdown file of an okf bundle except main.md (index.md, log.md, concepts/**).
 const def = getDataset(Astro.params.dataset ?? '');
@@ -25,6 +28,7 @@ if (docPath === 'main') return Astro.redirect(entryUrl(def.id, slug), 301);
 const doc = await getDocDetail(def.id, slug, docPath);
 if (!doc) return Astro.rewrite('/404');
 
+const { edit } = parseEditUrl(Astro.url.searchParams);
 const entryTitle = doc.entry.title ?? doc.entry.name;
 const type = typeof doc.data.type === 'string' && doc.data.type !== '' ? doc.data.type : undefined;
 const status = typeof doc.data.status === 'string' ? doc.data.status : undefined;
@@ -54,11 +58,9 @@ const staleAfter =
     </Fragment>
   </PageHeader>
 
-  <div class="cx-detail">
-    <article class="cx-detail__main cx-prose" data-testid="detail-content">
-      <Fragment set:html={doc.html} />
-    </article>
+  <div class="cx-detail cx-detail--doc">
     <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
+      <IdeOpenButton dataset={def.id} slug={slug} path={doc.relPath} />
       <MetaPanel
         dataset={def.id}
         kind="okf"
@@ -70,5 +72,25 @@ const staleAfter =
       <FileTree dataset={def.id} slug={slug} files={doc.files} current={doc.relPath} />
       <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
     </aside>
+    <section class="cx-detail__main cx-doc" aria-label="Content">
+      <DocEditor
+        client:only="react"
+        dataset={def.id}
+        slug={slug}
+        path={doc.relPath}
+        previewId="cx-doc-preview"
+        initialEdit={edit}
+      >
+        <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
+      </DocEditor>
+      <article
+        id="cx-doc-preview"
+        class="cx-prose cx-doc__preview"
+        data-testid="detail-content"
+        hidden={edit}
+      >
+        <Fragment set:html={doc.html} />
+      </article>
+    </section>
   </div>
 </Base>

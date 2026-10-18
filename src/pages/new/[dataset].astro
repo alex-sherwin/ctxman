@@ -1,0 +1,31 @@
+---
+import Breadcrumbs from '../../components/Breadcrumbs.astro';
+import DatasetBadge from '../../components/DatasetBadge.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import { getDataset } from '../../datasets/registry.ts';
+import { isYamlDatasetId } from '../../lib/forms/fields.ts';
+import Base from '../../layouts/Base.astro';
+import DataForm from '../../ui/forms/DataForm.tsx';
+
+// Create page of the yaml datasets (ROUND2_UI_SPEC D6: /new/<ds>, never /<ds>/new, which a legal entry could shadow).
+// Every other dataset is created from the Tools page (add scripts), so this route is a 404 for them.
+const def = getDataset(Astro.params.dataset ?? '');
+if (!def || !isYamlDatasetId(def.id)) return Astro.rewrite('/404');
+---
+
+<Base title={`New ${def.singular}`} active={def.id}>
+  <Breadcrumbs
+    items={[
+      { label: 'ctxman', href: '/' },
+      { label: def.label, href: `/${def.id}` },
+      { label: 'New' },
+    ]}
+  />
+  <PageHeader title={`New ${def.singular}`}>
+    <DatasetBadge slot="eyebrow" dataset={def.id} />
+    <span slot="meta">{def.description}</span>
+  </PageHeader>
+  <DataForm client:only="react" dataset={def.id} mode="create">
+    <div slot="fallback" class="cx-island-fallback">Loading editor…</div>
+  </DataForm>
+</Base>

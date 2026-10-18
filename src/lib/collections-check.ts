@@ -3,17 +3,28 @@
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DATASET_IDS, OKF_DATASET_IDS } from '../datasets/registry.ts';
-import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
-import { DATASET_SCHEMAS, docSchema, skillSchema } from '../datasets/schemas.ts';
+import { DATASET_IDS, OKF_DATASET_IDS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
+import type { DatasetId, OkfDatasetId, ReferenceType } from '../datasets/registry.ts';
+import { DATASET_SCHEMAS, docSchema } from '../datasets/schemas.ts';
 import type { RecipeData } from '../datasets/schemas.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { issueMessage, sortFindings } from './findings.ts';
 import type { Finding, PathIssue } from './findings.ts';
 import { entryFileRelPath } from './freshness.ts';
-import { EXTRA_KEY, ctxKey, itemKey, mdKey } from './inflate/catalog.ts';
+import {
+  EXTRA_KEY,
+  ctxKey,
+  defaultMaterialFor,
+  isMaterialFor,
+  isPortableAbsoluteDir,
+  isPrimaryEligible,
+  itemKey,
+  mdKey,
+} from './inflate/catalog.ts';
 import { parseFrontmatter, parseFrontmatterLoose } from './okf.ts';
+import { schemaCommentLine, schemaCommentStatus } from './schema-comment.ts';
+import { validateSkillFile } from './skill-check.ts';
 import { parseYaml } from './yaml.ts';
 
 interface Ctx {
@@ -22,6 +33,8 @@ interface Ctx {
   files: Set<string>;
   /** Schema-valid contexts: file stem -> keys (`dataset/slug`) of their links. Filled before recipes run. */
   contextLinks: Map<string, Set<string>>;
+  /** Schema-valid references: file stem -> type. Filled before recipes run. */
+  referenceTypes: Map<string, ReferenceType>;
   /** Schema-valid recipes, checked against `contextLinks` once every yaml dataset has been read. */
   recipes: { file: string; recipe: RecipeData }[];
 }
@@ -139,24 +152,8 @@ async function checkSkills(ctx: Ctx): Promise<void> {
       continue;
     }
     ctx.files.add(file);
-    const parsed = parseFrontmatter(await readFile(abs, 'utf8'));
-    if (!parsed.ok) {
-      add(ctx, 'error', 'collections/schema', file, `frontmatter: ${parsed.error}`, parsed.line);
-      continue;
-    }
-    // Strict (agentskills.io): unknown keys are errors.
-    const result = skillSchema.safeParse(parsed.doc.data);
-    if (!result.success) schemaIssues(ctx, file, result.error.issues, parsed.doc.data);
-    const name = parsed.doc.data.name;
-    if (typeof name === 'string' && name !== entry.name) {
-      add(
-        ctx,
-        'error',
-        'collections/name-mismatch',
-        file,
-        `name "${name}" must equal the directory name "${entry.name}"`,
-      );
-    }
+    // Shared with the doc editor (doc-io.ts): parse errors, the strict agentskills.io schema, name == dir.
+    ctx.findings.push(...validateSkillFile(await readFile(abs, 'utf8'), entry.name, file));
   }
 }
 
@@ -185,9 +182,25 @@ async function checkYamlDataset(
     }
     ctx.files.add(rel);
     const stem = entry.name.slice(0, -'.yaml'.length);
+    const source = await readFile(path.join(base, entry.name), 'utf8');
+    // Not a schema rule: the first line only points editors at schemas/<dataset>.schema.json.
+    const commentStatus = schemaCommentStatus(dataset, source);
+    if (commentStatus !== 'ok') {
+      const line = schemaCommentLine(dataset);
+      add(
+        ctx,
+        'warning',
+        'collections/yaml-schema-comment',
+        rel,
+        commentStatus === 'missing'
+          ? `first line must be "${line}" (pnpm run fix:yaml-comments adds it)`
+          : `schema comment must be "${line}" (pnpm run fix:yaml-comments fixes it)`,
+        1,
+      );
+    }
     let value: unknown;
     try {
-      value = parseYaml(await readFile(path.join(base, entry.name), 'utf8'));
+      value = parseYaml(source);
     } catch (error) {
       const message = error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error);
       const linePos = (error as { linePos?: { line?: number }[] }).linePos?.[0]?.line;
@@ -215,6 +228,9 @@ async function checkYamlDataset(
       linkChecks.push({ file: rel, links });
       ctx.contextLinks.set(stem, new Set(links.map((l) => `${l.dataset}/${l.slug}`)));
     }
+    if (dataset === 'reference') {
+      ctx.referenceTypes.set(stem, (result.data as { type: ReferenceType }).type);
+    }
     if (dataset === 'recipe') ctx.recipes.push({ file: rel, recipe: result.data as RecipeData });
   }
 
@@ -240,9 +256,69 @@ async function checkYamlDataset(
 // ---------------------------------------------------------------- recipe references
 
 /**
+ * Working-directory output of a recipe (plans/INFLATE_V2_SPEC.md §12): a relative `output.dir`, a `material` on
+ * a `reference/<slug>` override that its reference type cannot have, and an unusable `output.primary`.
+ * Returns the primary key when it still has to be checked for reachability once the reachable set is known.
+ */
+function checkRecipeOutput(ctx: Ctx, file: string, recipe: RecipeData): string | null {
+  const dir = recipe.output?.dir;
+  if (dir !== undefined && !isPortableAbsoluteDir(dir)) {
+    add(
+      ctx,
+      'warning',
+      'collections/recipe-output-dir-relative',
+      file,
+      `output.dir "${dir}" must be absolute or start with ~/`,
+    );
+  }
+
+  for (const override of recipe.overrides) {
+    if (override.material === undefined || !override.key.startsWith('reference/')) continue;
+    const type = ctx.referenceTypes.get(override.key.slice('reference/'.length));
+    if (type === undefined || isMaterialFor(type, override.material)) continue;
+    add(
+      ctx,
+      'warning',
+      'collections/recipe-material-invalid',
+      file,
+      `material "${override.material}" does not apply to ${override.key} (${REFERENCE_TYPE_LABELS[type]})`,
+    );
+  }
+
+  const primary = recipe.output?.primary;
+  if (primary === undefined) return null;
+  const type = ctx.referenceTypes.get(primary.slice('reference/'.length));
+  if (type !== 'local-repo' && type !== 'remote-repo') {
+    add(
+      ctx,
+      'warning',
+      'collections/recipe-primary-invalid',
+      file,
+      `primary ${primary} must be a remote-repo or local-repo reference`,
+    );
+    return null;
+  }
+  const material =
+    recipe.overrides.find((o) => o.key === primary)?.material ??
+    recipe.defaults[type]?.material ??
+    defaultMaterialFor(type, recipe.target);
+  if (!isPrimaryEligible(type, material)) {
+    add(
+      ctx,
+      'warning',
+      'collections/recipe-primary-invalid',
+      file,
+      `primary ${primary} needs material clone (remote-repo) or symlink (local-repo)`,
+    );
+    return null;
+  }
+  return primary;
+}
+
+/**
  * Warnings for what a recipe points at: contexts and ad hoc items that do not exist, and (only when every
  * listed context exists and is valid, so the reachable set is known) overrides and order keys that match
- * nothing in the recipe.
+ * nothing in the recipe, and a primary repository that is not an item of the recipe.
  */
 function checkRecipeReferences(ctx: Ctx): void {
   for (const { file, recipe } of ctx.recipes) {
@@ -273,10 +349,20 @@ function checkRecipeReferences(ctx: Ctx): void {
         add(ctx, 'warning', 'collections/recipe-item-missing', file, `item ${key} does not exist`);
       }
     }
+    const primaryToReach = checkRecipeOutput(ctx, file, recipe);
     if (!allContextsKnown) continue;
 
     for (const slug of recipe.contexts) {
       for (const key of ctx.contextLinks.get(slug) ?? []) reachable.add(key);
+    }
+    if (primaryToReach !== null && !reachable.has(primaryToReach)) {
+      add(
+        ctx,
+        'warning',
+        'collections/recipe-primary-invalid',
+        file,
+        `primary ${primaryToReach} is not an item of this recipe`,
+      );
     }
     for (const override of recipe.overrides) {
       if (!reachable.has(override.key)) {
@@ -318,6 +404,7 @@ export async function checkCollections(
     findings: [],
     files: new Set(),
     contextLinks: new Map(),
+    referenceTypes: new Map(),
     recipes: [],
   };
 

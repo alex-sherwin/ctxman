@@ -42,6 +42,8 @@ export interface TargetDef {
   instructionsFile: string | null;
   /** Header line 3; null = omitted. */
   skillsLine: string | null;
+  /** Working-directory document: the sentence under `## Skills` (plans/INFLATE_V2_SPEC.md §3). */
+  skillsIntro: string;
   /** Sentence that makes the agent load `abs` up front (option `eager`). */
   eagerClause(abs: string): string;
 }
@@ -55,6 +57,7 @@ export const TARGETS: Readonly<Record<InflateTarget, TargetDef>> = {
     instructionsFile: 'CLAUDE.md',
     skillsLine:
       'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+    skillsIntro: 'Installed in `.claude/skills/`, where Claude Code discovers them.',
     // Claude Code expands a bare `@path` by loading the file (D3), so no backticks here.
     eagerClause: (abs) => `Read it before starting: @${abs}`,
   },
@@ -66,6 +69,7 @@ export const TARGETS: Readonly<Record<InflateTarget, TargetDef>> = {
     instructionsFile: 'AGENTS.md',
     skillsLine:
       'Skills go in `.agents/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
+    skillsIntro: 'Installed in `.agents/skills/`, where Codex discovers them.',
     eagerClause: (abs) => `Read ${inlineCode(abs)} before starting.`,
   },
   generic: {
@@ -75,6 +79,7 @@ export const TARGETS: Readonly<Record<InflateTarget, TargetDef>> = {
     skillsDir: '.agents/skills',
     instructionsFile: null,
     skillsLine: null,
+    skillsIntro: 'Installed in `.agents/skills/`.',
     eagerClause: (abs) => `Read ${inlineCode(abs)} before starting.`,
   },
 };
@@ -217,8 +222,8 @@ export const OPTION_DEFS: Readonly<Record<OptionId, OptionDef>> = {
   rewriteLinks: {
     id: 'rewriteLinks',
     control: 'checkbox',
-    label: 'Absolute links',
-    help: 'Rewrite bundle and ctxman: links to absolute file paths.',
+    label: 'Resolve links',
+    help: 'Rewrite bundle and ctxman: links to file paths (relative inside a working directory).',
     default: true,
   },
   eager: {
@@ -508,4 +513,302 @@ export function nextBlockId(existing: readonly string[]): string {
     if (m !== null) max = Math.max(max, Number(m[1]));
   }
   return `b${max + 1}`;
+}
+
+// ---------------------------------------------------------------- output (working directory, plans/INFLATE_V2_SPEC.md §3)
+
+export const DEFAULT_CONTEXT_FILE = 'LLM_CONTEXT.md';
+export const DEFAULT_DIR_TEMPLATE = '~/ctxman-inflate/{name}';
+export const defaultDirFor = (recipeName: string): string =>
+  DEFAULT_DIR_TEMPLATE.replace('{name}', recipeName);
+
+export const CONTEXT_FILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.md$/;
+export const CONTEXT_FILE_MESSAGE =
+  'must be a file name ending in .md (letters, digits, . _ -; no folders)';
+
+/** `reference/<NAME>` */
+export const PRIMARY_KEY_PATTERN: RegExp = new RegExp(`^reference\\/${NAME_SOURCE}$`);
+
+/** What ctxman owns inside a working directory. */
+export const DIR_MANIFEST_FILE = '.ctxman-inflate.json';
+/** Staging folder for remote-skill installs (inside the working directory, removed after a run). */
+export const STAGE_DIR = '.ctxman-tmp';
+/** Destination folder of cloned / linked repositories. */
+export const REPOS_DIR = 'repos';
+
+export const STUB_IDS = ['agentsMd', 'claudeMd', 'gitignore'] as const;
+export type StubId = (typeof STUB_IDS)[number];
+export const STUB_FILES = {
+  agentsMd: 'AGENTS.md',
+  claudeMd: 'CLAUDE.md',
+  gitignore: '.gitignore',
+} as const satisfies Record<StubId, string>;
+export const STUB_LABELS = {
+  agentsMd: 'AGENTS.md stub',
+  claudeMd: 'CLAUDE.md stub',
+  gitignore: '.gitignore',
+} as const satisfies Record<StubId, string>;
+
+/** claude-code: claudeMd; codex, generic: agentsMd; gitignore always. */
+export function stubDefaults(target: InflateTarget): Record<StubId, boolean> {
+  return target === 'claude-code'
+    ? { agentsMd: false, claudeMd: true, gitignore: true }
+    : { agentsMd: true, claudeMd: false, gitignore: true };
+}
+
+const PORTABLE_ABSOLUTE_DIR = /^(?:~(?:[\\/]|$)|\/|[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * `~`, `~/…`, `~\…`, `/…`, `X:\…` / `X:/…`, `\\server\…` (posix OR win32 absolute; checked on the client too,
+ * where `node:path` is unavailable and the host OS is unknown).
+ */
+export function isPortableAbsoluteDir(value: string): boolean {
+  return PORTABLE_ABSOLUTE_DIR.test(value.trim());
+}
+
+export const GIT_REF_MESSAGE =
+  'must be a branch or tag name (letters, digits, . _ - /; no "..", no leading "-")';
+
+const GIT_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
+
+/**
+ * '' (= the default branch) or /^[A-Za-z0-9][A-Za-z0-9._\/-]{0,199}$/ without '..', '//', '@{', a trailing
+ * '/' or a trailing '.lock'. The value is passed to git as `--branch <value>` (argv, never a shell), and the
+ * leading alphanumeric rules out option injection.
+ */
+export function isSafeGitRef(value: string): boolean {
+  if (value === '') return true;
+  if (!GIT_REF.test(value)) return false;
+  return (
+    !value.includes('..') &&
+    !value.includes('//') &&
+    !value.includes('@{') &&
+    !value.endsWith('/') &&
+    !value.endsWith('.lock')
+  );
+}
+
+// ---------------------------------------------------------------- materials (what is PLACED in the working directory)
+
+export const MATERIAL_IDS = ['none', 'symlink', 'copy', 'clone', 'install'] as const;
+export type MaterialId = (typeof MATERIAL_IDS)[number];
+
+/** Materials a `reference/<slug>` override key may name (the reference type is not known from the key). */
+export const REFERENCE_MATERIAL_IDS = [
+  'none',
+  'symlink',
+  'clone',
+  'install',
+] as const satisfies readonly MaterialId[];
+
+export const MATERIAL_OPTION_IDS = ['cloneDepth', 'branch', 'subpathOnly'] as const;
+export type MaterialOptionId = (typeof MATERIAL_OPTION_IDS)[number];
+
+export interface MaterialOptions {
+  /** Commits of history to fetch; 0 = full history. */
+  cloneDepth: number;
+  /** '' = the default branch. */
+  branch: string;
+  subpathOnly: boolean;
+}
+
+export interface MaterialDef {
+  id: MaterialId;
+  label: string;
+  description: string;
+  options: readonly MaterialOptionId[];
+}
+
+const mention = (description: string): MaterialDef => ({
+  id: 'none',
+  label: 'Mention only',
+  description,
+  options: [],
+});
+
+/** Order = Select order. */
+export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[]>> = {
+  okf: [
+    {
+      id: 'symlink',
+      label: 'Symlink',
+      description: 'Link the bundle folder to <dataset>/<slug>; edits change the ctxman entry.',
+      options: [],
+    },
+    {
+      id: 'copy',
+      label: 'Copy',
+      description: 'Copy the bundle folder to <dataset>/<slug> (a snapshot).',
+      options: [],
+    },
+    mention('Nothing placed; the document points at the ctxman data path.'),
+  ],
+  skill: [
+    {
+      id: 'copy',
+      label: 'Copy',
+      description: 'Copy the skill folder into the harness skills directory.',
+      options: [],
+    },
+    mention('Nothing placed; the document points at the ctxman skill path.'),
+  ],
+  'local-repo': [
+    mention('Nothing placed; the document gives the local path.'),
+    {
+      id: 'symlink',
+      label: 'Symlink',
+      description: 'Link the repository to repos/<name>.',
+      options: [],
+    },
+  ],
+  'remote-repo': [
+    mention('Nothing placed; the document gives the git URI.'),
+    {
+      id: 'clone',
+      label: 'Clone',
+      description: 'git clone into repos/<name> (pull on re-runs).',
+      options: ['cloneDepth', 'branch', 'subpathOnly'],
+    },
+  ],
+  'remote-skill': [
+    {
+      id: 'install',
+      label: 'Install',
+      description: 'Clone or download the skill into the harness skills directory.',
+      options: ['branch'],
+    },
+    mention('Nothing placed; the document gives the URI.'),
+  ],
+};
+
+export function materialsFor(kind: ItemKind): readonly MaterialDef[] {
+  return FAMILY_MATERIALS[familyOf(kind)];
+}
+
+export function materialDef(kind: ItemKind, material: MaterialId): MaterialDef | undefined {
+  return materialsFor(kind).find((m) => m.id === material);
+}
+
+export function isMaterialFor(kind: ItemKind, material: string): material is MaterialId {
+  return materialsFor(kind).some((m) => m.id === material);
+}
+
+/** okf symlink · skill copy · local-repo none · remote-repo none · remote-skill install (all targets). */
+export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): MaterialId {
+  switch (familyOf(kind)) {
+    case 'okf':
+      return 'symlink';
+    case 'skill':
+      return 'copy';
+    case 'local-repo':
+    case 'remote-repo':
+      return 'none';
+    case 'remote-skill':
+      return 'install';
+  }
+}
+
+/** A primary repository is a remote-repo with material clone, or a local-repo with material symlink. */
+export function isPrimaryEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
+  return (
+    (kind === 'remote-repo' && material === 'clone') ||
+    (kind === 'local-repo' && material === 'symlink')
+  );
+}
+
+export type MaterialOptionDef =
+  | {
+      id: 'cloneDepth';
+      control: 'select-number';
+      label: 'Depth';
+      help: string;
+      default: 1;
+      choices: readonly [1, 10, 50, 0];
+    }
+  | { id: 'branch'; control: 'text'; label: 'Branch'; help: string; default: '' }
+  | { id: 'subpathOnly'; control: 'checkbox'; label: 'Subpath only'; help: string; default: false };
+
+export const MATERIAL_OPTION_DEFS: Readonly<Record<MaterialOptionId, MaterialOptionDef>> = {
+  cloneDepth: {
+    id: 'cloneDepth',
+    control: 'select-number',
+    label: 'Depth',
+    help: 'Commits of history to fetch; 0 = full history.',
+    default: 1,
+    choices: [1, 10, 50, 0],
+  },
+  branch: {
+    id: 'branch',
+    control: 'text',
+    label: 'Branch',
+    help: 'Branch or tag; empty = the default branch.',
+    default: '',
+  },
+  subpathOnly: {
+    id: 'subpathOnly',
+    control: 'checkbox',
+    label: 'Subpath only',
+    help: "Sparse checkout of the reference's subpath only.",
+    default: false,
+  },
+};
+
+/** What `resolveMaterialOptions` gives for `id` without the override layer (recipe default ?? built-in). */
+export function baseMaterialOptionValue(
+  id: MaterialOptionId,
+  recipe?: Partial<MaterialOptions>,
+): MaterialOptions[MaterialOptionId] {
+  return recipe?.[id] ?? MATERIAL_OPTION_DEFS[id].default;
+}
+
+/**
+ * Resolved material options for one item: only the material's own options, each = override ?? recipe default
+ * ?? built-in (the mirror of `resolveOptions`).
+ */
+export function resolveMaterialOptions(
+  kind: ItemKind,
+  material: MaterialId,
+  layers: { recipe?: Partial<MaterialOptions>; override?: Partial<MaterialOptions> },
+): Partial<MaterialOptions> {
+  const out: Record<string, MaterialOptions[MaterialOptionId]> = {};
+  for (const id of materialDef(kind, material)?.options ?? []) {
+    out[id] = layers.override?.[id] ?? baseMaterialOptionValue(id, layers.recipe);
+  }
+  return out as Partial<MaterialOptions>;
+}
+
+// ---------------------------------------------------------------- destinations (posix, relative to the working directory)
+
+/**
+ * Last segment of the trimmed subpath when it is a valid entry name (agentskills.io: the folder name must equal
+ * the skill `name`), else `slug` (D14).
+ */
+export function remoteSkillDirName(slug: string, subpath: string | null | undefined): string {
+  const clean = (subpath ?? '').trim().replace(/^\/+|\/+$/g, '');
+  const last = clean.split('/').pop() ?? '';
+  return NAME_PATTERN.test(last) && last.length <= NAME_MAX_LENGTH ? last : slug;
+}
+
+/**
+ * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<slug>` · remote-skill
+ * `<skillsDir>/<remoteSkillDirName>`.
+ */
+export function materialDest(
+  kind: ItemKind,
+  dataset: LinkableDatasetId,
+  slug: string,
+  target: InflateTarget,
+  subpath?: string | null,
+): string {
+  switch (familyOf(kind)) {
+    case 'okf':
+      return `${dataset}/${slug}`;
+    case 'skill':
+      return `${TARGETS[target].skillsDir}/${slug}`;
+    case 'local-repo':
+    case 'remote-repo':
+      return `${REPOS_DIR}/${slug}`;
+    case 'remote-skill':
+      return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath)}`;
+  }
 }

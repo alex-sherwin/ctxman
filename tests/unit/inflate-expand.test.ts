@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { LinkableDatasetId } from '../../src/datasets/registry.ts';
 import { parseRecipe } from '../../src/lib/inflate/recipe.ts';
+import { parseYaml } from '../../src/lib/yaml.ts';
+import { SEED_RECIPE_YAML } from './fixtures/seed-recipe.ts';
 import type { RecipeData } from '../../src/datasets/schemas.ts';
 import { summarize } from '../../src/lib/entry-summary.ts';
 import { applyOrder, expandRecipe, itemMetaFromSummary } from '../../src/lib/inflate/expand.ts';
@@ -378,6 +380,9 @@ describe('expandRecipe: warnings and loading', () => {
       mode: null,
       modeSource: null,
       options: {},
+      material: null,
+      materialSource: null,
+      materialOptions: {},
       title: 'gone',
     });
     expect(plan.warnings.map((w) => [w.code, w.message, w.key])).toEqual([
@@ -405,7 +410,13 @@ describe('expandRecipe: warnings and loading', () => {
       lookup,
     );
     expect(itemOf(plan, 'kb/bad').status).toBe('invalid');
-    expect(itemOf(plan, 'reference/untyped')).toMatchObject({ status: 'invalid', kind: null });
+    expect(itemOf(plan, 'reference/untyped')).toMatchObject({
+      status: 'invalid',
+      kind: null,
+      material: null,
+      materialSource: null,
+      materialOptions: {},
+    });
     expect(plan.warnings.map((w) => w.message)).toEqual([
       'kb/bad could not be read: description: Required',
       'reference/untyped could not be read: unknown reference type',
@@ -631,5 +642,413 @@ describe('expandRecipe: modes and options', () => {
     );
     expect(itemOf(plan, 'kb/a')).toMatchObject({ status: 'excluded', mode: 'inline-main' });
     expect(itemOf(plan, 'kb/b').status).toBe('included');
+  });
+});
+
+describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
+  const hand = (extra: Partial<RecipeData> = {}): RecipeData => ({
+    ...recipe({ contexts: ['c1', 'c2'] }),
+    ...extra,
+  });
+  const allItems = [
+    { dataset: 'skill', slug: 's' },
+    { dataset: 'reference', slug: 'lr' },
+    { dataset: 'reference', slug: 'rr' },
+    { dataset: 'reference', slug: 'rs' },
+  ];
+
+  it('built-in default per kind (all targets), source default, options only for the material', () => {
+    for (const target of ['claude-code', 'codex', 'generic']) {
+      const plan = expandRecipe(
+        recipe({ target, contexts: ['c1', 'c2'], items: allItems }),
+        world(),
+      );
+      const got = plan.segments
+        .filter((x): x is ItemSegment => x.type === 'item')
+        .map((x) => `${x.key}=${x.material}/${x.materialSource}`);
+      expect(got, target).toEqual([
+        'kb/a=symlink/default',
+        'kb/b=symlink/default',
+        'task/t=symlink/default',
+        'skill/s=copy/default',
+        'reference/lr=none/default',
+        'reference/rr=none/default',
+        'reference/rs=install/default',
+      ]);
+      expect(itemOf(plan, 'kb/a').materialOptions).toEqual({});
+      expect(itemOf(plan, 'reference/rr').materialOptions).toEqual({});
+      expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: '' });
+    }
+  });
+
+  it('precedence: built-in < recipe default < override', () => {
+    const plan = expandRecipe(
+      recipe({
+        contexts: ['c1', 'c2'],
+        defaults: { kb: { material: 'copy' }, task: { material: 'none' } },
+        overrides: [{ key: 'kb/b', material: 'none' }],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ material: 'copy', materialSource: 'recipe' });
+    expect(itemOf(plan, 'kb/b')).toMatchObject({ material: 'none', materialSource: 'override' });
+    expect(itemOf(plan, 'task/t')).toMatchObject({ material: 'none', materialSource: 'recipe' });
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('a recipe default equal to the built-in one still counts as recipe', () => {
+    const plan = expandRecipe(
+      recipe({ contexts: ['c1'], defaults: { kb: { material: 'symlink' } } }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ material: 'symlink', materialSource: 'recipe' });
+  });
+
+  it('material options: override over recipe default over built-in, only the material options', () => {
+    const plan = expandRecipe(
+      recipe({
+        items: [
+          { dataset: 'reference', slug: 'rr' },
+          { dataset: 'reference', slug: 'rs' },
+        ],
+        defaults: {
+          'remote-repo': { material: 'clone', materialOptions: { cloneDepth: 10, branch: 'dev' } },
+          'remote-skill': { materialOptions: { branch: 'main', cloneDepth: 5 } },
+        },
+        overrides: [{ key: 'reference/rr', materialOptions: { cloneDepth: 0, subpathOnly: true } }],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'reference/rr')).toMatchObject({
+      material: 'clone',
+      materialSource: 'recipe',
+      materialOptions: { cloneDepth: 0, branch: 'dev', subpathOnly: true },
+    });
+    // remote-skill install only has `branch`
+    expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: 'main' });
+    // material none carries no options even when some are configured
+    const none = expandRecipe(
+      recipe({
+        items: [{ dataset: 'reference', slug: 'rr' }],
+        overrides: [{ key: 'reference/rr', material: 'none', materialOptions: { branch: 'x' } }],
+      }),
+      world(),
+    );
+    expect(itemOf(none, 'reference/rr').materialOptions).toEqual({});
+  });
+
+  it('an invalid recipe default material warns once per kind and falls back to the built-in default', () => {
+    // the schema rejects this, so the recipe is built by hand
+    const plan = expandRecipe(hand({ defaults: { kb: { material: 'clone' } } }), world());
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ material: 'symlink', materialSource: 'default' });
+    expect(itemOf(plan, 'kb/b')).toMatchObject({ material: 'symlink', materialSource: 'default' });
+    expect(plan.warnings).toEqual([
+      {
+        code: 'material-invalid',
+        message: 'default material "clone" does not apply to Knowledge Base items; using "symlink"',
+        key: 'defaults.kb',
+      },
+    ]);
+  });
+
+  it('an invalid override material warns on the segment and falls back to the valid recipe default', () => {
+    const plan = expandRecipe(
+      hand({
+        defaults: { kb: { material: 'copy' } },
+        overrides: [{ key: 'kb/a', material: 'clone' }],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a')).toMatchObject({ material: 'copy', materialSource: 'recipe' });
+    expect(itemOf(plan, 'kb/a').warnings).toEqual([
+      {
+        code: 'material-invalid',
+        message: 'material "clone" does not apply to kb/a (Knowledge Base); using "copy"',
+        key: 'kb/a',
+      },
+    ]);
+    const plain = expandRecipe(
+      hand({ overrides: [{ key: 'kb/a', material: 'install' }] }),
+      world(),
+    );
+    expect(itemOf(plain, 'kb/a').warnings[0]?.message).toBe(
+      'material "install" does not apply to kb/a (Knowledge Base); using "symlink"',
+    );
+    expect(plain.warnings).toHaveLength(1);
+  });
+
+  it('a reference override material is validated against the real reference type', () => {
+    const plan = expandRecipe(
+      hand({
+        contexts: [],
+        items: [
+          { dataset: 'reference', slug: 'lr' },
+          { dataset: 'reference', slug: 'rr' },
+        ],
+        // the schema allows clone on any reference key; the type decides
+        overrides: [
+          { key: 'reference/lr', material: 'clone' },
+          { key: 'reference/rr', material: 'clone' },
+        ],
+      }),
+      world(),
+    );
+    expect(itemOf(plan, 'reference/lr')).toMatchObject({ material: 'none' });
+    expect(itemOf(plan, 'reference/lr').warnings[0]?.message).toBe(
+      'material "clone" does not apply to reference/lr (Local repo); using "none"',
+    );
+    expect(itemOf(plan, 'reference/rr')).toMatchObject({
+      material: 'clone',
+      materialSource: 'override',
+    });
+  });
+
+  it('mode and material are independent: warnings of both are on the segment, mode first', () => {
+    const plan = expandRecipe(
+      hand({ contexts: ['c1'], overrides: [{ key: 'kb/a', mode: 'clone', material: 'clone' }] }),
+      world(),
+    );
+    expect(itemOf(plan, 'kb/a').warnings.map((w) => w.message)).toEqual([
+      'mode "clone" does not apply to kb/a (Knowledge Base); using "inline-main"',
+      'material "clone" does not apply to kb/a (Knowledge Base); using "symlink"',
+    ]);
+  });
+
+  it('plan.warnings order: contexts, default modes, default materials, segments, primary, stale', () => {
+    const lookup = lookupOf(
+      {
+        c1: readyCtx('c1', [
+          { dataset: 'task', slug: 't' },
+          { dataset: 'kb', slug: 'gone' },
+        ]),
+      },
+      { 'task/t': ready(meta('task', 't')) },
+    );
+    const handmade: RecipeData = {
+      ...recipe({ contexts: ['nope', 'c1'] }),
+      output: { contextFile: 'LLM_CONTEXT.md', primary: 'reference/rr' },
+      overrides: [
+        { key: 'bug/x', exclude: true },
+        { key: 'task/t', material: 'clone' },
+      ],
+      defaults: { task: { mode: 'clone', material: 'clone' } },
+    };
+    const plan = expandRecipe(handmade, lookup);
+    expect(plan.warnings.map((w) => w.code)).toEqual([
+      'context-missing',
+      'mode-invalid',
+      'material-invalid',
+      'material-invalid',
+      'item-missing',
+      'primary-invalid',
+      'override-stale',
+    ]);
+  });
+});
+
+describe('expandRecipe: primary (plans/INFLATE_V2_SPEC.md §5)', () => {
+  const withPrimary = (
+    primary: string | undefined,
+    extra: Record<string, unknown> = {},
+  ): RecipeData =>
+    recipe({
+      items: allReferenceItems,
+      ...extra,
+      output: primary === undefined ? {} : { primary },
+    });
+  const allReferenceItems = [
+    { dataset: 'reference', slug: 'lr' },
+    { dataset: 'reference', slug: 'rr' },
+    { dataset: 'reference', slug: 'rs' },
+  ];
+  const clone = [{ key: 'reference/rr', material: 'clone' }];
+
+  it('null when output.primary is unset (also without output)', () => {
+    expect(expandRecipe(recipe({ items: allReferenceItems }), world()).primary).toBeNull();
+    expect(expandRecipe(withPrimary(undefined), world()).primary).toBeNull();
+  });
+
+  it('ok: remote-repo with clone, local-repo with symlink', () => {
+    const remote = expandRecipe(withPrimary('reference/rr', { overrides: clone }), world());
+    expect(remote.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    expect(remote.warnings).toEqual([]);
+    const local = expandRecipe(
+      withPrimary('reference/lr', { overrides: [{ key: 'reference/lr', material: 'symlink' }] }),
+      world(),
+    );
+    expect(local.primary).toEqual({ key: 'reference/lr', status: 'ok' });
+    // a recipe default counts too
+    const viaDefault = expandRecipe(
+      withPrimary('reference/rr', { defaults: { 'remote-repo': { material: 'clone' } } }),
+      world(),
+    );
+    expect(viaDefault.primary?.status).toBe('ok');
+  });
+
+  it('invalid: not an item of the recipe, missing item', () => {
+    const notInRecipe = expandRecipe(withPrimary('reference/other', { overrides: clone }), world());
+    expect(notInRecipe.primary).toEqual({
+      key: 'reference/other',
+      status: 'invalid',
+      message: 'primary reference/other is not an included item of this recipe',
+    });
+    expect(notInRecipe.warnings).toEqual([
+      {
+        code: 'primary-invalid',
+        message: 'primary reference/other is not an included item of this recipe',
+        key: 'reference/other',
+      },
+    ]);
+    // a listed item whose entry is missing is not included either
+    const missing = expandRecipe(
+      recipe({
+        items: [{ dataset: 'reference', slug: 'ghost' }],
+        output: { primary: 'reference/ghost' },
+      }),
+      world(),
+    );
+    expect(missing.primary?.message).toBe(
+      'primary reference/ghost is not an included item of this recipe',
+    );
+    expect(missing.warnings.map((w) => w.code)).toEqual(['item-missing', 'primary-invalid']);
+  });
+
+  it('invalid: excluded', () => {
+    const plan = expandRecipe(
+      withPrimary('reference/rr', {
+        overrides: [{ key: 'reference/rr', material: 'clone', exclude: true }],
+      }),
+      world(),
+    );
+    expect(plan.primary).toMatchObject({
+      status: 'invalid',
+      message: 'primary reference/rr is not an included item of this recipe',
+    });
+  });
+
+  it('invalid: wrong kind (remote-skill, okf, skill)', () => {
+    for (const key of ['reference/rs', 'kb/a', 'skill/s']) {
+      const [dataset, slug] = key.split('/') as [LinkableDatasetId, string];
+      // the schema only allows reference/<slug>, so kb/a and skill/s are set by hand
+      const handmade: RecipeData = {
+        ...recipe({ items: [{ dataset, slug }] }),
+        output: { contextFile: 'LLM_CONTEXT.md', primary: key },
+      };
+      expect(expandRecipe(handmade, world()).primary, key).toEqual({
+        key,
+        status: 'invalid',
+        message: `primary ${key} must be a remote-repo or local-repo reference`,
+      });
+    }
+  });
+
+  it('invalid: material none (the default) or the wrong material for the kind', () => {
+    const noMaterial = expandRecipe(withPrimary('reference/rr'), world());
+    expect(noMaterial.primary).toEqual({
+      key: 'reference/rr',
+      status: 'invalid',
+      message: 'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)',
+    });
+    const localNone = expandRecipe(withPrimary('reference/lr'), world());
+    expect(localNone.primary?.status).toBe('invalid');
+    const explicitNone = expandRecipe(
+      withPrimary('reference/rr', { overrides: [{ key: 'reference/rr', material: 'none' }] }),
+      world(),
+    );
+    expect(explicitNone.primary?.status).toBe('invalid');
+    // symlink on a remote-repo is not a valid material at all: the segment falls back to none
+    const handmade: RecipeData = {
+      ...withPrimary('reference/rr'),
+      overrides: [{ key: 'reference/rr', material: 'symlink' }],
+    };
+    const wrong = expandRecipe(handmade, world());
+    expect(wrong.primary?.message).toBe(
+      'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)',
+    );
+    expect(wrong.warnings.map((w) => w.code)).toEqual(['material-invalid', 'primary-invalid']);
+  });
+
+  it('provisional ok while the item or a context is loading, without a warning', () => {
+    const loadingItems: ExpandLookup = {
+      context: () => ({ status: 'missing' }),
+      item: () => ({ status: 'loading' }),
+    };
+    const item = expandRecipe(withPrimary('reference/rr'), loadingItems);
+    expect(item.pending).toBe(true);
+    expect(item.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    expect(item.warnings).toEqual([]);
+
+    const loadingContext: ExpandLookup = {
+      context: () => ({ status: 'loading' }),
+      item: () => ({ status: 'missing' }),
+    };
+    const ctx = expandRecipe(
+      recipe({ contexts: ['c1'], output: { primary: 'reference/rr' } }),
+      loadingContext,
+    );
+    expect(ctx.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+    expect(ctx.warnings).toEqual([]);
+
+    // once nothing loads any more the verdict is real
+    const settled = expandRecipe(
+      recipe({ contexts: ['c1'], output: { primary: 'reference/rr' } }),
+      lookupOf({ c1: readyCtx('c1', []) }, {}),
+    );
+    expect(settled.primary?.status).toBe('invalid');
+  });
+
+  it('a primary reached through a context link works', () => {
+    const lookup = lookupOf(
+      { c1: readyCtx('c1', [{ dataset: 'reference', slug: 'rr' }]) },
+      { 'reference/rr': ready(meta('reference', 'rr', { refType: 'remote-repo' })) },
+    );
+    const plan = expandRecipe(
+      recipe({
+        contexts: ['c1'],
+        overrides: [{ key: 'reference/rr', material: 'clone' }],
+        output: { primary: 'reference/rr' },
+      }),
+      lookup,
+    );
+    expect(plan.primary).toEqual({ key: 'reference/rr', status: 'ok' });
+  });
+});
+
+describe('expandRecipe: the seed recipe (plans/INFLATE_V2_SPEC.md §13)', () => {
+  it('astro-docs is a cloned primary; kb and the skill are symlinked / copied; the bug is excluded', () => {
+    const lookup = lookupOf(
+      {
+        'ctxman-dev': readyCtx('ctxman-dev', [
+          { dataset: 'kb', slug: 'ctxman' },
+          { dataset: 'bug', slug: 'stale-badge-timezone' },
+          { dataset: 'reference', slug: 'astro-docs' },
+        ]),
+      },
+      {
+        'kb/ctxman': ready(meta('kb', 'ctxman')),
+        'bug/stale-badge-timezone': ready(meta('bug', 'stale-badge-timezone')),
+        'skill/ctxman-add-entry': ready(meta('skill', 'ctxman-add-entry')),
+        'reference/astro-docs': ready(
+          meta('reference', 'astro-docs', { refType: 'remote-repo', uriKind: 'git' }),
+        ),
+      },
+    );
+    const parsed = parseRecipe(parseYaml(SEED_RECIPE_YAML), 'ctxman-dev-brief');
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+    const plan = expandRecipe(parsed.recipe, lookup);
+    expect(plan.warnings).toEqual([]);
+    expect(plan.primary).toEqual({ key: 'reference/astro-docs', status: 'ok' });
+    expect(itemOf(plan, 'reference/astro-docs')).toMatchObject({
+      mode: 'clone',
+      material: 'clone',
+      materialSource: 'override',
+      materialOptions: { cloneDepth: 1, branch: '', subpathOnly: true },
+    });
+    expect(itemOf(plan, 'kb/ctxman')).toMatchObject({
+      material: 'symlink',
+      materialSource: 'default',
+    });
+    expect(itemOf(plan, 'skill/ctxman-add-entry')).toMatchObject({ material: 'copy' });
+    expect(itemOf(plan, 'bug/stale-badge-timezone').status).toBe('excluded');
   });
 });

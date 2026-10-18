@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schemas/reference.schema.json
 name: blasto
 description: ksa mod for ground landing vfx
 type: remote-repo

@@ -18,25 +18,26 @@ import {
   $yamlDraft,
   $yamlInvalid,
   $yamlMarkers,
-  addTag,
   deleteContext,
   linkKey,
   moveLink,
   removeLink,
-  removeTag,
+  reorderLinks,
   retryLoad,
   revert,
   save,
   saveIfDirty,
   selectContext,
+  setContextTags,
   setDescription,
   setView,
   setYamlDraft,
 } from '../../stores/forge.ts';
 import { $now } from '../../stores/now.ts';
 import { isMac, modKeyLabel } from '../../stores/platform.ts';
+import { TagEditor } from '../edit/TagEditor.tsx';
+import { YamlIssues } from '../edit/YamlIssues.tsx';
 import {
-  Badge,
   Button,
   ButtonLink,
   Chip,
@@ -46,17 +47,16 @@ import {
   EmptyState,
   Kbd,
   ListBoxItem,
+  OrderedList,
   Select,
   Spinner,
-  Tag,
-  TagGroup,
   TextField,
 } from '../kit/index.ts';
 import type { CodeEditorApi } from '../kit/index.ts';
 import { LinkRow } from './LinkRow.tsx';
+import { isMissing, labelOf } from './link-label.ts';
 
 const NEW_ITEM = '__new__';
-const TAG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 // ---------------------------------------------------------------- header
 
@@ -78,6 +78,7 @@ function ContextSelect() {
         selectContext(key === NEW_ITEM ? 'new' : key === null ? null : String(key))
       }
       size="sm"
+      pinnedKeys={[NEW_ITEM]}
       triggerTestId="forge-context-select"
       className="cx-forge__ctxselect"
     >
@@ -132,47 +133,18 @@ function ViewToggle() {
 
 // ---------------------------------------------------------------- form view
 
-function AddTagInput() {
-  const [draft, setDraft] = useState('');
-  const normalized = draft.trim().toLowerCase().replace(/\s+/g, '-');
-  const valid = normalized === '' || TAG_PATTERN.test(normalized);
-  return (
-    <TextField
-      aria-label="Add tag"
-      size="sm"
-      mono
-      placeholder="add tag, Enter"
-      value={draft}
-      onChange={setDraft}
-      isInvalid={!valid}
-      errorMessage="Lowercase letters, digits and hyphens"
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        if (normalized === '' || !valid) return;
-        addTag(normalized);
-        setDraft('');
-      }}
-      inputTestId="forge-add-tag"
-    />
-  );
-}
-
 function FormView() {
   const working = useStore($working);
+  const entries = useStore($entries);
+  const yamlInvalid = useStore($yamlInvalid);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const listRef = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   /** The reorder / remove button of the row `key` (the DOM is the source of truth for focus targets). */
   const buttonOf = useCallback((key: string, testId: string): HTMLButtonElement | null => {
-    const rows = listRef.current?.children ?? [];
-    for (const row of rows) {
-      if (row instanceof HTMLElement && row.dataset.key === key) {
-        const button = row.querySelector(`[data-testid="${testId}"]`);
-        return button instanceof HTMLButtonElement ? button : null;
-      }
-    }
-    return null;
+    const row = listRef.current?.querySelector(`[role="row"][data-key="${CSS.escape(key)}"]`);
+    const button = row?.querySelector(`[data-testid="${testId}"]`);
+    return button instanceof HTMLButtonElement ? button : null;
   }, []);
 
   if (working === null) return null;
@@ -217,22 +189,12 @@ function FormView() {
           isRequired
           inputTestId="forge-context-description"
         />
-        <div className="cx-ctx__tags">
-          <TagGroup
-            label="Tags"
-            onRemove={(keys) => {
-              for (const k of keys) removeTag(String(k));
-            }}
-            emptyText="No tags"
-          >
-            {(working.tags ?? []).map((t) => (
-              <Tag key={t} id={t}>
-                {t}
-              </Tag>
-            ))}
-          </TagGroup>
-          <AddTagInput />
-        </div>
+        <TagEditor
+          tags={working.tags ?? []}
+          onChange={setContextTags}
+          testIdPrefix="forge"
+          className="cx-ctx__tags"
+        />
       </div>
       <div className="cx-ctx__linkshead">
         <h3 id="forge-links-h" className="cx-label" ref={headingRef} tabIndex={-1}>
@@ -242,23 +204,33 @@ function FormView() {
       {links.length === 0 ? (
         <EmptyState title="No links yet">Add entries from the Discover pane.</EmptyState>
       ) : (
-        <ol
-          className="cx-links"
+        <OrderedList
           aria-labelledby="forge-links-h"
-          data-testid="forge-links"
+          items={links}
+          getKey={linkKey}
+          getLabel={(l) => labelOf(entries, l)}
+          onReorder={reorderLinks}
+          testId="forge-links"
+          rowTestId="forge-link"
+          handleTestId="forge-link-handle"
+          rowAttrs={(l) => ({
+            'data-ds': l.dataset,
+            'data-missing': isMissing(entries, l) ? '' : undefined,
+          })}
+          dependencies={[entries]}
+          isDragDisabled={yamlInvalid}
           ref={listRef}
         >
-          {links.map((l, i) => (
+          {(link, i) => (
             <LinkRow
-              key={linkKey(l)}
-              link={l}
+              link={link}
               index={i}
               count={links.length}
               onMove={onMove}
               onRemove={onRemove}
             />
-          ))}
-        </ol>
+          )}
+        </OrderedList>
       )}
     </div>
   );
@@ -281,6 +253,7 @@ function YamlView({ name }: { name: string }) {
         ariaLabel={`YAML for context ${name}`}
         testId="forge-yaml-editor"
         markers={markers}
+        schemaDataset="context"
         onSave={saveIfDirty}
         onReady={(editor) => {
           api.current = editor;
@@ -291,40 +264,11 @@ function YamlView({ name }: { name: string }) {
         Edits sync to the form when valid. Comments and formatting are not preserved. Tab indents;
         press {isMac ? 'Ctrl+Shift+M' : 'Ctrl+M'} to make Tab move focus.
       </p>
-      <div
-        className="cx-yaml__issues"
-        role="status"
-        aria-live="polite"
-        data-testid="forge-yaml-issues"
-      >
-        {check.ok ? (
-          <span className="cx-yaml__ok">✓ Valid</span>
-        ) : (
-          <>
-            <Badge tone="danger">invalid</Badge>{' '}
-            <span>
-              {check.issues.length} problem{check.issues.length === 1 ? '' : 's'}
-            </span>
-            <ul>
-              {check.issues.map((issue) => (
-                <li key={`${issue.line}:${issue.column}:${issue.message}`}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => api.current?.revealPosition(issue.line, issue.column)}
-                    data-testid="forge-yaml-issue"
-                  >
-                    <code>
-                      {issue.line}:{issue.column}
-                    </code>{' '}
-                    {issue.message}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
+      <YamlIssues
+        issues={check.issues}
+        onReveal={(line, column) => api.current?.revealPosition(line, column)}
+        testIdPrefix="forge"
+      />
     </div>
   );
 }

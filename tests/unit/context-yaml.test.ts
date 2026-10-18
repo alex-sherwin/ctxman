@@ -215,6 +215,69 @@ describe('parseContextYaml', () => {
   });
 });
 
+describe('coveredBySchema', () => {
+  const issuesOf = (text: string, name = 'c') => {
+    const r = parseContextYaml(text, name);
+    if (r.ok) throw new Error('expected an invalid document');
+    return r.issues;
+  };
+
+  it('is true for syntax errors', () => {
+    const issues = issuesOf('name: c\ndescription: [unterminated\n');
+    expect(issues.length).toBeGreaterThan(0);
+    for (const issue of issues) {
+      expect(issue.source).toBe('yaml');
+      expect(issue.coveredBySchema).toBe(true);
+    }
+  });
+
+  it('is true for shape problems the JSON Schema also reports', () => {
+    // wrong enum, missing required field, unknown key, bad slug pattern, wrong type
+    const issues = issuesOf(
+      [
+        'extra: 1',
+        'name: c',
+        'links:',
+        '  - dataset: nope',
+        '    slug: x',
+        '  - dataset: kb',
+        '    slug: Not Kebab',
+        '',
+      ].join('\n'),
+    );
+    expect(issues.map((i) => i.message).join('\n')).toContain('Unrecognized key "extra"');
+    expect(issues.length).toBeGreaterThanOrEqual(4);
+    for (const issue of issues) expect(issue.coveredBySchema).toBe(true);
+  });
+
+  it('is false for a duplicate link (JSON Schema cannot express it)', () => {
+    const issues = issuesOf(
+      'name: c\ndescription: d\nlinks:\n  - {dataset: kb, slug: x}\n  - {dataset: kb, slug: x}\n',
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ source: 'schema', coveredBySchema: false });
+    expect(issues[0]!.message).toContain('duplicate link kb/x');
+  });
+
+  it('is false for a changed name, true for the rest of the same document', () => {
+    const issues = issuesOf('name: other\nextra: 1\ndescription: d\n');
+    const rename = issues.find((i) => i.message.startsWith('name must stay'));
+    const extra = issues.find((i) => i.message.includes('Unrecognized key "extra"'));
+    expect(rename?.coveredBySchema).toBe(false);
+    expect(extra?.coveredBySchema).toBe(true);
+  });
+
+  it('leaves exactly the issues monaco-yaml cannot show', () => {
+    const issues = issuesOf(
+      'name: other\nextra: 1\ndescription: d\nlinks:\n  - {dataset: kb, slug: x}\n  - {dataset: kb, slug: x}\n',
+    );
+    const own = issues.filter((i) => !i.coveredBySchema).map((i) => i.message);
+    expect(own).toHaveLength(2);
+    expect(own.some((m) => m.startsWith('name must stay'))).toBe(true);
+    expect(own.some((m) => m.includes('duplicate link kb/x'))).toBe(true);
+  });
+});
+
 describe('sameContext', () => {
   it('ignores key order and absent-vs-empty tags / notes', () => {
     const a = doc({ tags: undefined, links: [{ dataset: 'kb', slug: 'x' }] });

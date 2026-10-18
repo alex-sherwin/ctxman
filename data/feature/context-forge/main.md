@@ -20,10 +20,11 @@ The context is the main vessel for giving an agent session what it needs. Contex
 
 * Discover entries from the nine linkable datasets with tabs per dataset, a text filter, state chips and tag chips, using the same filter semantics as the list pages.
 * Create, select, edit and delete contexts; the name is the file stem and cannot be changed after creation.
-* Add a link from a discovery row, remove it, and reorder links.
+* Add a link from a discovery row, remove it, and reorder links by dragging the grip handle (mouse or keyboard) or with the up and down buttons.
+* Show the entry count on every Discover tab as soon as the page loads.
 * Attach optional markdown notes to each link, edited in the Monaco editor, with the purpose of narrowing scope or explaining intended use.
 * Edit the description and tags.
-* Offer a raw YAML mode for the whole document, validated with the same schema as the server before saving.
+* Offer a raw YAML mode for the whole document, validated with the same schema as the server before saving, with live schema diagnostics from the generated JSON Schema.
 * Save with a button or Cmd/Ctrl+S; guard unsaved changes when switching contexts, navigating Back or closing the tab.
 * Show links to entries that no longer exist as missing instead of failing.
 
@@ -40,7 +41,8 @@ The context is the main vessel for giving an agent session what it needs. Contex
 - [x] Discovery filters match the list-page filters.
 - [x] Notes are stored as literal blocks and rendered as markdown on the context page.
 - [x] Raw YAML mode blocks saving while the document is invalid.
-- [ ] Keyboard-only reordering keeps focus (open bug: [forge-reorder-focus](ctxman:bug/forge-reorder-focus)).
+- [x] Keyboard-only reordering keeps focus (fixed bug: [forge-reorder-focus](ctxman:bug/forge-reorder-focus)).
+- [x] Links reorder by drag and drop with mouse and keyboard, and every Discover tab shows its count on load.
 - [ ] End-to-end coverage of the whole workflow (task: [forge-e2e-coverage](ctxman:task/forge-e2e-coverage)).
 
 Consumers: the Context Inflate tool (`/inflate`, see [context-inflate](ctxman:idea/context-inflate)) reads what this feature produces. Search is a separate feature: [global-search](ctxman:feature/global-search).

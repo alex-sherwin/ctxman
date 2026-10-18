@@ -12,7 +12,8 @@ import type { DatasetId } from '../../datasets/registry.ts';
 import { kitClass } from './utils.ts';
 
 export interface TabProps extends AriaTabProps {
-  count?: number;
+  /** A number, `null` for "still loading" (a dimmed ellipsis), `undefined` for no count. */
+  count?: number | null;
   /** Colors the selected tab with the dataset's color and adds a dot. */
   dataset?: DatasetId;
 }
@@ -33,7 +34,12 @@ export function Tab({ count, dataset, className, children, ...rest }: TabProps) 
         <>
           {dataset && <span className="ck-tabs__dot" aria-hidden="true" />}
           {typeof children === 'function' ? children(rp) : children}
-          {count !== undefined && <span className="ck-tabs__count">{count}</span>}
+          {count === null && (
+            <span className="ck-tabs__count" data-loading="" aria-label="loading">
+              …
+            </span>
+          )}
+          {typeof count === 'number' && <span className="ck-tabs__count">{count}</span>}
         </>
       )}
     </AriaTab>

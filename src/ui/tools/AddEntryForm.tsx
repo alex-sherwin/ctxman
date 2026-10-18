@@ -1,14 +1,15 @@
 // "Add entry" panel of the Tools page (UI_SPEC §I.5): scaffolds a dataset entry through the allowlisted
-// `add` script. Field values are component-local drafts; the chosen dataset is URL state (`?add=`).
+// `add` script. Field values are component-local drafts; the chosen dataset is URL state (`?add=`). After a
+// successful add the store opens the new entry (ROUND2_UI_SPEC §I); the result panel shows "Opening…" meanwhile.
 import { useStore } from '@nanostores/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Form } from 'react-aria-components';
 import { DATASETS } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
+import { nameProblem } from '../../lib/names.ts';
 import { $addDataset, $run, clearRun, runScript, setAddDataset } from '../../stores/tools.ts';
-import { nameProblem } from '../forge/validate-name.ts';
-import { Button, ButtonLink } from '../kit/Button.tsx';
+import { Button, ButtonLink, Spinner } from '../kit/Button.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
@@ -71,7 +72,7 @@ export function AddEntryForm() {
           placeholder="Choose a dataset…"
         >
           {DATASETS.map((d) => (
-            <ListBoxItem key={d.id} id={d.id} textValue={d.label}>
+            <ListBoxItem key={d.id} id={d.id} textValue={`${d.label} ${d.id}`}>
               <span className="ck-chip__dot" data-ds={d.id} /> {d.label}{' '}
               <code className="cx-subtle">{d.id}</code>
             </ListBoxItem>
@@ -120,12 +121,12 @@ export function AddEntryForm() {
       {created && (
         <div className="cx-addform__result" role="status" data-testid="tools-add-result">
           Created <code data-testid="tools-add-path">{created.path}</code>
-          <ButtonLink
-            size="sm"
-            variant="secondary"
-            href={`/${created.dataset}/${created.slug}`}
-            data-testid="tools-add-open"
-          >
+          {run.follow === true && (
+            <span className="cx-addform__opening" data-testid="tools-add-opening">
+              <Spinner label="Opening…" /> Opening…
+            </span>
+          )}
+          <ButtonLink size="sm" variant="secondary" href={created.url} data-testid="tools-add-open">
             Open entry
           </ButtonLink>
           {created.dataset === 'context' && (
@@ -142,6 +143,12 @@ export function AddEntryForm() {
             Add another
           </Button>
         </div>
+      )}
+      {created && run.followTimedOut === true && (
+        <p className="cx-addform__note cx-subtle" data-testid="tools-add-follow-timeout">
+          Couldn&apos;t confirm the new entry yet — use Open entry above. A built server lists new
+          entries only after a rebuild.
+        </p>
       )}
     </section>
   );

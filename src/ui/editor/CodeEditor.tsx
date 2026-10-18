@@ -3,10 +3,21 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { cx } from '../kit/utils.ts';
+import { isSchemaDatasetId } from '../../lib/schema-comment.ts';
+import type { SchemaDatasetId } from '../../lib/schema-comment.ts';
+import {
+  BORDER_PX,
+  LINE_PX,
+  boxClass,
+  boxLimits,
+  initialBoxStyle,
+  type CodeHeight,
+  type CodeLanguage,
+} from './box.ts';
 import { MONACO_THEME } from './monaco-setup.ts';
+import { yamlModelPath } from './yaml-schemas.ts';
 
-export type CodeLanguage = 'markdown' | 'json' | 'yaml';
+export type { CodeHeight, CodeLanguage } from './box.ts';
 
 export interface CodeMarker {
   startLineNumber: number;
@@ -28,10 +39,7 @@ export interface CodeEditorProps {
   onChange?: (value: string) => void;
   language: CodeLanguage;
   /** Default `{ mode: 'auto', minLines: 8, maxLines: 20 }`. 'fill' is a flex child that fills its parent. */
-  height?:
-    | { mode: 'auto'; minLines?: number; maxLines?: number }
-    | { mode: 'fill' }
-    | { mode: 'fixed'; px: number };
+  height?: CodeHeight;
   readOnly?: boolean;
   /** Monaco `ariaLabel` (on its textarea). */
   ariaLabel: string;
@@ -40,8 +48,15 @@ export interface CodeEditorProps {
   /** Notes style: no line numbers / folding / gutter, Tab leaves the editor. */
   compact?: boolean;
   placeholder?: string;
-  /** Applied with `setModelMarkers(model, 'ctxman', ...)`. */
+  /** Applied with `setModelMarkers(model, 'ctxman', ...)`; monaco-yaml's own markers use owner `yaml`. */
   markers?: readonly CodeMarker[];
+  /**
+   * Only with `language="yaml"`: attach the dataset's generated JSON Schema (monaco-yaml diagnostics, hover,
+   * completion). The model gets the path `file:///data/<ds>/<testId>-<id>.yaml`, which matches the schema's
+   * `fileMatch` and lets the in-file `# yaml-language-server: $schema=../../schemas/<ds>.schema.json`
+   * comment resolve. Without it the YAML model is `inmemory://…` and only syntax is validated.
+   */
+  schemaDataset?: SchemaDatasetId;
   /** Cmd/Ctrl+S inside the editor (a per-instance Monaco action). */
   onSave?: () => void;
   onReady?: (api: CodeEditorApi) => void;
@@ -49,12 +64,7 @@ export interface CodeEditorProps {
   describedBy?: string;
 }
 
-const LINE_PX = 18;
-const PAD_PX = 8; // padding top + bottom (4 + 4)
-const BORDER_PX = 2; // .ck-code border (1px each side; box-sizing is border-box)
 const FILE_EXT: Record<CodeLanguage, string> = { markdown: 'md', json: 'json', yaml: 'yaml' };
-const DEFAULT_MIN_LINES = 8;
-const DEFAULT_MAX_LINES = 20;
 
 type MonacoNs = typeof import('monaco-editor');
 interface Mounted {
@@ -83,19 +93,21 @@ export function CodeEditor({
   compact = false,
   placeholder,
   markers,
+  schemaDataset,
   onSave,
   onReady,
   describedBy,
 }: CodeEditorProps) {
   const reactId = useId();
   // Unique per instance: two editors with the same testId must never share a Monaco model.
-  const modelPath = `inmemory://ctxman/${safeSegment(testId)}-${safeSegment(reactId)}.${FILE_EXT[language]}`;
+  const instanceId = `${safeSegment(testId)}-${safeSegment(reactId)}`;
+  const modelPath =
+    language === 'yaml' && isSchemaDatasetId(schemaDataset)
+      ? yamlModelPath(schemaDataset, instanceId)
+      : `inmemory://ctxman/${instanceId}.${FILE_EXT[language]}`;
 
   const mode = height?.mode ?? 'auto';
-  const minLines = (height?.mode === 'auto' ? height.minLines : undefined) ?? DEFAULT_MIN_LINES;
-  const maxLines = (height?.mode === 'auto' ? height.maxLines : undefined) ?? DEFAULT_MAX_LINES;
-  const minPx = minLines * LINE_PX + PAD_PX + BORDER_PX;
-  const maxPx = maxLines * LINE_PX + PAD_PX + BORDER_PX;
+  const { minPx, maxPx } = boxLimits(height);
 
   const [mounted, setMounted] = useState<Mounted | null>(null);
   const [autoPx, setAutoPx] = useState<number | null>(null);
@@ -213,22 +225,11 @@ export function CodeEditor({
     });
   };
 
-  const style =
-    mode === 'fixed' && height?.mode === 'fixed'
-      ? { height: height.px }
-      : mode === 'auto'
-        ? { height: autoPx ?? minPx }
-        : undefined;
+  const style = mode === 'auto' ? { height: autoPx ?? minPx } : initialBoxStyle(height);
 
   return (
     <div
-      className={cx(
-        'ck-code',
-        `ck-code--${language}`,
-        compact && 'ck-code--compact',
-        readOnly && 'ck-code--readonly',
-        mode === 'fill' && 'ck-code--fill',
-      )}
+      className={boxClass({ language, height, compact, readOnly })}
       data-testid={testId}
       data-language={language}
       data-invalid={hasError ? '' : undefined}

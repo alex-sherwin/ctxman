@@ -15,6 +15,7 @@
     "node_modules",
     "data",
     "out",
+    "schemas",
     "test-results",
     "playwright-report",
     ".tmp",

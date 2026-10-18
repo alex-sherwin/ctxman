@@ -6,6 +6,9 @@
 @import './Select.css';
 @import './ListBox.css';
 @import './GridList.css';
+@import './OrderedList.css';
+@import './Table.css';
+@import './Icon.css';
 @import './Tabs.css';
 @import './TagGroup.css';
 @import './Dialog.css';

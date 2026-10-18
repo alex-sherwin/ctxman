@@ -10,13 +10,16 @@ import {
   $yamlCheck,
   $yamlDraft,
   $yamlInvalid,
+  $yamlMarkers,
   addLink,
   addTag,
   moveLink,
   parseLinkKey,
   removeLink,
   removeTag,
+  reorderLinks,
   revert,
+  setContextTags,
   setDescription,
   setLinkNotes,
   setView,
@@ -88,6 +91,42 @@ describe('editing actions', () => {
     expect($working.get()?.links[0]?.slug).toBe('one');
     removeLink('bug:x');
     expect($working.get()?.links.map((l) => l.slug)).toEqual(['one', 'two']);
+  });
+
+  it('reorderLinks drops links before / after a target (drag and drop) and keeps their notes', () => {
+    addLink('bug', 'x');
+    const keys = () => $working.get()?.links.map((l) => `${l.dataset}:${l.slug}`);
+    reorderLinks(['kb:one'], 'bug:x', 'after');
+    expect(keys()).toEqual(['task:two', 'bug:x', 'kb:one']);
+    expect($working.get()?.links[2]?.notes).toBe('first note\nsecond line\n');
+    reorderLinks(['kb:one', 'bug:x'], 'task:two', 'before');
+    expect(keys()).toEqual(['bug:x', 'kb:one', 'task:two']); // current relative order of the moved links
+    expect($dirty.get()).toBe(true);
+  });
+
+  it('reorderLinks ignores a drop that changes nothing and unknown keys', () => {
+    $saveStatus.set({ kind: 'saved', at: 1 });
+    reorderLinks(['kb:one'], 'task:two', 'before'); // already there
+    reorderLinks(['kb:one'], 'kb:one', 'after'); // onto itself
+    reorderLinks(['kb:one'], 'nope:x', 'after'); // unknown target
+    expect($dirty.get()).toBe(false);
+    expect($saveStatus.get().kind).toBe('saved');
+  });
+
+  it('reorderLinks re-serializes the draft in the YAML view', () => {
+    vi.stubGlobal('location', { pathname: '/forge', search: '?context=demo', hash: '' });
+    vi.stubGlobal('history', { state: null, replaceState: vi.fn(), pushState: vi.fn() });
+    setView('yaml');
+    reorderLinks(['kb:one'], 'task:two', 'after');
+    const draft = $yamlDraft.get() ?? '';
+    expect(draft.indexOf('slug: two')).toBeLessThan(draft.indexOf('slug: one'));
+  });
+
+  it('setContextTags replaces the list', () => {
+    setContextTags(['x', 'y']);
+    expect($working.get()?.tags).toEqual(['x', 'y']);
+    setContextTags([]);
+    expect($working.get()?.tags).toEqual([]);
   });
 
   it('never mutates the previous working copy', () => {
@@ -176,6 +215,33 @@ describe('YAML view', () => {
     const check = $yamlCheck.get();
     expect(check.ok).toBe(false);
     expect(check.issues[0]?.message).toContain('name must stay "demo"');
+  });
+
+  it('editor markers only carry what the JSON Schema cannot express (no duplicate squiggles)', () => {
+    setView('yaml');
+    // syntax error: monaco-yaml marks it, so the ctxman owner draws nothing; the issue list still has it
+    setYamlDraft('name: demo\ndescription: [broken\n');
+    expect($yamlCheck.get().ok).toBe(false);
+    expect($yamlMarkers.get()).toEqual([]);
+    // unknown key: covered by the schema
+    setYamlDraft('name: demo\ndescription: d\nbogus: 1\nlinks: []\n');
+    expect($yamlCheck.get().ok).toBe(false);
+    expect($yamlMarkers.get()).toEqual([]);
+    // duplicate link: zod only
+    setYamlDraft(
+      'name: demo\ndescription: d\nlinks:\n  - dataset: kb\n    slug: a\n  - dataset: kb\n    slug: a\n',
+    );
+    expect($yamlMarkers.get()).toHaveLength(1);
+    expect($yamlMarkers.get()[0]?.message).toContain('duplicate link');
+    expect($yamlMarkers.get()[0]?.startLineNumber).toBe(6);
+    // renamed: zod only
+    setYamlDraft('name: other\ndescription: d\nlinks: []\n');
+    expect($yamlMarkers.get().map((m) => m.message)).toEqual([
+      expect.stringContaining('name must stay "demo"'),
+    ]);
+    // valid
+    setYamlDraft('name: demo\ndescription: d\nlinks: []\n');
+    expect($yamlMarkers.get()).toEqual([]);
   });
 
   it('actions re-serialize the draft while the YAML view is open', () => {

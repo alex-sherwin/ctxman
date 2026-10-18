@@ -14,10 +14,23 @@ export default defineConfig({
   // Same Shiki config is used by src/lib/markdown.ts (runtime notes rendering) — keep them shared.
   markdown: { shikiConfig: SHIKI_CONFIG },
   vite: {
-    // Monaco's editor chunk is ~4 MB; it is loaded only by the Forge island, locally. Silence the 500 kB warning.
+    // Monaco's editor chunk is ~4 MB (+ ~1 MB yaml worker); it is loaded only by editor islands, locally.
+    // Silence the 500 kB warning.
     build: { chunkSizeWarningLimit: 6000 },
+    resolve: {
+      alias: [
+        {
+          // monaco-worker-manager (monaco-yaml's worker) imports a pre-0.5x deep path that monaco-editor 0.57's
+          // `exports` map no longer serves; point it at the public specifier (ROUND2_BACKEND_SPEC D14).
+          find: /^monaco-editor\/esm\/vs\/editor\/editor\.worker\.js$/,
+          replacement: 'monaco-editor/editor/editor.worker',
+        },
+      ],
+    },
     // Pre-bundle client deps up front so `astro dev` never full-reloads the page mid-session
-    // (and mid-e2e-test) after discovering them on first hydration.
+    // (and mid-e2e-test) after discovering them on first hydration. The `monaco-yaml > …` entries are its
+    // CommonJS / nested deps: without them the yaml worker dies with `module is not defined` and Vite
+    // re-optimizes (full reload) when the first YAML editor opens.
     optimizeDeps: {
       include: [
         'react-aria-components',
@@ -26,6 +39,16 @@ export default defineConfig({
         '@nanostores/react',
         'monaco-editor',
         '@monaco-editor/react',
+        'monaco-yaml',
+        'monaco-yaml > monaco-worker-manager',
+        'monaco-yaml > monaco-worker-manager/worker',
+        'monaco-yaml > path-browserify',
+        'monaco-yaml > @vscode/l10n',
+        'monaco-yaml > vscode-languageserver-types',
+        'monaco-yaml > vscode-languageserver-textdocument',
+        'monaco-yaml > vscode-uri',
+        'monaco-yaml > jsonc-parser',
+        'monaco-yaml > prettier',
       ],
     },
   },

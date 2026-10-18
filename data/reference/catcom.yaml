@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schemas/reference.schema.json
 name: catcom
 description: ksa mod for in-game scripting using lua or typescript
 type: remote-repo

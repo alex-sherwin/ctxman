@@ -164,4 +164,13 @@
   .cx-addform__result code {
     color: var(--fg);
   }
+  .cx-addform__opening {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .cx-addform__note {
+    margin: 0 var(--sp-4) var(--sp-3);
+    font-size: var(--fs-xs);
+  }
 }

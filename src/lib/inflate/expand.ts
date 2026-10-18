@@ -1,6 +1,7 @@
 // PURE (no fs, no astro:*; browser-safe). Expands a recipe into an ordered plan of segments
-// (plans/INFLATE_SPEC.md §5). The server renders the plan (render.ts); the Inflate island runs the same
-// function over cached API data for instant feedback, using `ExpandLookup` adapters on both sides.
+// (plans/INFLATE_SPEC.md §5, plans/INFLATE_V2_SPEC.md §5: material and primary). The server renders the plan
+// (render.ts); the Inflate island runs the same function over cached API data for instant feedback, using
+// `ExpandLookup` adapters on both sides.
 import type { LinkableDatasetId, ReferenceType } from '../../datasets/registry.ts';
 import type { ContextLink, RecipeData, ReferenceData } from '../../datasets/schemas.ts';
 import type { EntrySummary } from '../entry-summary.ts';
@@ -9,14 +10,18 @@ import {
   EXTRA_KEY,
   ITEM_KIND_LABELS,
   ctxKey,
+  defaultMaterialFor,
   defaultModeFor,
+  isMaterialFor,
   isModeFor,
+  isPrimaryEligible,
   itemKey,
   itemKindOf,
   mdKey,
+  resolveMaterialOptions,
   resolveOptions,
 } from './catalog.ts';
-import type { InflateOptions, ItemKind, ModeId } from './catalog.ts';
+import type { InflateOptions, ItemKind, MaterialId, MaterialOptions, ModeId } from './catalog.ts';
 
 // ---------------------------------------------------------------- types
 
@@ -66,7 +71,15 @@ export type InflateWarningCode =
   | 'override-stale'
   | 'path-missing'
   | 'file-unreadable'
-  | 'large-output';
+  | 'large-output'
+  | 'material-invalid'
+  | 'primary-invalid'
+  | 'dest-collision'
+  | 'source-missing'
+  | 'tool-missing'
+  | 'manifest-unreadable'
+  | 'manifest-other-recipe'
+  | 'context-file-edited';
 export interface InflateWarning {
   code: InflateWarningCode;
   message: string;
@@ -93,6 +106,11 @@ export interface ItemSegment {
   mode: ModeId | null;
   modeSource: 'default' | 'recipe' | 'override' | null;
   options: Partial<InflateOptions>;
+  /** What is placed in a working directory (null until the kind is known). */
+  material: MaterialId | null;
+  materialSource: 'default' | 'recipe' | 'override' | null;
+  /** Only the material's own options, resolved like `options`. */
+  materialOptions: Partial<MaterialOptions>;
   status: SegmentStatus;
   group: string | null;
   warnings: InflateWarning[];
@@ -127,12 +145,22 @@ export interface SectionIntroSegment {
 }
 export type Segment = ItemSegment | MarkdownSegment | ContextIntroSegment | SectionIntroSegment;
 
+/** The recipe's `output.primary` after validation against the expanded items. */
+export interface PlanPrimary {
+  key: string;
+  status: 'ok' | 'invalid';
+  /** Present when `status` is 'invalid' (the same text as the `primary-invalid` plan warning). */
+  message?: string;
+}
+
 export interface ExpandedPlan {
   recipe: RecipeData;
   segments: Segment[];
   contexts: { slug: string; status: 'ready' | 'missing' | 'invalid' | 'loading' }[];
   warnings: InflateWarning[];
   staleOverrides: string[];
+  /** null when `recipe.output?.primary` is unset. */
+  primary: PlanPrimary | null;
   /** Some lookup is still loading (browser only). */
   pending: boolean;
 }
@@ -199,6 +227,7 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
   let pending = false;
   const contextWarnings: InflateWarning[] = [];
   const defaultModeWarnings: InflateWarning[] = [];
+  const defaultMaterialWarnings: InflateWarning[] = [];
   const staleWarnings: InflateWarning[] = [];
 
   // 1. contexts
@@ -299,6 +328,7 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
 
   // 6. items
   const defaultModeWarned = new Set<ItemKind>();
+  const defaultMaterialWarned = new Set<ItemKind>();
   const buildItem = (key: string, entry: RegistryEntry): ItemSegment => {
     const { dataset, slug } = entry;
     const segment: ItemSegment = {
@@ -315,6 +345,9 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
       mode: null,
       modeSource: null,
       options: {},
+      material: null,
+      materialSource: null,
+      materialOptions: {},
       status: 'invalid',
       group: null,
       warnings: [],
@@ -398,6 +431,48 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
       ...(kindDefault?.options === undefined ? {} : { recipe: kindDefault.options }),
       ...(override?.options === undefined ? {} : { override: override.options }),
     });
+
+    const builtMaterial = defaultMaterialFor(kind, recipe.target);
+    let material: MaterialId = builtMaterial;
+    let materialSource: NonNullable<ItemSegment['materialSource']> = 'default';
+    let materialFallback: MaterialId = builtMaterial;
+    const recipeMaterial = kindDefault?.material;
+    if (recipeMaterial !== undefined) {
+      if (isMaterialFor(kind, recipeMaterial)) {
+        material = recipeMaterial;
+        materialSource = 'recipe';
+        materialFallback = recipeMaterial;
+      } else if (!defaultMaterialWarned.has(kind)) {
+        defaultMaterialWarned.add(kind);
+        defaultMaterialWarnings.push({
+          code: 'material-invalid',
+          message: `default material "${recipeMaterial}" does not apply to ${label} items; using "${builtMaterial}"`,
+          key: `defaults.${kind}`,
+        });
+      }
+    }
+    const overrideMaterial = override?.material;
+    if (overrideMaterial !== undefined) {
+      if (isMaterialFor(kind, overrideMaterial)) {
+        material = overrideMaterial;
+        materialSource = 'override';
+      } else {
+        segment.warnings.push({
+          code: 'material-invalid',
+          message: `material "${overrideMaterial}" does not apply to ${key} (${label}); using "${materialFallback}"`,
+          key,
+        });
+      }
+    }
+    segment.material = material;
+    segment.materialSource = materialSource;
+    segment.materialOptions = resolveMaterialOptions(kind, material, {
+      ...(kindDefault?.materialOptions === undefined
+        ? {}
+        : { recipe: kindDefault.materialOptions }),
+      ...(override?.materialOptions === undefined ? {} : { override: override.materialOptions }),
+    });
+
     segment.status = override?.exclude === true ? 'excluded' : 'included';
     return segment;
   };
@@ -476,12 +551,39 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
     segment.crossRefs = refs;
   }
 
-  // 10. warnings
+  // 10. primary repository (working-directory output)
+  const primaryWarnings: InflateWarning[] = [];
+  let primary: PlanPrimary | null = null;
+  const primaryKey = recipe.output?.primary;
+  if (primaryKey !== undefined) {
+    const seg = segments.find((s): s is ItemSegment => s.type === 'item' && s.key === primaryKey);
+    const contextsLoading = contexts.some((c) => c.status === 'loading');
+    let message: string | undefined;
+    if (seg?.status === 'loading' || (seg === undefined && contextsLoading)) {
+      // Provisional while lookups are loading (browser): no verdict yet, no warning.
+    } else if (seg === undefined || seg.status !== 'included') {
+      message = `primary ${primaryKey} is not an included item of this recipe`;
+    } else if (seg.kind !== 'remote-repo' && seg.kind !== 'local-repo') {
+      message = `primary ${primaryKey} must be a remote-repo or local-repo reference`;
+    } else if (!isPrimaryEligible(seg.kind, seg.material)) {
+      message = `primary ${primaryKey} needs material clone (remote-repo) or symlink (local-repo)`;
+    }
+    if (message === undefined) {
+      primary = { key: primaryKey, status: 'ok' };
+    } else {
+      primary = { key: primaryKey, status: 'invalid', message };
+      primaryWarnings.push({ code: 'primary-invalid', message, key: primaryKey });
+    }
+  }
+
+  // 11. warnings
   const warnings = [
     ...contextWarnings,
     ...defaultModeWarnings,
+    ...defaultMaterialWarnings,
     ...segments.flatMap((s) => s.warnings),
+    ...primaryWarnings,
     ...staleWarnings,
   ];
-  return { recipe, segments, contexts, warnings, staleOverrides, pending };
+  return { recipe, segments, contexts, warnings, staleOverrides, primary, pending };
 }

@@ -23,13 +23,14 @@ This is the primary way to run ctxman. The glob loaders watch the data folders a
 
 Consequences:
 
+* Saving a markdown file from the browser (`PUT /api/doc/...`) is a write under a watched folder, so it triggers the reload too; the editor returns to the preview, keeps "Saved" across the reload and reloads once more if the content layer had not caught up (see [Editing](/concepts/editing.md)). Writing a reference through the API behaves the same, and server-rendered pages see it about 0.6 s later.
 * Writing a `kb/*/main.md` triggers one reload; the add scripts for bundles, skills and references do the same, so the tools page stores its last run in `sessionStorage` and restores it.
 * Contexts are written by the forge at runtime, and recipes by the [Inflate](/concepts/context-inflate.md) tool. Using a watching loader for them would reload the page after every save, so `context` and `recipe` share one custom YAML loader (`yamlDirLoader`) with no file watcher.
 * Generated documents written to `out/` do not reload the browser; that folder is outside the watched data folders and is gitignored.
 
 ## Built server (`pnpm run build`, then `pnpm run start`)
 
-Collections are a snapshot taken at build time. An entry added later is invisible to `getCollection` until the next build. Rebuild after adding entries when running this way. Contexts, recipes and generated inflate documents are unaffected, because they are read from the filesystem at request time.
+Collections are a snapshot taken at build time. An entry added later is invisible to `getCollection` until the next build. Rebuild after adding entries when running this way. A document or reference saved through the API is on disk at once, but a built server keeps showing the snapshot until the next build. Contexts, recipes and generated inflate documents are unaffected, because they are read from the filesystem at request time.
 
 ## Rules that follow
 

@@ -41,10 +41,12 @@ A context never vendors content. It stores `dataset` and `slug` only, so editing
 ## Building a context
 
 1. Open `/forge`. Pick an existing context from the selector or choose "New context" and give it a kebab-case name and a description.
-2. In the Discover pane, switch dataset tabs, filter by text, state and tag, and press Add on a row. Rows already in the context show as added.
-3. In the Context pane, reorder links with the up and down buttons and open "Notes for the agent" to write markdown guidance in the notes editor.
-4. Use the raw YAML mode to edit the whole document; it validates against the same schema before saving.
+2. In the Discover pane, switch dataset tabs, filter by text, state and tag, and press Add on a row. Rows already in the context show as added. Every tab shows its entry count (a dimmed ellipsis while it loads).
+3. In the Context pane, reorder links by dragging the grip in the first column (mouse, or keyboard: focus the handle, Enter, Up or Down, Enter to drop, Esc to cancel) or with the up and down buttons, and open "Notes for the agent" to write markdown guidance in the notes editor. After a button move the focus stays on the moved row.
+4. Use the raw YAML mode to edit the whole document; it validates against the same schema before saving, and the editor underlines schema problems (unknown keys, wrong types, a bad `dataset`) as you type, with hover text and completion, using the generated `schemas/context.schema.json`.
 5. Save with the button or Cmd/Ctrl+S. Unsaved changes are guarded when you switch contexts or leave the page.
+
+A context can also be created or edited without the forge: `/new/context` and `/context/<slug>?edit=1` open the same fields as a form, and the pencil buttons on a context page edit one link's notes in a popup. See [Editing](/concepts/editing.md).
 
 URL parameters keep the state deep-linkable: `context`, `dataset`, `q`, repeatable `state` and `tag`. See [Routes and API](/concepts/routes-and-api.md).
 

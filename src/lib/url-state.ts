@@ -185,10 +185,37 @@ export function parseToolsUrl(params: URLSearchParams): { add: DatasetId | null 
   return { add: isDatasetId(add) ? add : null };
 }
 
-// ---------------------------------------------------------------- inflate (INFLATE_SPEC §9.1)
+// ---------------------------------------------------------------- detail edit mode (ROUND2_UI_SPEC §C.3)
 
-export const INFLATE_VIEWS = ['compose', 'preview'] as const;
+export const EDIT_VIEWS = ['form', 'yaml'] as const;
+export type EditView = (typeof EDIT_VIEWS)[number];
+
+export interface EditUrl {
+  /** `edit=1` on `/<ds>/<slug>` (and the doc sub-page): the page shows its editor instead of the preview. */
+  edit: boolean;
+  /** `view=form|yaml`: the DataForm tab of a yaml dataset. Default 'form'. */
+  view: EditView;
+}
+
+/** `?edit=1&view=yaml`. `edit` is true only for exactly `'1'`; an unknown `view` is 'form'. */
+export function parseEditUrl(params: URLSearchParams): EditUrl {
+  return {
+    edit: params.get('edit') === '1',
+    view: params.get('view') === 'yaml' ? 'yaml' : 'form',
+  };
+}
+
+// ---------------------------------------------------------------- inflate (INFLATE_SPEC §9.1, INFLATE_V2_SPEC §11.1)
+
+export const INFLATE_VIEWS = ['compose', 'preview', 'run'] as const;
 export type InflateView = (typeof INFLATE_VIEWS)[number];
+
+/** Preview paths: the document relative to the working directory (default) or the v1 absolute render. */
+export const INFLATE_PATHS = ['relative', 'absolute'] as const;
+export type InflatePaths = (typeof INFLATE_PATHS)[number];
+
+/** Mirror of JOB_ID_PATTERN in src/lib/inflate/jobs.ts (SERVER, so not importable here): a UUID v4 job id. */
+const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface InflateUrl {
   /** Recipe slug, or 'new'. null = nothing selected (also for an invalid slug). */
@@ -197,6 +224,10 @@ export interface InflateUrl {
   /** Ad hoc discovery tab. Invalid → 'kb'. */
   dataset: LinkableDatasetId;
   q: string;
+  /** Run view: the job being watched (`job=<uuid>`). null unless `view=run` and the id is well formed. */
+  job: string | null;
+  /** Preview: 'relative' (default, omitted) or 'absolute'. */
+  paths: InflatePaths;
 }
 
 export const INFLATE_DEFAULT_DATASET: LinkableDatasetId = 'kb';
@@ -205,19 +236,33 @@ export function parseInflateUrl(params: URLSearchParams): InflateUrl {
   const rawRecipe = params.get('recipe');
   const rawView = params.get('view');
   const rawDataset = params.get('dataset');
+  const rawJob = params.get('job');
+  const view: InflateView = rawView === 'preview' || rawView === 'run' ? rawView : 'compose';
   return {
     recipe: rawRecipe !== null && isValidName(rawRecipe) ? rawRecipe : null,
-    view: rawView === 'preview' ? 'preview' : 'compose',
+    view,
     dataset: isLinkableDatasetId(rawDataset) ? rawDataset : INFLATE_DEFAULT_DATASET,
     q: params.get('q') ?? '',
+    job: view === 'run' && rawJob !== null && JOB_ID.test(rawJob) ? rawJob : null,
+    paths: params.get('paths') === 'absolute' ? 'absolute' : 'relative',
   };
 }
 
-/** `/inflate?…` for an InflateUrl; defaults (dataset kb, view compose, empty q, no recipe) are omitted. */
+/**
+ * `/inflate?…` for an InflateUrl; defaults (dataset kb, view compose, paths relative, empty q, no recipe,
+ * no job) are omitted. `job` is only written with `view=run`.
+ */
 export function inflateHref(u: InflateUrl, pathname = '/inflate'): string {
   return withParams(
     pathname,
-    { recipe: u.recipe, view: u.view, dataset: u.dataset, q: u.q },
-    { dataset: INFLATE_DEFAULT_DATASET, view: 'compose' },
+    {
+      recipe: u.recipe,
+      view: u.view,
+      dataset: u.dataset,
+      q: u.q,
+      job: u.view === 'run' ? u.job : null,
+      paths: u.paths,
+    },
+    { dataset: INFLATE_DEFAULT_DATASET, view: 'compose', paths: 'relative' },
   );
 }

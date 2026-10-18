@@ -1,0 +1,49 @@
+---
+import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
+import type { EntryDetail } from '../lib/entries.ts';
+import BackRefs from './BackRefs.astro';
+import FileTree from './FileTree.astro';
+import IdeOpenButton from './IdeOpenButton.astro';
+import MetaPanel from './MetaPanel.astro';
+
+// The details column of an entry page (`/<ds>/<slug>`): Open in IDE (okf + skill), the metadata panel, the file
+// tree (okf + skill) and the "Linked from contexts" list (not for context / recipe). It sits LEFT of the content on
+// okf + skill pages (`cx-detail--doc`) and RIGHT of it on reference / context / recipe pages.
+interface Props {
+  dataset: DatasetId;
+  slug: string;
+  detail: EntryDetail;
+}
+
+const { dataset, slug, detail } = Astro.props;
+---
+
+<aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
+  {
+    (detail.kind === 'okf' || detail.kind === 'skill') && (
+      <IdeOpenButton
+        dataset={dataset}
+        slug={slug}
+        path={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+      />
+    )
+  }
+  <MetaPanel
+    dataset={dataset}
+    kind={detail.kind}
+    data={detail.data}
+    lastModified={detail.summary.lastModified}
+    file={detail.fileRelPath}
+  />
+  {
+    (detail.kind === 'okf' || detail.kind === 'skill') && (
+      <FileTree
+        dataset={dataset as OkfDatasetId | 'skill'}
+        slug={slug}
+        files={detail.files}
+        current={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+      />
+    )
+  }
+  {dataset !== 'context' && dataset !== 'recipe' && <BackRefs dataset={dataset} slug={slug} refs={detail.backRefs} />}
+</aside>

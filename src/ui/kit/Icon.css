@@ -1,0 +1,6 @@
+@layer cx-kit {
+  .ck-icon {
+    flex: none;
+    display: block;
+  }
+}

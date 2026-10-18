@@ -48,6 +48,9 @@
     letter-spacing: 0;
     color: var(--fg-subtle);
   }
+  .ck-tabs__count[data-loading] {
+    opacity: 0.6;
+  }
   .ck-tabs__tab[data-selected] .ck-tabs__count {
     color: inherit;
     opacity: 0.85;

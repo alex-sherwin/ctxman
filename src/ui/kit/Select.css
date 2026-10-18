@@ -9,10 +9,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     width: 100%;
     height: var(--control-h-md);
-    padding: 0 var(--sp-3);
+    padding: 0 var(--sp-1) 0 var(--sp-3);
     text-align: left;
     font-family: var(--font-body);
     font-size: var(--fs-md);
@@ -21,7 +21,7 @@
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
     outline: none;
-    cursor: default;
+    cursor: pointer;
     transition:
       border-color var(--dur-fast) var(--ease),
       box-shadow var(--dur-fast) var(--ease);
@@ -29,6 +29,7 @@
   .ck-select--sm .ck-select__trigger {
     height: var(--control-h-sm);
     font-size: var(--fs-sm);
+    padding-left: var(--sp-2);
   }
   .ck-select__trigger[data-hovered] {
     border-color: var(--border-strong);
@@ -44,6 +45,7 @@
   }
   .ck-select__trigger[data-disabled] {
     opacity: 0.5;
+    cursor: default;
   }
   .ck-select__value {
     flex: 1;
@@ -56,10 +58,51 @@
     color: var(--fg-subtle);
   }
   .ck-select__chevron {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
     color: var(--accent);
-    font-size: 10px;
+    transition: transform var(--dur) var(--ease);
+  }
+  .ck-select--sm .ck-select__chevron {
+    width: 18px;
+    height: 18px;
+  }
+  .ck-select[data-open] .ck-select__chevron {
+    transform: rotate(180deg);
+  }
+  .ck-select__trigger[data-hovered] .ck-select__chevron {
+    color: var(--accent-hover);
   }
   .ck-select__popover {
-    min-width: var(--trigger-width);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: max(var(--trigger-width), 200px);
+    max-width: min(480px, 90vw);
+  }
+  .ck-select__search {
+    flex: none;
+    padding: var(--sp-1);
+    border-bottom: 1px solid var(--border);
+  }
+  .ck-select__popover .ck-listbox {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+  .ck-select__empty {
+    padding: var(--sp-3);
+    text-align: center;
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-select__chevron {
+      transition: none;
+    }
   }
 }

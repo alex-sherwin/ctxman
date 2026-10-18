@@ -405,42 +405,12 @@
   }
 
   /* ---------- E list page: results table ---------- */
-  .cx-table {
-    width: 100%;
-    font-size: var(--fs-md);
-    background: var(--surface);
-    border: 1px solid var(--border);
-  }
-  .cx-table th {
+  /* Markup twin of kit/Table.css (`ck-table`, `ck-table__th|td|row`): base look and row hover live there. Only the
+     sticky header (z-index 2, above the row-link overlays of cx-rowlink) and the list-specific bits stay here. */
+  .cx-table .ck-table__th {
     position: sticky;
     top: var(--header-h);
-    z-index: 1;
-    height: 24px;
-    text-align: left;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    color: var(--fg-subtle);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
-    padding: 0 var(--sp-4);
-    background: var(--bg-deep);
-    border-bottom: 1px solid var(--accent-line);
-  }
-  .cx-table th[aria-sort] {
-    color: var(--accent-text);
-  }
-  .cx-table td {
-    height: var(--row-h);
-    padding: var(--sp-1) var(--sp-4);
-    vertical-align: middle;
-    border-bottom: 1px solid var(--border);
-    line-height: var(--lh-tight);
-  }
-  .cx-table__row:hover td {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
-  }
-  .cx-table__row:hover td:first-child {
-    box-shadow: inset 2px 0 0 var(--accent);
+    z-index: 2;
   }
   .cx-table__title {
     font-weight: var(--fw-medium);
@@ -459,7 +429,7 @@
     color: var(--fg-muted);
     max-width: 0;
   }
-  .cx-table td:last-child {
+  .cx-table .ck-table__td:last-child {
     white-space: nowrap;
   }
   /* column widths */
@@ -484,7 +454,7 @@
     .cx-table-wrap {
       overflow-x: auto;
     }
-    .cx-table-wrap .cx-table th {
+    .cx-table-wrap .cx-table .ck-table__th {
       position: static;
     }
   }
@@ -518,6 +488,41 @@
   .cx-detail__main {
     max-width: var(--prose-max);
     min-width: 0;
+  }
+  /* okf + skill entry pages and sub-doc pages: details LEFT (first in the DOM), content RIGHT */
+  .cx-detail--doc {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+  .cx-detail--doc .cx-detail__main {
+    max-width: none;
+  }
+  .cx-doc__preview {
+    max-width: var(--prose-max);
+  }
+  /* DataForm edit mode of reference / context / recipe: the form limits its own width */
+  .cx-detail__main--form {
+    max-width: none;
+  }
+  .cx-detail__tools {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+  }
+  .cx-detail__idestatus {
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+  }
+  .cx-detail__idestatus[data-kind='error'] {
+    color: var(--danger-fg);
+  }
+  .cx-detail__idestatus[data-kind='ok'] {
+    color: var(--success-fg);
+  }
+  @media (max-width: 1099px) {
+    .cx-detail--doc {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .cx-detail__slug {
     font-family: var(--font-mono);
@@ -593,26 +598,62 @@
     overflow-wrap: anywhere;
   }
 
-  /* F.3 context links */
-  .cx-ctxgroup {
-    border-left: 2px solid var(--ds-c);
-    padding-left: var(--sp-4);
-    margin-top: var(--sp-5);
-  }
-  .cx-ctxgroup__title {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    margin-bottom: var(--sp-2);
-    font-size: var(--fs-md);
+  /* F.3 context links: one row per link in the context's stored order (ContextLinkList.astro) */
+  .cx-ctxlinks__list {
+    list-style: none;
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    border: 1px solid var(--border);
   }
   .cx-ctxlink {
-    padding: var(--sp-2) 0;
+    padding: var(--sp-1) var(--sp-3);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--ds-c);
+  }
+  .cx-ctxlink:last-child {
+    border-bottom: 0;
+  }
+  .cx-ctxlink__line {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--row-h);
+    min-width: 0;
+  }
+  .cx-ctxlink__num {
+    width: 18px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+  .cx-ctxlink__title {
+    min-width: 0;
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+  }
+  .cx-ctxlink__title:hover {
+    color: var(--accent-text);
+  }
+  .cx-ctxlink__title--missing {
+    color: var(--fg-subtle);
+    text-decoration: line-through;
+  }
+  .cx-ctxlink__slug {
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-ctxlink__actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--sp-1);
   }
   .cx-ctxlink__notes {
-    margin-top: var(--sp-2);
-    padding: var(--sp-2) var(--sp-3);
+    margin: 0 0 var(--sp-1) calc(18px + var(--sp-2));
+    padding: var(--sp-1) var(--sp-3);
     background: var(--bg-subtle);
     border-radius: var(--r-sm);
   }
@@ -737,13 +778,20 @@
   .cx-recipe__body {
     padding: var(--sp-3) var(--sp-4);
   }
+  /* a markdown block: wrapper (pencil button positioned over the summary row) around a <details> */
   .cx-recipe__block {
+    position: relative;
     border-bottom: 1px solid var(--border);
   }
   .cx-recipe__block:last-child {
     border-bottom: 0;
   }
-  .cx-recipe__block > summary {
+  .cx-recipe__blockedit {
+    position: absolute;
+    top: 2px;
+    right: 0;
+  }
+  .cx-recipe__details > summary {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
@@ -752,55 +800,19 @@
     cursor: pointer;
     list-style: none;
   }
-  .cx-recipe__block > summary::-webkit-details-marker {
+  .cx-recipe__details > summary::-webkit-details-marker {
     display: none;
   }
-  .cx-recipe__block > summary::before {
+  .cx-recipe__details > summary::before {
     content: '▸';
     color: var(--fg-subtle);
   }
-  .cx-recipe__block[open] > summary::before {
+  .cx-recipe__details[open] > summary::before {
     content: '▾';
   }
-  .cx-recipe__block[open] > summary {
+  .cx-recipe__details[open] > summary {
     background: var(--bg-subtle);
     border-bottom: 1px solid var(--border);
-  }
-  .cx-recipe__table {
-    width: 100%;
-    table-layout: fixed;
-    font-size: var(--fs-sm);
-  }
-  .cx-recipe__table th:nth-child(1) {
-    width: 34%;
-  }
-  .cx-recipe__table th:nth-child(2) {
-    width: 20%;
-  }
-  .cx-recipe__table th:nth-child(4) {
-    width: 96px;
-  }
-  .cx-recipe__table th {
-    height: 24px;
-    padding: 0 var(--sp-4);
-    text-align: left;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
-    color: var(--fg-subtle);
-    background: var(--bg-deep);
-    border-bottom: 1px solid var(--border);
-  }
-  .cx-recipe__table td {
-    height: var(--row-h);
-    padding: var(--sp-1) var(--sp-4);
-    vertical-align: middle;
-    border-bottom: 1px solid var(--border);
-    overflow-wrap: anywhere;
-  }
-  .cx-recipe__table tr:last-child td {
-    border-bottom: 0;
   }
   .cx-recipe__order {
     list-style: decimal;
@@ -811,5 +823,49 @@
   }
   .cx-recipe__order code {
     color: var(--fg);
+  }
+
+  /* ---------- G.5 clickable rows: stretched link, CSS only ---------- */
+  /* The row gets `cx-rowlink`, its ONE main anchor `cx-rowlink__main`: the anchor's ::after covers the row. Other
+     links, buttons and form controls sit above the overlay (z-index 1) and keep working; native anchor semantics
+     stay (middle / ctrl / cmd click open a tab, Tab + Enter). Sticky table headers use z-index 2. */
+  .cx-rowlink {
+    position: relative;
+  }
+  .cx-rowlink__main::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+  .cx-rowlink
+    :is(a, button, input, select, textarea, label, summary, details, [data-stop-row-click]):not(
+      .cx-rowlink__main
+    ) {
+    position: relative;
+    z-index: 1;
+  }
+  .cx-rowlink:hover {
+    cursor: pointer;
+  }
+  li.cx-rowlink:hover {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .cx-rowlink__main:focus-visible {
+    outline: none;
+  }
+  li.cx-rowlink:has(.cx-rowlink__main:focus-visible) {
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  tr.cx-rowlink:has(.cx-rowlink__main:focus-visible) > td {
+    box-shadow:
+      inset 0 1px 0 var(--accent),
+      inset 0 -1px 0 var(--accent);
+  }
+  tr.cx-rowlink:has(.cx-rowlink__main:focus-visible) > td:first-child {
+    box-shadow:
+      inset 2px 0 0 var(--accent),
+      inset 0 1px 0 var(--accent),
+      inset 0 -1px 0 var(--accent);
   }
 }

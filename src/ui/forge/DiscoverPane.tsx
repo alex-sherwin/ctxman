@@ -7,6 +7,7 @@ import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { $entries, ensureEntries } from '../../stores/entries.ts';
+import type { EntriesState } from '../../stores/entries.ts';
 import {
   $discover,
   $forgeUrl,
@@ -259,6 +260,17 @@ function DiscoverPanel({ dataset }: { dataset: LinkableDatasetId }) {
   );
 }
 
+/**
+ * Tab count: `null` ("…") until the first response, the number once there are entries (a refresh keeps
+ * showing the old number), nothing when the dataset failed to load.
+ */
+function tabCount(state: EntriesState | undefined): number | null | undefined {
+  if (state === undefined || (state.status === 'loading' && state.entries.length === 0)) {
+    return null;
+  }
+  return state.status === 'error' ? undefined : state.entries.length;
+}
+
 export function DiscoverPane() {
   const url = useStore($forgeUrl);
   const entries = useStore($entries);
@@ -279,20 +291,17 @@ export function DiscoverPane() {
         className="cx-forge__tabs"
       >
         <TabList aria-label="Datasets" className="cx-forge__tablist">
-          {LINKABLE_DATASETS.map((id) => {
-            const state = entries[id];
-            return (
-              <Tab
-                key={id}
-                id={id}
-                dataset={id}
-                count={state?.status === 'ready' ? state.entries.length : undefined}
-                data-testid={`forge-tab-${id}`}
-              >
-                {datasetDef(id).navLabel}
-              </Tab>
-            );
-          })}
+          {LINKABLE_DATASETS.map((id) => (
+            <Tab
+              key={id}
+              id={id}
+              dataset={id}
+              count={tabCount(entries[id])}
+              data-testid={`forge-tab-${id}`}
+            >
+              {datasetDef(id).navLabel}
+            </Tab>
+          ))}
         </TabList>
         {LINKABLE_DATASETS.map((id) => (
           <TabPanel key={id} id={id}>

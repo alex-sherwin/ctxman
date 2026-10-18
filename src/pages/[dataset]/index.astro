@@ -8,6 +8,7 @@ import PageHeader from '../../components/PageHeader.astro';
 import { getDataset } from '../../datasets/registry.ts';
 import { filterEntries } from '../../lib/entry-filter.ts';
 import { listEntries } from '../../lib/entries.ts';
+import { isYamlDatasetId } from '../../lib/forms/fields.ts';
 import { parseListParams } from '../../lib/url-state.ts';
 import Base from '../../layouts/Base.astro';
 
@@ -31,12 +32,8 @@ if (def.id === 'reference') {
   for (const ref of await getCollection('reference')) owners[ref.id] = ref.data.owner;
 }
 
-const newHref =
-  def.id === 'context'
-    ? '/forge?context=new'
-    : def.id === 'recipe'
-      ? '/inflate?recipe=new'
-      : `/tools?add=${def.id}#add-entry`;
+// reference, context and recipe have a create form (/new/<ds>, ROUND2_UI_SPEC D6); the others are created by the add scripts.
+const newHref = isYamlDatasetId(def.id) ? `/new/${def.id}` : `/tools?add=${def.id}#add-entry`;
 ---
 
 <Base title={def.label} active={def.id}>

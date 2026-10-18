@@ -8,6 +8,7 @@
     font-weight: inherit;
   }
   .ck-disclosure__trigger {
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: var(--sp-2);
@@ -38,17 +39,36 @@
     opacity: 0.4;
   }
   .ck-disclosure__chevron {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
     color: var(--accent);
+    transform: rotate(-90deg);
     transition: transform var(--dur) var(--ease);
   }
   .ck-disclosure[data-expanded] .ck-disclosure__chevron {
-    transform: rotate(90deg);
+    transform: none;
   }
   .ck-disclosure__meta {
     margin-left: var(--sp-2);
     font-family: var(--font-mono);
     text-transform: none;
     letter-spacing: 0;
+  }
+  .ck-disclosure__preview {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-normal);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--fg-muted);
   }
   .ck-disclosure__panel {
     padding-top: var(--sp-2);

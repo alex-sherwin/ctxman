@@ -213,26 +213,16 @@
   .cx-ctx__linkshead h3 {
     outline-offset: 2px;
   }
-  .cx-links {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border);
-  }
-  .cx-link {
-    padding: 0 var(--sp-3);
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--ds-c);
-  }
-  .cx-link:last-child {
-    border-bottom: 0;
-  }
-  .cx-link:focus-within {
+  /* the OrderedList row (kit) carries the grip, the dataset color and the border; this is its body */
+  .cx-ctx .ck-olist__row:focus-within {
     background: color-mix(in srgb, var(--accent) 4%, var(--surface));
   }
-  .cx-link[data-missing] {
+  .cx-ctx .ck-olist__row[data-missing] {
     border-left-color: var(--danger);
     background: var(--danger-bg);
+  }
+  .cx-link {
+    min-width: 0;
   }
   .cx-link__head {
     display: flex;
@@ -240,15 +230,6 @@
     gap: var(--sp-2);
     min-width: 0;
     min-height: var(--row-h);
-  }
-  .cx-link__index {
-    width: 18px;
-    flex: none;
-    font-family: var(--font-mono);
-    text-align: right;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
-    font-variant-numeric: tabular-nums;
   }
   .cx-link__title {
     font-weight: var(--fw-medium);
@@ -265,7 +246,7 @@
     flex: none;
   }
   .cx-link__notes {
-    padding: 0 0 var(--sp-2) 26px;
+    padding: 0 0 var(--sp-2);
   }
   .cx-link__notes-help {
     margin-top: var(--sp-1);
@@ -298,33 +279,5 @@
     flex: none;
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
-  }
-  .cx-yaml__issues {
-    flex: none;
-    max-height: 120px;
-    overflow: auto;
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
-    border-top: 1px solid var(--border);
-    padding-top: var(--sp-2);
-  }
-  /* the kit's button label is uppercase; problem messages read better as sentences */
-  .cx-yaml__issues .ck-button {
-    height: auto;
-    min-height: var(--control-h-sm);
-    padding-block: var(--sp-1);
-    text-align: left;
-    text-transform: none;
-    letter-spacing: 0;
-    white-space: normal;
-    color: inherit;
-  }
-  .cx-yaml__issues code {
-    color: var(--fg-muted);
-    margin-right: var(--sp-2);
-  }
-  .cx-yaml__ok {
-    color: var(--success-fg);
-    font-size: var(--fs-sm);
   }
 }

@@ -42,7 +42,8 @@ for (const ds of DATASETS) {
 const DETAIL_ROUTES = [
   { path: '/kb/ctxman', testId: 'detail-content' },
   { path: '/kb/ctxman/doc/concepts/datasets', testId: 'detail-content' },
-  { path: '/context/ctxman-dev', testId: 'detail-content' },
+  { path: '/context/ctxman-dev', testId: 'context-links' },
+  { path: '/recipe/ctxman-dev-brief', testId: 'recipe-composition' },
   { path: '/skill/okf-authoring', testId: 'detail-files' },
   { path: '/reference/astro-docs', testId: 'reference-fields' },
   { path: '/task/write-agents-md', testId: 'detail-content' },
@@ -58,6 +59,35 @@ for (const route of DETAIL_ROUTES) {
     await expect(page.getByTestId('detail-aside')).toBeVisible();
   });
 }
+
+// okf + skill pages mount the DocEditor toolbar and the Open in IDE button next to the SSR preview.
+for (const route of ['/kb/ctxman', '/kb/ctxman/doc/concepts/datasets', '/skill/okf-authoring']) {
+  test(`${route} mounts the doc toolbar and Open in IDE`, async ({ page }) => {
+    await page.goto(route);
+    await expect(page.getByTestId('doc-tools')).toBeVisible();
+    await expect(page.getByTestId('detail-open-ide')).toBeVisible();
+  });
+}
+
+// yaml datasets: the create form (D6) exists only for reference, context and recipe.
+for (const ds of ['reference', 'context', 'recipe']) {
+  test(`/new/${ds} returns 200 and mounts the DataForm island`, async ({ page }) => {
+    const response = await page.goto(`/new/${ds}`);
+    expect(response?.status()).toBe(200);
+    await expect(page.getByTestId('dform')).toBeVisible();
+    await expect(page.getByTestId('dform-field-name')).toBeVisible();
+  });
+}
+
+test('/<ds>/<slug>?edit=1 mounts the DataForm instead of the SSR view for yaml datasets', async ({
+  page,
+}) => {
+  const response = await page.goto('/reference/astro-docs?edit=1');
+  expect(response?.status()).toBe(200);
+  await expect(page.getByTestId('dform')).toHaveAttribute('data-mode', 'edit');
+  await expect(page.getByTestId('reference-fields')).toHaveCount(0);
+  await expect(page.getByTestId('detail-aside')).toBeVisible();
+});
 
 test('/forge returns 200 and mounts the Forge island', async ({ page }) => {
   const response = await page.goto('/forge');

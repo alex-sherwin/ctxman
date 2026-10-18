@@ -25,3 +25,8 @@ export function dirUrl(absDir: string): URL {
   if (!url.pathname.endsWith('/')) url.pathname += '/';
   return url;
 }
+
+/** Absolute path of the committed JSON Schemas (`schemas/` at the repo root; resolved against the cwd). */
+export function resolveSchemasDir(cwd: string = process.cwd()): string {
+  return path.resolve(cwd, 'schemas');
+}

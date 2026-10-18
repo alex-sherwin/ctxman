@@ -1,10 +1,11 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   listBundleFiles,
   MAX_TEXT_BYTES,
   readBundleText,
+  resolveBundleFile,
   safeJoin,
   walkFiles,
 } from '../../src/lib/bundles.ts';
@@ -157,5 +158,77 @@ describe('readBundleText', () => {
     }
     expect(await readBundleText('kb', 'x', 'link.md', dir)).toBeNull();
     expect(await readBundleText('kb', 'x', 'main.md', dir)).toBe('m');
+  });
+});
+
+describe('resolveBundleFile', () => {
+  it('locates an existing regular file with its real path, size, mtime and mode', async () => {
+    const dir = tmp.make({ 'kb/x/concepts/a.md': '# Hello\n' });
+    const result = await resolveBundleFile('kb', 'x', 'concepts/a.md', dir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.root).toBe(path.join(dir, 'kb', 'x'));
+    expect(result.abs).toBe(path.join(dir, 'kb', 'x', 'concepts', 'a.md'));
+    expect(result.realAbs).toBe(realpathSync(result.abs));
+    expect(result.size).toBe(8);
+    expect(result.mtime).toBeInstanceOf(Date);
+    expect(result.mode & 0o400).toBe(0o400);
+  });
+
+  it('reports no-entry for a missing entry dir or an invalid slug', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': 'm' });
+    expect(await resolveBundleFile('kb', 'nope', 'main.md', dir)).toEqual({
+      ok: false,
+      reason: 'no-entry',
+    });
+    expect(await resolveBundleFile('kb', '../x', 'main.md', dir)).toEqual({
+      ok: false,
+      reason: 'no-entry',
+    });
+    // an entry that is a file, not a directory
+    const file = tmp.make({ 'kb/flat': 'x' });
+    expect(await resolveBundleFile('kb', 'flat', 'main.md', file)).toEqual({
+      ok: false,
+      reason: 'no-entry',
+    });
+  });
+
+  it('reports not-found for a missing file, a directory and the entry dir itself', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/x/concepts/a.md': 'a' });
+    for (const rel of ['nope.md', 'concepts', '.', 'main.md/x']) {
+      expect(await resolveBundleFile('kb', 'x', rel, dir), rel).toEqual({
+        ok: false,
+        reason: 'not-found',
+      });
+    }
+  });
+
+  it('reports bad-path for traversal, absolute paths and NUL', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/secret.md': 'secret' });
+    for (const rel of ['../secret.md', path.join(dir, 'kb', 'secret.md'), 'main.md\0']) {
+      expect(await resolveBundleFile('kb', 'x', rel, dir), rel).toEqual({
+        ok: false,
+        reason: 'bad-path',
+      });
+    }
+  });
+
+  it('reports outside for a symlink out of the bundle; a symlink inside resolves to its target', async () => {
+    const dir = tmp.make({ 'kb/x/main.md': 'm', 'kb/x/real.md': 'r', 'outside.md': 'outside' });
+    try {
+      symlinkSync(path.join(dir, 'outside.md'), path.join(dir, 'kb', 'x', 'out.md'));
+      symlinkSync(path.join(dir, 'kb', 'x', 'real.md'), path.join(dir, 'kb', 'x', 'in.md'));
+    } catch {
+      return; // symlinks unavailable (e.g. Windows without privileges)
+    }
+    expect(await resolveBundleFile('kb', 'x', 'out.md', dir)).toEqual({
+      ok: false,
+      reason: 'outside',
+    });
+    const inside = await resolveBundleFile('kb', 'x', 'in.md', dir);
+    expect(inside.ok).toBe(true);
+    if (!inside.ok) return;
+    expect(inside.abs).toBe(path.join(dir, 'kb', 'x', 'in.md'));
+    expect(inside.realAbs).toBe(realpathSync(path.join(dir, 'kb', 'x', 'real.md')));
   });
 });

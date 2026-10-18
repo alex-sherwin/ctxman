@@ -1,11 +1,9 @@
 ---
-import BackRefs from '../../../components/BackRefs.astro';
 import Breadcrumbs from '../../../components/Breadcrumbs.astro';
-import ContextLinks from '../../../components/ContextLinks.astro';
+import ContextLinkList from '../../../components/ContextLinkList.astro';
 import DatasetBadge from '../../../components/DatasetBadge.astro';
-import FileTree from '../../../components/FileTree.astro';
+import DetailAside from '../../../components/DetailAside.astro';
 import Freshness from '../../../components/Freshness.astro';
-import MetaPanel from '../../../components/MetaPanel.astro';
 import OkfStatusBadge from '../../../components/OkfStatusBadge.astro';
 import PageHeader from '../../../components/PageHeader.astro';
 import RecipeComposition from '../../../components/RecipeComposition.astro';
@@ -15,127 +13,192 @@ import StateBadge from '../../../components/StateBadge.astro';
 import { getDataset } from '../../../datasets/registry.ts';
 import type { OkfDatasetId } from '../../../datasets/registry.ts';
 import { getEntryDetail } from '../../../lib/entries.ts';
+import { isYamlDatasetId } from '../../../lib/forms/fields.ts';
+import { parseEditUrl, withParams } from '../../../lib/url-state.ts';
 import Base from '../../../layouts/Base.astro';
+import DataForm from '../../../ui/forms/DataForm.tsx';
+import DocEditor from '../../../ui/markdown/DocEditor.tsx';
+import MarkdownTargets from '../../../ui/markdown/MarkdownTargets.tsx';
+import { contextNoteTargets, recipeTargets } from '../../../ui/markdown/targets.ts';
 
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def) return Astro.rewrite('/404');
 const slug = Astro.params.slug ?? '';
 const detail = await getEntryDetail(def.id, slug);
-if (!detail) return Astro.rewrite('/404');
 
-const { summary } = detail;
-const title = summary.title ?? summary.name;
+// `?edit=1`: okf + skill entries edit their markdown in place (DocEditor); reference, context and recipe swap the
+// main column for the DataForm island. Both sides read the same param (src/lib/url-state.ts#parseEditUrl).
+const { edit } = parseEditUrl(Astro.url.searchParams);
+
+// A reference deleted from its own edit form: the dev server reloads the page about when the glob loader drops the
+// entry, so the reload can land on this URL after the entry is gone. The page keeps the DataForm island (status
+// 404) so the form can finish the navigation to the list that it parked before the reload
+// (src/stores/data-form.ts, resumeNavigation); any other missing entry is a plain 404.
+const gone = detail === null && edit && isYamlDatasetId(def.id);
+if (detail === null && !gone) return Astro.rewrite('/404');
+if (gone) Astro.response.status = 404;
+
+const title = detail ? (detail.summary.title ?? detail.summary.name) : slug;
+const isDoc = detail?.kind === 'okf' || detail?.kind === 'skill';
+const yamlEdit = edit && isYamlDatasetId(def.id);
 ---
 
-<Base title={title} active={def.id}>
-  <Breadcrumbs
-    items={[
-      { label: 'ctxman', href: '/' },
-      { label: def.label, href: `/${def.id}` },
-      { label: slug, mono: true },
-    ]}
-  />
-  <PageHeader title={title}>
-    <Fragment slot="meta">
-      <code class="cx-detail__slug" data-testid="detail-slug">{slug}</code>
-      <button
-        type="button"
-        class="ck-button ck-button--ghost ck-button--sm"
-        data-copy={slug}
-        aria-label="Copy slug"
-      >
-        <span class="ck-button__label">Copy</span>
-      </button>
-      <DatasetBadge dataset={def.id} />
-      {summary.state && <StateBadge dataset={def.id} state={summary.state} />}
-      <OkfStatusBadge status={summary.okfStatus} />
-      {summary.stale && <StaleBadge since={summary.staleAfter} />}
-      <Freshness iso={summary.lastModified} prefix="Modified" />
-    </Fragment>
-    <Fragment slot="actions">
-      {
-        def.id === 'context' && (
-          <a
-            class="ck-button ck-button--primary ck-button--sm"
-            href={`/forge?context=${slug}`}
-            data-testid="detail-open-forge"
-          >
-            <span class="ck-button__label">Open in Forge</span>
-          </a>
-        )
-      }
-      {
-        def.id === 'recipe' && (
-          <a
-            class="ck-button ck-button--primary ck-button--sm"
-            href={`/inflate?recipe=${slug}`}
-            data-testid="detail-open-inflate"
-          >
-            <span class="ck-button__label">Open in Inflate</span>
-          </a>
-        )
-      }
-    </Fragment>
-  </PageHeader>
-
-  <div class="cx-detail">
-    {
-      (detail.kind === 'okf' || detail.kind === 'skill') && (
-        <article class="cx-detail__main cx-prose" data-testid="detail-content">
-          <Fragment set:html={detail.html} />
-        </article>
-      )
-    }
-    {
-      detail.kind === 'reference' && (
-        <article class="cx-detail__main" data-testid="detail-content">
-          <p class="cx-detail__lede">{summary.description}</p>
-          <ReferenceFields data={detail.data} />
-        </article>
-      )
-    }
-    {
-      detail.kind === 'context' && (
-        <article class="cx-detail__main" data-testid="detail-content">
-          <p class="cx-detail__lede">{summary.description}</p>
-          <ContextLinks slug={slug} links={detail.links} />
-        </article>
-      )
-    }
-    {
-      detail.kind === 'recipe' && (
-        <article class="cx-detail__main" data-testid="detail-content">
-          <p class="cx-detail__lede">{summary.description}</p>
-          <RecipeComposition
-            slug={slug}
-            data={detail.data}
-            contexts={detail.contexts}
-            items={detail.items}
-            preambleHtml={detail.preambleHtml}
-            blocks={detail.blocks}
-          />
-        </article>
-      )
-    }
-    <aside class="cx-detail__aside" aria-label="Entry details" data-testid="detail-aside">
-      <MetaPanel
-        dataset={def.id}
-        kind={detail.kind}
-        data={detail.data}
-        lastModified={summary.lastModified}
-        file={detail.fileRelPath}
+{
+  detail === null ? (
+    <Base title={title} active={def.id}>
+      <Breadcrumbs
+        items={[
+          { label: 'ctxman', href: '/' },
+          { label: def.label, href: `/${def.id}` },
+          { label: slug, mono: true },
+        ]}
       />
-      {
-        (detail.kind === 'okf' || detail.kind === 'skill') && (
-          <FileTree
-            dataset={def.id as OkfDatasetId | 'skill'}
-            slug={slug}
-            files={detail.files}
-            current={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
-          />
-        )
-      }
-      {def.id !== 'context' && def.id !== 'recipe' && <BackRefs dataset={def.id} slug={slug} refs={detail.backRefs} />}
-    </aside>
-  </div>
-</Base>
+      <PageHeader title={title}>
+        <DatasetBadge slot="eyebrow" dataset={def.id} />
+      </PageHeader>
+      {isYamlDatasetId(def.id) && (
+        <DataForm client:only="react" dataset={def.id} mode="edit" slug={slug}>
+          <div slot="fallback" class="cx-island-fallback">
+            Loading editor…
+          </div>
+        </DataForm>
+      )}
+    </Base>
+  ) : (
+    <Base title={title} active={def.id}>
+      <Breadcrumbs
+        items={[
+          { label: 'ctxman', href: '/' },
+          { label: def.label, href: `/${def.id}` },
+          { label: slug, mono: true },
+        ]}
+      />
+      <PageHeader title={title}>
+        <Fragment slot="meta">
+          <code class="cx-detail__slug" data-testid="detail-slug">{slug}</code>
+          <button
+            type="button"
+            class="ck-button ck-button--ghost ck-button--sm"
+            data-copy={slug}
+            aria-label="Copy slug"
+          >
+            <span class="ck-button__label">Copy</span>
+          </button>
+          <DatasetBadge dataset={def.id} />
+          {detail.summary.state && <StateBadge dataset={def.id} state={detail.summary.state} />}
+          <OkfStatusBadge status={detail.summary.okfStatus} />
+          {detail.summary.stale && <StaleBadge since={detail.summary.staleAfter} />}
+          <Freshness iso={detail.summary.lastModified} prefix="Modified" />
+        </Fragment>
+        <Fragment slot="actions">
+          {
+            isYamlDatasetId(def.id) && !edit && (
+              <a
+                class="ck-button ck-button--secondary ck-button--sm"
+                href={withParams(Astro.url.pathname, { edit: '1' })}
+                data-testid="detail-edit"
+              >
+                <span class="ck-button__label">Edit</span>
+              </a>
+            )
+          }
+          {
+            def.id === 'context' && (
+              <a
+                class="ck-button ck-button--primary ck-button--sm"
+                href={`/forge?context=${slug}`}
+                data-testid="detail-open-forge"
+              >
+                <span class="ck-button__label">Open in Forge</span>
+              </a>
+            )
+          }
+          {
+            def.id === 'recipe' && (
+              <a
+                class="ck-button ck-button--primary ck-button--sm"
+                href={`/inflate?recipe=${slug}`}
+                data-testid="detail-open-inflate"
+              >
+                <span class="ck-button__label">Open in Inflate</span>
+              </a>
+            )
+          }
+        </Fragment>
+      </PageHeader>
+
+      <div class:list={['cx-detail', isDoc && 'cx-detail--doc']}>
+        {isDoc && <DetailAside dataset={def.id} slug={slug} detail={detail} />}
+        {
+          (detail.kind === 'okf' || detail.kind === 'skill') && (
+            <section class="cx-detail__main cx-doc" aria-label="Content">
+              <DocEditor
+                client:only="react"
+                dataset={detail.kind === 'skill' ? 'skill' : (def.id as OkfDatasetId)}
+                slug={slug}
+                path={detail.kind === 'skill' ? 'SKILL.md' : 'main.md'}
+                previewId="cx-doc-preview"
+                initialEdit={edit}
+              >
+                <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
+              </DocEditor>
+              <article
+                id="cx-doc-preview"
+                class="cx-prose cx-doc__preview"
+                data-testid="detail-content"
+                hidden={edit}
+              >
+                <Fragment set:html={detail.html} />
+              </article>
+            </section>
+          )
+        }
+        {
+          yamlEdit && isYamlDatasetId(def.id) && (
+            <section class="cx-detail__main cx-detail__main--form" aria-label="Edit">
+              <DataForm client:only="react" dataset={def.id} mode="edit" slug={slug}>
+                <div slot="fallback" class="cx-island-fallback">
+                  Loading editor…
+                </div>
+              </DataForm>
+            </section>
+          )
+        }
+        {
+          !yamlEdit && detail.kind === 'reference' && (
+            <article class="cx-detail__main" data-testid="detail-content">
+              <p class="cx-detail__lede">{detail.summary.description}</p>
+              <ReferenceFields data={detail.data} />
+            </article>
+          )
+        }
+        {
+          !yamlEdit && detail.kind === 'context' && (
+            <article class="cx-detail__main" data-testid="detail-content">
+              <p class="cx-detail__lede">{detail.summary.description}</p>
+              <ContextLinkList slug={slug} links={detail.links} />
+              <MarkdownTargets client:only="react" targets={contextNoteTargets(slug, detail.links)} />
+            </article>
+          )
+        }
+        {
+          !yamlEdit && detail.kind === 'recipe' && (
+            <article class="cx-detail__main" data-testid="detail-content">
+              <p class="cx-detail__lede">{detail.summary.description}</p>
+              <RecipeComposition
+                slug={slug}
+                data={detail.data}
+                contexts={detail.contexts}
+                items={detail.items}
+                preambleHtml={detail.preambleHtml}
+                blocks={detail.blocks}
+              />
+              <MarkdownTargets client:only="react" targets={recipeTargets(slug, detail.blocks)} />
+            </article>
+          )
+        }
+        {!isDoc && <DetailAside dataset={def.id} slug={slug} detail={detail} />}
+      </div>
+    </Base>
+  )
+}

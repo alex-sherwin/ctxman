@@ -77,8 +77,8 @@ const recipeMeta = (r: EntrySummary): string =>
           contexts.length > 0 ? (
             <ul class="cx-minilist">
               {contexts.map((c) => (
-                <li class="cx-minilist__row">
-                  <a class="cx-minilist__title" href={c.url}>
+                <li class="cx-minilist__row cx-rowlink">
+                  <a class="cx-minilist__title cx-rowlink__main" href={c.url}>
                     {c.slug}
                   </a>
                   <span class="cx-subtle cx-truncate" title={c.description}>
@@ -120,8 +120,8 @@ const recipeMeta = (r: EntrySummary): string =>
           recipes.length > 0 ? (
             <ul class="cx-minilist">
               {recipes.map((r) => (
-                <li class="cx-minilist__row" data-testid="dashboard-recipe" data-slug={r.slug}>
-                  <a class="cx-minilist__title" href={r.url}>
+                <li class="cx-minilist__row cx-rowlink" data-testid="dashboard-recipe" data-slug={r.slug}>
+                  <a class="cx-minilist__title cx-rowlink__main" href={r.url}>
                     {r.slug}
                   </a>
                   <span class="cx-subtle cx-truncate" title={r.description}>

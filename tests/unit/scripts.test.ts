@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { trackTemp, validDataTree } from './fixtures/data-fixtures.ts';
+import { schemaCommentLine } from '../../src/lib/schema-comment.ts';
+import { trackTemp, validDataTree, withYamlComments } from './fixtures/data-fixtures.ts';
 
 // Each test spawns one or more `node scripts/*.ts` processes.
 vi.setConfig({ testTimeout: 60_000 });
@@ -71,11 +72,13 @@ describe('check-all.ts', () => {
     expect(json.checks.links.errors).toBe(1);
     expect(json.checks.links.findings[0]).toMatchObject({ rule: 'links/broken', line: 4 });
 
-    const warnOnly = tmp.make({
-      ...validDataTree(),
-      'context/dangling.yaml':
-        'name: dangling\ndescription: d\nlinks:\n  - dataset: kb\n    slug: gone\n',
-    });
+    const warnOnly = tmp.make(
+      withYamlComments({
+        ...validDataTree(),
+        'context/dangling.yaml':
+          'name: dangling\ndescription: d\nlinks:\n  - dataset: kb\n    slug: gone\n',
+      }),
+    );
     const ok = run('check-all.ts', warnOnly);
     expect(ok.code).toBe(0);
     expect(ok.stdout).toContain('WARN  collections/dangling-link');
@@ -218,6 +221,11 @@ describe('add-entry.ts', () => {
     expect(r.code, r.stderr).toBe(0);
     expect(JSON.parse(r.stdout).path).toBe(expectedPath);
     expect(existsSync(path.join(dir, ...expectedPath.split('/')))).toBe(true);
+    const [datasetId] = expectedPath.split('/');
+    if (datasetId === 'reference' || datasetId === 'context' || datasetId === 'recipe') {
+      const text = readFileSync(path.join(dir, ...expectedPath.split('/')), 'utf8');
+      expect(text.split('\n')[0]).toBe(schemaCommentLine(datasetId));
+    }
     const check = run('check-all.ts', dir, '--json');
     expect(check.code, check.stdout).toBe(0);
     expect(JSON.parse(check.stdout).checks.collections.warnings).toBe(0);
@@ -263,5 +271,149 @@ describe('add-entry.ts', () => {
     const r = run('add-entry.ts', tmp.make(), '--help');
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('Usage: node scripts/add-entry.ts');
+  });
+});
+
+describe('fix-yaml-comments.ts', () => {
+  const tree = () => ({
+    'reference/a.yaml': 'name: a\n',
+    'context/b.yaml': `${schemaCommentLine('recipe')}\nname: b\n`,
+    'recipe/c.yaml': '\uFEFFname: c\r\ndescription: d\r\n',
+    'recipe/d.yaml': `${schemaCommentLine('recipe')}\nname: d\n`,
+    'recipe/.hidden.yaml': 'ignored\n',
+    'recipe/note.md': 'stray\n',
+  });
+
+  it('fixes missing / wrong comments, touches nothing else, and is idempotent', () => {
+    const dir = tmp.make(tree());
+    const first = run('fix-yaml-comments.ts', dir);
+    expect(first.code).toBe(0);
+    expect(first.stderr).toBe('');
+    expect(first.stdout.trim().split('\n')).toEqual([
+      'fixed reference/a.yaml',
+      'fixed context/b.yaml',
+      'fixed recipe/c.yaml',
+      '3 files fixed',
+    ]);
+    const read = (rel: string) => readFileSync(path.join(dir, ...rel.split('/')), 'utf8');
+    expect(read('reference/a.yaml')).toBe(`${schemaCommentLine('reference')}\nname: a\n`);
+    expect(read('context/b.yaml')).toBe(`${schemaCommentLine('context')}\nname: b\n`);
+    expect(read('recipe/c.yaml')).toBe(
+      `${schemaCommentLine('recipe')}\r\nname: c\r\ndescription: d\r\n`,
+    );
+    expect(read('recipe/d.yaml')).toBe(`${schemaCommentLine('recipe')}\nname: d\n`);
+    expect(read('recipe/.hidden.yaml')).toBe('ignored\n');
+    expect(read('recipe/note.md')).toBe('stray\n');
+
+    const second = run('fix-yaml-comments.ts', dir, '--json');
+    expect(second.code).toBe(0);
+    expect(JSON.parse(second.stdout)).toEqual({ ok: true, fixed: [] });
+  });
+
+  it('--json lists the fixed files; --help exits 0; unknown flags exit 2', () => {
+    const dir = tmp.make(tree());
+    const r = run('fix-yaml-comments.ts', dir, '--json');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      ok: true,
+      fixed: ['reference/a.yaml', 'context/b.yaml', 'recipe/c.yaml'],
+    });
+    expect(run('fix-yaml-comments.ts', dir, '--help').stdout).toContain('Usage:');
+    const bad = run('fix-yaml-comments.ts', dir, '--bogus');
+    expect(bad.code).toBe(2);
+    expect(bad.stdout).toBe('');
+  });
+
+  it('a data dir without yaml datasets is fine', () => {
+    const r = run('fix-yaml-comments.ts', tmp.make(), '--json');
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ ok: true, fixed: [] });
+  });
+
+  it('a fresh add-entry file needs no fixing', () => {
+    const dir = tmp.make();
+    expect(
+      run('add-entry.ts', dir, 'reference', 'demo', '--type', 'local-repo', '--path', '/tmp').code,
+    ).toBe(0);
+    expect(JSON.parse(run('fix-yaml-comments.ts', dir, '--json').stdout).fixed).toEqual([]);
+  });
+});
+
+describe('check-schemas.ts / gen-schemas.ts', () => {
+  /** Runs a script with another working directory (the schemas dir is cwd-relative). */
+  function runIn(cwd: string, script: string, ...args: string[]): Run {
+    const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', script), ...args], {
+      cwd,
+      env: { ...process.env, NO_COLOR: '1' },
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+    });
+    return { code: result.status, stdout: result.stdout, stderr: result.stderr };
+  }
+
+  it('the committed schemas of this repo are current (exit 0, JSON report)', () => {
+    const text = run('check-schemas.ts', tmp.make());
+    expect(text.code, text.stdout).toBe(0);
+    expect(text.stdout.trim()).toBe('Schemas: OK (3 files)');
+    const json = run('check-schemas.ts', tmp.make(), '--json');
+    expect(json.code).toBe(0);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      ok: true,
+      errors: 0,
+      warnings: 0,
+      filesChecked: 3,
+    });
+  });
+
+  it('gen-schemas writes into <cwd>/schemas, only changed files, byte-identical to the committed ones', () => {
+    const cwd = tmp.make();
+    const first = runIn(cwd, 'gen-schemas.ts');
+    expect(first.code, first.stderr).toBe(0);
+    expect(first.stdout.trim().split('\n')).toEqual([
+      'wrote schemas/reference.schema.json',
+      'wrote schemas/context.schema.json',
+      'wrote schemas/recipe.schema.json',
+    ]);
+    for (const ds of ['reference', 'context', 'recipe']) {
+      const name = `${ds}.schema.json`;
+      expect(readFileSync(path.join(cwd, 'schemas', name), 'utf8')).toBe(
+        readFileSync(path.join(repoRoot, 'schemas', name), 'utf8'),
+      );
+    }
+    const second = runIn(cwd, 'gen-schemas.ts', '--json');
+    expect(JSON.parse(second.stdout)).toMatchObject({ ok: true, wrote: [] });
+    expect(runIn(cwd, 'check-schemas.ts').code).toBe(0);
+  });
+
+  it('check-schemas exits 1 on a missing or edited file and 0 with a stray file only', () => {
+    const cwd = tmp.make();
+    expect(runIn(cwd, 'gen-schemas.ts').code).toBe(0);
+    const file = path.join(cwd, 'schemas', 'context.schema.json');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('ctxman context', 'edited'));
+    const drift = runIn(cwd, 'check-schemas.ts', '--json');
+    expect(drift.code).toBe(1);
+    expect(JSON.parse(drift.stdout).findings[0]).toMatchObject({
+      rule: 'schemas/drift',
+      file: 'schemas/context.schema.json',
+      line: 4,
+    });
+
+    expect(runIn(cwd, 'gen-schemas.ts').code).toBe(0);
+    writeFileSync(path.join(cwd, 'schemas', 'extra.json'), '{}\n');
+    const stray = runIn(cwd, 'check-schemas.ts');
+    expect(stray.code).toBe(0);
+    expect(stray.stdout).toContain('WARN  schemas/stray');
+
+    const empty = tmp.make();
+    mkdirSync(path.join(empty, 'schemas'));
+    const missing = runIn(empty, 'check-schemas.ts');
+    expect(missing.code).toBe(1);
+    expect(missing.stdout.match(/schemas\/missing/g)).toHaveLength(3);
+  });
+
+  it('both scripts reject unknown flags with exit 2', () => {
+    expect(run('check-schemas.ts', tmp.make(), '--bogus').code).toBe(2);
+    expect(run('gen-schemas.ts', tmp.make(), '--bogus').code).toBe(2);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  alignRows,
   fenced,
   guidance,
   headingText,
@@ -8,6 +9,7 @@ import {
   shQuote,
   shiftHeadings,
   stripLeadingTitle,
+  truncateText,
 } from '../../src/lib/inflate/markdown.ts';
 import type { EntryRef } from '../../src/lib/inflate/pipeline.ts';
 
@@ -276,5 +278,62 @@ describe('headingText', () => {
     expect(headingText(0, 'x')).toBe('# x');
     expect(headingText(9, 'x')).toBe('###### x');
     expect(headingText(2, '  a \n  b\t c ')).toBe('## a b c');
+  });
+});
+
+describe('truncateText', () => {
+  it('collapses whitespace and leaves short text alone', () => {
+    expect(truncateText('  a \n b\t c  ', 20)).toBe('a b c');
+    expect(truncateText('', 5)).toBe('');
+    expect(truncateText('12345', 5)).toBe('12345');
+  });
+
+  it('cuts to max - 1 characters plus an ellipsis, dropping a trailing space', () => {
+    expect(truncateText('123456', 5)).toBe('1234…');
+    expect(truncateText('abc defgh', 5)).toBe('abc…');
+    expect(
+      truncateText('The Astro documentation source, English content. Consult it for more', 56),
+    ).toBe('The Astro documentation source, English content. Consul…');
+    expect(
+      truncateText('The Astro documentation source, English content. Consult it for more', 56),
+    ).toHaveLength(56);
+  });
+});
+
+describe('alignRows', () => {
+  it('pads the name column to the longest name + 2; rows without a note are the bare name', () => {
+    expect(
+      alignRows([
+        { name: 'a.md', note: 'first' },
+        { name: 'dir/' },
+        { name: '  longer-name/', note: 'second' },
+        { name: 'x', note: '' },
+        { name: 'y', note: null },
+      ]),
+    ).toEqual([`a.md${' '.repeat(12)}first`, 'dir/', '  longer-name/  second', 'x', 'y']);
+  });
+
+  it('caps the column at maxWidth and always keeps two spaces after a longer name', () => {
+    const long = 'n'.repeat(45);
+    expect(
+      alignRows(
+        [
+          { name: 'ab', note: 'x' },
+          { name: long, note: 'y' },
+        ],
+        10,
+      ),
+    ).toEqual(['ab        x', `${long}  y`]);
+    expect(
+      alignRows([
+        { name: 'ab', note: 'x' },
+        { name: 'n'.repeat(38), note: 'y' },
+      ]),
+    ).toEqual([`ab${' '.repeat(38)}x`, `${'n'.repeat(38)}  y`]);
+    expect(alignRows([{ name: 'n'.repeat(39), note: 'y' }])).toEqual([`${'n'.repeat(39)}  y`]);
+  });
+
+  it('handles no rows', () => {
+    expect(alignRows([])).toEqual([]);
   });
 });

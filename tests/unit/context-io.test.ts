@@ -13,6 +13,7 @@ import {
   validateContext,
   writeContext,
 } from '../../src/lib/context-io.ts';
+import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 
@@ -224,6 +225,11 @@ describe('create / read / write / delete cycle', () => {
     expect(readFileSync(file, 'utf8')).toContain(
       'notes: |\n      Read the overview.\n      Then skim details.\n',
     );
+    // The file starts with the yaml-language-server comment; the serializer itself stays comment-free.
+    expect(readFileSync(file, 'utf8')).toBe(
+      withSchemaComment('context', serializeContext(created.context)),
+    );
+    expect(serializeContext(created.context).startsWith('#')).toBe(false);
 
     const read = await readContext('my-ctx', dir);
     expect(read.context).toEqual({
@@ -243,6 +249,11 @@ describe('create / read / write / delete cycle', () => {
       dir,
     );
     expect(written.context.description).toBe('Changed');
+    const rewritten = readFileSync(file, 'utf8');
+    expect(rewritten).toBe(withSchemaComment('context', serializeContext(written.context)));
+    expect(rewritten.split('\n')[0]).toBe(
+      '# yaml-language-server: $schema=../../schemas/context.schema.json',
+    );
     expect((await readContext('my-ctx', dir)).context.links).toEqual([
       { dataset: 'skill', slug: 'okf-authoring' },
     ]);

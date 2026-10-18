@@ -8,6 +8,7 @@ import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { filterEntries } from '../../lib/entry-filter.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { $entries, ensureEntries } from '../../stores/entries.ts';
+import type { EntriesState } from '../../stores/entries.ts';
 import { $inflateUrl, $working, addItem, setDataset, setQuery } from '../../stores/inflate.ts';
 import {
   Badge,
@@ -154,6 +155,13 @@ function ResultsPanel({ dataset }: { dataset: LinkableDatasetId }) {
   );
 }
 
+/** Tab count: `null` (dimmed ellipsis) while the first load is in flight, nothing after an error. */
+function tabCount(state: EntriesState | undefined): number | null | undefined {
+  if (state === undefined || (state.status === 'loading' && state.entries.length === 0))
+    return null;
+  return state.status === 'error' ? undefined : state.entries.length;
+}
+
 export function AdhocDiscover() {
   const url = useStore($inflateUrl);
   const entries = useStore($entries);
@@ -173,7 +181,7 @@ export function AdhocDiscover() {
                 key={id}
                 id={id}
                 dataset={id}
-                count={state?.status === 'ready' ? state.entries.length : undefined}
+                count={tabCount(state)}
                 data-testid={`inflate-tab-${id}`}
               >
                 {datasetDef(id).navLabel}

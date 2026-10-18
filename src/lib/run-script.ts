@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { isDatasetId, isValidName, NAME_MAX_LENGTH } from '../datasets/registry.ts';
+import { entryUrl, isDatasetId, isValidName, NAME_MAX_LENGTH } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import { stripAnsi } from './ansi.ts';
 import type { Issue } from './context-io.ts';
@@ -19,8 +19,8 @@ export interface ScriptResult {
   stdout: string;
   stderr: string;
   durationMs: number;
-  /** Present iff the script is `add` and it exited 0. */
-  created?: { dataset: DatasetId; slug: string; path: string };
+  /** Present iff the script is `add` and it exited 0. `url` = the entry page, e.g. '/task/fix-login'. */
+  created?: { dataset: DatasetId; slug: string; path: string; url: string };
 }
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
@@ -112,7 +112,12 @@ export function buildArgs(name: ScriptName, body: unknown): Built {
   return {
     ok: true,
     args,
-    created: { dataset, slug: entryName, path: entryFileRelPath(dataset, entryName) },
+    created: {
+      dataset,
+      slug: entryName,
+      path: entryFileRelPath(dataset, entryName),
+      url: entryUrl(dataset, entryName),
+    },
   };
 }
 

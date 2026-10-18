@@ -1,9 +1,13 @@
+# yaml-language-server: $schema=../../schemas/recipe.schema.json
 name: ctxman-dev-brief
 description: Session brief for working on ctxman itself, built from the ctxman-dev context plus the add-entry skill.
 tags:
   - ctxman
 target: claude-code
 layout: grouped
+output:
+  dir: ~/ctxman-inflate/ctxman-dev-brief
+  primary: reference/astro-docs
 preamble: |
   You are working on ctxman, a local-only Astro app. Use pnpm only, never npm.
 
@@ -29,6 +33,9 @@ overrides:
     mode: clone
     options:
       sparse: true
+    material: clone
+    materialOptions:
+      subpathOnly: true
 order:
   - md:b1
   - ctx:ctxman-dev

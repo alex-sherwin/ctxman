@@ -20,6 +20,10 @@ export {
 export { Select, type SelectProps } from './Select.tsx';
 export { ListBox, ListBoxItem, ListBoxSection, type ListBoxItemProps } from './ListBox.tsx';
 export { GridList, GridListItem } from './GridList.tsx';
+export { OrderedList, type OrderedListProps } from './OrderedList.tsx';
+export { Table, TableHeader, Column, TableBody, Row, Cell, type TableProps } from './Table.tsx';
+export { Icon, type IconProps } from './Icon.tsx';
+export { ICONS, type IconName, type IconDef } from './icons.ts';
 export { Tabs, TabList, Tab, TabPanel } from './Tabs.tsx';
 export { TagGroup, Tag, type TagGroupProps } from './TagGroup.tsx';
 export {

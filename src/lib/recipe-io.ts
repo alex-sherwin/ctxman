@@ -8,6 +8,7 @@ import type { RecipeData } from '../datasets/schemas.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { parseRecipe, serializeRecipe } from './inflate/recipe.ts';
 import type { RecipeIssue } from './inflate/recipe.ts';
+import { withSchemaComment } from './schema-comment.ts';
 import { parseYaml } from './yaml.ts';
 
 export interface RecipeRecord {
@@ -142,7 +143,10 @@ export async function createRecipe(
   const abs = recipeFile(slug, dataDir);
   await mkdir(path.dirname(abs), { recursive: true });
   try {
-    await writeFile(abs, serializeRecipe(recipe), { encoding: 'utf8', flag: 'wx' });
+    await writeFile(abs, withSchemaComment('recipe', serializeRecipe(recipe)), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
       throw new RecipeIoError('exists', `recipe "${slug}" already exists`);
@@ -182,7 +186,7 @@ export async function writeRecipe(
   }
   const tmp = `${abs}.${process.pid}.tmp`;
   try {
-    await writeFile(tmp, serializeRecipe(result.recipe), 'utf8');
+    await writeFile(tmp, withSchemaComment('recipe', serializeRecipe(result.recipe)), 'utf8');
     await rename(tmp, abs);
   } catch (error) {
     await unlink(tmp).catch(() => undefined);

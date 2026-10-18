@@ -8,9 +8,11 @@ import { filterEntries, stateCounts, tagCounts } from '../lib/entry-filter.ts';
 import type { ContextDoc, EntrySummary } from '../lib/entry-summary.ts';
 import { parseContextYaml, sameContext, serializeContext } from '../lib/context-yaml.ts';
 import type { YamlIssue } from '../lib/context-yaml.ts';
+import { reorderKeys } from '../lib/reorder.ts';
+import type { DropPosition } from '../lib/reorder.ts';
 import { parseForgeUrl, withParams } from '../lib/url-state.ts';
 import type { ForgeUrl, ParamPatchValue } from '../lib/url-state.ts';
-import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
+import { $entries, ensureAllEntries, ensureEntries, invalidateEntries } from './entries.ts';
 
 export type { ForgeUrl };
 export type ForgeView = 'form' | 'yaml';
@@ -90,19 +92,26 @@ export interface YamlMarker {
   severity: 'error';
 }
 const NO_MARKERS: readonly YamlMarker[] = [];
-/** Stable reference per check result, so the editor only re-applies markers when they change. */
-export const $yamlMarkers = computed($yamlCheck, (c): readonly YamlMarker[] =>
-  c.ok
+/**
+ * Editor markers (owner `ctxman`). The editor runs monaco-yaml with the generated context JSON Schema, which
+ * already marks syntax errors and most schema problems, so only what JSON Schema cannot express (duplicate
+ * links, a changed `name`) is drawn here: no duplicate squiggles. The issue list below the editor still shows
+ * every problem. Stable reference per check result, so the editor only re-applies markers when they change.
+ */
+export const $yamlMarkers = computed($yamlCheck, (c): readonly YamlMarker[] => {
+  if (c.ok) return NO_MARKERS;
+  const own = c.issues.filter((i) => !i.coveredBySchema);
+  return own.length === 0
     ? NO_MARKERS
-    : c.issues.map((i) => ({
+    : own.map((i) => ({
         startLineNumber: i.line,
         startColumn: i.column,
         endLineNumber: i.endLine,
         endColumn: i.endColumn,
         message: i.message,
         severity: 'error' as const,
-      })),
-);
+      }));
+});
 
 // ---------------------------------------------------------------- Discover
 
@@ -421,6 +430,24 @@ export function moveLink(key: string, dir: -1 | 1): void {
   commitWorking({ ...w, links });
 }
 
+/**
+ * Drop the `moving` links before/after `target` (drag and drop, `OrderedList.onReorder`). A drop that changes
+ * nothing is ignored, so it neither dirties the form nor clears a "Saved" message.
+ */
+export function reorderLinks(moving: string[], target: string, position: DropPosition): void {
+  const w = $working.get();
+  if (w === null) return;
+  const byKey = new Map(w.links.map((l) => [linkKey(l), l]));
+  const before = w.links.map(linkKey);
+  const after = reorderKeys(before, moving, target, position);
+  if (byKey.size !== w.links.length || after.every((k, i) => k === before[i])) return;
+  const links = after.flatMap((k) => {
+    const link = byKey.get(k);
+    return link === undefined ? [] : [link];
+  });
+  commitWorking({ ...w, links });
+}
+
 /** `''` removes the `notes` key (keeps revert-equality and the YAML clean). */
 export function setLinkNotes(key: string, notes: string): void {
   const w = $working.get();
@@ -442,6 +469,13 @@ export function setDescription(description: string): void {
   const w = $working.get();
   if (w === null) return;
   commitWorking({ ...w, description });
+}
+
+/** Replace the whole tag list (the shared TagEditor reports the new list on every add / remove). */
+export function setContextTags(tags: string[]): void {
+  const w = $working.get();
+  if (w === null) return;
+  commitWorking({ ...w, tags });
 }
 
 export function addTag(tag: string): void {
@@ -636,15 +670,21 @@ function onKeyDown(e: KeyboardEvent): void {
 
 onMount($forgeUrl, () => {
   applyUrl();
+  // Every Discover tab shows its entry count and every link row its title: prefetch all linkable datasets
+  // (applyUrl only loads the active tab's), plus the contexts for the Select.
+  ensureAllEntries();
   ensureEntries('context');
   syncContext();
   window.addEventListener('popstate', onPopState);
   window.addEventListener('beforeunload', onBeforeUnload);
-  window.addEventListener('keydown', onKeyDown);
+  // Capture phase: the kit OrderedList (RAC GridList) stops key events that start inside a row, so a bubbling
+  // `window` listener never sees Cmd/Ctrl+S from a row input or notes editor. A Monaco save action that also
+  // fires is harmless: `save()` ignores a second call while one is in flight.
+  window.addEventListener('keydown', onKeyDown, true);
   return () => {
     window.removeEventListener('popstate', onPopState);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keydown', onKeyDown, true);
     flushQuery();
   };
 });

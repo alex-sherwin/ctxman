@@ -1,6 +1,6 @@
-// Context Inflate island root (INFLATE_SPEC §9.3): recipe bar, Sources + Composition (compose view) or the
-// Preview (preview view), plus the two app-level dialogs. Mounted by src/pages/inflate.astro with
-// client:only="react".
+// Context Inflate island root (INFLATE_SPEC §9.3): recipe bar, Sources + Composition (compose view), the
+// Preview (preview view) or the Run view (settings + dry run / progress), plus the two app-level dialogs.
+// Mounted by src/pages/inflate.astro with client:only="react".
 import { useStore } from '@nanostores/react';
 import {
   $inflateUrl,
@@ -19,6 +19,7 @@ import { CompositionPane } from './CompositionPane.tsx';
 import { NewRecipeDialog } from './NewRecipeDialog.tsx';
 import { PreviewPane } from './PreviewPane.tsx';
 import { RecipeBar } from './RecipeBar.tsx';
+import { RunView } from './RunView.tsx';
 import { SourcesPane } from './SourcesPane.tsx';
 
 /** "Discard unsaved changes?" shown when the user switches recipe with a dirty working copy. */
@@ -123,6 +124,7 @@ function Body({ outDir }: { outDir: string }) {
   const { view } = useStore($inflateUrl);
   if (working === null) return <EmptyBody />;
   if (view === 'preview') return <PreviewPane outDir={outDir} />;
+  if (view === 'run') return <RunView />;
   return (
     <>
       <SourcesPane />

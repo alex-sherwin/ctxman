@@ -111,14 +111,51 @@
     padding: 0 var(--sp-2);
   }
   .cx-defrow {
-    display: flex;
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr);
     align-items: center;
-    justify-content: space-between;
     gap: var(--sp-3);
   }
   .cx-defrow__label {
     font-size: var(--fs-sm);
     color: var(--fg-muted);
+  }
+  /* ---------- output directory (INFLATE_V2_SPEC §11.3) ---------- */
+  .cx-output__disclosure .ck-disclosure__meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--fw-normal);
+    color: var(--fg-muted);
+  }
+  .cx-output {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
+    border-left: 2px solid var(--accent-line);
+  }
+  .cx-output__stubs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .cx-output__primary,
+  .cx-output__overrides {
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+    overflow-wrap: anywhere;
+  }
+  .cx-output__invalid {
+    color: var(--warn-fg);
+  }
+  .cx-output__overrides {
+    color: var(--warn-fg);
   }
   .cx-adhoc {
     display: flex;
@@ -158,40 +195,33 @@
   .cx-comp__warnings li + li {
     margin-top: var(--sp-1);
   }
+  /* the kit OrderedList (`ck-olist`): the row (grip column, border, background) comes from the kit, the
+     type / status colours below are ours; the row body is `.cx-seg__body` */
   .cx-segs {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border);
     margin: var(--sp-3) var(--sp-4);
   }
-  .cx-seg {
-    padding: 0 var(--sp-3);
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--ds-c, var(--border-strong));
-  }
-  .cx-seg:last-child {
-    border-bottom: 0;
-  }
-  .cx-seg:focus-within {
+  .cx-segs .ck-olist__row:focus-within {
     background: color-mix(in srgb, var(--accent) 4%, var(--surface));
   }
-  .cx-seg[data-type='context-intro'],
-  .cx-seg[data-type='section-intro'] {
+  .cx-segs .ck-olist__row[data-type='context-intro'],
+  .cx-segs .ck-olist__row[data-type='section-intro'] {
     background: var(--bg-deep);
     border-left-color: var(--ds-context);
   }
-  .cx-seg[data-type='markdown'] {
+  .cx-segs .ck-olist__row[data-type='markdown'] {
     border-left-color: var(--accent);
   }
-  .cx-seg[data-status='excluded'] {
+  .cx-segs .ck-olist__row[data-status='excluded'] {
     opacity: 0.6;
     border-left-style: dashed;
   }
-  .cx-seg[data-status='missing'],
-  .cx-seg[data-status='invalid'] {
+  .cx-segs .ck-olist__row[data-status='missing'],
+  .cx-segs .ck-olist__row[data-status='invalid'] {
     border-left-color: var(--danger);
     background: var(--danger-bg);
+  }
+  .cx-seg__body {
+    min-width: 0;
   }
   .cx-seg__head {
     display: flex;
@@ -200,15 +230,6 @@
     gap: 0 var(--sp-2);
     min-height: var(--row-h);
     min-width: 0;
-  }
-  .cx-seg__index {
-    width: 18px;
-    flex: none;
-    font-family: var(--font-mono);
-    text-align: right;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
-    font-variant-numeric: tabular-nums;
   }
   .cx-seg__title {
     flex: 0 1 auto;
@@ -239,31 +260,28 @@
     margin-left: auto;
     flex: none;
   }
-  /* markdown rows: [index | disclosure trigger | actions] on the first line, the editor below, full width */
+  /* markdown rows: [disclosure trigger (chevron, title, one-line preview) | actions] on the first line, the
+     editor below, full width */
   .cx-seg__head--md {
     display: grid;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: var(--sp-2);
   }
   .cx-seg__head--md > .cx-seg__md {
     display: contents;
   }
-  .cx-seg__head--md .cx-seg__index {
-    grid-column: 1;
-    grid-row: 1;
-  }
   .cx-seg__head--md .ck-disclosure__heading {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 1;
     min-width: 0;
   }
   .cx-seg__head--md .cx-seg__actions {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
   }
   .cx-seg__head--md .ck-disclosure__panel {
-    grid-column: 2 / -1;
+    grid-column: 1 / -1;
     grid-row: 2;
     min-width: 0;
     padding: 0 0 var(--sp-2);
@@ -272,17 +290,12 @@
     overflow: hidden;
     white-space: nowrap;
   }
-  .cx-seg__md .ck-disclosure__meta {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .cx-seg__opts {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2) var(--sp-3);
-    padding: 0 0 var(--sp-2) 26px;
+    padding: 0 0 var(--sp-2);
   }
   .cx-seg__opt {
     display: inline-flex;
@@ -296,11 +309,28 @@
   .cx-seg__mode {
     min-width: 170px;
   }
+  .cx-seg__material {
+    min-width: 130px;
+  }
+  .cx-seg__branchopt {
+    min-width: 140px;
+  }
+  /* where a run places the item, in the row head */
+  .cx-seg__dest {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 36ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
   .cx-seg__textopt {
     min-width: 200px;
   }
   .cx-seg__warn {
-    padding: 0 0 var(--sp-1) 26px;
+    padding: 0 0 var(--sp-1);
     font-size: var(--fs-xs);
     color: var(--warn-fg);
   }
@@ -364,48 +394,245 @@
     margin-top: var(--sp-1);
   }
   .cx-manifest {
-    width: 100%;
-    font-size: var(--fs-sm);
-    background: var(--surface);
-    border: 1px solid var(--border);
-  }
-  .cx-manifest caption {
-    text-align: left;
-    padding-bottom: var(--sp-2);
-  }
-  .cx-manifest th {
-    height: 22px;
-    padding: 0 var(--sp-3);
-    text-align: left;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
-    color: var(--fg-subtle);
-    background: var(--bg-deep);
-    border-bottom: 1px solid var(--accent-line);
-  }
-  .cx-manifest td {
-    padding: var(--sp-1) var(--sp-3);
-    vertical-align: top;
-    border-bottom: 1px solid var(--border);
-  }
-  .cx-manifest td.cx-mono {
-    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
   }
   .cx-manifest__title {
     font-weight: var(--fw-medium);
   }
-  .cx-manifest code {
+  .cx-manifest .ck-table__td.cx-manifest__nowrap {
+    white-space: nowrap;
+  }
+  .cx-manifest__key {
     font-size: var(--fs-xs);
     overflow-wrap: anywhere;
   }
-  .cx-manifest tr[data-status='excluded'] td {
+  .cx-manifest__dest {
+    display: block;
+  }
+  /* the manifest of a directory document has a Material column: give the side column more room */
+  .cx-preview[data-wide='true'] {
+    grid-template-columns: minmax(0, 1.2fr) minmax(460px, 1fr);
+  }
+  .cx-preview__side .ck-table__row[data-status='excluded'] > .ck-table__td {
     opacity: 0.6;
   }
-  .cx-manifest tr[data-status='missing'] td,
-  .cx-manifest tr[data-status='invalid'] td {
+  .cx-preview__side .ck-table__row[data-status='missing'] > .ck-table__td,
+  .cx-preview__side .ck-table__row[data-status='invalid'] > .ck-table__td {
     color: var(--danger-fg);
+  }
+
+  /* ---------- run view (INFLATE_V2_SPEC §11.4) ---------- */
+  .cx-run__field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-width: 0;
+  }
+  .cx-run__field > .ck-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+  .cx-run__overrides {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--warn-fg);
+    background: var(--warn-bg);
+    border-left: 2px solid var(--warn-fg);
+  }
+  .cx-run__items {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .cx-run__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-run__item:last-child {
+    border-bottom: 0;
+  }
+  .cx-run__item[data-overridden='true'] {
+    border-left: 2px solid var(--warn-fg);
+  }
+  .cx-run__itemhead,
+  .cx-run__itemctl {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+  }
+  .cx-run__itemtitle {
+    font-weight: var(--fw-medium);
+    min-width: 0;
+  }
+  .cx-run__itemmaterial {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* the dry run and the job share the pane look; their rows are [marker | text | trailing] */
+  .cx-dirplan,
+  .cx-job {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    padding: var(--sp-4);
+  }
+  .cx-dirplan__status[data-kind='blocked'] {
+    color: var(--warn-fg);
+  }
+  .cx-dirplan__status[data-kind='error'],
+  .cx-job__status[data-status='failed'],
+  .cx-job__status[data-status='error'],
+  .cx-job__status[data-status='lost'] {
+    color: var(--danger-fg);
+  }
+  .cx-job__status[data-status='done'] {
+    color: var(--success-fg);
+  }
+  .cx-dirplan__blocking {
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+    background: var(--danger-bg);
+    border-left: 2px solid var(--danger);
+  }
+  .cx-dirplan__steps,
+  .cx-job__steps {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .cx-dirplan__steps[data-stale='true'],
+  .cx-dirplan__steps[data-blocked='true'] {
+    opacity: 0.55;
+  }
+  .cx-dirplan__step,
+  .cx-job__step {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: var(--row-h);
+    padding: var(--sp-1) var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-md);
+  }
+  .cx-dirplan__step {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+  }
+  .cx-dirplan__step:last-child,
+  .cx-job__step:last-child {
+    border-bottom: 0;
+  }
+  .cx-dirplan__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .cx-dirplan__path {
+    max-width: 38ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-job__step {
+    align-items: start;
+  }
+  .cx-job__step[data-status='pending'] {
+    color: var(--fg-subtle);
+  }
+  .cx-job__step[data-status='running'] {
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  }
+  .cx-job__step[data-status='failed'] {
+    color: var(--danger);
+  }
+  .cx-job__step[data-status='cancelled'],
+  .cx-job__step[data-status='skipped'] {
+    color: var(--fg-muted);
+  }
+  .cx-job__glyph {
+    display: grid;
+    place-items: center;
+    height: calc(var(--row-h) - 2 * var(--sp-1));
+    font-family: var(--font-mono);
+  }
+  .cx-job__glyph .ck-spinner {
+    color: var(--accent);
+  }
+  .cx-job__glyph[data-status='ok'] {
+    color: var(--success-fg);
+  }
+  .cx-job__glyph[data-status='failed'] {
+    color: var(--danger-fg);
+  }
+  .cx-job__main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding-top: var(--sp-1);
+  }
+  .cx-job__label {
+    overflow-wrap: anywhere;
+  }
+  .cx-job__note {
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+    overflow-wrap: anywhere;
+  }
+  .cx-job__time {
+    padding-top: var(--sp-2);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    white-space: nowrap;
+  }
+  .cx-job__tail {
+    max-height: 12em;
+    overflow: auto;
+    margin: 0;
+    padding: var(--sp-2) var(--sp-3);
+    font: var(--fs-xs) / 1.4 var(--font-mono);
+    color: var(--fg-muted);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--bg-deep);
+  }
+  .cx-job__summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border: 1px solid var(--accent-line);
+    background: var(--surface);
+  }
+  .cx-job__counts {
+    font-size: var(--fs-sm);
+    overflow-wrap: anywhere;
+  }
+  .cx-job__idestatus {
+    min-height: 1em;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .cx-job__idestatus[data-kind='error'] {
+    color: var(--danger-fg);
+  }
+  .cx-job__idestatus[data-kind='ok'] {
+    color: var(--success-fg);
   }
 
   @media (max-width: 899px) {
@@ -415,7 +642,8 @@
       grid-auto-rows: minmax(360px, auto);
       overflow: auto;
     }
-    .cx-preview {
+    .cx-preview,
+    .cx-preview[data-wide='true'] {
       grid-template-columns: minmax(0, 1fr);
     }
     .cx-preview__editor {

@@ -50,7 +50,12 @@ describe('buildArgs', () => {
     expect(buildArgs('add', { dataset: 'task', name: 'my-task', description: 'Do it' })).toEqual({
       ok: true,
       args: ['task', 'my-task', '--description', 'Do it'],
-      created: { dataset: 'task', slug: 'my-task', path: 'task/my-task/main.md' },
+      created: {
+        dataset: 'task',
+        slug: 'my-task',
+        path: 'task/my-task/main.md',
+        url: '/task/my-task',
+      },
     });
   });
 
@@ -78,6 +83,13 @@ describe('buildArgs', () => {
     for (const dataset of DATASET_IDS) {
       const r = buildArgs('add', { dataset, name: 'x', description: 'd' });
       expect(r.ok && r.created?.path).toBe(expected[dataset] ?? `${dataset}/x/main.md`);
+    }
+  });
+
+  it('created.url is the entry page of every dataset', () => {
+    for (const dataset of DATASET_IDS) {
+      const r = buildArgs('add', { dataset, name: 'x-y', description: 'd' });
+      expect(r.ok && r.created?.url).toBe(`/${dataset}/x-y`);
     }
   });
 
@@ -214,6 +226,7 @@ describe('runScript / executeScript (real repo scripts against a temp data dir)'
         dataset: 'task',
         slug: 'rs-task',
         path: 'task/rs-task/main.md',
+        url: '/task/rs-task',
       });
     }
     expect(existsSync(path.join(dataDir, 'task', 'rs-task', 'main.md'))).toBe(true);

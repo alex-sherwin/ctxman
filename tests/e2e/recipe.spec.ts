@@ -17,13 +17,21 @@ test.describe('recipe list', () => {
     await expect(row.locator('td').nth(column)).toHaveText('1');
   });
 
-  test('the New recipe link opens the New recipe dialog', async ({ page }) => {
+  test('the New recipe link opens the create form', async ({ page }) => {
     await page.goto('/recipe');
     const link = page.getByTestId('list-new-entry');
-    await expect(link).toHaveAttribute('href', '/inflate?recipe=new');
+    await expect(link).toHaveAttribute('href', '/new/recipe');
     await link.click();
-    await expect(page).toHaveURL(/[?&]recipe=new(&|$)/);
-    await expect(page.getByTestId('inflate-new-dialog')).toBeVisible();
+    await expect(page).toHaveURL(/\/new\/recipe$/);
+    await expect(page.getByTestId('dform')).toBeVisible();
+    await expect(page.getByTestId('dform')).toHaveAttribute('data-mode', 'create');
+  });
+
+  test('a recipe row opens the recipe from any cell', async ({ page }) => {
+    await page.goto('/recipe');
+    const row = page.locator(`[data-testid="list-row"][data-slug="${SEED_RECIPE}"]`);
+    await row.locator('td').nth(1).click({ force: true });
+    await expect(page).toHaveURL(new RegExp(`/recipe/${SEED_RECIPE}$`));
   });
 });
 
@@ -48,7 +56,26 @@ test.describe('recipe detail', () => {
     ).toBeVisible();
     await expect(composition.getByTestId('recipe-block').first()).toHaveAttribute('data-id', 'b1');
     await expect(composition.getByTestId('recipe-preamble')).toBeVisible();
+    // The seed writes to a working directory: the Output panel says where, with its primary repository.
+    const output = composition.getByTestId('recipe-output');
+    await expect(output).toBeVisible();
+    await expect(output).toContainText('~/ctxman-inflate/ctxman-dev-brief');
+    await expect(output).toContainText('LLM_CONTEXT.md');
+    await expect(output.getByTestId('recipe-output-primary')).toContainText('reference/astro-docs');
     await expect(composition.getByTestId('recipe-order')).toBeVisible();
+    // The preamble and every markdown block have a pencil that the MarkdownTargets island enables.
+    await expect(composition.getByTestId('recipe-edit-preamble')).toBeEnabled();
+    await expect(composition.getByTestId('recipe-block-edit').first()).toBeEnabled();
+    await expect(page.getByTestId('detail-edit')).toHaveAttribute(
+      'href',
+      `/recipe/${SEED_RECIPE}?edit=1`,
+    );
+    // The context row is a whole-row link.
+    await expect(
+      composition.locator(
+        '[data-testid="recipe-context"][data-slug="ctxman-dev"] a.cx-rowlink__main',
+      ),
+    ).toHaveAttribute('href', '/context/ctxman-dev');
 
     const open = page.getByTestId('detail-open-inflate');
     await expect(open).toHaveAttribute('href', `/inflate?recipe=${SEED_RECIPE}`);

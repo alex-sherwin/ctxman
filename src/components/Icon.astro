@@ -1,0 +1,33 @@
+---
+import { ICONS } from '../ui/kit/icons.ts';
+import type { IconName } from '../ui/kit/icons.ts';
+
+// SSR twin of the kit `Icon` (src/ui/kit/Icon.tsx): the identical inline SVG built from the shared `ICONS` table
+// (src/ui/kit/icons.ts, PURE data). `currentColor`, decorative (`aria-hidden`). The `.ck-icon` rule is in kit CSS.
+interface Props {
+  name: IconName;
+  /** Rendered width and height in px. Default 16. */
+  size?: number;
+  class?: string;
+}
+
+const { name, size = 16, class: className } = Astro.props;
+const def = ICONS[name];
+---
+
+<svg
+  class:list={['ck-icon', className]}
+  width={size}
+  height={size}
+  viewBox={def.viewBox}
+  aria-hidden="true"
+  focusable="false"
+  fill={def.stroke ? 'none' : 'currentColor'}
+  stroke={def.stroke ? 'currentColor' : undefined}
+  stroke-width="1.8"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  {def.paths.map((d) => <path d={d} />)}
+  {def.circles?.map(([cx, cy, r]) => <circle cx={cx} cy={cy} r={r} />)}
+</svg>

@@ -9,6 +9,7 @@ import {
   OWNERS,
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
+import { isSchemaDatasetId, withSchemaComment } from './schema-comment.ts';
 import { stringifyYaml } from './yaml.ts';
 
 export interface NewEntryOptions {
@@ -122,13 +123,16 @@ export function planNewEntry(
           content: `---\n${stringifyYaml({ name, description })}---\n\n# ${title}\n\n## When to use\n\n## Instructions\n`,
         },
       ];
-    case 'data':
+    case 'data': {
+      const body = stringifyYaml(dataDoc(dataset, name, description, opts));
       return [
         {
           relPath: `${dataset}/${name}.yaml`,
-          content: stringifyYaml(dataDoc(dataset, name, description, opts)),
+          // reference, context and recipe files start with the yaml-language-server schema comment.
+          content: isSchemaDatasetId(dataset) ? withSchemaComment(dataset, body) : body,
         },
       ];
+    }
   }
 }
 

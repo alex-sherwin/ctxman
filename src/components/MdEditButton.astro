@@ -1,0 +1,27 @@
+---
+import Icon from './Icon.astro';
+
+// SSR twin of an icon `Button` (pencil): the click target of the MarkdownTargets island
+// (src/ui/markdown/MarkdownTargets.tsx), which finds it by `data-md-edit` and enables it on mount.
+// `id` must equal the target's `id` (src/ui/markdown/targets.ts: noteTargetId / PREAMBLE_TARGET_ID / blockTargetId).
+interface Props {
+  id: string;
+  /** What is edited, e.g. "notes for Foo"; becomes `Edit <label>` (aria-label and title). */
+  label: string;
+  testid: string;
+  class?: string;
+}
+
+const { id, label, testid, class: className } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={['ck-button ck-button--ghost ck-button--sm ck-button--icon cx-mdedit', className]}
+  data-md-edit={id}
+  aria-label={`Edit ${label}`}
+  title={`Edit ${label}`}
+  disabled
+  data-testid={testid}
+  ><span class="ck-button__label"><Icon name="pencil" size={14} /></span></button
+>

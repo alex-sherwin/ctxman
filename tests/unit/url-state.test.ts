@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   forgeHref,
   inflateHref,
+  parseEditUrl,
   parseForgeUrl,
   parseInflateUrl,
   parseListParams,
@@ -321,12 +322,16 @@ describe('forgeHref', () => {
 });
 
 describe('parseInflateUrl', () => {
-  it('defaults: no recipe, compose view, kb tab, empty q', () => {
+  const JOB = '0b9f3c1e-5a7d-4e21-9c0a-3f6d8b2a1e47';
+
+  it('defaults: no recipe, compose view, kb tab, empty q, no job, relative paths', () => {
     expect(parseInflateUrl(sp(''))).toEqual({
       recipe: null,
       view: 'compose',
       dataset: 'kb',
       q: '',
+      job: null,
+      paths: 'relative',
     });
   });
 
@@ -338,6 +343,8 @@ describe('parseInflateUrl', () => {
       view: 'preview',
       dataset: 'skill',
       q: 'ok f',
+      job: null,
+      paths: 'relative',
     });
     expect(parseInflateUrl(sp('recipe=new')).recipe).toBe('new');
   });
@@ -351,27 +358,70 @@ describe('parseInflateUrl', () => {
     expect(parseInflateUrl(sp('dataset=recipe')).dataset).toBe('kb');
     expect(parseInflateUrl(sp('dataset=nope')).dataset).toBe('kb');
   });
+
+  it('the run view carries a well-formed job id; any other view drops it', () => {
+    expect(parseInflateUrl(sp('view=run')).view).toBe('run');
+    expect(parseInflateUrl(sp(`view=run&job=${JOB}`)).job).toBe(JOB);
+    expect(parseInflateUrl(sp(`view=compose&job=${JOB}`)).job).toBeNull();
+    expect(parseInflateUrl(sp(`view=preview&job=${JOB}`)).job).toBeNull();
+    expect(parseInflateUrl(sp(`job=${JOB}`)).job).toBeNull();
+    for (const bad of ['', 'x', '../../etc', JOB.toUpperCase(), `${JOB}0`, JOB.slice(1)]) {
+      expect(parseInflateUrl(sp(`view=run&job=${encodeURIComponent(bad)}`)).job, bad).toBeNull();
+    }
+  });
+
+  it('paths is absolute only for exactly "absolute"', () => {
+    expect(parseInflateUrl(sp('paths=absolute')).paths).toBe('absolute');
+    expect(parseInflateUrl(sp('paths=relative')).paths).toBe('relative');
+    expect(parseInflateUrl(sp('paths=Absolute')).paths).toBe('relative');
+    expect(parseInflateUrl(sp('paths=')).paths).toBe('relative');
+  });
 });
 
 describe('inflateHref', () => {
-  const base: InflateUrl = { recipe: null, view: 'compose', dataset: 'kb', q: '' };
+  const JOB = '0b9f3c1e-5a7d-4e21-9c0a-3f6d8b2a1e47';
+  const base: InflateUrl = {
+    recipe: null,
+    view: 'compose',
+    dataset: 'kb',
+    q: '',
+    job: null,
+    paths: 'relative',
+  };
 
   it('omits defaults', () => {
     expect(inflateHref(base)).toBe('/inflate');
   });
 
   it('writes non-default params in the fixed order recipe, view, dataset, q', () => {
-    expect(inflateHref({ recipe: 'my-recipe', view: 'preview', dataset: 'task', q: 'a b' })).toBe(
-      '/inflate?recipe=my-recipe&view=preview&dataset=task&q=a%20b',
-    );
+    expect(
+      inflateHref({ ...base, recipe: 'my-recipe', view: 'preview', dataset: 'task', q: 'a b' }),
+    ).toBe('/inflate?recipe=my-recipe&view=preview&dataset=task&q=a%20b');
     expect(inflateHref({ ...base, recipe: 'new' })).toBe('/inflate?recipe=new');
     expect(inflateHref({ ...base, dataset: 'rca' }, '/elsewhere')).toBe('/elsewhere?dataset=rca');
   });
 
+  it('writes job only with view=run, and paths only when absolute', () => {
+    expect(inflateHref({ ...base, recipe: 'r', view: 'run', job: JOB })).toBe(
+      `/inflate?recipe=r&view=run&job=${JOB}`,
+    );
+    expect(inflateHref({ ...base, recipe: 'r', view: 'compose', job: JOB })).toBe(
+      '/inflate?recipe=r',
+    );
+    expect(inflateHref({ ...base, recipe: 'r', view: 'preview', paths: 'absolute' })).toBe(
+      '/inflate?recipe=r&view=preview&paths=absolute',
+    );
+  });
+
   it('round-trips through parseInflateUrl', () => {
-    const url: InflateUrl = { recipe: 'r-1', view: 'preview', dataset: 'reference', q: 'x & y' };
-    expect(parseInflateUrl(new URL(inflateHref(url), 'http://h').searchParams)).toEqual(url);
-    expect(parseInflateUrl(new URL(inflateHref(base), 'http://h').searchParams)).toEqual(base);
+    const roundTrip = (url: InflateUrl): InflateUrl =>
+      parseInflateUrl(new URL(inflateHref(url), 'http://h').searchParams);
+    const url: InflateUrl = { ...base, recipe: 'r-1', view: 'preview', dataset: 'reference' };
+    url.q = 'x & y';
+    expect(roundTrip(url)).toEqual(url);
+    expect(roundTrip(base)).toEqual(base);
+    const run: InflateUrl = { ...base, recipe: 'r-1', view: 'run', job: JOB, paths: 'absolute' };
+    expect(roundTrip(run)).toEqual(run);
   });
 });
 
@@ -387,5 +437,43 @@ describe('parseToolsUrl', () => {
     expect(parseToolsUrl(sp('add=nope'))).toEqual({ add: null });
     expect(parseToolsUrl(sp('add='))).toEqual({ add: null });
     expect(parseToolsUrl(sp('add=Task'))).toEqual({ add: null });
+  });
+});
+
+describe('parseEditUrl', () => {
+  it('defaults to preview mode and the form view', () => {
+    expect(parseEditUrl(sp(''))).toEqual({ edit: false, view: 'form' });
+  });
+
+  it('is edit mode only for exactly edit=1', () => {
+    expect(parseEditUrl(sp('edit=1')).edit).toBe(true);
+    for (const q of ['edit=0', 'edit=true', 'edit=', 'edit', 'edit=11', 'edit=%201', 'Edit=1']) {
+      expect(parseEditUrl(sp(q)).edit, q).toBe(false);
+    }
+  });
+
+  it("reads view=yaml, anything else is 'form'", () => {
+    expect(parseEditUrl(sp('edit=1&view=yaml'))).toEqual({ edit: true, view: 'yaml' });
+    expect(parseEditUrl(sp('edit=1&view=form')).view).toBe('form');
+    expect(parseEditUrl(sp('edit=1&view=YAML')).view).toBe('form');
+    expect(parseEditUrl(sp('edit=1&view=preview')).view).toBe('form');
+    expect(parseEditUrl(sp('view=yaml')).edit).toBe(false);
+  });
+
+  it('round-trips through withParams (defaults are omitted)', () => {
+    const on = withParams('/reference/x', { edit: '1', view: 'yaml' }, { view: 'form' });
+    expect(on).toBe('/reference/x?edit=1&view=yaml');
+    expect(parseEditUrl(new URL(on, 'http://x').searchParams)).toEqual({
+      edit: true,
+      view: 'yaml',
+    });
+    const form = withParams(on, { view: 'form' }, { view: 'form' });
+    expect(form).toBe('/reference/x?edit=1');
+    const off = withParams(form, { edit: null, view: null });
+    expect(off).toBe('/reference/x');
+    expect(parseEditUrl(new URL(off, 'http://x').searchParams)).toEqual({
+      edit: false,
+      view: 'form',
+    });
   });
 });

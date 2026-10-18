@@ -17,15 +17,24 @@ import type { DatasetId } from './registry.ts';
 import {
   BLOCK_ID_PATTERN,
   CLONE_DIR_MESSAGE,
+  CONTEXT_FILE_MESSAGE,
+  CONTEXT_FILE_PATTERN,
+  DEFAULT_CONTEXT_FILE,
+  GIT_REF_MESSAGE,
   INFLATE_LAYOUTS,
   INFLATE_TARGETS,
   ITEM_KEY_PATTERN,
   ITEM_KIND_LABELS,
   ITEM_KINDS,
+  MATERIAL_IDS,
   MODE_IDS,
+  PRIMARY_KEY_PATTERN,
+  REFERENCE_MATERIAL_IDS,
   REFERENCE_MODE_IDS,
   SEGMENT_KEY_PATTERN,
+  isMaterialFor,
   isModeFor,
+  isSafeGitRef,
   isSafeRelativeDir,
   parseItemKey,
 } from '../lib/inflate/catalog.ts';
@@ -227,15 +236,44 @@ export const recipeMarkdownSchema = z.strictObject({
   id: z.string().min(1).max(NAME_MAX_LENGTH).regex(BLOCK_ID_PATTERN, 'must be kebab-case, e.g. b1'),
   body: z.string(),
 });
+/** Options of the materials clone / install (plans/INFLATE_V2_SPEC.md §4.1). */
+export const materialOptionsSchema = z.strictObject({
+  /** Commits of history; 0 = full history. */
+  cloneDepth: z.number().int().min(0).max(100_000).optional(),
+  /** '' = the default branch. */
+  branch: z.string().max(200).refine(isSafeGitRef, { error: GIT_REF_MESSAGE }).optional(),
+  subpathOnly: z.boolean().optional(),
+});
+export const contextFileSchema = z.string().regex(CONTEXT_FILE_PATTERN, CONTEXT_FILE_MESSAGE);
+export const primaryKeySchema = z.string().regex(PRIMARY_KEY_PATTERN, 'must be reference/<slug>');
+export const recipeStubsSchema = z.strictObject({
+  agentsMd: z.boolean().optional(),
+  claudeMd: z.boolean().optional(),
+  gitignore: z.boolean().optional(),
+});
+export const recipeOutputSchema = z.strictObject({
+  /** Absolute or ~-prefixed; relativity is a check WARNING (collections/recipe-output-dir-relative), refused at run time. */
+  dir: z.string().trim().min(1).max(1024).optional(),
+  contextFile: contextFileSchema.default(DEFAULT_CONTEXT_FILE),
+  /** `reference/<slug>`: the main repository of the working directory (reachability is a check warning). */
+  primary: primaryKeySchema.optional(),
+  allowNonEmpty: z.boolean().optional(),
+  stubs: recipeStubsSchema.optional(),
+});
+
 export const recipeOverrideSchema = z.strictObject({
   key: z.string().regex(ITEM_KEY_PATTERN, 'must be <dataset>/<slug> of a linkable dataset'),
   mode: z.enum(MODE_IDS).optional(),
   options: inflateOptionsSchema.optional(),
+  material: z.enum(MATERIAL_IDS).optional(),
+  materialOptions: materialOptionsSchema.optional(),
   exclude: z.boolean().optional(),
 });
 const kindDefaultSchema = z.strictObject({
   mode: z.enum(MODE_IDS).optional(),
   options: inflateOptionsSchema.optional(),
+  material: z.enum(MATERIAL_IDS).optional(),
+  materialOptions: materialOptionsSchema.optional(),
 });
 export const recipeDefaultsSchema = z.partialRecord(z.enum(ITEM_KINDS), kindDefaultSchema);
 
@@ -246,6 +284,8 @@ export const recipeSchema = z
     tags: tagsSchema,
     target: z.enum(INFLATE_TARGETS).default('claude-code'),
     layout: z.enum(INFLATE_LAYOUTS).default('grouped'),
+    /** Working directory output (Inflate v2); absent = the single-document render only. */
+    output: recipeOutputSchema.optional(),
     /** Top-of-document markdown instructions from the user (verbatim). */
     preamble: z.string().optional(),
     contexts: z.array(nameSchema).default([]),
@@ -319,25 +359,66 @@ export const recipeSchema = z
           message: `mode "${mode}" does not apply to ${ITEM_KIND_LABELS[kind as ItemKind]} items`,
         });
       }
+      const material = def?.material;
+      if (material !== undefined && !isMaterialFor(kind as ItemKind, material)) {
+        issues.addIssue({
+          code: 'custom',
+          path: ['defaults', kind, 'material'],
+          message: `material "${material}" does not apply to ${ITEM_KIND_LABELS[kind as ItemKind]} items`,
+        });
+      }
     }
 
     r.overrides.forEach((override, index) => {
-      const mode = override.mode;
       const parsed = parseItemKey(override.key);
-      if (mode === undefined || parsed === null) return;
-      const applies =
-        parsed.dataset === 'reference'
-          ? (REFERENCE_MODE_IDS as readonly string[]).includes(mode)
-          : isModeFor(parsed.dataset, mode);
-      if (!applies) {
-        issues.addIssue({
-          code: 'custom',
-          path: ['overrides', index, 'mode'],
-          message: `mode "${mode}" does not apply to ${override.key}`,
-        });
+      if (parsed === null) return;
+      const mode = override.mode;
+      if (mode !== undefined) {
+        const applies =
+          parsed.dataset === 'reference'
+            ? (REFERENCE_MODE_IDS as readonly string[]).includes(mode)
+            : isModeFor(parsed.dataset, mode);
+        if (!applies) {
+          issues.addIssue({
+            code: 'custom',
+            path: ['overrides', index, 'mode'],
+            message: `mode "${mode}" does not apply to ${override.key}`,
+          });
+        }
+      }
+      const material = override.material;
+      if (material !== undefined) {
+        const applies =
+          parsed.dataset === 'reference'
+            ? (REFERENCE_MATERIAL_IDS as readonly string[]).includes(material)
+            : isMaterialFor(parsed.dataset, material);
+        if (!applies) {
+          issues.addIssue({
+            code: 'custom',
+            path: ['overrides', index, 'material'],
+            message: `material "${material}" does not apply to ${override.key}`,
+          });
+        }
       }
     });
   });
+
+// ---------------------------------------------------------------- run overrides (API only, never stored)
+
+/** One item's run-time material choice (plans/INFLATE_V2_SPEC.md §4.1). */
+export const runItemOverrideSchema = z.strictObject({
+  material: z.enum(MATERIAL_IDS).optional(),
+  materialOptions: materialOptionsSchema.optional(),
+});
+/** Run-time overrides of a working-directory run: applied by applyRunOverrides before anything else. */
+export const runOverridesSchema = z.strictObject({
+  dir: z.string().trim().min(1).max(1024).optional(),
+  contextFile: contextFileSchema.optional(),
+  /** null = no primary for this run. */
+  primary: primaryKeySchema.nullable().optional(),
+  allowNonEmpty: z.boolean().optional(),
+  items: z.record(z.string().regex(ITEM_KEY_PATTERN), runItemOverrideSchema).default({}),
+});
 
 // ---------------------------------------------------------------- types + lookup
 
@@ -352,6 +433,8 @@ export type FeatureData = z.infer<typeof featureSchema>;
 export type ProjectData = z.infer<typeof projectSchema>;
 export type SkillData = z.infer<typeof skillSchema>;
 export type ReferenceData = z.infer<typeof referenceSchema>;
+/** Input shape (before defaults): what API bodies carry. */
+export type ReferenceInput = z.input<typeof referenceSchema>;
 export type ContextLink = z.infer<typeof contextLinkSchema>;
 export type ContextData = z.infer<typeof contextSchema>;
 /** Input shape (before defaults) — what API clients send and what context-io writes. */
@@ -361,6 +444,10 @@ export type InflateOptionsInput = z.infer<typeof inflateOptionsSchema>;
 export type RecipeItem = z.infer<typeof recipeItemSchema>;
 export type RecipeMarkdown = z.infer<typeof recipeMarkdownSchema>;
 export type RecipeOverride = z.infer<typeof recipeOverrideSchema>;
+export type MaterialOptionsInput = z.infer<typeof materialOptionsSchema>;
+export type RecipeOutput = z.infer<typeof recipeOutputSchema>;
+export type InflateRunOverrides = z.infer<typeof runOverridesSchema>;
+export type InflateRunOverridesInput = z.input<typeof runOverridesSchema>;
 /** All arrays + defaults present (after zod defaults). */
 export type RecipeData = z.infer<typeof recipeSchema>;
 /** Input shape (before defaults): what API bodies carry. */

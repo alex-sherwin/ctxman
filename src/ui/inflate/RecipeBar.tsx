@@ -24,8 +24,8 @@ import {
   selectRecipe,
   setLayout,
   setTarget,
-  setView,
 } from '../../stores/inflate.ts';
+import { selectView } from '../../stores/inflate-run.ts';
 import { $now } from '../../stores/now.ts';
 import { modKeyLabel } from '../../stores/platform.ts';
 import {
@@ -58,6 +58,7 @@ function RecipeSelect() {
       onChange={(key) => selectRecipe(key === NEW_ITEM ? 'new' : key === null ? null : String(key))}
       size="sm"
       triggerTestId="inflate-recipe-select"
+      pinnedKeys={[NEW_ITEM]}
       className="cx-inflate__recipeselect"
     >
       {recipes.map((r) => (
@@ -130,7 +131,7 @@ function ViewToggle() {
       selectedKeys={[view]}
       onSelectionChange={(keys) => {
         const next = [...keys][0];
-        if (next === 'compose' || next === 'preview') setView(next);
+        if (next === 'compose' || next === 'preview' || next === 'run') selectView(next);
       }}
       data-testid="inflate-view-toggle"
     >
@@ -139,6 +140,9 @@ function ViewToggle() {
       </Chip>
       <Chip id="preview" data-testid="inflate-view-preview">
         Preview
+      </Chip>
+      <Chip id="run" data-testid="inflate-view-run">
+        Run
       </Chip>
     </ChipGroup>
   );

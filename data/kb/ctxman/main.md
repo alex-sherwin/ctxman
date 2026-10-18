@@ -31,7 +31,7 @@ It runs on a Node backend with API routes and can run local scripts. It is never
 * **Contexts**: `context` records that link to any of the above without copying it.
 * **Recipes**: `recipe` records that turn contexts and extra items into one ready-to-use document for Claude Code, Codex or a generic agent.
 
-Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes.
+Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes. Entries are normally edited in your IDE (the UI follows along); markdown files, references, contexts and recipes can also be edited in the browser, see [Editing](/concepts/editing.md).
 
 ## How an agent should use it
 
@@ -53,6 +53,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [Adding entries](/concepts/adding-entries.md) - scaffold and author new entries.
 * [Compliance checks](/concepts/compliance-checks.md) - OKF, link and collection checks.
 * [Runtime modes](/concepts/runtime-modes.md) - dev server versus built server.
+* [Editing](/concepts/editing.md) - editing in the browser: the Save model, markdown editor and popups, forms, Open in IDE, JSON Schemas.
 
 ## Quick facts
 

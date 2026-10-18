@@ -1,5 +1,7 @@
-// One row of the composition (INFLATE_SPEC §9.3): item, context intro, section intro or markdown block.
-// Rows are presentational: reorder / remove callbacks come from CompositionPane (it owns the focus rules).
+// Row BODY of the composition (INFLATE_SPEC §9.3): item, context intro, section intro or markdown block.
+// The row itself (grip column with the number and drag handle, `data-*` attributes) is rendered by the kit
+// OrderedList in CompositionPane. Bodies are presentational: reorder / remove callbacks come from CompositionPane
+// (it owns the focus rules).
 import { useStore } from '@nanostores/react';
 import type { Segment } from '../../lib/inflate/expand.ts';
 import {
@@ -9,17 +11,18 @@ import {
   setExcluded,
   setMarkdownBody,
 } from '../../stores/inflate.ts';
+import { $destByKey, $effectiveDir } from '../../stores/inflate-run.ts';
+import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import {
   Badge,
   Button,
-  CodeEditor,
   DatasetBadge,
   Disclosure,
   Spinner,
   Toolbar,
   Tooltip,
 } from '../kit/index.ts';
-import { firstLine, formatBytes, plural } from './format.ts';
+import { firstLine, formatBytes, labelOf, plural } from './format.ts';
 import { OptionControls } from './OptionControls.tsx';
 
 export interface SegmentRowProps {
@@ -30,20 +33,6 @@ export interface SegmentRowProps {
   bytes: number | undefined;
   onMove: (key: string, dir: -1 | 1) => void;
   onRemove: (segment: Segment) => void;
-}
-
-/** Plain-text label of a segment, for aria-labels. */
-function labelOf(segment: Segment): string {
-  switch (segment.type) {
-    case 'item':
-      return segment.title;
-    case 'context-intro':
-      return `context ${segment.title}`;
-    case 'section-intro':
-      return segment.title;
-    case 'markdown':
-      return `markdown ${segment.id}`;
-  }
 }
 
 function RowActions({ segment, index, count, onMove, onRemove }: SegmentRowProps) {
@@ -137,23 +126,15 @@ function Warnings({ segment }: { segment: Segment }) {
 }
 
 function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'item' }> }) {
-  const { segment: seg, index, bytes } = props;
+  const { segment: seg, bytes } = props;
   const notesText = seg.notes.map((n) => `${n.context}: ${n.notes.trim()}`).join('\n\n');
   const refType = seg.meta?.refType;
   const uriKind = seg.meta?.uriKind;
+  const dir = useStore($effectiveDir);
+  const dest = useStore($destByKey).get(seg.key);
   return (
-    <li
-      className="cx-seg"
-      data-testid="inflate-segment"
-      data-key={seg.key}
-      data-type="item"
-      data-status={seg.status}
-      data-ds={seg.dataset}
-    >
+    <div className="cx-seg__body">
       <div className="cx-seg__head">
-        <span className="cx-seg__index" aria-hidden="true">
-          {index + 1}
-        </span>
         <DatasetBadge dataset={seg.dataset} />
         <a
           className="cx-seg__title cx-truncate"
@@ -164,6 +145,15 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
           {seg.title}
         </a>
         <code className="cx-seg__slug">{seg.slug}</code>
+        {dir !== null && dest !== undefined && seg.status === 'included' && (
+          <code
+            className="cx-seg__dest"
+            title="Where a run places it"
+            data-testid="inflate-segment-dest"
+          >
+            {dest}
+          </code>
+        )}
         {refType !== undefined && <Badge tone="muted">{refType}</Badge>}
         {uriKind !== undefined && <Badge tone="muted">{uriKind}</Badge>}
         {seg.via.map((slug) => (
@@ -198,35 +188,27 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
         <OptionControls seg={seg} />
       )}
       <Warnings segment={seg} />
-    </li>
+    </div>
   );
 }
 
 function MarkdownRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'markdown' }> }) {
-  const { segment: seg, index } = props;
+  const { segment: seg } = props;
   const lastAdded = useStore($lastAddedBlock);
   return (
-    <li
-      className="cx-seg"
-      data-testid="inflate-segment"
-      data-key={seg.key}
-      data-type="markdown"
-      data-status={seg.status}
-    >
+    <div className="cx-seg__body">
       <div className="cx-seg__head cx-seg__head--md">
-        <span className="cx-seg__index" aria-hidden="true">
-          {index + 1}
-        </span>
         <Disclosure
           className="cx-seg__md"
           title={`Markdown ${seg.id}`}
-          meta={firstLine(seg.body, 60) || 'empty'}
+          preview={firstLine(seg.body, 200) || 'empty'}
+          previewTestId="inflate-md-preview"
           triggerTestId="inflate-md-toggle"
           defaultExpanded={seg.id === lastAdded}
         >
           {({ isExpanded }) =>
             isExpanded && (
-              <CodeEditor
+              <LazyCodeEditor
                 language="markdown"
                 compact
                 value={seg.body}
@@ -243,12 +225,12 @@ function MarkdownRow(props: SegmentRowProps & { segment: Extract<Segment, { type
         <RowActions {...props} />
       </div>
       <Warnings segment={seg} />
-    </li>
+    </div>
   );
 }
 
 export function SegmentRow(props: SegmentRowProps) {
-  const { segment: seg, index } = props;
+  const { segment: seg } = props;
   switch (seg.type) {
     case 'item':
       return <ItemRow {...props} segment={seg} />;
@@ -257,17 +239,8 @@ export function SegmentRow(props: SegmentRowProps) {
     case 'context-intro':
     case 'section-intro':
       return (
-        <li
-          className="cx-seg"
-          data-testid="inflate-segment"
-          data-key={seg.key}
-          data-type={seg.type}
-          data-status={seg.status}
-        >
+        <div className="cx-seg__body">
           <div className="cx-seg__head">
-            <span className="cx-seg__index" aria-hidden="true">
-              {index + 1}
-            </span>
             {seg.type === 'context-intro' ? (
               <>
                 <span className="cx-label">Context</span>
@@ -290,7 +263,7 @@ export function SegmentRow(props: SegmentRowProps) {
             <RowActions {...props} />
           </div>
           <Warnings segment={seg} />
-        </li>
+        </div>
       );
   }
 }

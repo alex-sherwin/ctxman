@@ -224,6 +224,62 @@ export async function listBundleFiles(
   return files.sort(compareFiles);
 }
 
+export type ResolvedBundleFile =
+  | {
+      ok: true;
+      /** Absolute path of the bundle root: data/<dataset>/<slug>. */
+      root: string;
+      /** `root` + the relative path, as written (symlinks NOT resolved). */
+      abs: string;
+      /** The file after symlink resolution; always inside the realpath of `root`. Write here. */
+      realAbs: string;
+      size: number;
+      mtime: Date;
+      /** st_mode of `realAbs`. */
+      mode: number;
+    }
+  | { ok: false; reason: 'bad-path' | 'no-entry' | 'not-found' | 'outside' };
+
+/**
+ * Locates an EXISTING regular file of data/<dataset>/<slug>/ by bundle-relative path: safeJoin, the entry dir
+ * must exist (`no-entry`; also for an invalid slug), the realpath of the file must stay inside the realpath of
+ * the entry dir (`outside`, e.g. a symlink out of the bundle), and it must be a regular file (`not-found`
+ * otherwise, also ENOENT / EISDIR / the entry dir itself).
+ */
+export async function resolveBundleFile(
+  dataset: OkfDatasetId | 'skill',
+  slug: string,
+  relPath: string,
+  dataDir: string = resolveDataDir(),
+): Promise<ResolvedBundleFile> {
+  if (!isValidName(slug)) return { ok: false, reason: 'no-entry' };
+  const root = path.join(datasetDir(dataset, dataDir), slug);
+  const abs = safeJoin(root, relPath);
+  if (abs === null) return { ok: false, reason: 'bad-path' };
+
+  let realRoot: string;
+  try {
+    realRoot = await realpath(root);
+    if (!(await stat(realRoot)).isDirectory()) return { ok: false, reason: 'no-entry' };
+  } catch {
+    return { ok: false, reason: 'no-entry' };
+  }
+
+  try {
+    const realAbs = await realpath(abs);
+    const rel = path.relative(realRoot, realAbs);
+    if (rel === '') return { ok: false, reason: 'not-found' };
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      return { ok: false, reason: 'outside' };
+    }
+    const st = await stat(realAbs);
+    if (!st.isFile()) return { ok: false, reason: 'not-found' };
+    return { ok: true, root, abs, realAbs, size: st.size, mtime: st.mtime, mode: st.mode };
+  } catch {
+    return { ok: false, reason: 'not-found' };
+  }
+}
+
 /**
  * Text content of one file inside a bundle. null when the path is unsafe (absolute, NUL, '..' escape,
  * symlink out of the bundle), missing, not a regular file, larger than 512 KB, or binary (contains NUL).
@@ -234,19 +290,10 @@ export async function readBundleText(
   relPath: string,
   dataDir: string = resolveDataDir(),
 ): Promise<string | null> {
-  if (!isValidName(slug)) return null;
-  const root = path.join(datasetDir(dataset, dataDir), slug);
-  const abs = safeJoin(root, relPath);
-  if (abs === null) return null;
+  const file = await resolveBundleFile(dataset, slug, relPath, dataDir);
+  if (!file.ok || file.size > MAX_TEXT_BYTES) return null;
   try {
-    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(abs)]);
-    const rel = path.relative(realRoot, realFile);
-    if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
-      return null;
-    }
-    const st = await stat(realFile);
-    if (!st.isFile() || st.size > MAX_TEXT_BYTES) return null;
-    const buf = await readFile(realFile);
+    const buf = await readFile(file.realAbs);
     if (buf.includes(0)) return null;
     return buf.toString('utf8');
   } catch {

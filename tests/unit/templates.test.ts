@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DATASET_IDS, datasetDef, isOkfDatasetId } from '../../src/datasets/registry.ts';
 import { DATASET_SCHEMAS } from '../../src/datasets/schemas.ts';
 import { parseFrontmatter, validateOkfFile } from '../../src/lib/okf.ts';
+import { schemaCommentLine, schemaCommentStatus } from '../../src/lib/schema-comment.ts';
 import { planNewEntry, titleFromName } from '../../src/lib/templates.ts';
 import type { PlannedFile } from '../../src/lib/templates.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
@@ -127,7 +128,8 @@ describe('planNewEntry skill, reference, context', () => {
     const [file] = planNewEntry('reference', 'docs', { now });
     expect(file?.relPath).toBe('reference/docs.yaml');
     expect(file?.content).toBe(
-      'name: docs\ndescription: "TODO: describe Docs."\ntype: remote-repo\nuri: https://github.com/TODO/docs.git\nowner: me\n',
+      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+        'name: docs\ndescription: "TODO: describe Docs."\ntype: remote-repo\nuri: https://github.com/TODO/docs.git\nowner: me\n',
     );
   });
 
@@ -141,7 +143,8 @@ describe('planNewEntry skill, reference, context', () => {
       owner: 'not-me',
     });
     expect(local?.content).toBe(
-      'name: r1\ndescription: d\ntype: local-repo\npath: /tmp/r1\nsubpath: src\nowner: not-me\n',
+      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+        'name: r1\ndescription: d\ntype: local-repo\npath: /tmp/r1\nsubpath: src\nowner: not-me\n',
     );
     const [localDefault] = planNewEntry('reference', 'r1', { now, type: 'local-repo' });
     expect(localDefault?.content).toContain('path: ~/repos/r1\n');
@@ -152,7 +155,8 @@ describe('planNewEntry skill, reference, context', () => {
       uri: 'https://github.com/a/b.git',
     });
     expect(skill?.content).toBe(
-      'name: r2\ndescription: d\ntype: remote-skill\nuri: https://github.com/a/b.git\nowner: me\n',
+      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+        'name: r2\ndescription: d\ntype: remote-skill\nuri: https://github.com/a/b.git\nowner: me\n',
     );
   });
 
@@ -160,7 +164,9 @@ describe('planNewEntry skill, reference, context', () => {
     const [file] = planNewEntry('context', 'ctx', { now, description: 'A context' });
     expect(file).toEqual({
       relPath: 'context/ctx.yaml',
-      content: 'name: ctx\ndescription: A context\nlinks: []\n',
+      content:
+        '# yaml-language-server: $schema=../../schemas/context.schema.json\n' +
+        'name: ctx\ndescription: A context\nlinks: []\n',
     });
   });
 
@@ -169,6 +175,7 @@ describe('planNewEntry skill, reference, context', () => {
     expect(file).toEqual({
       relPath: 'recipe/brief.yaml',
       content:
+        '# yaml-language-server: $schema=../../schemas/recipe.schema.json\n' +
         'name: brief\ndescription: A brief\ntarget: claude-code\nlayout: grouped\ncontexts: []\nitems: []\n',
     });
   });
@@ -194,6 +201,17 @@ describe('planNewEntry validation', () => {
       /reference type/,
     );
     expect(() => planNewEntry('reference', 'x', { now, owner: 'them' as never })).toThrow(/owner/);
+  });
+
+  it('every yaml dataset file starts with exactly one schema comment line', () => {
+    for (const dataset of ['reference', 'context', 'recipe'] as const) {
+      const [file] = planNewEntry(dataset, 'demo', { now });
+      expect(file?.content.startsWith(`${schemaCommentLine(dataset)}\n`)).toBe(true);
+      expect(
+        file?.content.split('\n').filter((l) => l.startsWith('# yaml-language-server:')),
+      ).toEqual([schemaCommentLine(dataset)]);
+      expect(schemaCommentStatus(dataset, file?.content ?? '')).toBe('ok');
+    }
   });
 
   it('collapses multi-line input to one line so frontmatter stays valid', () => {

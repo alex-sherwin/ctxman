@@ -3,7 +3,12 @@ import { LINKABLE_DATASETS, datasetDef } from '../../src/datasets/registry.ts';
 import {
   BLOCK_ID_PATTERN,
   CLONE_DIR_MESSAGE,
+  CONTEXT_FILE_PATTERN,
+  DEFAULT_CONTEXT_FILE,
+  DEFAULT_DIR_TEMPLATE,
+  DIR_MANIFEST_FILE,
   EXTRA_KEY,
+  FAMILY_MATERIALS,
   FAMILY_MODES,
   INFLATE_LAYOUTS,
   INFLATE_TARGETS,
@@ -11,29 +16,52 @@ import {
   ITEM_KIND_LABELS,
   ITEM_KINDS,
   LAYOUT_LABELS,
+  MATERIAL_IDS,
+  MATERIAL_OPTION_DEFS,
+  MATERIAL_OPTION_IDS,
   MODE_IDS,
   OPTION_DEFS,
   OPTION_IDS,
+  PRIMARY_KEY_PATTERN,
+  REFERENCE_MATERIAL_IDS,
   REFERENCE_MODE_IDS,
+  REPOS_DIR,
   SEGMENT_KEY_PATTERN,
+  STAGE_DIR,
+  STUB_FILES,
+  STUB_IDS,
+  STUB_LABELS,
   TARGETS,
   TREE_LIMIT_CHOICES,
+  baseMaterialOptionValue,
   baseOptionValue,
   ctxKey,
+  defaultDirFor,
+  defaultMaterialFor,
   defaultModeFor,
   familyOf,
   inlineCode,
   isInflateTarget,
+  isMaterialFor,
   isModeFor,
+  isPortableAbsoluteDir,
+  isPrimaryEligible,
+  isSafeGitRef,
   isSafeRelativeDir,
   itemKey,
   itemKindOf,
+  materialDef,
+  materialDest,
+  materialsFor,
   mdKey,
   modeDef,
   modesFor,
   nextBlockId,
   parseItemKey,
+  remoteSkillDirName,
+  resolveMaterialOptions,
   resolveOptions,
+  stubDefaults,
 } from '../../src/lib/inflate/catalog.ts';
 import type { InflateTarget, ItemKind, ModeId } from '../../src/lib/inflate/catalog.ts';
 
@@ -55,6 +83,7 @@ describe('TARGETS (spec 4.1)', () => {
       instructionsFile: 'CLAUDE.md',
       skillsLine:
         'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+      skillsIntro: 'Installed in `.claude/skills/`, where Claude Code discovers them.',
     });
     expect(TARGETS.codex).toMatchObject({
       id: 'codex',
@@ -64,6 +93,7 @@ describe('TARGETS (spec 4.1)', () => {
       instructionsFile: 'AGENTS.md',
       skillsLine:
         'Skills go in `.agents/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
+      skillsIntro: 'Installed in `.agents/skills/`, where Codex discovers them.',
     });
     expect(TARGETS.generic).toMatchObject({
       id: 'generic',
@@ -72,6 +102,7 @@ describe('TARGETS (spec 4.1)', () => {
       skillsDir: '.agents/skills',
       instructionsFile: null,
       skillsLine: null,
+      skillsIntro: 'Installed in `.agents/skills/`.',
     });
   });
 
@@ -306,9 +337,9 @@ describe('options (spec 4.4)', () => {
     ]);
     expect(row('rewriteLinks')).toEqual([
       'checkbox',
-      'Absolute links',
+      'Resolve links',
       true,
-      'Rewrite bundle and ctxman: links to absolute file paths.',
+      'Rewrite bundle and ctxman: links to file paths (relative inside a working directory).',
     ]);
     expect(row('eager')).toEqual([
       'checkbox',
@@ -479,5 +510,340 @@ describe('keys', () => {
     expect(nextBlockId(['b1', 'b7', 'x'])).toBe('b8');
     expect(nextBlockId(['x', 'b02'])).toBe('b3');
     expect(nextBlockId(['intro'])).toBe('b1');
+  });
+});
+
+describe('output constants and helpers (plans/INFLATE_V2_SPEC.md §3)', () => {
+  it('names the context file, manifest, staging and repos folders', () => {
+    expect(DEFAULT_CONTEXT_FILE).toBe('LLM_CONTEXT.md');
+    expect(DIR_MANIFEST_FILE).toBe('.ctxman-inflate.json');
+    expect(STAGE_DIR).toBe('.ctxman-tmp');
+    expect(REPOS_DIR).toBe('repos');
+    expect(DEFAULT_DIR_TEMPLATE).toBe('~/ctxman-inflate/{name}');
+    expect(defaultDirFor('ctxman-dev-brief')).toBe('~/ctxman-inflate/ctxman-dev-brief');
+  });
+
+  it('CONTEXT_FILE_PATTERN: a plain .md file name', () => {
+    for (const ok of [
+      'LLM_CONTEXT.md',
+      'CONTEXT.md',
+      'a.md',
+      'x-1.2_3.md',
+      `${'a'.repeat(100)}.md`,
+    ]) {
+      expect(CONTEXT_FILE_PATTERN.test(ok), ok).toBe(true);
+    }
+    for (const bad of [
+      '',
+      '.md',
+      'a',
+      'a.txt',
+      'a/b.md',
+      'a\\b.md',
+      '../a.md',
+      '-a.md',
+      '.hidden.md',
+      'a b.md',
+      `${'a'.repeat(101)}.md`,
+    ]) {
+      expect(CONTEXT_FILE_PATTERN.test(bad), bad).toBe(false);
+    }
+  });
+
+  it('PRIMARY_KEY_PATTERN: reference/<slug> only', () => {
+    expect(PRIMARY_KEY_PATTERN.test('reference/astro-docs')).toBe(true);
+    for (const bad of [
+      'kb/x',
+      'reference/',
+      'reference/A',
+      'reference/a/b',
+      'reference',
+      'ref/x',
+    ]) {
+      expect(PRIMARY_KEY_PATTERN.test(bad), bad).toBe(false);
+    }
+  });
+
+  it('stubs: ids, files, labels and per-target defaults', () => {
+    expect([...STUB_IDS]).toEqual(['agentsMd', 'claudeMd', 'gitignore']);
+    expect(STUB_FILES).toEqual({
+      agentsMd: 'AGENTS.md',
+      claudeMd: 'CLAUDE.md',
+      gitignore: '.gitignore',
+    });
+    expect(STUB_LABELS).toEqual({
+      agentsMd: 'AGENTS.md stub',
+      claudeMd: 'CLAUDE.md stub',
+      gitignore: '.gitignore',
+    });
+    expect(stubDefaults('claude-code')).toEqual({
+      agentsMd: false,
+      claudeMd: true,
+      gitignore: true,
+    });
+    expect(stubDefaults('codex')).toEqual({ agentsMd: true, claudeMd: false, gitignore: true });
+    expect(stubDefaults('generic')).toEqual({ agentsMd: true, claudeMd: false, gitignore: true });
+  });
+
+  it('isPortableAbsoluteDir: posix, home and win32 absolute forms', () => {
+    for (const ok of ['~', '~/x', '~\\x', '/x', '/', 'C:\\x', 'c:/x', '\\\\srv\\x', '  /padded']) {
+      expect(isPortableAbsoluteDir(ok), ok).toBe(true);
+    }
+    for (const bad of ['x', './x', '../x', '~user/x', '', '  ', 'C:x', 'srv/x']) {
+      expect(isPortableAbsoluteDir(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('isSafeGitRef: empty (default branch) or a plain branch / tag name', () => {
+    for (const ok of ['', 'main', 'release/1.2', 'v1.0.0', 'feature/a-b_c', 'a'.repeat(200)]) {
+      expect(isSafeGitRef(ok), ok).toBe(true);
+    }
+    for (const bad of [
+      '-x',
+      '--upload-pack=x',
+      'a..b',
+      'a//b',
+      'a/',
+      'x.lock',
+      'a b',
+      'a@{1}',
+      '/a',
+      '.a',
+      'a\nb',
+      'a'.repeat(201),
+    ]) {
+      expect(isSafeGitRef(bad), bad).toBe(false);
+    }
+  });
+});
+
+describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
+  const row = (kind: ItemKind) =>
+    materialsFor(kind).map((m) => [m.id, m.label, m.description, [...m.options]]);
+
+  it('lists the ids, the reference subset and the option ids', () => {
+    expect([...MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install']);
+    expect([...REFERENCE_MATERIAL_IDS]).toEqual(['none', 'symlink', 'clone', 'install']);
+    expect([...MATERIAL_OPTION_IDS]).toEqual(['cloneDepth', 'branch', 'subpathOnly']);
+    expect(Object.keys(FAMILY_MATERIALS)).toEqual([
+      'okf',
+      'skill',
+      'local-repo',
+      'remote-repo',
+      'remote-skill',
+    ]);
+  });
+
+  it('okf kinds: symlink, copy, mention only', () => {
+    for (const kind of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const) {
+      expect(materialsFor(kind)).toBe(FAMILY_MATERIALS.okf);
+    }
+    expect(row('kb')).toEqual([
+      [
+        'symlink',
+        'Symlink',
+        'Link the bundle folder to <dataset>/<slug>; edits change the ctxman entry.',
+        [],
+      ],
+      ['copy', 'Copy', 'Copy the bundle folder to <dataset>/<slug> (a snapshot).', []],
+      ['none', 'Mention only', 'Nothing placed; the document points at the ctxman data path.', []],
+    ]);
+  });
+
+  it('skill, local-repo, remote-repo, remote-skill', () => {
+    expect(row('skill')).toEqual([
+      ['copy', 'Copy', 'Copy the skill folder into the harness skills directory.', []],
+      ['none', 'Mention only', 'Nothing placed; the document points at the ctxman skill path.', []],
+    ]);
+    expect(row('local-repo')).toEqual([
+      ['none', 'Mention only', 'Nothing placed; the document gives the local path.', []],
+      ['symlink', 'Symlink', 'Link the repository to repos/<name>.', []],
+    ]);
+    expect(row('remote-repo')).toEqual([
+      ['none', 'Mention only', 'Nothing placed; the document gives the git URI.', []],
+      [
+        'clone',
+        'Clone',
+        'git clone into repos/<name> (pull on re-runs).',
+        ['cloneDepth', 'branch', 'subpathOnly'],
+      ],
+    ]);
+    expect(row('remote-skill')).toEqual([
+      [
+        'install',
+        'Install',
+        'Clone or download the skill into the harness skills directory.',
+        ['branch'],
+      ],
+      ['none', 'Mention only', 'Nothing placed; the document gives the URI.', []],
+    ]);
+  });
+
+  it('every material id is used by some family; reference ids are the non-okf/skill ones', () => {
+    const used = new Set(Object.values(FAMILY_MATERIALS).flatMap((defs) => defs.map((d) => d.id)));
+    expect([...used].sort()).toEqual([...MATERIAL_IDS].sort());
+    const referenceIds = new Set(
+      (['local-repo', 'remote-repo', 'remote-skill'] as const).flatMap((k) =>
+        materialsFor(k).map((m) => m.id),
+      ),
+    );
+    expect([...referenceIds].sort()).toEqual([...REFERENCE_MATERIAL_IDS].sort());
+  });
+
+  it('isMaterialFor / materialDef', () => {
+    expect(isMaterialFor('kb', 'symlink')).toBe(true);
+    expect(isMaterialFor('kb', 'clone')).toBe(false);
+    expect(isMaterialFor('skill', 'symlink')).toBe(false);
+    expect(isMaterialFor('remote-repo', 'clone')).toBe(true);
+    expect(isMaterialFor('remote-skill', 'install')).toBe(true);
+    expect(isMaterialFor('remote-skill', 'clone')).toBe(false);
+    expect(isMaterialFor('kb', 'nope')).toBe(false);
+    expect(materialDef('remote-repo', 'clone')?.label).toBe('Clone');
+    expect(materialDef('kb', 'clone')).toBeUndefined();
+  });
+
+  it('defaultMaterialFor per kind and target', () => {
+    for (const target of INFLATE_TARGETS) {
+      const got = Object.fromEntries(ITEM_KINDS.map((k) => [k, defaultMaterialFor(k, target)]));
+      expect(got, target).toEqual({
+        kb: 'symlink',
+        rca: 'symlink',
+        idea: 'symlink',
+        task: 'symlink',
+        bug: 'symlink',
+        feature: 'symlink',
+        project: 'symlink',
+        skill: 'copy',
+        'local-repo': 'none',
+        'remote-repo': 'none',
+        'remote-skill': 'install',
+      });
+    }
+    for (const kind of ITEM_KINDS) {
+      expect(isMaterialFor(kind, defaultMaterialFor(kind, 'claude-code')), kind).toBe(true);
+    }
+  });
+
+  it('isPrimaryEligible: remote-repo + clone, local-repo + symlink', () => {
+    expect(isPrimaryEligible('remote-repo', 'clone')).toBe(true);
+    expect(isPrimaryEligible('local-repo', 'symlink')).toBe(true);
+    expect(isPrimaryEligible('remote-repo', 'none')).toBe(false);
+    expect(isPrimaryEligible('local-repo', 'none')).toBe(false);
+    expect(isPrimaryEligible('local-repo', 'clone')).toBe(false);
+    expect(isPrimaryEligible('remote-skill', 'install')).toBe(false);
+    expect(isPrimaryEligible('kb', 'symlink')).toBe(false);
+    expect(isPrimaryEligible(null, 'clone')).toBe(false);
+    expect(isPrimaryEligible('remote-repo', null)).toBe(false);
+  });
+
+  it('MATERIAL_OPTION_DEFS: controls, labels, defaults, help', () => {
+    expect(Object.keys(MATERIAL_OPTION_DEFS)).toEqual([...MATERIAL_OPTION_IDS]);
+    expect(MATERIAL_OPTION_DEFS.cloneDepth).toEqual({
+      id: 'cloneDepth',
+      control: 'select-number',
+      label: 'Depth',
+      help: 'Commits of history to fetch; 0 = full history.',
+      default: 1,
+      choices: [1, 10, 50, 0],
+    });
+    expect(MATERIAL_OPTION_DEFS.branch).toEqual({
+      id: 'branch',
+      control: 'text',
+      label: 'Branch',
+      help: 'Branch or tag; empty = the default branch.',
+      default: '',
+    });
+    expect(MATERIAL_OPTION_DEFS.subpathOnly).toEqual({
+      id: 'subpathOnly',
+      control: 'checkbox',
+      label: 'Subpath only',
+      help: "Sparse checkout of the reference's subpath only.",
+      default: false,
+    });
+  });
+
+  it('resolveMaterialOptions: only the material options, override ?? recipe ?? built-in', () => {
+    expect(resolveMaterialOptions('remote-repo', 'clone', {})).toEqual({
+      cloneDepth: 1,
+      branch: '',
+      subpathOnly: false,
+    });
+    expect(
+      resolveMaterialOptions('remote-repo', 'clone', {
+        recipe: { cloneDepth: 10, branch: 'dev' },
+        override: { cloneDepth: 0, subpathOnly: true },
+      }),
+    ).toEqual({ cloneDepth: 0, branch: 'dev', subpathOnly: true });
+    // 0 / '' / false are values, not "unset"
+    expect(
+      resolveMaterialOptions('remote-repo', 'clone', {
+        recipe: { cloneDepth: 50, branch: 'dev', subpathOnly: true },
+        override: { cloneDepth: 0, branch: '', subpathOnly: false },
+      }),
+    ).toEqual({ cloneDepth: 0, branch: '', subpathOnly: false });
+    expect(
+      resolveMaterialOptions('remote-skill', 'install', { override: { branch: 'v2' } }),
+    ).toEqual({ branch: 'v2' });
+    expect(resolveMaterialOptions('remote-repo', 'none', { override: { branch: 'x' } })).toEqual(
+      {},
+    );
+    expect(resolveMaterialOptions('kb', 'symlink', {})).toEqual({});
+  });
+
+  it('baseMaterialOptionValue is what resolveMaterialOptions gives without the override layer', () => {
+    expect(baseMaterialOptionValue('cloneDepth')).toBe(1);
+    expect(baseMaterialOptionValue('cloneDepth', { cloneDepth: 0 })).toBe(0);
+    expect(baseMaterialOptionValue('branch', { branch: 'dev' })).toBe('dev');
+    expect(baseMaterialOptionValue('subpathOnly', {})).toBe(false);
+    expect(baseMaterialOptionValue('subpathOnly', { subpathOnly: true })).toBe(true);
+  });
+
+  it('remoteSkillDirName: the last subpath segment when it is an entry name, else the slug (D14)', () => {
+    expect(remoteSkillDirName('anthropic-skills', 'skills/skill-creator')).toBe('skill-creator');
+    expect(remoteSkillDirName('anthropic-skills', '/skills/skill-creator/')).toBe('skill-creator');
+    expect(remoteSkillDirName('anthropic-skills', '  skills/skill-creator  ')).toBe(
+      'skill-creator',
+    );
+    expect(remoteSkillDirName('anthropic-skills', 'skill-creator')).toBe('skill-creator');
+    expect(remoteSkillDirName('anthropic-skills', 'Bad Name')).toBe('anthropic-skills');
+    expect(remoteSkillDirName('anthropic-skills', 'skills/Bad_Name')).toBe('anthropic-skills');
+    expect(remoteSkillDirName('anthropic-skills', '')).toBe('anthropic-skills');
+    expect(remoteSkillDirName('anthropic-skills', '/')).toBe('anthropic-skills');
+    expect(remoteSkillDirName('anthropic-skills', null)).toBe('anthropic-skills');
+    expect(remoteSkillDirName('anthropic-skills', undefined)).toBe('anthropic-skills');
+    expect(remoteSkillDirName('s', `x/${'a'.repeat(65)}`)).toBe('s');
+  });
+
+  it('materialDest per kind and target (posix, relative to the working directory)', () => {
+    expect(materialDest('kb', 'kb', 'ctxman', 'claude-code')).toBe('kb/ctxman');
+    expect(materialDest('task', 'task', 'write-agents-md', 'generic')).toBe('task/write-agents-md');
+    expect(materialDest('skill', 'skill', 'okf-authoring', 'claude-code')).toBe(
+      '.claude/skills/okf-authoring',
+    );
+    expect(materialDest('skill', 'skill', 'okf-authoring', 'codex')).toBe(
+      '.agents/skills/okf-authoring',
+    );
+    expect(materialDest('skill', 'skill', 'okf-authoring', 'generic')).toBe(
+      '.agents/skills/okf-authoring',
+    );
+    expect(materialDest('local-repo', 'reference', 'blasto', 'claude-code')).toBe('repos/blasto');
+    expect(materialDest('remote-repo', 'reference', 'astro-docs', 'codex')).toBe(
+      'repos/astro-docs',
+    );
+    expect(
+      materialDest(
+        'remote-skill',
+        'reference',
+        'anthropic-skills',
+        'claude-code',
+        'skills/skill-creator',
+      ),
+    ).toBe('.claude/skills/skill-creator');
+    expect(materialDest('remote-skill', 'reference', 'ksa-modding', 'codex', null)).toBe(
+      '.agents/skills/ksa-modding',
+    );
+    expect(materialDest('remote-skill', 'reference', 'anthropic-skills', 'codex', 'Bad Name')).toBe(
+      '.agents/skills/anthropic-skills',
+    );
   });
 });

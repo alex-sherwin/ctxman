@@ -10,18 +10,21 @@ generated:
 
 # Compliance checks
 
-Three Node scripts validate everything under `data/`. They share the zod schemas Astro uses, so a file they accept is one the site accepts.
+Three Node scripts validate everything under `data/`, and a fourth keeps the generated JSON Schemas honest. The data checks share the zod schemas Astro uses, so a file they accept is one the site accepts.
 
 | Command | What it does |
 | --- | --- |
-| `pnpm run check` | Runs all three data checks, then `astro sync` |
+| `pnpm run check` | Runs all three data checks, then `check:schemas`, then `astro sync` |
 | `pnpm run check:data` | Runs the three data checks in one process and prints a combined report |
 | `pnpm run check:okf` | OKF v0.2 conformance of every bundle |
 | `pnpm run check:links` | Intra-bundle and `ctxman:` link validity |
 | `pnpm run check:collections` | Every data file against its dataset schema |
+| `pnpm run check:schemas` | `schemas/*.schema.json` against a fresh generation from the arktype models (repo level, independent of `CTXMAN_DATA_DIR`) |
+| `pnpm run gen:schemas` | Regenerates `schemas/*.schema.json` (writes only the files that change) |
+| `pnpm run fix:yaml-comments` | Adds or repairs line 1 of every reference, context and recipe file |
 | `pnpm run typecheck` | `astro sync`, then `tsc --noEmit --runExternalCode -p tsconfig.json` |
 
-Add `--json` to a check script for machine-readable output. Exit code 0 means no errors; warnings never fail a run. The same checks run from the `/tools` page.
+Add `--json` to a check or `fix:yaml-comments` script for machine-readable output. Exit code 0 means no errors; warnings never fail a run. The same checks run from the `/tools` page.
 
 ## OKF rules (`check:okf`)
 
@@ -48,6 +51,22 @@ Four warning rules cover what a schema-valid recipe points at (`file` is `recipe
 
 The last two only run when every listed context exists and is schema-valid, because the set of reachable items is unknown otherwise. The Inflate page's "Prune stale" button removes the same leftovers.
 
+One more warning rule covers the first line of every reference, context and recipe file:
+
+| Rule id | Fires when |
+| --- | --- |
+| `collections/yaml-schema-comment` | Line 1 is not exactly `# yaml-language-server: $schema=../../schemas/<dataset>.schema.json` (missing, or a different yaml-language-server comment). `pnpm run fix:yaml-comments` repairs it |
+
+## Schema rules (`check:schemas`)
+
+| Rule id | Severity | Fires when |
+| --- | --- | --- |
+| `schemas/missing` | error | A `schemas/<dataset>.schema.json` file does not exist; run `pnpm run gen:schemas` |
+| `schemas/drift` | error | The file differs from a fresh generation (the message names the first differing line); run `pnpm run gen:schemas` |
+| `schemas/stray` | warning | Any other `*.json` file sits in `schemas/` |
+
+Change a yaml dataset in this order: `schemas.ts`, `arktypes.ts` (a parity test fails when they disagree), then `pnpm run gen:schemas`.
+
 ## Typechecking
 
 `astro check` is not used. TypeScript 7.1 type-checks `.ts`, `.tsx` and `.astro` files itself through `@astrojs/ts-content-mapper`, registered in `tsconfig.json`. `astro sync` runs first because the generated `.astro/` types must exist, and it fails on the first invalid data file, so fix data before typechecking.
@@ -57,3 +76,4 @@ The last two only run when every listed context exists and is schema-valid, beca
 * [Datasets](/concepts/datasets.md) describes the shapes these checks enforce.
 * [Adding entries](/concepts/adding-entries.md) produces files that already pass them.
 * [Context inflate](/concepts/context-inflate.md) explains the recipes these rules check.
+* [Editing](/concepts/editing.md) explains why a document saved from the browser may carry warnings.

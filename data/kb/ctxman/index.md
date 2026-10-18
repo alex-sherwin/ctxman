@@ -12,6 +12,7 @@ okf_version: "0.2"
 * [Architecture](/concepts/architecture.md) - Stack, repository layout and the layering rules that keep scripts, tests and the site sharing one codebase.
 * [Datasets](/concepts/datasets.md) - The eleven datasets, their on-disk shape, lifecycle states and the link syntax between entries.
 * [Runtime modes](/concepts/runtime-modes.md) - How dev and built servers differ, and why contexts bypass the content layer at runtime.
+* [Editing](/concepts/editing.md) - In-browser editing: the explicit Save model, the markdown editor and popups, the yaml forms, Open in IDE, the JSON Schemas and how the UI tolerates the dev reload after a save.
 
 ## Features
 

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schemas/reference.schema.json
 name: ctxman-repo
 description: This repository on the local machine, the home of the ctxman app, its scripts and all datasets.
 type: local-repo

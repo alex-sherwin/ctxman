@@ -1,16 +1,19 @@
 // NODE* (no fs calls of its own; imports src/lib/okf.ts through markdown.ts): renders an ExpandedPlan plus
 // the gathered file contents into ONE markdown document and a JSON manifest (plans/INFLATE_SPEC.md §6.3).
-// Never import from the browser island.
-import { OWNER_LABELS, stateLabel } from '../../datasets/registry.ts';
+// With `ctx.output` (a working directory, plans/INFLATE_V2_SPEC.md §9) the same document is rendered with paths
+// relative to the directory and the directory map / primary / repositories / skills sections; without it the
+// output is the v1 document, byte for byte. Never import from the browser island.
+import { OKF_DATASET_IDS, OWNER_LABELS, stateLabel } from '../../datasets/registry.ts';
 import { maskMarkdownCode, parseFrontmatterLoose, splitFrontmatter } from '../okf.ts';
 import { classifyRemoteUri } from '../remote-uri.ts';
-import { ITEM_KIND_LABELS, OPTION_DEFS, TARGETS, modeDef } from './catalog.ts';
+import { ITEM_KIND_LABELS, OPTION_DEFS, REPOS_DIR, TARGETS, modeDef } from './catalog.ts';
 import type {
   BooleanOptionId,
   InflateLayout,
   InflateOptions,
   InflateTarget,
   ItemKind,
+  MaterialId,
   ModeId,
   TargetDef,
 } from './catalog.ts';
@@ -21,8 +24,11 @@ import type {
   Segment,
   SegmentStatus,
 } from './expand.ts';
+import { cleanSubpath, createPathMapper } from './material-plan.ts';
+import type { FileRole, MaterialView } from './material-plan.ts';
 import { normalizeText } from './recipe.ts';
 import {
+  alignRows,
   fenced,
   guidance,
   headingText,
@@ -31,6 +37,7 @@ import {
   shQuote,
   shiftHeadings,
   stripLeadingTitle,
+  truncateText,
 } from './markdown.ts';
 import type { EntryRef, ItemContent, PlanContent } from './pipeline.ts';
 
@@ -49,6 +56,10 @@ export interface ManifestSegment {
   adhoc: boolean;
   /** entryAbs (items) */
   source?: string;
+  /** Working-directory output: what is placed for this item (items with a view). */
+  material?: MaterialId;
+  /** Working-directory output: posix path relative to the directory (when something is placed). */
+  dest?: string;
   /** UTF-8 bytes of this segment's text (0 when not rendered). */
   bytes: number;
   warnings: InflateWarning[];
@@ -67,11 +78,26 @@ export interface InflateManifest {
   segments: ManifestSegment[];
   /** plan + content + render, deduped on code + key + message. */
   warnings: InflateWarning[];
+  /** Present when rendered for a working directory. */
+  output?: { dir: string; contextFile: string; primary: string | null };
 }
 
 export interface InflateResult {
   markdown: string;
   manifest: InflateManifest;
+}
+
+/** What a working-directory render needs besides the plan (plans/INFLATE_V2_SPEC.md §9.1). */
+export interface RenderOutput {
+  /** Absolute <W> (printed once in the header). */
+  dir: string;
+  contextFile: string;
+  /** Valid primary key (placed in the directory) or null. */
+  primary: string | null;
+  target: InflateTarget;
+  materials: Record<string, MaterialView>;
+  /** Context file + stubs that are written (map rows, header lines). */
+  files: { path: string; role: FileRole }[];
 }
 
 export const LARGE_OUTPUT_BYTES = 512 * 1024;
@@ -86,11 +112,6 @@ const HEADER_PATHS_LINE =
 
 const flag = (options: Partial<InflateOptions>, id: BooleanOptionId): boolean =>
   options[id] ?? (OPTION_DEFS[id].default as boolean);
-
-/** `subpath` trimmed with leading / trailing slashes removed; '' when absent. */
-function cleanSubpath(raw: string | null | undefined): string {
-  return (raw ?? '').trim().replace(/^\/+|\/+$/g, '');
-}
 
 const shBlock = (lines: readonly string[]): string => fenced(lines.join('\n'), 'sh');
 
@@ -123,9 +144,31 @@ function fileTitle(text: string, rel: string): string {
 
 // ---------------------------------------------------------------- item rendering
 
+interface DirEnv {
+  output: RenderOutput;
+  /** Valid, not failed primary key. */
+  primary: string | null;
+}
+
 interface Env {
   target: TargetDef;
   content: PlanContent;
+  /** abs → path printed in the document (identity without a working directory). */
+  pathOf: (abs: string) => string;
+  /** ctxman: link targets with `pathOf` applied. */
+  targets: Readonly<Record<string, EntryRef | null>>;
+  /** The phrase for the directory instructions run from: 'the project root' (v1) or 'this directory'. */
+  root: string;
+  /** Set when rendering for a working directory. */
+  dir?: DirEnv;
+}
+
+const identity = (abs: string): string => abs;
+
+/** The view of an item that is placed in the directory (dest known, not failed); undefined otherwise. */
+function placedView(seg: ItemSegment, env: Env): MaterialView | undefined {
+  const view = env.dir?.output.materials[seg.key];
+  return view !== undefined && view.dest !== null && view.state !== 'failed' ? view : undefined;
 }
 
 interface BodyArgs {
@@ -183,6 +226,8 @@ function renderItem(seg: ItemSegment, env: Env): string {
   if (seg.status !== 'included' || kind === null || mode === null || meta === null) return '';
   const ic = env.content.items[seg.key];
   if (ic === undefined) return '';
+  const p = env.pathOf;
+  const placed = placedView(seg, env);
   const level = seg.group === null ? 2 : 3;
   const options = seg.options;
   const description = meta.description.trim();
@@ -209,24 +254,26 @@ function renderItem(seg: ItemSegment, env: Env): string {
     case 'project': {
       if (mode === 'pointer') {
         const tail = flag(options, 'eager')
-          ? env.target.eagerClause(ic.entryAbs)
-          : `Read ${inlineCode(ic.entryAbs)} if relevant.`;
+          ? env.target.eagerClause(p(ic.entryAbs))
+          : `Read ${inlineCode(p(ic.entryAbs))} if relevant.`;
         withPointer(pointerLine(seg, tail));
       } else if (mode === 'summary') {
-        withMeta(ic.entryAbs, [description]);
+        withMeta(p(ic.entryAbs), [description]);
       } else {
-        withMeta(ic.entryAbs, okfBody(seg, ic, level, env));
+        withMeta(p(ic.entryAbs), okfBody(seg, ic, level, env));
       }
       break;
     }
     case 'skill': {
       if (mode === 'pointer') {
         const tail = flag(options, 'eager')
-          ? env.target.eagerClause(ic.entryAbs)
-          : `Read ${inlineCode(ic.entryAbs)} and follow it when the task matches.`;
+          ? env.target.eagerClause(p(ic.entryAbs))
+          : `Read ${inlineCode(p(ic.entryAbs))} and follow it when the task matches.`;
         withPointer(pointerLine(seg, tail));
       } else if (mode === 'inline') {
-        withMeta(ic.entryAbs, skillInlineBody(seg, ic, level, env));
+        withMeta(p(ic.entryAbs), skillInlineBody(seg, ic, level, env));
+      } else if (placed?.dest !== undefined && placed.dest !== null) {
+        withMeta(p(ic.rootAbs), [description, `Installed at ${inlineCode(`${placed.dest}/`)}.`]);
       } else {
         const dest = `${env.target.skillsDir}/${seg.slug}`;
         const lines = [
@@ -235,30 +282,52 @@ function renderItem(seg: ItemSegment, env: Env): string {
         ];
         withMeta(ic.rootAbs, [
           description,
-          'Install this skill into the project (run from the project root):',
+          `Install this skill into the project (run from ${env.root}):`,
           shBlock(lines),
         ]);
       }
       break;
     }
     case 'local-repo': {
-      withMeta(ic.local?.root ?? null, localBody(seg, ic, description));
+      if (placed?.dest != null) {
+        withMeta(placed.dest, localPlacedBody(seg, ic, description, placed.dest, env));
+      } else {
+        withMeta(ic.local?.root ?? null, localBody(seg, ic, description));
+      }
       break;
     }
     case 'remote-repo': {
-      withMeta(
-        meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
-        remoteRepoBody(seg, description),
-      );
+      if (placed?.dest != null) {
+        withMeta(
+          placed.dest,
+          remotePlacedBody(description, placed, placed.dest, env.dir?.primary === seg.key),
+        );
+      } else {
+        withMeta(
+          meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
+          remoteRepoBody(seg, description, env.root),
+        );
+      }
       break;
     }
     case 'remote-skill': {
-      withMeta(
-        meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
-        remoteSkillBody(seg, description, env),
-      );
+      if (placed?.dest != null) {
+        withMeta(placed.dest, [
+          description,
+          `Installed at ${inlineCode(`${placed.dest}/`)} from ${inlineCode(placed.uri ?? '')}.`,
+        ]);
+      } else {
+        withMeta(
+          meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
+          remoteSkillBody(seg, description, env),
+        );
+      }
       break;
     }
+  }
+  const failed = env.dir?.output.materials[seg.key];
+  if (failed?.state === 'failed') {
+    parts.push(`Not placed in this directory: ${failed.reason ?? 'the step failed'}.`);
   }
   return parts.join('\n\n');
 }
@@ -267,8 +336,8 @@ function renderItem(seg: ItemSegment, env: Env): string {
 
 function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): string[] {
   const options = seg.options;
-  const files = new Map((ic.files ?? []).map((f) => [f.rel, f.abs] as const));
-  const targets = env.content.targets;
+  const files = new Map((ic.files ?? []).map((f) => [f.rel, env.pathOf(f.abs)] as const));
+  const targets = env.targets;
   const main = ic.texts?.['main.md'];
   const out: string[] = [];
   const concepts = ic.concepts ?? [];
@@ -291,7 +360,7 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
   if (seg.mode === 'inline-main') {
     if (concepts.length > 0) {
       out.push(
-        `More in this bundle (under ${inlineCode(ic.rootAbs)}): ${concepts.map((c) => inlineCode(c)).join(', ')}.`,
+        `More in this bundle (under ${inlineCode(env.pathOf(ic.rootAbs))}): ${concepts.map((c) => inlineCode(c)).join(', ')}.`,
       );
     }
     return out;
@@ -313,7 +382,9 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
     const log = ic.texts?.['log.md'];
     if (log !== undefined && log !== null) section('Update log', 'log.md', log, 'Update log');
   }
-  const others = (ic.files ?? []).filter((f) => f.kind !== 'markdown');
+  const others = (ic.files ?? [])
+    .filter((f) => f.kind !== 'markdown')
+    .map((f) => ({ rel: f.rel, abs: env.pathOf(f.abs) }));
   if (others.length > 0) out.push('Other files in this bundle:', listLines(others));
   return out;
 }
@@ -322,7 +393,7 @@ function okfBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): st
 
 function skillInlineBody(seg: ItemSegment, ic: ItemContent, level: number, env: Env): string[] {
   const options = seg.options;
-  const files = new Map((ic.files ?? []).map((f) => [f.rel, f.abs] as const));
+  const files = new Map((ic.files ?? []).map((f) => [f.rel, env.pathOf(f.abs)] as const));
   const out: string[] = [];
   const text = ic.texts?.['SKILL.md'];
   if (text !== undefined && text !== null) {
@@ -335,13 +406,18 @@ function skillInlineBody(seg: ItemSegment, ic: ItemContent, level: number, env: 
         base: level + 1,
         options,
         files,
-        targets: env.content.targets,
+        targets: env.targets,
       }),
     );
   }
-  const others = (ic.files ?? []).filter((f) => f.rel !== 'SKILL.md');
+  const others = (ic.files ?? [])
+    .filter((f) => f.rel !== 'SKILL.md')
+    .map((f) => ({ rel: f.rel, abs: env.pathOf(f.abs) }));
   if (others.length > 0) {
-    out.push(`Files in this skill (under ${inlineCode(ic.rootAbs)}):`, listLines(others));
+    out.push(
+      `Files in this skill (under ${inlineCode(env.pathOf(ic.rootAbs))}):`,
+      listLines(others),
+    );
   }
   return out;
 }
@@ -363,22 +439,59 @@ function localBody(seg: ItemSegment, ic: ItemContent, description: string): stri
     out.push(`The path ${inlineCode(local.target)} does not exist on this machine.`);
     return out;
   }
-  if (seg.mode === 'tree' && ic.tree != null) {
-    const limit = seg.options.treeLimit ?? (OPTION_DEFS.treeLimit.default as number);
-    const shown = ic.tree.entries.slice(0, limit);
-    out.push(
-      `Top-level entries of ${inlineCode(local.target)} (${shown.length} of ${ic.tree.total}):`,
-    );
-    if (shown.length > 0) {
-      out.push(fenced(shown.map((e) => (e.dir ? `${e.name}/` : e.name)).join('\n'), 'text'));
-    }
+  out.push(...treeLines(seg, ic, local.target));
+  return out;
+}
+
+/** Tree mode: the top-level entries of the local path (titled `label`); [] for any other mode. */
+function treeLines(seg: ItemSegment, ic: ItemContent, label: string): string[] {
+  if (seg.mode !== 'tree' || ic.tree == null) return [];
+  const limit = seg.options.treeLimit ?? (OPTION_DEFS.treeLimit.default as number);
+  const shown = ic.tree.entries.slice(0, limit);
+  const out = [`Top-level entries of ${inlineCode(label)} (${shown.length} of ${ic.tree.total}):`];
+  if (shown.length > 0) {
+    out.push(fenced(shown.map((e) => (e.dir ? `${e.name}/` : e.name)).join('\n'), 'text'));
   }
   return out;
 }
 
+/** Working directory: the repository is a symlink at `dest`, so the tree is titled with the relative path. */
+function localPlacedBody(
+  seg: ItemSegment,
+  ic: ItemContent,
+  description: string,
+  dest: string,
+  env: Env,
+): string[] {
+  const local = ic.local;
+  if (local === undefined) return [description];
+  return [
+    description,
+    `Linked at ${inlineCode(dest)} → ${inlineCode(local.root)}.`,
+    ...treeLines(seg, ic, env.pathOf(local.target)),
+  ];
+}
+
 // ---- remote repo / skill
 
-function remoteRepoBody(seg: ItemSegment, description: string): string[] {
+/** Working directory: the repository is cloned at `dest`. */
+function remotePlacedBody(
+  description: string,
+  view: MaterialView,
+  dest: string,
+  primary: boolean,
+): string[] {
+  const out = [
+    description,
+    primary
+      ? `Cloned at ${inlineCode(dest)} (the primary repository).`
+      : `Cloned at ${inlineCode(dest)}.`,
+  ];
+  if (view.subpath !== null) out.push(`Relevant path ${inlineCode(`${dest}/${view.subpath}`)}.`);
+  return out;
+}
+
+function remoteRepoBody(seg: ItemSegment, description: string, root: string): string[] {
   const ref = seg.meta?.ref;
   if (ref === undefined || ref.type !== 'remote-repo') return [description];
   const subpath = cleanSubpath(ref.subpath);
@@ -400,7 +513,7 @@ function remoteRepoBody(seg: ItemSegment, description: string): string[] {
       : [`git clone${depth} ${shQuote(ref.uri)} ${shQuote(dir)}`];
   const out = [
     description,
-    'Clone it into the project (run from the project root; keep `.ctxman/` out of version control):',
+    `Clone it into the project (run from ${root}; keep \`.ctxman/\` out of version control):`,
     shBlock(lines),
   ];
   if (subpath !== '') out.push(`Then read ${inlineCode(`${dir}/${subpath}`)}.`);
@@ -455,7 +568,7 @@ function remoteSkillBody(seg: ItemSegment, description: string, env: Env): strin
   }
   const out = [
     description,
-    `Install this skill into ${inlineCode(`${dest}/`)} (run from the project root):`,
+    `Install this skill into ${inlineCode(`${dest}/`)} (run from ${env.root}):`,
     shBlock(lines),
   ];
   if (archive) {
@@ -496,33 +609,262 @@ function renderSegment(
   }
 }
 
+// ---------------------------------------------------------------- working directory sections (spec §9.3-§9.5)
+
+const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
+/** ` — ${description}` (whitespace collapsed) or '' when the description is blank. */
+const dashed = (description: string): string => {
+  const flat = collapse(description);
+  return flat === '' ? '' : ` — ${flat}`;
+};
+
+/** The views in segment order that have a placed dest (not failed). */
+const placedViews = (dir: DirEnv): MaterialView[] =>
+  Object.values(dir.output.materials).filter((v) => v.dest !== null && v.state !== 'failed');
+
+const isRepoKind = (kind: ItemKind): boolean => kind === 'local-repo' || kind === 'remote-repo';
+const isSkillKind = (kind: ItemKind): boolean => kind === 'skill' || kind === 'remote-skill';
+
+/** How a placed item got there (the note of a map row). */
+function placement(view: MaterialView): string {
+  switch (view.kind) {
+    case 'local-repo':
+      return 'symlink';
+    case 'remote-repo':
+      return `git clone${view.sparse ? ', sparse' : ''}${view.branch === null ? '' : `, branch ${view.branch}`}`;
+    case 'remote-skill':
+      return 'installed';
+    case 'skill':
+      return 'copy';
+    default:
+      return view.material === 'symlink' ? 'symlink' : 'copy';
+  }
+}
+
+function directoryMap(dir: DirEnv, target: TargetDef): string {
+  const { files, contextFile } = dir.output;
+  const rows: { name: string; note?: string }[] = [{ name: contextFile, note: 'this file' }];
+  const fileNotes: Record<Exclude<FileRole, 'context'>, string> = {
+    'claude-md': 'loads this file',
+    'agents-md': 'points to this file',
+    gitignore: 'ignores the machine-specific paths below',
+  };
+  for (const role of ['claude-md', 'agents-md', 'gitignore'] as const) {
+    const file = files.find((f) => f.role === role);
+    if (file !== undefined) rows.push({ name: file.path, note: fileNotes[role] });
+  }
+  const placed = placedViews(dir);
+  const group = (name: string, views: readonly MaterialView[]): void => {
+    if (views.length === 0) return;
+    rows.push({ name });
+    for (const view of views) {
+      const last = (view.dest ?? '').split('/').pop() ?? '';
+      const description = truncateText(view.description, 56);
+      const note = [
+        placement(view),
+        ...(dir.primary === view.key ? ['primary'] : []),
+        ...(description === '' ? [] : [description]),
+      ].join(' · ');
+      rows.push({ name: `  ${last}/`, note });
+    }
+  };
+  group(
+    `${REPOS_DIR}/`,
+    placed.filter((v) => isRepoKind(v.kind)),
+  );
+  for (const ds of OKF_DATASET_IDS) {
+    group(
+      `${ds}/`,
+      placed.filter((v) => v.kind === ds),
+    );
+  }
+  group(
+    `${target.skillsDir}/`,
+    placed.filter((v) => isSkillKind(v.kind)),
+  );
+  return `${headingText(2, 'Working directory map')}\n\n${fenced(alignRows(rows).join('\n'), 'text')}`;
+}
+
+function primarySection(view: MaterialView): string {
+  const owner = view.owner === null ? '' : ` · owner: ${OWNER_LABELS[view.owner]}`;
+  const dest = view.dest ?? '';
+  const source =
+    view.material === 'clone'
+      ? `git clone of ${inlineCode(view.uri ?? '')}, ` +
+        ((view.depth ?? 1) > 0 ? `shallow (depth ${view.depth ?? 1})` : 'full history') +
+        (view.branch === null ? '' : `, branch ${inlineCode(view.branch)}`) +
+        (view.sparse && view.subpath !== null
+          ? `, sparse checkout of ${inlineCode(view.subpath)}`
+          : '')
+      : `symlink to ${inlineCode(view.sourceAbs ?? '')}`;
+  const facts = [`- Source: ${source}`];
+  if (view.subpath !== null) facts.push(`- Start in: ${inlineCode(`${dest}/${view.subpath}`)}`);
+  return [
+    headingText(2, 'Primary repository'),
+    `**${view.title}** · ${inlineCode(dest)} · ${inlineCode(view.key)}${owner}`,
+    collapse(view.description) === '' ? '' : view.description.trim(),
+    facts.join('\n'),
+    `Work in ${inlineCode(dest)} unless the task says otherwise.`,
+  ]
+    .filter((part) => part !== '')
+    .join('\n\n');
+}
+
+function repositoriesSection(dir: DirEnv): string {
+  const bullets = Object.values(dir.output.materials)
+    .filter((v) => isRepoKind(v.kind) && v.key !== dir.primary)
+    .map((view) => {
+      const placed = view.dest !== null && view.state !== 'failed';
+      const origin = view.kind === 'remote-repo' ? view.uri : view.sourceAbs;
+      const local = view.kind === 'local-repo';
+      const where = placed
+        ? view.kind === 'remote-repo'
+          ? `${inlineCode(view.dest ?? '')} (git clone of ${inlineCode(view.uri ?? '')})`
+          : `${inlineCode(view.dest ?? '')} (symlink to ${inlineCode(view.sourceAbs ?? '')})`
+        : view.state === 'failed'
+          ? `not placed (${view.reason ?? 'the step failed'}): ${inlineCode(origin ?? '')}`
+          : `${local ? 'not linked' : 'not cloned'}: ${inlineCode(origin ?? '')}`;
+      const relevant =
+        view.subpath === null
+          ? ''
+          : ` · relevant path ${inlineCode(placed ? `${view.dest}/${view.subpath}` : view.subpath)}`;
+      const owner = view.owner === null ? '' : ` · owner: ${OWNER_LABELS[view.owner]}`;
+      return `- **${view.title}** · ${where}${relevant} · ${inlineCode(view.key)}${owner}${dashed(view.description)}`;
+    });
+  return bullets.length === 0 ? '' : `${headingText(2, 'Repositories')}\n\n${bullets.join('\n')}`;
+}
+
+function skillsSection(dir: DirEnv, env: Env): string {
+  const views = Object.values(dir.output.materials).filter((v) => isSkillKind(v.kind));
+  if (views.length === 0) return '';
+  const placed = views.filter((v) => v.dest !== null && v.state !== 'failed');
+  const missing = views.filter((v) => !placed.includes(v));
+  const parts: string[] = [headingText(2, 'Skills')];
+  if (placed.length > 0) {
+    parts.push(env.target.skillsIntro);
+    parts.push(
+      placed
+        .map((view) => {
+          const subpath = view.subpath === null ? '' : ` (${inlineCode(view.subpath)})`;
+          const how =
+            view.kind === 'skill'
+              ? `copy of ${inlineCode(view.key)}`
+              : `from ${inlineCode(view.uri ?? '')}${subpath}`;
+          return `- ${inlineCode(`${view.dest}/`)} · **${view.title}** · ${how}${dashed(view.description)}`;
+        })
+        .join('\n'),
+    );
+  }
+  if (missing.length > 0) {
+    parts.push('Not installed:');
+    parts.push(
+      missing
+        .map((view) => {
+          const subpath = view.subpath === null ? '' : ` (${inlineCode(view.subpath)})`;
+          const origin =
+            view.kind === 'skill'
+              ? inlineCode(env.content.items[view.key]?.entryAbs ?? view.sourceAbs ?? view.key)
+              : `${inlineCode(view.uri ?? '')}${subpath}`;
+          const source =
+            view.state === 'failed'
+              ? `not installed (${view.reason ?? 'the step failed'}): ${origin}`
+              : origin;
+          return `- **${view.title}** · ${inlineCode(view.key)} · ${source}${dashed(view.description)}`;
+        })
+        .join('\n'),
+    );
+  }
+  return parts.join('\n\n');
+}
+
 const warningKey = (w: InflateWarning): string => `${w.code}\u0000${w.key ?? ''}\u0000${w.message}`;
 
+/**
+ * Renders the plan. Without `ctx.output` this is the v1 document (absolute paths, byte-identical to v1); with
+ * it, the working-directory document of plans/INFLATE_V2_SPEC.md §9 (paths relative to `output.dir` for every
+ * mounted item).
+ */
 export function renderPlan(
   plan: ExpandedPlan,
   content: PlanContent,
-  ctx: { generatedAt: string },
+  ctx: { generatedAt: string; output?: RenderOutput },
 ): InflateResult {
   const recipe = plan.recipe;
-  const target = TARGETS[recipe.target];
-  const env: Env = { target, content };
+  const output = ctx.output;
+  const target = TARGETS[output?.target ?? recipe.target];
+  const pathOf = output === undefined ? identity : createPathMapper(output.materials);
+  const primaryView = output?.primary == null ? undefined : output.materials[output.primary];
+  const dirEnv: DirEnv | undefined =
+    output === undefined
+      ? undefined
+      : {
+          output,
+          primary:
+            primaryView !== undefined && primaryView.dest !== null && primaryView.state !== 'failed'
+              ? primaryView.key
+              : null,
+        };
+  const env: Env = {
+    target,
+    content,
+    pathOf,
+    targets:
+      output === undefined
+        ? content.targets
+        : Object.fromEntries(
+            Object.entries(content.targets).map(([key, ref]) => [
+              key,
+              ref === null ? null : { ...ref, abs: pathOf(ref.abs) },
+            ]),
+          ),
+    root: output === undefined ? 'the project root' : 'this directory',
+    ...(dirEnv === undefined ? {} : { dir: dirEnv }),
+  };
 
-  const header = [
-    `# ${recipe.name}`,
-    '',
-    `> ${target.sessionLine}`,
-    `> ${HEADER_PATHS_LINE}`,
-    ...(target.skillsLine === null ? [] : [`> ${target.skillsLine}`]),
-  ].join('\n');
+  const headerLines =
+    output === undefined || dirEnv === undefined
+      ? [
+          `# ${recipe.name}`,
+          '',
+          `> ${target.sessionLine}`,
+          `> ${HEADER_PATHS_LINE}`,
+          ...(target.skillsLine === null ? [] : [`> ${target.skillsLine}`]),
+        ]
+      : [
+          `# ${recipe.name}`,
+          '',
+          `> ${target.sessionLine}`,
+          `> This directory is the working root (${inlineCode(output.dir)}). Relative paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
+          ...(target.skillsLine === null ? [] : [`> ${target.skillsLine}`]),
+          ...output.files.flatMap(({ path, role }) =>
+            role === 'claude-md'
+              ? [`> ${inlineCode(path)} in this directory loads this file.`]
+              : role === 'agents-md'
+                ? [`> ${inlineCode(path)} in this directory points to this file.`]
+                : [],
+          ),
+        ];
+  const header = headerLines.join('\n');
   const preamble = trimBlankLines(normalizeText(recipe.preamble ?? ''));
+  const sections =
+    dirEnv === undefined
+      ? []
+      : [
+          directoryMap(dirEnv, target),
+          dirEnv.primary === null || primaryView === undefined ? '' : primarySection(primaryView),
+          repositoriesSection(dirEnv),
+          skillsSection(dirEnv, env),
+        ];
 
   const rendered = plan.segments.map((segment) => ({
     segment,
     ...renderSegment(segment, plan, env),
   }));
   const markdown =
-    [header, preamble, ...rendered.map((r) => r.text)].filter((part) => part !== '').join('\n\n') +
-    '\n';
+    [header, preamble, ...sections, ...rendered.map((r) => r.text)]
+      .filter((part) => part !== '')
+      .join('\n\n') + '\n';
   const bytes = byteLength(markdown);
 
   const manifestSegments: ManifestSegment[] = rendered.map(({ segment, text, title }) => {
@@ -556,6 +898,11 @@ export function renderPlan(
       }
       const entryAbs = content.items[segment.key]?.entryAbs;
       if (entryAbs !== undefined) entry.source = entryAbs;
+      const view = output?.materials[segment.key];
+      if (view !== undefined) {
+        entry.material = view.material;
+        if (view.dest !== null) entry.dest = view.dest;
+      }
     }
     return entry;
   });
@@ -584,21 +931,22 @@ export function renderPlan(
     warnings.push(w);
   }
 
-  return {
-    markdown,
-    manifest: {
-      recipe: recipe.name,
-      target: recipe.target,
-      layout: recipe.layout,
-      generatedAt: ctx.generatedAt,
-      bytes,
-      counts,
-      contexts: plan.contexts.map((c) => ({
-        slug: c.slug,
-        status: c.status === 'loading' ? 'missing' : c.status,
-      })),
-      segments: manifestSegments,
-      warnings,
-    },
+  const manifest: InflateManifest = {
+    recipe: recipe.name,
+    target: recipe.target,
+    layout: recipe.layout,
+    generatedAt: ctx.generatedAt,
+    bytes,
+    counts,
+    contexts: plan.contexts.map((c) => ({
+      slug: c.slug,
+      status: c.status === 'loading' ? 'missing' : c.status,
+    })),
+    segments: manifestSegments,
+    warnings,
   };
+  if (output !== undefined) {
+    manifest.output = { dir: output.dir, contextFile: output.contextFile, primary: output.primary };
+  }
+  return { markdown, manifest };
 }

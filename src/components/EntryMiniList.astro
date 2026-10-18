@@ -17,9 +17,9 @@ const { entries, showStaleAfter = false } = Astro.props;
 <ul class="cx-minilist">
   {
     entries.map((e) => (
-      <li class="cx-minilist__row" data-testid="minilist-row">
+      <li class="cx-minilist__row cx-rowlink" data-testid="minilist-row">
         <DatasetBadge dataset={e.dataset} />
-        <a class="cx-minilist__title cx-truncate" href={e.url}>
+        <a class="cx-minilist__title cx-rowlink__main cx-truncate" href={e.url}>
           {e.title ?? e.name}
         </a>
         <span class="cx-row">

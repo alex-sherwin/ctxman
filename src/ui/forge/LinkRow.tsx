@@ -1,5 +1,7 @@
-// One row of the context's links list (UI_SPEC §H.5): dataset badge, resolved title, reorder / remove
-// toolbar, and a collapsed "Notes for the agent" disclosure whose Monaco editor mounts only while expanded.
+// The body of one row of the context's links list (UI_SPEC §H.5, ROUND2_UI_SPEC §D): dataset badge, resolved
+// title, up / down / remove toolbar (the non-drag reorder fallback), and a collapsed "Notes for the agent"
+// disclosure whose Monaco editor mounts only while expanded. The row itself (grip, index, `data-key`, dataset
+// color) is the kit OrderedList's; ContextPane derives its textValue / attributes with `link-label.ts`.
 import { useStore } from '@nanostores/react';
 import type { ContextLink } from '../../datasets/schemas.ts';
 import { $entries } from '../../stores/entries.ts';
@@ -14,6 +16,7 @@ import {
   Toolbar,
   Tooltip,
 } from '../kit/index.ts';
+import { isMissing, labelOf } from './link-label.ts';
 import { firstLine, lineCount, plural } from './notes.ts';
 
 export interface LinkRowProps {
@@ -26,24 +29,15 @@ export interface LinkRowProps {
 
 export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) {
   const key = linkKey(link);
-  const cache = useStore($entries, { keys: [link.dataset] })[link.dataset];
-  const entry = cache?.entries.find((e) => e.slug === link.slug);
-  const missing = cache?.status === 'ready' && entry === undefined;
-  const label = entry?.title ?? entry?.name ?? link.slug;
+  const entries = useStore($entries, { keys: [link.dataset] });
+  const entry = entries[link.dataset]?.entries.find((e) => e.slug === link.slug);
+  const missing = isMissing(entries, link);
+  const label = labelOf(entries, link);
   const notes = link.notes ?? '';
 
   return (
-    <li
-      className="cx-link"
-      data-ds={link.dataset}
-      data-missing={missing || undefined}
-      data-testid="forge-link"
-      data-key={key}
-    >
+    <div className="cx-link" data-missing={missing || undefined}>
       <div className="cx-link__head">
-        <span className="cx-link__index" aria-hidden="true">
-          {index + 1}
-        </span>
         <DatasetBadge dataset={link.dataset} />
         <a
           className="cx-link__title cx-truncate"
@@ -104,7 +98,9 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
       <Disclosure
         className="cx-link__notes"
         title="Notes for the agent"
-        meta={notes ? `${plural(lineCount(notes), 'line')} · ${firstLine(notes, 60)}` : 'none'}
+        meta={notes ? plural(lineCount(notes), 'line') : 'none'}
+        preview={notes ? firstLine(notes, 200) : undefined}
+        previewTestId="forge-link-notes-preview"
         triggerTestId="forge-link-notes-toggle"
       >
         {({ isExpanded }) =>
@@ -130,6 +126,6 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
           )
         }
       </Disclosure>
-    </li>
+    </div>
   );
 }

@@ -1,0 +1,115 @@
+/*
+ * Markdown editing styles (ROUND2_UI_SPEC §F): the DocEditor toolbar / editor area on okf + skill detail pages
+ * and the popup markdown editors (MarkdownModal). Imported by src/styles/global.css after tools.css.
+ */
+@layer cx-app {
+  /* ---------- DocEditor ---------- */
+  .cx-doctools {
+    position: sticky;
+    top: var(--header-h);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-5);
+    min-height: 36px;
+    margin-bottom: var(--sp-3);
+    padding: var(--sp-1) 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  /* the SSR placeholder that holds the toolbar's height until the island mounts (no layout shift) */
+  .cx-doctools--fallback {
+    height: 36px;
+  }
+  .cx-doctools__path {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .cx-doctools__spacer {
+    flex: 1;
+  }
+
+  .cx-doc__editor {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--header-h) - 140px);
+    min-height: 360px;
+  }
+  .cx-doc__loading {
+    display: grid;
+    place-items: center;
+    flex: 1;
+  }
+  .cx-doc__loaderror {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  .cx-doc__restored {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-sm);
+    color: var(--warn-fg);
+  }
+  /* findings the validators reported for the file that was just saved (the save itself is never blocked) */
+  .cx-doc__warnings {
+    margin: 0 0 var(--sp-4);
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm);
+    background: var(--warn-bg);
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 40%, transparent);
+    border-radius: var(--r-sm);
+  }
+  .cx-doc__warnings li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-3);
+    padding-block: var(--sp-1);
+  }
+  .cx-doc__warnings li[data-severity='error'] {
+    color: var(--danger-fg);
+  }
+  .cx-doc__warnings code {
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+  }
+  .cx-doc__warnline {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  /* between a successful save and the reload, the SSR preview still shows the old HTML */
+  .cx-doc__preview[data-stale] {
+    opacity: 0.5;
+    transition: opacity var(--dur) var(--ease);
+  }
+
+  /* ---------- MarkdownModal ---------- */
+  .cx-mdmodal {
+    width: min(880px, 92vw);
+  }
+  /* status on the left of the footer, Save / Cancel on the right */
+  .cx-mdmodal .cx-savebar {
+    flex: 1;
+  }
+  .cx-mdmodal .cx-savebar__status {
+    order: -1;
+    margin-right: auto;
+  }
+  .cx-mdmodal__loading {
+    display: grid;
+    place-items: center;
+    min-height: 200px;
+  }
+  .cx-mdmodal__error {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  .cx-mdmodal__hint {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+}

@@ -1,5 +1,7 @@
-// Detail pages (UI_SPEC §F): rendered markdown, rewritten links, file tree, back-references and context pages.
+// Detail pages (UI_SPEC §F, ROUND2_UI_SPEC §G): rendered markdown, rewritten links, the two-column okf layout,
+// file tree, back-references, context pages (links in context order) and clickable list rows.
 import { expect, test } from '@playwright/test';
+import { API } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
   test('/kb/ctxman renders the entry markdown, metadata and file tree', async ({ page }) => {
@@ -10,6 +12,35 @@ test.describe('bundle detail pages', () => {
     await expect(page.getByTestId('detail-meta')).toContainText('architecture');
     await expect(page.getByTestId('detail-files')).toContainText('main.md');
     await expect(page.getByTestId('detail-files')).toContainText('concepts/datasets.md');
+  });
+
+  test('the details column sits LEFT of the content and carries Open in IDE', async ({ page }) => {
+    await page.goto('/kb/ctxman');
+    const aside = page.getByTestId('detail-aside');
+    const content = page.getByTestId('detail-content');
+    await expect(aside.getByTestId('detail-open-ide')).toBeVisible();
+    await expect(aside.getByTestId('detail-open-ide')).toHaveAttribute('data-dataset', 'kb');
+    await expect(aside.getByTestId('detail-open-ide')).toHaveAttribute('data-path', 'main.md');
+    const asideBox = await aside.boundingBox();
+    const contentBox = await content.boundingBox();
+    expect(asideBox).not.toBeNull();
+    expect(contentBox).not.toBeNull();
+    expect(asideBox!.x + asideBox!.width).toBeLessThanOrEqual(contentBox!.x);
+    // the DocEditor toolbar mounts above the preview
+    await expect(page.getByTestId('doc-tools')).toBeVisible();
+    await expect(page.getByTestId('doc-view-preview')).toBeVisible();
+  });
+
+  test('a skill page and a sub-doc page use the same two-column layout', async ({ page }) => {
+    await page.goto('/skill/okf-authoring');
+    await expect(page.getByTestId('detail-open-ide')).toHaveAttribute('data-path', 'SKILL.md');
+    await expect(page.getByTestId('doc-tools')).toBeVisible();
+    await page.goto('/kb/ctxman/doc/concepts/datasets');
+    await expect(page.getByTestId('detail-open-ide')).toHaveAttribute(
+      'data-path',
+      'concepts/datasets.md',
+    );
+    await expect(page.getByTestId('doc-tools')).toBeVisible();
   });
 
   test('intra-bundle links are rewritten and navigate to the sub-doc', async ({ page }) => {
@@ -109,16 +140,53 @@ test.describe('reference detail pages', () => {
 });
 
 test.describe('context pages', () => {
-  test('/context/ctxman-dev groups its links by dataset with rendered notes', async ({ page }) => {
+  test('/context/ctxman-dev lists its links in context order with rendered notes', async ({
+    page,
+    request,
+  }) => {
+    const api = await request.get(`${API}/context/ctxman-dev`);
+    const { context } = (await api.json()) as {
+      context: { links: { dataset: string; slug: string }[] };
+    };
+    const keys = context.links.map((l) => `${l.dataset}:${l.slug}`);
+
     await page.goto('/context/ctxman-dev');
     await expect(page.getByTestId('detail-content')).toBeVisible();
-    await expect(page.getByTestId('context-link')).toHaveCount(10);
-    // Groups in registry order; one per dataset that has links (kb, rca, idea, task, bug, feature, project,
-    // skill, reference).
-    const groups = page.locator('[data-testid^="context-group-"]');
-    await expect.poll(() => groups.count()).toBeGreaterThanOrEqual(6);
-    await expect(page.getByTestId('context-group-kb')).toBeVisible();
-    await expect(page.getByTestId('context-group-task')).toBeVisible();
+    const rows = page.getByTestId('context-link');
+    await expect(rows).toHaveCount(10);
+    // Stored order, no grouping by dataset (the old context-group-* sections are gone).
+    expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute('data-key')))).toEqual(
+      keys,
+    );
+    await expect(page.locator('[data-testid^="context-group-"]')).toHaveCount(0);
+
+    // The dataset badge comes before the title (2nd child of the line, after the number).
+    const first = rows.first();
+    await expect(first.locator('.cx-ctxlink__line > :nth-child(2)')).toHaveClass(/ck-badge/);
+    await expect(first.locator('.cx-ctxlink__line > :nth-child(3)')).toHaveClass(
+      /cx-ctxlink__title/,
+    );
+    await expect(first.locator('.ck-badge').first()).toHaveText('kb');
+
+    // The left border color follows the row's dataset (data-ds -> --ds-c).
+    for (const row of await rows.all()) {
+      const ds = (await row.getAttribute('data-ds')) ?? '';
+      const expected = await page.evaluate((dataset) => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(--ds-${dataset})`;
+        document.body.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }, ds);
+      const border = await row.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { color: cs.borderLeftColor, width: cs.borderLeftWidth };
+      });
+      expect(border.width, ds).toBe('2px');
+      expect(border.color, ds).toBe(expected);
+    }
+
     // Notes are Markdown: the rca note has inline code, the task note has a list.
     const rcaNotes = page.locator(
       '[data-testid="context-link"][data-slug="astro-dev-full-reload-on-save"]',
@@ -126,6 +194,23 @@ test.describe('context pages', () => {
     await expect(rcaNotes.locator('code').first()).toBeVisible();
     const taskNotes = page.locator('[data-testid="context-link"][data-slug="write-agents-md"]');
     await expect(taskNotes.locator('li').first()).toBeVisible();
+
+    // Every row has a pencil that the MarkdownTargets island enables.
+    const pencils = page.getByTestId('context-link-edit-notes');
+    await expect(pencils).toHaveCount(10);
+    await expect(pencils.first()).toBeEnabled();
+  });
+
+  test('a context row is a link: clicking beside the title opens the entry', async ({ page }) => {
+    await page.goto('/context/ctxman-dev');
+    const row = page.locator('[data-testid="context-link"][data-slug="write-agents-md"]');
+    await expect(row.locator('a.cx-rowlink__main')).toHaveAttribute(
+      'href',
+      '/task/write-agents-md',
+    );
+    // The stretched link covers the row, so Playwright's own hit test would refuse the click: force it.
+    await row.locator('.cx-ctxlink__num').click({ force: true });
+    await expect(page).toHaveURL(/\/task\/write-agents-md$/);
   });
 
   test('"Open in Forge" on a context page links to the Forge with the context selected', async ({
@@ -136,5 +221,76 @@ test.describe('context pages', () => {
       'href',
       '/forge?context=ctxman-dev',
     );
+  });
+});
+
+test.describe('yaml dataset pages', () => {
+  test('a reference page has an Edit button that opens the form', async ({ page }) => {
+    await page.goto('/reference/astro-docs');
+    const edit = page.getByTestId('detail-edit');
+    await expect(edit).toHaveAttribute('href', '/reference/astro-docs?edit=1');
+    await edit.click();
+    await expect(page).toHaveURL(/\/reference\/astro-docs\?edit=1$/);
+    await expect(page.getByTestId('dform')).toHaveAttribute('data-mode', 'edit');
+    await expect(page.getByTestId('detail-edit')).toHaveCount(0);
+    await expect(page.getByTestId('detail-aside')).toBeVisible();
+  });
+});
+
+test.describe('clickable rows', () => {
+  test('a list row opens its entry from any cell; ctrl/cmd-click opens a new tab instead', async ({
+    page,
+    context,
+  }) => {
+    await page.goto('/kb');
+    const row = page.locator('[data-testid="list-row"][data-slug="ctxman"]');
+    const cell = row.locator('td').nth(1); // Description
+    await expect(row.locator('a.cx-rowlink__main')).toHaveAttribute('href', '/kb/ctxman');
+
+    // Modified click: a new tab opens, this page stays where it is.
+    const [tab] = await Promise.all([
+      context.waitForEvent('page'),
+      cell.click({ force: true, modifiers: ['ControlOrMeta'] }),
+    ]);
+    expect(tab.url()).toMatch(/\/kb\/ctxman$/);
+    await tab.close();
+    await expect(page).toHaveURL(/\/kb$/);
+
+    // Plain click on the description cell (the stretched link covers it).
+    await cell.click({ force: true });
+    await expect(page).toHaveURL(/\/kb\/ctxman$/);
+  });
+
+  test('inline buttons inside a clickable row keep working', async ({ page }) => {
+    await page.goto('/');
+    const row = page.getByTestId('dashboard-contexts').locator('li.cx-rowlink').first();
+    await row.getByRole('link', { name: 'Forge', exact: true }).click();
+    await expect(page).toHaveURL(/\/forge\?context=/);
+
+    // back-references: the "Forge" button next to the context link
+    await page.goto('/kb/ctxman');
+    await page
+      .getByTestId('detail-backrefs')
+      .getByRole('link', { name: 'Open ctxman-dev in Forge' })
+      .click();
+    await expect(page).toHaveURL(/\/forge\?context=ctxman-dev$/);
+  });
+
+  test('dashboard and back-reference rows open their entry', async ({ page }) => {
+    await page.goto('/');
+    const recent = page.getByTestId('dashboard-recent').getByTestId('minilist-row').first();
+    const href = await recent.locator('a.cx-rowlink__main').getAttribute('href');
+    expect(href).toMatch(/^\/[a-z]+\/[a-z0-9-]+$/);
+    await recent.locator('time, .cx-freshness').first().click({ force: true });
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+
+    await page.goto('/kb/ctxman');
+    // Target the seed context explicitly: other specs may leave extra contexts
+    // (without notes) that link kb/ctxman and would sort first.
+    const ref = page
+      .getByTestId('detail-backrefs')
+      .locator('li.cx-rowlink', { has: page.locator('a[href="/context/ctxman-dev"]') });
+    await ref.locator('.cx-backref__notes').click({ force: true });
+    await expect(page).toHaveURL(/\/context\/ctxman-dev$/);
   });
 });

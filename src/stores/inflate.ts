@@ -7,20 +7,38 @@
 import { atom, computed, map, onMount } from 'nanostores';
 import { LINKABLE_DATASETS } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId } from '../datasets/registry.ts';
-import type { InflateOptionsInput, RecipeData, RecipeOverride } from '../datasets/schemas.ts';
+import type {
+  InflateOptionsInput,
+  MaterialOptionsInput,
+  RecipeData,
+  RecipeOutput,
+  RecipeOverride,
+} from '../datasets/schemas.ts';
 import {
+  CONTEXT_FILE_PATTERN,
+  DEFAULT_CONTEXT_FILE,
+  STUB_IDS,
+  baseMaterialOptionValue,
   baseOptionValue,
+  defaultDirFor,
+  defaultMaterialFor,
   defaultModeFor,
+  isMaterialFor,
   isModeFor,
+  isPrimaryEligible,
   mdKey,
   nextBlockId,
+  stubDefaults,
 } from '../lib/inflate/catalog.ts';
 import type {
   InflateLayout,
   InflateTarget,
   ItemKind,
+  MaterialId,
+  MaterialOptionId,
   ModeId,
   OptionId,
+  StubId,
 } from '../lib/inflate/catalog.ts';
 import { expandRecipe, itemMetaFromSummary } from '../lib/inflate/expand.ts';
 import type {
@@ -33,13 +51,15 @@ import type {
 import { sameRecipe } from '../lib/inflate/recipe.ts';
 // Type-only: erased at build time, nothing of the NODE renderer reaches the browser bundle.
 import type { InflateResult } from '../lib/inflate/render.ts';
+import { reorderKeys } from '../lib/reorder.ts';
+import type { DropPosition } from '../lib/reorder.ts';
 import { parseInflateUrl, withParams } from '../lib/url-state.ts';
-import type { InflateUrl, InflateView, ParamPatchValue } from '../lib/url-state.ts';
+import type { InflatePaths, InflateUrl, InflateView, ParamPatchValue } from '../lib/url-state.ts';
 import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
 import type { EntriesState } from './entries.ts';
 import type { Issue, SaveStatus } from './forge.ts';
 
-export type { InflateUrl, InflateView };
+export type { InflatePaths, InflateUrl, InflateView };
 export type { Issue, SaveStatus };
 
 export type RecipeLoad = {
@@ -66,7 +86,14 @@ export const RENDER_DEBOUNCE_MS = 400;
 
 // ---------------------------------------------------------------- stores
 
-export const $inflateUrl = map<InflateUrl>({ recipe: null, view: 'compose', dataset: 'kb', q: '' });
+export const $inflateUrl = map<InflateUrl>({
+  recipe: null,
+  view: 'compose',
+  dataset: 'kb',
+  q: '',
+  job: null,
+  paths: 'relative',
+});
 
 /** Last loaded / saved server copy. */
 export const $baseline = atom<RecipeData | null>(null);
@@ -135,7 +162,7 @@ function currentLookup(): ExpandLookup {
 
 // ---------------------------------------------------------------- URL plumbing
 
-const URL_DEFAULTS = { dataset: 'kb', view: 'compose' };
+const URL_DEFAULTS = { dataset: 'kb', view: 'compose', paths: 'relative' };
 const NEW_RECIPE_STATE = { ctxmanInflateNew: true };
 
 /** `pathname?search#hash` of the current location with `patch` applied (unrelated params kept). */
@@ -148,7 +175,7 @@ function hrefFromStores(): string {
   const u = $inflateUrl.get();
   return withParams(
     location.pathname,
-    { recipe: u.recipe, view: u.view, dataset: u.dataset, q: u.q },
+    { recipe: u.recipe, view: u.view, dataset: u.dataset, q: u.q, job: u.job, paths: u.paths },
     URL_DEFAULTS,
   );
 }
@@ -205,7 +232,7 @@ async function messageOf(res: Response): Promise<{ message: string; issues?: Iss
 }
 
 /** `message` plus the first few issues (`path: message`) on one line. */
-async function describeFailure(res: Response): Promise<string> {
+export async function describeFailure(res: Response): Promise<string> {
   const { message, issues } = await messageOf(res);
   const detail = (issues ?? [])
     .slice(0, 3)
@@ -404,18 +431,44 @@ export function setQuery(q: string): void {
   queryTimer = setTimeout(flushQuery, 150);
 }
 
+/**
+ * Change the view / job / paths part of the URL (stores and `location` together). `job` only lives with
+ * `view=run`. Used by the run store; `replace` keeps the history entry, `push` adds one.
+ */
+export function patchInflateUrl(
+  patch: Partial<Pick<InflateUrl, 'view' | 'job' | 'paths'>>,
+  mode: 'push' | 'replace',
+): void {
+  const cur = $inflateUrl.get();
+  const next: InflateUrl = { ...cur, ...patch };
+  if (next.view !== 'run') next.job = null;
+  if (next.view === cur.view && next.job === cur.job && next.paths === cur.paths) return;
+  $inflateUrl.set(next);
+  const href = hrefWith({ view: next.view, job: next.job, paths: next.paths });
+  if (mode === 'push') history.pushState(null, '', href);
+  else history.replaceState(history.state, '', href);
+}
+
 export function setView(view: InflateView): void {
-  if (view === $inflateUrl.get().view) return;
-  $inflateUrl.setKey('view', view);
-  replaceUrl({ view });
+  patchInflateUrl({ view }, 'replace');
+}
+
+/** Preview: the document with paths relative to the working directory, or the v1 absolute render. */
+export function setPaths(paths: InflatePaths): void {
+  patchInflateUrl({ paths }, 'replace');
 }
 
 // ---------------------------------------------------------------- recipe selection (dirty guard)
 
 function navigateRecipe(next: string | null): void {
   flushQuery();
-  $inflateUrl.setKey('recipe', next);
-  history.pushState(next === 'new' ? NEW_RECIPE_STATE : null, '', hrefWith({ recipe: next }));
+  // A run belongs to the recipe it was started from: the job param does not follow to another recipe.
+  $inflateUrl.set({ ...$inflateUrl.get(), recipe: next, job: null });
+  history.pushState(
+    next === 'new' ? NEW_RECIPE_STATE : null,
+    '',
+    hrefWith({ recipe: next, job: null }),
+  );
   if (next !== 'new') {
     $saveStatus.set({ kind: 'idle' });
     syncRecipe();
@@ -470,6 +523,53 @@ function commit(next: RecipeData): void {
   $working.set(next);
 }
 
+/** For the run store: replace the working copy like an edit does ("Save overrides to recipe"). */
+export function commitWorking(next: RecipeData): void {
+  commit(tidyOutput(next));
+}
+
+// ---------------------------------------------------------------- output (working directory) helpers
+
+const omit = <T extends object, K extends keyof T>(o: T, key: K): Omit<T, K> => {
+  const { [key]: _removed, ...rest } = o;
+  return rest;
+};
+
+/**
+ * `output` without the parts that say nothing: `allowNonEmpty: false`, stubs equal to the target's
+ * defaults, an empty `stubs`. The whole `output` goes when nothing is left (contextFile is the default).
+ */
+function tidyOutput(w: RecipeData): RecipeData {
+  const o = w.output;
+  if (o === undefined) return w;
+  let next: RecipeOutput = { ...o };
+  if (next.allowNonEmpty !== true) next = omit(next, 'allowNonEmpty') as RecipeOutput;
+  if (next.dir !== undefined && next.dir.trim() === '') next = omit(next, 'dir') as RecipeOutput;
+  if (next.stubs !== undefined) {
+    const defaults = stubDefaults(w.target);
+    const stubs: Partial<Record<StubId, boolean>> = {};
+    for (const id of STUB_IDS) {
+      const value = next.stubs[id];
+      if (value !== undefined && value !== defaults[id]) stubs[id] = value;
+    }
+    next =
+      Object.keys(stubs).length > 0 ? { ...next, stubs } : (omit(next, 'stubs') as RecipeOutput);
+  }
+  const empty =
+    next.dir === undefined &&
+    next.primary === undefined &&
+    next.allowNonEmpty === undefined &&
+    next.stubs === undefined &&
+    next.contextFile === DEFAULT_CONTEXT_FILE;
+  return empty ? omit(w, 'output') : { ...w, output: next };
+}
+
+/** `edit` applied to the recipe's `output` (created with the default context file when absent). */
+function withOutput(w: RecipeData, edit: (o: RecipeOutput) => RecipeOutput): RecipeData {
+  const output = edit(w.output ?? { contextFile: DEFAULT_CONTEXT_FILE });
+  return tidyOutput({ ...w, output });
+}
+
 /** Segment keys of the current composition (the order the document will have). */
 function planKeys(): string[] {
   return ($plan.get()?.segments ?? []).map((s) => s.key);
@@ -493,8 +593,18 @@ function prune(next: RecipeData): RecipeData {
   const items = new Set(p.segments.filter((s) => s.type === 'item').map((s) => s.key));
   const order = next.order.filter((k) => keys.has(k));
   const overrides = next.overrides.filter((o) => items.has(o.key));
-  if (order.length === next.order.length && overrides.length === next.overrides.length) return next;
-  return { ...next, order, overrides };
+  // The primary repository goes away with its item.
+  const primary = next.output?.primary;
+  const dropPrimary = primary !== undefined && !items.has(primary);
+  if (
+    order.length === next.order.length &&
+    overrides.length === next.overrides.length &&
+    !dropPrimary
+  ) {
+    return next;
+  }
+  const pruned: RecipeData = { ...next, order, overrides };
+  return dropPrimary ? withOutput(pruned, (o) => omit(o, 'primary')) : pruned;
 }
 
 export function setDescription(description: string): void {
@@ -564,8 +674,24 @@ function cleanOverride(o: RecipeOverride): RecipeOverride | null {
     }
     if (Object.keys(options).length > 0) out.options = options as InflateOptionsInput;
   }
+  if (o.material !== undefined) out.material = o.material;
+  if (o.materialOptions !== undefined) {
+    const materialOptions: Record<string, unknown> = {};
+    for (const [id, value] of Object.entries(o.materialOptions)) {
+      if (value !== undefined) materialOptions[id] = value;
+    }
+    if (Object.keys(materialOptions).length > 0) {
+      out.materialOptions = materialOptions as MaterialOptionsInput;
+    }
+  }
   if (o.exclude === true) out.exclude = true;
-  return out.mode !== undefined || out.options !== undefined || out.exclude === true ? out : null;
+  return out.mode !== undefined ||
+    out.options !== undefined ||
+    out.material !== undefined ||
+    out.materialOptions !== undefined ||
+    out.exclude === true
+    ? out
+    : null;
 }
 
 /** Apply `edit` to the override of `key` (created when absent), keeping its position in the list. */
@@ -638,13 +764,127 @@ export function setDefaultMode(kind: ItemKind, mode: ModeId | null): void {
   const w = $working.get();
   if (w === null) return;
   const current = w.defaults[kind];
-  const next: { mode?: ModeId; options?: InflateOptionsInput } = {};
+  const next: NonNullable<RecipeData['defaults'][ItemKind]> = {};
   if (mode !== null && mode !== defaultModeFor(kind, w.target)) next.mode = mode;
   if (current?.options !== undefined) next.options = current.options;
+  // The material fields of the kind default are not this action's business: keep them.
+  if (current?.material !== undefined) next.material = current.material;
+  if (current?.materialOptions !== undefined) next.materialOptions = current.materialOptions;
   const { [kind]: _removed, ...others } = w.defaults;
   const defaults: RecipeData['defaults'] =
-    next.mode !== undefined || next.options !== undefined ? { ...others, [kind]: next } : others;
+    Object.keys(next).length > 0 ? { ...others, [kind]: next } : others;
   commit({ ...w, defaults });
+}
+
+/** The material an item of `kind` gets without an override: the recipe default, else the built-in one. */
+export function baseMaterial(w: RecipeData, kind: ItemKind): MaterialId {
+  const recipeDefault = w.defaults[kind]?.material;
+  return recipeDefault !== undefined && isMaterialFor(kind, recipeDefault)
+    ? recipeDefault
+    : defaultMaterialFor(kind, w.target);
+}
+
+export function setMaterial(key: string, material: MaterialId): void {
+  const w = $working.get();
+  const seg = itemSegment(key);
+  if (w === null || seg === undefined || seg.kind === null) return;
+  if (!isMaterialFor(seg.kind, material)) return;
+  const same = material === baseMaterial(w, seg.kind);
+  let next = editOverride(w, key, (o) => {
+    const { material: _removed, ...rest } = o;
+    return same ? rest : { ...rest, material };
+  });
+  // A primary repository must be placed in the directory: a material that cannot be primary lets it go.
+  if (next.output?.primary === key && !isPrimaryEligible(seg.kind, material)) {
+    next = withOutput(next, (o) => omit(o, 'primary'));
+  }
+  commit(next);
+}
+
+export function setMaterialOption(
+  key: string,
+  id: MaterialOptionId,
+  value: boolean | number | string,
+): void {
+  const w = $working.get();
+  const seg = itemSegment(key);
+  if (w === null || seg === undefined || seg.kind === null) return;
+  const base = baseMaterialOptionValue(id, w.defaults[seg.kind]?.materialOptions);
+  commit(
+    editOverride(w, key, (o) => {
+      const materialOptions: Record<string, unknown> = { ...o.materialOptions };
+      if (value === base) delete materialOptions[id];
+      else materialOptions[id] = value;
+      return { ...o, materialOptions: materialOptions as MaterialOptionsInput };
+    }),
+  );
+}
+
+/** `null` removes the recipe-wide material of `kind` (back to the built-in default). */
+export function setDefaultMaterial(kind: ItemKind, material: MaterialId | null): void {
+  const w = $working.get();
+  if (w === null) return;
+  if (material !== null && !isMaterialFor(kind, material)) return;
+  const current = w.defaults[kind];
+  const next: NonNullable<RecipeData['defaults'][ItemKind]> = {};
+  if (current?.mode !== undefined) next.mode = current.mode;
+  if (current?.options !== undefined) next.options = current.options;
+  if (material !== null && material !== defaultMaterialFor(kind, w.target)) {
+    next.material = material;
+  }
+  if (current?.materialOptions !== undefined) next.materialOptions = current.materialOptions;
+  const { [kind]: _removed, ...others } = w.defaults;
+  const defaults: RecipeData['defaults'] =
+    Object.keys(next).length > 0 ? { ...others, [kind]: next } : others;
+  commit({ ...w, defaults });
+}
+
+// ---------------------------------------------------------------- output directory actions
+
+/** `''` / null / blank removes `output.dir` (the recipe is then document-only). */
+export function setOutputDir(value: string | null): void {
+  const w = $working.get();
+  if (w === null) return;
+  const dir = value === null || value.trim() === '' ? null : value;
+  if ((w.output?.dir ?? null) === dir) return;
+  commit(withOutput(w, (o) => (dir === null ? omit(o, 'dir') : { ...o, dir })));
+}
+
+/** `output.dir` = the default directory of this recipe (`~/ctxman-inflate/<name>`). */
+export function setDefaultDir(): void {
+  const w = $working.get();
+  if (w === null) return;
+  setOutputDir(defaultDirFor(w.name));
+}
+
+/** Only a valid file name is committed; the default name removes the key. */
+export function setContextFile(value: string): void {
+  const w = $working.get();
+  if (w === null || !CONTEXT_FILE_PATTERN.test(value)) return;
+  if ((w.output?.contextFile ?? DEFAULT_CONTEXT_FILE) === value) return;
+  commit(withOutput(w, (o) => ({ ...o, contextFile: value })));
+}
+
+/** A value equal to the target's default removes the key (revert-equality, clean YAML). */
+export function setStub(id: StubId, on: boolean): void {
+  const w = $working.get();
+  if (w === null) return;
+  const current = w.output?.stubs?.[id] ?? stubDefaults(w.target)[id];
+  if (current === on) return;
+  commit(withOutput(w, (o) => ({ ...o, stubs: { ...o.stubs, [id]: on } })));
+}
+
+export function setAllowNonEmpty(on: boolean): void {
+  const w = $working.get();
+  if (w === null || (w.output?.allowNonEmpty === true) === on) return;
+  commit(withOutput(w, (o) => (on ? { ...o, allowNonEmpty: true } : omit(o, 'allowNonEmpty'))));
+}
+
+/** One value, so the checkbox of a row is single-select by construction. */
+export function setPrimary(key: string | null): void {
+  const w = $working.get();
+  if (w === null || (w.output?.primary ?? null) === key) return;
+  commit(withOutput(w, (o) => (key === null ? omit(o, 'primary') : { ...o, primary: key })));
 }
 
 /** Swap `key` with its neighbour in the composition; the whole order becomes explicit. */
@@ -661,6 +901,19 @@ export function moveSegment(key: string, dir: -1 | 1): void {
   keys[from] = other;
   keys[to] = moved;
   commit({ ...w, order: keys });
+}
+
+/**
+ * Drag and drop: move the `moving` segments before / after `target`; the whole order becomes explicit.
+ * A drop that leaves the composition as it is does not touch the recipe.
+ */
+export function reorderSegments(moving: string[], target: string, position: DropPosition): void {
+  const w = $working.get();
+  if (w === null) return;
+  const keys = planKeys();
+  const next = reorderKeys(keys, moving, target, position);
+  if (next.every((k, i) => k === keys[i])) return;
+  commit({ ...w, order: next });
 }
 
 /** Add an empty markdown block right after segment `key` (`null` = at the end). */
@@ -701,11 +954,20 @@ export function pruneStale(): void {
   if (next !== w) commit(next);
 }
 
+const reloadListeners = new Set<() => void>();
+
+/** The run store refreshes its dry run after "Reload sources" (it imports this module, not the reverse). */
+export function onSourcesReload(listener: () => void): () => void {
+  reloadListeners.add(listener);
+  return () => reloadListeners.delete(listener);
+}
+
 /** Re-fetch every entries list and context the composition reads, then render again. */
 export function reloadSources(): void {
   for (const ds of SOURCE_DATASETS) invalidateEntries(ds);
   for (const slug of Object.keys($contextDocs.get())) void fetchContext(slug);
   void renderNow();
+  for (const listener of reloadListeners) listener();
 }
 
 // ---------------------------------------------------------------- save / revert / delete / create
@@ -874,6 +1136,9 @@ function onBeforeUnload(e: BeforeUnloadEvent): void {
   }
 }
 
+// Registered in the capture phase: react-aria's grid rows (the composition list) stop the propagation of key
+// events that start inside a row, so a bubbling listener would never see Cmd/Ctrl+S typed in a row's input,
+// Select or editor.
 function onKeyDown(e: KeyboardEvent): void {
   // A Monaco editor action (Cmd/Ctrl+S inside an editor) has already handled and prevented the key.
   if (e.defaultPrevented) return;
@@ -889,12 +1154,12 @@ onMount($inflateUrl, () => {
   syncRecipe();
   window.addEventListener('popstate', onPopState);
   window.addEventListener('beforeunload', onBeforeUnload);
-  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keydown', onKeyDown, true);
   const stopWatching = $working.listen(onWorkingChange);
   return () => {
     window.removeEventListener('popstate', onPopState);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keydown', onKeyDown, true);
     stopWatching();
     cancelRenderTimer();
     flushQuery();

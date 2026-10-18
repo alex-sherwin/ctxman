@@ -136,8 +136,84 @@
     visibility: hidden;
   }
   .ck-native-select {
-    appearance: auto;
-    padding-right: var(--sp-1);
+    appearance: none;
+    padding: 0 calc(var(--sp-2) + 20px) 0 var(--sp-3);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%2300f0ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--sp-2) center;
+    background-size: 16px 16px;
+    cursor: pointer;
+  }
+  .ck-native-select:hover {
+    border-color: var(--border-strong);
+  }
+  /* Customizable select (Chromium >= 135): real open-state chevron rotation. */
+  @supports (appearance: base-select) {
+    .ck-native-select,
+    .ck-native-select::picker(select) {
+      appearance: base-select;
+    }
+    .ck-native-select {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding-right: var(--sp-2);
+      background-image: none;
+    }
+    .ck-native-select::picker-icon {
+      content: '';
+      width: 16px;
+      height: 16px;
+      background-color: var(--accent);
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+        center / 16px 16px no-repeat;
+      transition: rotate var(--dur) var(--ease);
+    }
+    .ck-native-select:open::picker-icon {
+      rotate: 180deg;
+    }
+    .ck-native-select:open {
+      border-color: var(--accent);
+      box-shadow: var(--glow-sm);
+    }
+    .ck-native-select::picker(select) {
+      margin-block: 2px;
+      padding: var(--sp-1);
+      color: var(--fg);
+      background: var(--surface-raised);
+      border: 1px solid var(--accent-line);
+      border-radius: var(--r-sm);
+      box-shadow:
+        0 0 16px color-mix(in srgb, var(--accent) 12%, transparent),
+        var(--shadow-md);
+    }
+    .ck-native-select option {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      min-height: var(--row-h);
+      padding: var(--sp-1) var(--sp-3);
+      font-size: var(--fs-md);
+    }
+    .ck-native-select option:hover,
+    .ck-native-select option:focus-visible {
+      background: var(--accent-bg);
+      box-shadow: inset 2px 0 0 var(--accent);
+      outline: none;
+    }
+    .ck-native-select option:checked {
+      color: var(--accent-text);
+    }
+    .ck-native-select option::checkmark {
+      order: 1;
+      margin-left: auto;
+      color: var(--accent);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-native-select::picker-icon {
+      transition: none;
+    }
   }
 
   .ck-field[data-disabled] .ck-field__label {

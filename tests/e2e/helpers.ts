@@ -123,3 +123,11 @@ export async function deleteRecipeQuietly(request: APIRequestContext, name: stri
 export function readRecipeYaml(name: string): RecipeBody {
   return readYaml(`recipe/${name}.yaml`) as RecipeBody;
 }
+
+/**
+ * Waits out the dev server's full-reload push (about 0.7 s after a write to an okf, skill or reference data
+ * file) so that a spec which only used the API does not leave a reload pending for the next spec's page.
+ */
+export function settleDevReload(ms = 1500): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

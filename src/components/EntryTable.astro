@@ -65,28 +65,28 @@ const MAX_TAGS = 4;
 ---
 
 <div class="cx-table-wrap">
-  <table class="cx-table" data-testid="list-results">
-    <thead>
+  <table class="ck-table cx-table" data-testid="list-results">
+    <thead class="ck-table__head">
       <tr>
         {
           columns.map((c) => (
-            <th scope="col" class={`cx-table__th cx-table__th--${c}`} aria-sort={sorted[c]}>
+            <th scope="col" class={`ck-table__th cx-table__th--${c}`} aria-sort={sorted[c]}>
               {LABELS[c]}
             </th>
           ))
         }
       </tr>
     </thead>
-    <tbody>
+    <tbody class="ck-table__body">
       {
         entries.map((e) => (
-          <tr class="cx-table__row" data-testid="list-row" data-slug={e.slug}>
+          <tr class="ck-table__row cx-table__row cx-rowlink" data-testid="list-row" data-slug={e.slug}>
             {columns.map((c) => {
               switch (c) {
                 case 'entry':
                   return (
-                    <td>
-                      <a class="cx-table__title" href={e.url}>
+                    <td class="ck-table__td">
+                      <a class="cx-table__title cx-rowlink__main" href={e.url}>
                         {e.title ?? e.name}
                       </a>
                       {e.stale && <>{" "}<StaleBadge since={e.staleAfter} /></>}
@@ -98,17 +98,17 @@ const MAX_TAGS = 4;
                   );
                 case 'desc':
                   return (
-                    <td class="cx-table__desc">
+                    <td class="ck-table__td cx-table__desc">
                       <span class="cx-truncate" title={e.description}>
                         {e.description}
                       </span>
                     </td>
                   );
                 case 'state':
-                  return <td>{e.state && <StateBadge dataset={e.dataset} state={e.state} />}</td>;
+                  return <td class="ck-table__td">{e.state && <StateBadge dataset={e.dataset} state={e.state} />}</td>;
                 case 'tags':
                   return (
-                    <td>
+                    <td class="ck-table__td">
                       <span class="cx-row">
                         {e.tags.slice(0, MAX_TAGS).map((t) => (
                           <span class="ck-badge ck-badge--tag">{t}</span>
@@ -123,7 +123,7 @@ const MAX_TAGS = 4;
                   );
                 case 'type':
                   return (
-                    <td>
+                    <td class="ck-table__td">
                       {e.refType && <span class="ck-badge ck-badge--muted ck-badge--mono">{e.refType}</span>}
                       {e.uriKind && (
                         <>
@@ -134,12 +134,12 @@ const MAX_TAGS = 4;
                     </td>
                   );
                 case 'owner':
-                  return <td>{OWNER_LABELS[owners[e.slug] as Owner] ?? owners[e.slug] ?? ''}</td>;
+                  return <td class="ck-table__td">{OWNER_LABELS[owners[e.slug] as Owner] ?? owners[e.slug] ?? ''}</td>;
                 case 'links':
-                  return <td class="cx-mono">{e.linkCount ?? 0}</td>;
+                  return <td class="ck-table__td cx-mono">{e.linkCount ?? 0}</td>;
                 case 'target':
                   return (
-                    <td>
+                    <td class="ck-table__td">
                       {e.recipeTarget && (
                         <span class="ck-badge ck-badge--info ck-badge--mono" data-testid="recipe-target-badge">
                           {TARGETS[e.recipeTarget].label}
@@ -148,10 +148,10 @@ const MAX_TAGS = 4;
                     </td>
                   );
                 case 'contexts':
-                  return <td class="cx-mono">{e.contextCount ?? 0}</td>;
+                  return <td class="ck-table__td cx-mono">{e.contextCount ?? 0}</td>;
                 case 'modified':
                   return (
-                    <td>
+                    <td class="ck-table__td">
                       <Freshness iso={e.lastModified} />
                     </td>
                   );

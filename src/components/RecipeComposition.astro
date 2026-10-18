@@ -1,11 +1,23 @@
 ---
 import type { RecipeData } from '../datasets/schemas.ts';
-import { ITEM_KINDS, ITEM_KIND_LABELS, OPTION_IDS } from '../lib/inflate/catalog.ts';
+import {
+  DEFAULT_CONTEXT_FILE,
+  ITEM_KINDS,
+  ITEM_KIND_LABELS,
+  OPTION_IDS,
+  STUB_IDS,
+  STUB_LABELS,
+  stubDefaults,
+} from '../lib/inflate/catalog.ts';
 import type { RecipeContextRef, RecipeItemRef } from '../lib/entries.ts';
+import { PREAMBLE_TARGET_ID, blockTargetId } from '../ui/markdown/targets.ts';
 import DatasetBadge from './DatasetBadge.astro';
+import MdEditButton from './MdEditButton.astro';
 import Panel from './Panel.astro';
 
-// Read-only view of a recipe's composition (detail page main column). Editing happens in /inflate.
+// View of a recipe's composition (detail page main column). Editing happens in /inflate, except the preamble
+// and the markdown blocks, which have a pencil button (`data-md-edit`) each: the MarkdownTargets island,
+// mounted ONCE by the page with `recipeTargets(slug, blocks)` from src/ui/markdown/targets.ts, enables them.
 interface Props {
   slug: string;
   data: RecipeData;
@@ -30,6 +42,13 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
     ? []
     : [{ kind, mode: d.mode, options: optionText(d.options) }];
 });
+
+// The working directory a run writes to (`output`), with the generated files it will write.
+const output = data.output;
+const stubDefaultsFor = stubDefaults(data.target);
+const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]).map(
+  (id) => STUB_LABELS[id],
+);
 ---
 
 <section class="cx-recipe" aria-label="Composition" data-testid="recipe-composition" data-slug={slug}>
@@ -39,7 +58,7 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
         <ul class="cx-minilist">
           {contexts.map((c) => (
             <li
-              class="cx-minilist__row"
+              class:list={['cx-minilist__row', !c.missing && 'cx-rowlink']}
               data-testid="recipe-context"
               data-slug={c.slug}
               data-missing={c.missing ? 'true' : undefined}
@@ -47,7 +66,7 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
               {c.missing ? (
                 <span class="cx-recipe__name cx-recipe__name--missing">{c.slug}</span>
               ) : (
-                <a class="cx-minilist__title" href={c.url}>
+                <a class="cx-minilist__title cx-rowlink__main" href={c.url}>
                   {c.slug}
                 </a>
               )}
@@ -73,7 +92,7 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
         <ul class="cx-minilist">
           {items.map((i) => (
             <li
-              class="cx-minilist__row"
+              class:list={['cx-minilist__row', !i.missing && 'cx-rowlink']}
               data-testid="recipe-item"
               data-key={i.key}
               data-missing={i.missing ? 'true' : undefined}
@@ -82,7 +101,7 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
               {i.missing ? (
                 <span class="cx-recipe__name cx-recipe__name--missing">{i.title ?? i.slug}</span>
               ) : (
-                <a class="cx-minilist__title cx-truncate" href={i.url}>
+                <a class="cx-minilist__title cx-rowlink__main cx-truncate" href={i.url}>
                   {i.title ?? i.slug}
                 </a>
               )}
@@ -102,23 +121,93 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
   </Panel>
 
   {
-    preambleHtml !== undefined && (
-      <Panel title="Preamble" id="h-rc-preamble" testid="recipe-preamble">
-        <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={preambleHtml} />
+    output !== undefined && (
+      <Panel title="Output" id="h-rc-output" testid="recipe-output">
+        <table class="ck-table ck-table--compact">
+          <tbody class="ck-table__body">
+            <tr class="ck-table__row">
+              <th class="ck-table__th" scope="row">
+                Directory
+              </th>
+              <td class="ck-table__td cx-mono" data-testid="recipe-output-dir">
+                {output.dir ?? 'document only'}
+              </td>
+            </tr>
+            <tr class="ck-table__row">
+              <th class="ck-table__th" scope="row">
+                Context file
+              </th>
+              <td class="ck-table__td cx-mono">{output.contextFile ?? DEFAULT_CONTEXT_FILE}</td>
+            </tr>
+            <tr class="ck-table__row">
+              <th class="ck-table__th" scope="row">
+                Primary
+              </th>
+              <td class="ck-table__td" data-testid="recipe-output-primary">
+                {output.primary !== undefined ? (
+                  <a href={`/${output.primary}`}>
+                    <code>{output.primary}</code>
+                  </a>
+                ) : (
+                  <span class="cx-subtle">none</span>
+                )}
+              </td>
+            </tr>
+            <tr class="ck-table__row">
+              <th class="ck-table__th" scope="row">
+                Generated files
+              </th>
+              <td class="ck-table__td">{stubs.length > 0 ? stubs.join(', ') : 'none'}</td>
+            </tr>
+            {output.allowNonEmpty === true && (
+              <tr class="ck-table__row">
+                <th class="ck-table__th" scope="row">
+                  Non-empty directory
+                </th>
+                <td class="ck-table__td">allowed</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </Panel>
     )
   }
+
+  <Panel title="Preamble" id="h-rc-preamble" testid="recipe-preamble">
+    <Fragment slot="actions">
+      <MdEditButton
+        id={PREAMBLE_TARGET_ID}
+        label="preamble"
+        testid="recipe-edit-preamble"
+      />
+    </Fragment>
+    {
+      preambleHtml !== undefined ? (
+        <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={preambleHtml} />
+      ) : (
+        <p class="cx-recipe__none">None</p>
+      )
+    }
+  </Panel>
 
   <Panel title="Markdown blocks" count={blocks.length} id="h-rc-blocks" testid="recipe-blocks">
     {
       blocks.length > 0 ? (
         blocks.map((b) => (
-          <details class="cx-recipe__block" data-testid="recipe-block" data-id={b.id}>
-            <summary>
-              <code>{b.id}</code>
-            </summary>
-            <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={b.html} />
-          </details>
+          <div class="cx-recipe__block" data-testid="recipe-block" data-id={b.id}>
+            <details class="cx-recipe__details">
+              <summary>
+                <code>{b.id}</code>
+              </summary>
+              <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={b.html} />
+            </details>
+            <MdEditButton
+              class="cx-recipe__blockedit"
+              id={blockTargetId(b.id)}
+              label={`markdown block ${b.id}`}
+              testid="recipe-block-edit"
+            />
+          </div>
         ))
       ) : (
         <p class="cx-recipe__none">None</p>
@@ -129,24 +218,34 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
   <Panel title="Overrides" count={data.overrides.length} id="h-rc-overrides" testid="recipe-overrides">
     {
       data.overrides.length > 0 ? (
-        <table class="cx-recipe__table">
-          <thead>
+        <table class="ck-table ck-table--compact">
+          <thead class="ck-table__head">
             <tr>
-              <th scope="col">Item</th>
-              <th scope="col">Mode</th>
-              <th scope="col">Options</th>
-              <th scope="col">Excluded</th>
+              <th class="ck-table__th" scope="col">
+                Item
+              </th>
+              <th class="ck-table__th" scope="col">
+                Mode
+              </th>
+              <th class="ck-table__th" scope="col">
+                Options
+              </th>
+              <th class="ck-table__th" scope="col">
+                Excluded
+              </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="ck-table__body">
             {data.overrides.map((o) => (
-              <tr data-testid="recipe-override" data-key={o.key}>
-                <td>
+              <tr class="ck-table__row" data-testid="recipe-override" data-key={o.key}>
+                <td class="ck-table__td">
                   <code>{o.key}</code>
                 </td>
-                <td class="cx-mono">{o.mode ?? ''}</td>
-                <td class="cx-mono">{optionText(o.options)}</td>
-                <td>{o.exclude === true && <span class="ck-badge ck-badge--muted">excluded</span>}</td>
+                <td class="ck-table__td cx-mono">{o.mode ?? ''}</td>
+                <td class="ck-table__td cx-mono">{optionText(o.options)}</td>
+                <td class="ck-table__td">
+                  {o.exclude === true && <span class="ck-badge ck-badge--muted">excluded</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -160,20 +259,26 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
   {
     defaults.length > 0 && (
       <Panel title="Default modes" count={defaults.length} id="h-rc-defaults" testid="recipe-defaults">
-        <table class="cx-recipe__table">
-          <thead>
+        <table class="ck-table ck-table--compact">
+          <thead class="ck-table__head">
             <tr>
-              <th scope="col">Kind</th>
-              <th scope="col">Mode</th>
-              <th scope="col">Options</th>
+              <th class="ck-table__th" scope="col">
+                Kind
+              </th>
+              <th class="ck-table__th" scope="col">
+                Mode
+              </th>
+              <th class="ck-table__th" scope="col">
+                Options
+              </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="ck-table__body">
             {defaults.map((d) => (
-              <tr data-testid="recipe-default" data-kind={d.kind}>
-                <td>{ITEM_KIND_LABELS[d.kind]}</td>
-                <td class="cx-mono">{d.mode ?? ''}</td>
-                <td class="cx-mono">{d.options}</td>
+              <tr class="ck-table__row" data-testid="recipe-default" data-kind={d.kind}>
+                <td class="ck-table__td">{ITEM_KIND_LABELS[d.kind]}</td>
+                <td class="ck-table__td cx-mono">{d.mode ?? ''}</td>
+                <td class="ck-table__td cx-mono">{d.options}</td>
               </tr>
             ))}
           </tbody>
