@@ -144,7 +144,7 @@ export async function afterApi(
 }
 
 /** Runs `action` (a save, a state change, a create) and resolves after the page has loaded again (it reloads itself). */
-export async function afterReload(page: Page, action: () => Promise<void>): Promise<void> {
+export async function afterReload(page: Page, action: () => Promise<unknown>): Promise<void> {
   const loaded = page.waitForEvent('load');
   await action();
   await loaded;
