@@ -37,6 +37,8 @@ export default defineConfig({
     stderr: 'pipe',
     env: {
       CTXMAN_DATA_DIR: E2E_DATA_DIR,
+      // YAML modelines written during the run point at this server (api-reference.spec.ts asserts the line).
+      CTXMAN_SERVER_ORIGIN: `http://127.0.0.1:${E2E_PORT}`,
       ASTRO_TELEMETRY_DISABLED: '1',
       // api-ide.spec.ts: the fake `code` written by prepare-data.ts and the file it records its argv to.
       CTXMAN_IDE_COMMAND: E2E_IDE_COMMAND,

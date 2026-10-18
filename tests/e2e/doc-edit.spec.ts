@@ -254,18 +254,15 @@ test.describe('edit mode', () => {
     await expect(page).not.toHaveURL(/edit=1/);
     expect(readDataText(MAIN)).toContain(marker);
     await reloaded;
-    // The store reloads exactly ONCE more ~1.5 s later (the content layer may lag the dev reload), keeps "Saved"
-    // visible across it and never loops (src/stores/doc-editor.ts, SETTLE_RELOAD_MS). Listen before asserting.
+    // Exactly ONE reload follows a save (src/stores/doc-editor.ts, RELOAD_AFTER_SAVE_MS); "Saved" survives it and
+    // nothing reloads again afterwards. Listen before asserting.
     let loads = 0;
     page.on('load', () => loads++);
-    const settled = nextPageLoad(page);
     await expect(page.getByTestId('doc-status')).toHaveText('Saved');
     await expect(page.getByTestId('doc-editor')).toHaveCount(0);
-    await settled;
-    await expect(page.getByTestId('doc-status')).toHaveText('Saved');
     await expectPreviewShows(page, marker);
     await page.waitForTimeout(2500);
-    expect(loads).toBe(1);
+    expect(loads).toBe(0);
     expect(errors).toEqual([]);
   });
 

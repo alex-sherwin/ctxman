@@ -3,6 +3,7 @@
 import { expect, test } from '@playwright/test';
 import type { APIResponse } from '@playwright/test';
 import { API, dataExists, readDataText, readYaml, settleDevReload, uniqueName } from './helpers.ts';
+import { E2E_PORT } from './paths.ts';
 
 interface ErrorBody {
   error: string;
@@ -15,7 +16,8 @@ interface ReferenceBody {
   lastModified: string;
 }
 
-const MAGIC_COMMENT = '# yaml-language-server: $schema=../../schemas/reference.schema.json';
+// The writer points the modeline at the running server (CTXMAN_SERVER_ORIGIN, set by playwright.config.ts).
+const MAGIC_COMMENT = `# yaml-language-server: $schema=http://127.0.0.1:${E2E_PORT}/api/schemas/reference`;
 
 const errorOf = async (response: APIResponse): Promise<ErrorBody> =>
   (await response.json()) as ErrorBody;

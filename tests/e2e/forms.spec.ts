@@ -2,8 +2,8 @@
 // detail pages: scalar edits through PUT, Cancel, Delete, the YAML tab), plus the NewEntryForm of the okf and skill
 // datasets (/new/task, /new/skill, ... ROUND3_SPEC §E.7). Names are `e2e-*`; every created entry is removed again
 // (the okf / skill ones by deleting their folder, there is no delete API for them).
-// A reference is a glob-loaded file: the dev server reloads the page ~0.7 s after the write, and the form resumes its
-// navigation to the new entry after that reload (src/stores/data-form.ts), so these tests only assert the end state.
+// Writes are visible on the next request (the entry index reads the disk) and the form navigates to the new entry
+// itself (src/stores/data-form.ts); these tests assert the end state.
 import { rmSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -738,13 +738,14 @@ test.describe('edit: recipe', () => {
 });
 
 test.describe('routing', () => {
-  test('?edit=1 on a missing yaml entry is a 404 that still mounts the form (it says "not found")', async ({
+  test('?edit=1 on a missing yaml entry is the plain 404 page (the form never mounts)', async ({
     page,
   }) => {
     const response = await page.goto('/reference/e2e-no-such-reference?edit=1');
     expect(response?.status()).toBe(404);
-    await expect(page.getByTestId('dform-not-found')).toBeVisible();
-    // without ?edit=1 it is the plain not-found page
+    await expect(page.getByTestId('notfound-path')).toBeVisible();
+    await expect(page.getByTestId('dform-not-found')).toHaveCount(0);
+    // without ?edit=1 it is the same not-found page
     const plain = await page.goto('/reference/e2e-no-such-reference');
     expect(plain?.status()).toBe(404);
     await expect(page.getByTestId('notfound-path')).toBeVisible();
