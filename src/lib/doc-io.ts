@@ -479,22 +479,17 @@ export function addConceptToIndex(
 }
 
 /**
- * `log.md` text with `* **Create**: Created [title](/path).` under today's `## YYYY-MM-DD` heading: right after it
- * when it is the first `## ` heading, else a new dated section before the first `## ` heading (appended when there is
- * none). Pure text in, text out.
+ * `log.md` text with the line `entry` (a complete bullet such as `* **Create**: Created [t](/p.md).`) under
+ * `today`'s `## YYYY-MM-DD` heading: right after it when it is the first `## ` heading, else a new dated section
+ * before the first `## ` heading (appended when there is none). Pure text in, text out.
  */
-export function addCreateToLog(
-  source: string,
-  concept: { title: string; path: string },
-  today: string,
-): string {
+export function appendLogEntry(source: string, today: string, entry: string): string {
   const crlf = source.includes('\r\n');
   const cr = crlf ? '\r' : '';
   const eol = crlf ? '\r\n' : '\n';
   const lines = source.split('\n');
   const masked = maskMarkdownCode(source).split('\n');
   const first = masked.findIndex((line) => /^##(?!#)[ \t]/.test(line));
-  const entry = `* **Create**: Created [${linkText(concept.title)}](/${destinationOf(concept.path)}).`;
 
   if (first === -1) {
     const body = source.replace(/(\r?\n)*$/, '');
@@ -507,6 +502,22 @@ export function addCreateToLog(
     lines.splice(first, 0, `## ${today}${cr}`, `${entry}${cr}`, cr);
   }
   return lines.join('\n');
+}
+
+/**
+ * `log.md` text with `* **Create**: Created [title](/path).` under today's `## YYYY-MM-DD` heading (see
+ * `appendLogEntry`). Pure text in, text out.
+ */
+export function addCreateToLog(
+  source: string,
+  concept: { title: string; path: string },
+  today: string,
+): string {
+  return appendLogEntry(
+    source,
+    today,
+    `* **Create**: Created [${linkText(concept.title)}](/${destinationOf(concept.path)}).`,
+  );
 }
 
 /** Reads, transforms and atomically rewrites an existing text file under its lock; false when it does not exist. */
@@ -622,5 +633,89 @@ export async function createDoc(
     url: docUrl(dataset, slug, target.path),
     lastModified: created.lastModified,
     warnings,
+  };
+}
+
+export interface AppendedLog {
+  /** Bundle-relative path: always 'log.md'. */
+  path: 'log.md';
+  /** `log.md` did not exist and was created. */
+  created: boolean;
+  /** The bullet that was added. */
+  entry: string;
+  /** The newest dated section as it is now (heading + bullets). */
+  head: string;
+  lastModified: string;
+}
+
+export const LOG_TEXT_MAX = 1000;
+
+/** The newest dated section of a log: its first `## ` heading up to the next one (trimmed). */
+function logHead(source: string): string {
+  const lines = source.split('\n');
+  const masked = maskMarkdownCode(source).split('\n');
+  const start = masked.findIndex((line) => /^##(?!#)[ \t]/.test(line));
+  if (start === -1) return '';
+  let end = masked.findIndex((line, i) => i > start && /^##(?!#)[ \t]/.test(line));
+  if (end === -1) end = lines.length;
+  return lines.slice(start, end).join('\n').replace(/\r/g, '').trim();
+}
+
+/**
+ * Adds `text` (one line; newlines are collapsed) as a `* ` bullet under `today`'s `## YYYY-MM-DD` heading of the
+ * bundle's `log.md` (see `appendLogEntry`); creates `log.md` (`# Update log` + the section) when it is missing.
+ * Atomic and under the file's lock. Throws DocIoError: `bad-dataset`, `bad-slug`, `invalid` (empty / too long
+ * text), `not-found` (no such entry), `bad-path` (`log.md` is a symlink out of the bundle or not a file).
+ */
+export async function appendLog(
+  dataset: string,
+  slug: string,
+  text: string,
+  today: string,
+  dataDir: string = resolveDataDir(),
+): Promise<AppendedLog> {
+  if (!isOkfDatasetId(dataset)) {
+    throw new DocIoError(
+      'bad-dataset',
+      `logs can only be appended in an okf dataset (${OKF_DATASET_IDS.join(', ')}), not "${dataset}"`,
+    );
+  }
+  if (!isValidName(slug)) throw new DocIoError('bad-slug', `"${slug}" is not a valid entry name`);
+  const line = text.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+  if (line === '' || line.length > LOG_TEXT_MAX) {
+    throw new DocIoError('invalid', 'request body is invalid', [
+      { path: 'text', message: line === '' ? 'is required' : `at most ${LOG_TEXT_MAX} characters` },
+    ]);
+  }
+  const root = path.join(datasetDir(dataset, dataDir), slug);
+  try {
+    if (!(await stat(root)).isDirectory()) throw new Error('not a directory');
+  } catch {
+    throw new DocIoError('not-found', `${dataset} entry "${slug}" does not exist`);
+  }
+  const abs = path.join(root, 'log.md');
+  const entry = `* ${line}`;
+  const result = await withFileLock(abs, async () => {
+    const file = await resolveBundleFile(dataset, slug, 'log.md', dataDir);
+    if (!file.ok) {
+      if (file.reason !== 'not-found' || (await lstat(abs).catch(() => null)) !== null) {
+        throw new DocIoError('bad-path', 'log.md is not a regular file inside the bundle');
+      }
+      const next = appendLogEntry('# Update log\n', today, entry);
+      await writeFileAtomic(abs, next);
+      return { created: true, next, mtime: (await stat(abs)).mtime };
+    }
+    const source = await readFile(file.realAbs, 'utf8');
+    const next = appendLogEntry(source, today, entry);
+    await writeFileAtomic(file.realAbs, next, file.mode);
+    return { created: false, next, mtime: (await stat(file.realAbs)).mtime };
+  });
+  invalidateEntryIndex(dataDir);
+  return {
+    path: 'log.md',
+    created: result.created,
+    entry,
+    head: logHead(result.next),
+    lastModified: result.mtime.toISOString(),
   };
 }

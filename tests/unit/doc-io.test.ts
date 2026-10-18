@@ -16,6 +16,8 @@ import { MAX_TEXT_BYTES } from '../../src/lib/bundles.ts';
 import {
   addConceptToIndex,
   addCreateToLog,
+  appendLog,
+  appendLogEntry,
   createDoc,
   DocIoError,
   isDocDatasetId,
@@ -545,6 +547,68 @@ describe('addCreateToLog', () => {
       `# Update log\n\n\`\`\`\n## 2026-10-18\n\`\`\`\n\n## 2026-10-18\n${entry}\n`,
     );
     expect(addCreateToLog('', concept, '2026-10-18')).toBe(`## 2026-10-18\n${entry}\n`);
+  });
+});
+
+describe('appendLogEntry', () => {
+  const line = '* **Note**: Did a thing.';
+
+  it('adds under today when it is the newest heading, else a new section on top', () => {
+    expect(appendLogEntry('# Update log\n\n## 2026-10-18\n* old\n', '2026-10-18', line)).toBe(
+      `# Update log\n\n## 2026-10-18\n${line}\n* old\n`,
+    );
+    expect(appendLogEntry('# Update log\n\n## 2026-10-17\n* old\n', '2026-10-18', line)).toBe(
+      `# Update log\n\n## 2026-10-18\n${line}\n\n## 2026-10-17\n* old\n`,
+    );
+  });
+
+  it('keeps CRLF files CRLF and handles an empty file', () => {
+    expect(appendLogEntry('# L\r\n\r\n## 2026-10-17\r\n* o\r\n', '2026-10-18', line)).toBe(
+      `# L\r\n\r\n## 2026-10-18\r\n${line}\r\n\r\n## 2026-10-17\r\n* o\r\n`,
+    );
+    expect(appendLogEntry('', '2026-10-18', line)).toBe(`## 2026-10-18\n${line}\n`);
+  });
+});
+
+describe('appendLog', () => {
+  it('appends under today in the bundle log and returns the head', async () => {
+    const dir = tmp.make({
+      ...validKbBundle('demo'),
+      'kb/demo/log.md': '# Update log\n\n## 2026-10-17\n* **Create**: Created.\n',
+    });
+    const result = await appendLog('kb', 'demo', 'Reviewed\nthe plan', '2026-10-18', dir);
+    expect(result.created).toBe(false);
+    expect(result.entry).toBe('* Reviewed the plan');
+    expect(result.head).toBe('## 2026-10-18\n* Reviewed the plan');
+    const next = readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8');
+    expect(next).toBe(
+      '# Update log\n\n## 2026-10-18\n* Reviewed the plan\n\n## 2026-10-17\n* **Create**: Created.\n',
+    );
+    const again = await appendLog('kb', 'demo', 'Second', '2026-10-18', dir);
+    expect(again.head).toBe('## 2026-10-18\n* Second\n* Reviewed the plan');
+  });
+
+  it('creates log.md when it is missing', async () => {
+    const files = validKbBundle('demo');
+    delete files['kb/demo/log.md'];
+    const dir = tmp.make(files);
+    const result = await appendLog('kb', 'demo', 'First', '2026-10-18', dir);
+    expect(result.created).toBe(true);
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8')).toBe(
+      '# Update log\n\n## 2026-10-18\n* First\n',
+    );
+  });
+
+  it('refuses a bad dataset, slug, empty text and a missing entry', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    expect((await failure(appendLog('reference', 'demo', 'x', '2026-10-18', dir))).code).toBe(
+      'bad-dataset',
+    );
+    expect((await failure(appendLog('kb', 'Bad Slug', 'x', '2026-10-18', dir))).code).toBe(
+      'bad-slug',
+    );
+    expect((await failure(appendLog('kb', 'demo', '  ', '2026-10-18', dir))).code).toBe('invalid');
+    expect((await failure(appendLog('kb', 'nope', 'x', '2026-10-18', dir))).code).toBe('not-found');
   });
 });
 

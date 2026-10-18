@@ -175,8 +175,8 @@ export interface DocDetail {
 const nonEmpty = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined;
 
-async function safeContexts(): Promise<ContextRecord[]> {
-  return (await listContexts()).items;
+async function safeContexts(dataDir: string = resolveDataDir()): Promise<ContextRecord[]> {
+  return (await listContexts(dataDir)).items;
 }
 
 /** Frontmatter + body of a markdown file read from disk; bad YAML gives empty data and the raw body. */
@@ -334,14 +334,15 @@ async function relationsFor(
 export async function listEntries(
   dataset: DatasetId,
   nowMs: number = Date.now(),
+  dataDir: string = resolveDataDir(),
 ): Promise<EntrySummary[]> {
   if (dataset === 'context') {
-    return (await safeContexts()).map((record) =>
+    return (await safeContexts(dataDir)).map((record) =>
       summarize('context', record.slug, record.context, new Date(record.lastModified), nowMs),
     );
   }
   if (dataset === 'recipe') {
-    return (await listRecipes()).items.map((record) =>
+    return (await listRecipes(dataDir)).items.map((record) =>
       summarize('recipe', record.slug, record.recipe, new Date(record.lastModified), nowMs),
     );
   }
@@ -349,13 +350,13 @@ export async function listEntries(
   if (kind === 'okf' || kind === 'skill') {
     // From the entry index on disk: an edit shows on the very next request and an invalid file is listed
     // (with its issues) instead of vanishing from the collection.
-    return (await getEntryIndex()).entries
+    return (await getEntryIndex(dataDir)).entries
       .filter((entry) => entry.dataset === dataset)
       .map((entry) => summaryOf(entry, nowMs))
       .sort((a, b) => compareText(a.slug, b.slug));
   }
   // reference
-  const { items, invalid } = await listReferences();
+  const { items, invalid } = await listReferences(dataDir);
   const summaries = items.map((record) =>
     summarize('reference', record.slug, record.reference, new Date(record.lastModified), nowMs),
   );
@@ -375,8 +376,9 @@ export async function listEntries(
 
 export async function listAllEntries(
   nowMs: number = Date.now(),
+  dataDir: string = resolveDataDir(),
 ): Promise<Record<DatasetId, EntrySummary[]>> {
-  const lists = await Promise.all(DATASET_IDS.map((id) => listEntries(id, nowMs)));
+  const lists = await Promise.all(DATASET_IDS.map((id) => listEntries(id, nowMs, dataDir)));
   return Object.fromEntries(DATASET_IDS.map((id, i) => [id, lists[i] ?? []])) as Record<
     DatasetId,
     EntrySummary[]
@@ -501,10 +503,10 @@ export async function getEntryDetail(
   dataset: DatasetId,
   slug: string,
   nowMs: number = Date.now(),
+  dataDir: string = resolveDataDir(),
 ): Promise<EntryDetail | null> {
   if (!isValidName(slug)) return null;
   const fileRelPath = entryFileRelPath(dataset, slug);
-  const dataDir = resolveDataDir();
 
   if (dataset === 'context') {
     let record: ContextRecord;
@@ -562,7 +564,7 @@ export async function getEntryDetail(
     const data = (parsed?.success === true ? parsed.data : indexed.data) as Record<string, unknown>;
     const base = {
       summary: summaryOf(indexed, nowMs),
-      backRefs: backRefs(await safeContexts(), dataset, slug),
+      backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
       fileRelPath,
       html,
       files: await listBundleFiles(indexed.dataset, slug, dataDir),
@@ -585,7 +587,7 @@ export async function getEntryDetail(
   return {
     kind: 'reference',
     summary: summarize(dataset, slug, reference.reference, new Date(reference.lastModified), nowMs),
-    backRefs: backRefs(await safeContexts(), dataset, slug),
+    backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
     fileRelPath,
     data: reference.reference,
     relations: await relationsFor(index, dataDir, dataset, slug),
@@ -642,7 +644,7 @@ export async function getDocDetail(
     }),
     lastModified: lastModified.toISOString(),
     files: await listBundleFiles(dataset, slug, dataDir),
-    backRefs: backRefs(await safeContexts(), dataset, slug),
+    backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
   };
 }
 
@@ -651,9 +653,10 @@ export async function getDocDetail(
 const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
 
 /** The whole fuse corpus: okf entries + every other okf markdown file + skills + references + contexts + recipes. */
-export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: SearchDoc[] }> {
+export async function buildSearchIndex(
+  dataDir: string = resolveDataDir(),
+): Promise<{ generatedAt: string; docs: SearchDoc[] }> {
   const docs: SearchDoc[] = [];
-  const dataDir = resolveDataDir();
   const index = await getEntryIndex(dataDir);
 
   for (const entry of index.entries) {
@@ -705,10 +708,10 @@ export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: S
   for (const record of (await listReferences(dataDir)).items) {
     docs.push(referenceToSearchDoc(record.slug, record.reference));
   }
-  for (const record of await safeContexts()) {
+  for (const record of await safeContexts(dataDir)) {
     docs.push(contextToSearchDoc(record.slug, record.context));
   }
-  for (const record of (await listRecipes()).items) {
+  for (const record of (await listRecipes(dataDir)).items) {
     docs.push(recipeToSearchDoc(record.slug, record.recipe));
   }
 
