@@ -72,7 +72,7 @@ There is no content layer and no file watcher, so nothing reloads the page by it
 * A saved `.md` (or `SKILL.md`) switches the editor back to the preview, dims it (`data-stale`), remembers "Saved" in `sessionStorage` and reloads the page about 150 ms later (`RELOAD_AFTER_SAVE_MS`). The reloaded page shows the saved text and the remembered "Saved" status. If you re-enter edit mode before the reload fires, the reload is skipped and the preview stays marked stale until you leave edit mode.
 * The state select reloads about 150 ms after the write (`STATE_RELOAD_MS`); the EntryTools dialogs (Details, relations, Add to context, New concept, create) remember their status message and reload at once (`after-write.ts`), unless the DocEditor is open, in which case the editor's own flow handles it.
 * The DataForm and the create forms navigate directly to the saved entry (or to the list after a delete).
-* There is no second "settle" reload and no 2 s fallback any more. The e2e helpers `settleAfter` and `settleDevReload` are deprecated no-ops.
+* There is no second "settle" reload and no 2 s fallback any more. E2E specs wait for the reload as an event (`afterReload`); sleeps in `tests/e2e` are lint errors.
 
 ## Open in IDE
 

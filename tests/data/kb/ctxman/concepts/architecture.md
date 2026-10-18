@@ -48,7 +48,7 @@ src/
   ui/, stores/           React islands (ui/markdown, ui/forms, ui/entry, ...), kit, entry pickers (ui/pickers), shared editing pieces (ui/edit), Monaco wrappers (ui/editor), nanostores
   styles/                global.css (the only stylesheet entry), tokens, app and prose CSS
 tests/unit/  vitest (setup.ts pins CTXMAN_DATA_DIR to an empty temp dir; fixtures/corpus.ts copies tests/data)
-tests/e2e/   playwright (runs against a copy of tests/data)
+tests/e2e/   playwright (one built server per worker, each on its own copy of tests/data)
 tests/prod-smoke.ts  smoke test of the built server (pnpm run test:prod)
 plans/       historical build specs, not maintained; the code and AGENTS.md win
 ```

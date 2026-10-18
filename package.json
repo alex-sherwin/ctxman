@@ -40,7 +40,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
-    "test:all": "pnpm run typecheck && pnpm run lint && pnpm run fmt:check && pnpm run test && pnpm run check && pnpm run build && pnpm run test:prod && pnpm run test:e2e",
+    "test:fast": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "test:all": "pnpm run test:fast && pnpm run check && pnpm run build && pnpm run test:prod && pnpm run test:e2e",
     "test:prod": "node tests/prod-smoke.ts"
   },
   "dependencies": {

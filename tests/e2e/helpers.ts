@@ -205,8 +205,3 @@ export async function slowInflateSteps(page: Page, ms: number): Promise<void> {
     route.continue({ headers: { ...route.request().headers(), [STEP_DELAY_HEADER]: String(ms) } }),
   );
 }
-
-/** @deprecated No file watcher reloads pages any more; kept as a no-op so the specs compile (removed in the cleanup phase). */
-export function settleDevReload(_ms = 1500): Promise<void> {
-  return Promise.resolve();
-}

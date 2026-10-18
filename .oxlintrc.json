@@ -94,6 +94,64 @@
         "*.config.ts"
       ],
       "env": { "node": true, "browser": false }
+    },
+    {
+      // e2e: no fixed sleeps, and the per-worker `test` (AGENTS.md Testing rules).
+      "files": ["tests/e2e/**/*.ts"],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "property": "waitForTimeout",
+            "message": "No fixed sleeps in e2e: wait for an event (waitForApi, afterReload, a web-first assertion). See AGENTS.md Testing rules."
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          {
+            "globals": [
+              {
+                "name": "setTimeout",
+                "message": "No timers in e2e (also not inside page.evaluate): wait for an event; page.clock for 'nothing happens'."
+              },
+              {
+                "name": "setInterval",
+                "message": "No timers in e2e: wait for an event or pollUntil()."
+              }
+            ],
+            "checkGlobalObject": true
+          }
+        ],
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "node:timers/promises", "message": "No timer sleeps in e2e." },
+              { "name": "timers/promises", "message": "No timer sleeps in e2e." },
+              { "name": "node:timers", "message": "No timers in e2e." },
+              {
+                "name": "@playwright/test",
+                "importNames": ["test"],
+                "message": "Import test from ./fixtures.ts (per-worker server and baseURL)."
+              },
+              {
+                "name": "zod",
+                "message": "ctxman validates with arktype (src/datasets/schemas.ts + validate.ts)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The fixture module itself extends Playwright's test.
+      "files": ["tests/e2e/fixtures.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          { "paths": [{ "name": "node:timers/promises", "message": "No timer sleeps in e2e." }] }
+        ]
+      }
     }
   ]
 }

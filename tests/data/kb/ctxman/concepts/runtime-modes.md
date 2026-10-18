@@ -27,7 +27,7 @@ This is the primary way to run ctxman. Vite hot-reloads CODE changes. Nothing wa
 
 * Edits made in your IDE, by a script or by an agent (through [MCP](/concepts/mcp.md)) appear on the next page load. The UI does not push them; press reload.
 * After a write made in the browser (a markdown save, the state select, the Details dialog, relations, Add to context, creating an entry) the page reloads itself about 150 ms later, so you see the new state at once. See [Editing](/concepts/editing.md).
-* The first browser connection after the server starts gets one Vite reload; the Playwright global setup absorbs it.
+* The e2e suite runs the built server (one per Playwright worker), so dev-only behaviour (Vite's first-connection reload, HMR) never reaches a test.
 * Generated documents written to `out/` and Inflate working directories are outside any watched folder anyway; a working directory must be outside the repository and the data directory.
 * The Inflate job store lives in server memory (on `globalThis`). A restart of the server forgets every job; the Run view then says the run is no longer known, while the files the run wrote stay on disk.
 
