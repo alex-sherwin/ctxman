@@ -21,14 +21,14 @@
     padding: 0 var(--sp-2);
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
-    color: var(--fg-muted);
-    border: 1px solid var(--border);
+    color: var(--tag-fg);
+    border: 1px solid var(--tag-border);
     border-radius: var(--r-sm);
     cursor: default;
     outline: none;
   }
   .ck-tag[data-hovered] {
-    border-color: var(--border-strong);
+    border-color: var(--fg-muted);
     color: var(--fg);
   }
   .ck-tag[data-selected] {
@@ -48,17 +48,10 @@
     padding: 0;
     font-size: 12px;
     line-height: 1;
-    color: var(--fg-subtle);
+    color: var(--tag-hash);
     background: none;
     border: 0;
     border-radius: var(--r-sm);
-    cursor: default;
     outline: none;
-  }
-  .ck-tag__remove[data-hovered] {
-    color: var(--danger-fg);
-  }
-  .ck-tag__remove[data-focus-visible] {
-    outline: var(--focus-w) solid var(--focus-ring);
-  }
+  } /* hover / focus: the shared icon-button glow (Interactive.css) */
 }

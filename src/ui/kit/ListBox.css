@@ -13,7 +13,6 @@
     padding: var(--sp-1) var(--sp-3);
     font-size: var(--fs-md);
     color: var(--fg);
-    cursor: default;
     outline: none;
   }
   .ck-listbox__item[data-focused] {

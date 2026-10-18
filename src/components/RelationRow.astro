@@ -32,12 +32,12 @@ const title = row.title;
     <DatasetBadge dataset={row.dataset} />
     {
       row.missing ? (
-        <span class="cx-minilist__title cx-relrow__title cx-truncate" title={row.key}>
+        <span class="cx-minilist__title cx-relrow__title" title={row.key}>
           {title}
         </span>
       ) : (
         <a
-          class="cx-minilist__title cx-rowlink__main cx-relrow__title cx-truncate"
+          class="cx-minilist__title cx-rowlink__main cx-relrow__title"
           href={entryUrl(row.dataset, row.slug)}
         >
           {title}
@@ -52,7 +52,7 @@ const title = row.title;
       removable && (
         <button
           type="button"
-          class="ck-button ck-button--ghost ck-button--sm cx-relrow__remove"
+          class="ck-button ck-button--ghost ck-button--sm ck-button--icon cx-relrow__remove"
           disabled
           data-entry-action="remove-relation"
           data-key={row.key}

@@ -18,7 +18,6 @@
     background: transparent;
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
-    cursor: default;
     user-select: none;
     outline: none;
   }
@@ -71,9 +70,6 @@
     font-size: var(--fs-md);
   }
 
-  label.ck-chip {
-    cursor: pointer;
-  }
   .ck-chip[data-ds] .ck-chip__dot {
     background: var(--ds-c);
   }

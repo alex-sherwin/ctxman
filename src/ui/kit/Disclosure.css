@@ -25,7 +25,6 @@
     background: none;
     border: 0;
     border-radius: var(--r-sm);
-    cursor: default;
     outline: none;
   }
   .ck-disclosure__trigger[data-hovered] {

@@ -1,0 +1,148 @@
+/* Shared interaction rules for every button-like control, kit components and their SSR twins alike.
+   kit.css imports this file LAST so these rules win over the per-component CSS at equal specificity
+   (component files do not set `cursor` themselves). */
+@layer cx-kit {
+  /* ---- 1. pointer on everything that acts on click ---- */
+  button,
+  summary,
+  [role='button'],
+  .ck-button,
+  .ck-iconbtn,
+  .ck-chip,
+  .ck-tabs__tab,
+  .ck-select__trigger,
+  .ck-native-select,
+  .ck-disclosure__trigger,
+  .ck-checkbox,
+  .ck-switch,
+  .ck-link,
+  .ck-menu__item,
+  .ck-listbox__item,
+  .ck-gridlist__item[data-hovered],
+  .ck-tag__remove,
+  .ck-searchfield__clear {
+    cursor: pointer;
+  }
+  /* drag handles keep the grab hand (the whole grip zone of an OrderedList row is draggable) */
+  .ck-olist__handle {
+    cursor: grab;
+  }
+  /* disabled: no pointer. (.ck-button also drops pointer events, so it shows its parent's cursor) */
+  :is(
+    button,
+    .ck-button,
+    .ck-iconbtn,
+    .ck-chip,
+    .ck-tabs__tab,
+    .ck-select__trigger,
+    .ck-native-select,
+    .ck-disclosure__trigger,
+    .ck-checkbox,
+    .ck-switch,
+    .ck-link,
+    .ck-menu__item,
+    .ck-listbox__item,
+    .ck-gridlist__item,
+    .ck-tag__remove
+  ):is([data-disabled], [aria-disabled='true'], :disabled) {
+    cursor: not-allowed;
+  }
+
+  /* ---- 2. icon buttons: neon yellow glow on hover and keyboard focus ----
+     `Button iconOnly` (.ck-button--icon), `Button glow` (.ck-button--glow: small text utility buttons such as
+     Copy), `.ck-iconbtn` (a plain <a>/<button> icon control) and the kit's built-in icon controls. */
+  .ck-iconbtn {
+    display: inline-grid;
+    place-items: center;
+    min-width: var(--control-h-sm);
+    height: var(--control-h-sm);
+    padding: 0 var(--sp-1);
+    color: var(--fg-muted);
+    background: none;
+    border: var(--border-w) solid transparent;
+    border-radius: var(--r-sm);
+    text-decoration: none;
+    outline: none;
+  }
+  :is(
+    .ck-button--icon,
+    .ck-button--glow,
+    .ck-iconbtn,
+    .ck-tag__remove,
+    .ck-searchfield__clear,
+    .ck-olist__handle
+  ) {
+    transition:
+      color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      box-shadow var(--dur-fast) var(--ease),
+      text-shadow var(--dur-fast) var(--ease);
+  }
+  :is(
+    .ck-button--icon,
+    .ck-button--glow,
+    .ck-iconbtn,
+    .ck-tag__remove,
+    .ck-searchfield__clear,
+    .ck-olist__handle
+  ):is(
+    [data-hovered],
+    [data-focus-visible],
+    :not([data-rac]):hover,
+    :not([data-rac]):focus-visible
+  ),
+  .ck-olist__grip:hover > .ck-olist__handle {
+    color: var(--icon-hot);
+    background: var(--icon-hot-bg);
+    border-color: var(--icon-hot-line);
+    box-shadow: var(--icon-hot-glow);
+    text-shadow: var(--icon-hot-text-glow);
+    text-decoration: none;
+  }
+  :is(
+    .ck-button--icon,
+    .ck-button--glow,
+    .ck-iconbtn,
+    .ck-tag__remove,
+    .ck-searchfield__clear,
+    .ck-olist__handle
+  ):is([data-focus-visible], :not([data-rac]):focus-visible) {
+    outline: var(--focus-w) solid var(--icon-hot);
+    outline-offset: 1px;
+  }
+  :is(.ck-button--icon, .ck-button--glow, .ck-iconbtn, .ck-olist__handle):is(
+      [data-hovered],
+      [data-focus-visible],
+      :not([data-rac]):hover,
+      :not([data-rac]):focus-visible
+    )
+    svg,
+  .ck-olist__grip:hover > .ck-olist__handle svg {
+    filter: var(--icon-hot-drop);
+  }
+  /* the whole grip column is the drag zone, so hovering it lights the handle; the grip icon follows the
+     handle's color (OrderedList.css tints it cyan on row hover) */
+  .ck-olist__handle:is([data-hovered], [data-focus-visible]) .ck-olist__gripicon,
+  .ck-olist__grip:hover > .ck-olist__handle .ck-olist__gripicon {
+    color: inherit;
+    opacity: 1;
+  }
+  /* disclosure triggers: the chevron is the icon part of a text button */
+  .ck-disclosure__trigger:is([data-hovered], [data-focus-visible]) .ck-disclosure__chevron {
+    color: var(--icon-hot);
+    filter: var(--icon-hot-drop);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :is(
+      .ck-button--icon,
+      .ck-button--glow,
+      .ck-iconbtn,
+      .ck-tag__remove,
+      .ck-searchfield__clear,
+      .ck-olist__handle
+    ) {
+      transition: none;
+    }
+  }
+}

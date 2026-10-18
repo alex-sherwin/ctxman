@@ -129,6 +129,7 @@ export function BuildContextDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      size="large"
       className="cx-bctx"
       testId="build-context-dialog"
     >

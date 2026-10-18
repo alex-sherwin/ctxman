@@ -70,6 +70,7 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      size="large"
       className="cx-nc"
       testId="new-concept-dialog"
     >

@@ -43,6 +43,12 @@
   .ck-modal--danger {
     --_accent: var(--danger);
   }
+  /* fixed-size dialog (lists, editors, longer forms): the size never follows the content */
+  .ck-modal--large {
+    width: min(60rem, 90vw);
+    height: 80vh;
+    max-height: calc(100dvh - 2 * var(--sp-6));
+  }
   .ck-modal[data-entering] {
     animation: ck-zoom-in var(--dur) var(--ease);
   }

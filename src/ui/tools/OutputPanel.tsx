@@ -63,6 +63,7 @@ export function OutputPanel() {
         <Button
           variant="ghost"
           size="sm"
+          glow
           onPress={() => void copyAll(clipboard)}
           isDisabled={!done}
           data-testid="tools-output-copy"

@@ -51,7 +51,7 @@
     --header-h: 40px;
     --gutter: 12px;
     --content-max: 1600px;
-    --sidebar-w: 280px;
+    --sidebar-w: 30rem;
     --prose-max: 84ch;
 
     /* ---- motion / layering ---- */
@@ -105,6 +105,22 @@
     --focus-ring: var(--cyber-cyan-500);
     --glow-sm: 0 0 6px color-mix(in srgb, var(--cyber-cyan-500) 55%, transparent);
     --glow-md: 0 0 12px color-mix(in srgb, var(--cyber-cyan-500) 40%, transparent);
+    /* icon-button hover/focus: neon yellow (ck-button--icon, ck-button--glow, ck-iconbtn; kit/Interactive.css) */
+    --icon-hot: var(--cyber-yellow-500); /* #fcee0a */
+    --icon-hot-bg: color-mix(in srgb, var(--cyber-yellow-500) 12%, transparent);
+    --icon-hot-line: color-mix(in srgb, var(--cyber-yellow-500) 70%, transparent);
+    --icon-hot-glow:
+      0 0 8px color-mix(in srgb, var(--cyber-yellow-500) 55%, transparent),
+      inset 0 0 6px color-mix(in srgb, var(--cyber-yellow-500) 25%, transparent);
+    --icon-hot-text-glow: 0 0 6px color-mix(in srgb, var(--cyber-yellow-500) 80%, transparent);
+    --icon-hot-drop: drop-shadow(
+      0 0 3px color-mix(in srgb, var(--cyber-yellow-500) 80%, transparent)
+    );
+
+    /* tag chips (ck-tag, ck-badge--tag): lighter grey than --fg-muted/--border so text AND outline clear 4.5:1 */
+    --tag-fg: var(--cyber-chrome-200); /* #d1d4de: 13.0:1 on bg, 10.7:1 on surface-raised */
+    --tag-border: var(--cyber-chrome-400); /* #939ab0: 6.9:1 on bg, 5.6:1 on surface-raised */
+    --tag-hash: var(--cyber-chrome-300); /* #b2b7c7: 9.6:1 on bg, 7.9:1 on surface-raised */
 
     /* ---- semantics (magenta danger, yellow warning, green success, cyan info) ---- */
     --danger: var(--cyber-magenta-500);

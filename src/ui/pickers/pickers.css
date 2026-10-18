@@ -1,11 +1,10 @@
 /* EntryPicker (src/ui/pickers): the "choose an entry" dialog. Imported by src/styles/global.css. The rows reuse
    the Discover pane's `cx-discover__*` classes (forge.css). */
 @layer cx-app {
-  .cx-picker {
-    width: min(720px, 92vw);
-  }
+  /* size: Modal size="large" (kit/Dialog.css). The body does not scroll; the result list does. */
   .cx-picker__body {
     gap: var(--sp-3);
+    overflow: hidden;
   }
   .cx-picker__toolbar {
     display: flex;
@@ -16,7 +15,6 @@
   .cx-picker__list {
     flex: 1;
     min-height: 120px;
-    max-height: min(48dvh, 440px);
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);

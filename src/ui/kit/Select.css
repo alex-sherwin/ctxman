@@ -11,8 +11,8 @@
     justify-content: space-between;
     gap: var(--sp-2);
     width: 100%;
-    height: var(--control-h-md);
-    padding: 0 var(--sp-1) 0 var(--sp-3);
+    height: calc(var(--control-h-md) + 4px); /* +2px padding on every side (closed trigger) */
+    padding: 2px calc(var(--sp-1) + 2px) 2px calc(var(--sp-3) + 2px);
     text-align: left;
     font-family: var(--font-body);
     font-size: var(--fs-md);
@@ -21,15 +21,14 @@
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
     outline: none;
-    cursor: pointer;
     transition:
       border-color var(--dur-fast) var(--ease),
       box-shadow var(--dur-fast) var(--ease);
   }
   .ck-select--sm .ck-select__trigger {
-    height: var(--control-h-sm);
+    height: calc(var(--control-h-sm) + 4px);
     font-size: var(--fs-sm);
-    padding-left: var(--sp-2);
+    padding-left: calc(var(--sp-2) + 2px);
   }
   .ck-select__trigger[data-hovered] {
     border-color: var(--border-strong);
@@ -45,7 +44,6 @@
   }
   .ck-select__trigger[data-disabled] {
     opacity: 0.5;
-    cursor: default;
   }
   .ck-select__value {
     flex: 1;

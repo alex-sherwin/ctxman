@@ -459,12 +459,18 @@
     }
   }
 
-  /* ---------- F detail page ---------- */
+  /* ---------- F detail page ----------
+     Every entry page uses this grid; the details aside is var(--sidebar-w) wide on the right (reference, context,
+     recipe) or, with --doc, on the left (okf + skill entries and sub-docs). Below 1100px: one column, aside first. */
   .cx-detail {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
     gap: var(--sp-5);
     align-items: start;
+  }
+  /* okf + skill entry pages and sub-doc pages: details LEFT (first in the DOM), content RIGHT */
+  .cx-detail--doc {
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   }
   .cx-detail__aside {
     position: sticky;
@@ -476,7 +482,8 @@
     overflow: auto;
   }
   @media (max-width: 1099px) {
-    .cx-detail {
+    .cx-detail,
+    .cx-detail--doc {
       grid-template-columns: minmax(0, 1fr);
     }
     .cx-detail__aside {
@@ -488,10 +495,6 @@
   .cx-detail__main {
     max-width: var(--prose-max);
     min-width: 0;
-  }
-  /* okf + skill entry pages and sub-doc pages: details LEFT (first in the DOM), content RIGHT */
-  .cx-detail--doc {
-    grid-template-columns: 320px minmax(0, 1fr);
   }
   .cx-detail--doc .cx-detail__main {
     max-width: none;
@@ -519,11 +522,6 @@
   .cx-detail__idestatus[data-kind='ok'] {
     color: var(--success-fg);
   }
-  @media (max-width: 1099px) {
-    .cx-detail--doc {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
   .cx-detail__slug {
     font-family: var(--font-mono);
     font-size: var(--fs-mono);
@@ -539,10 +537,12 @@
   }
 
   /* F.2 MetaPanel */
+  /* label column: as wide as the longest label (min 84px), the value column takes the rest of the
+     var(--sidebar-w) aside and wraps (dd: overflow-wrap) instead of truncating */
   .cx-meta__list {
     padding: var(--sp-2) var(--sp-4);
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
     column-gap: var(--sp-3);
     row-gap: var(--sp-2);
   }
@@ -726,7 +726,7 @@
   .cx-meta__row dd .cx-meta__sub dd {
     font-size: var(--fs-xs);
   }
-  /* back-refs live in the 280px sidebar: name + Forge button on the first line, notes below */
+  /* back-refs live in the var(--sidebar-w) aside: name + Forge button on the first line, notes below */
   .cx-minilist__row.cx-backref {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 0;
@@ -881,7 +881,7 @@
   .cx-statesel::after {
     content: '';
     position: absolute;
-    left: var(--sp-3);
+    left: calc(var(--sp-3) + 2px);
     top: 50%;
     z-index: 2;
     width: 6px;
@@ -907,8 +907,10 @@
   }
   .cx-statesel__select {
     width: auto;
-    height: var(--control-h-sm);
-    padding-left: calc(var(--sp-3) + 6px + var(--sp-3));
+    height: calc(
+      var(--control-h-sm) + 4px
+    ); /* twin of a sm kit Select: 2px more padding on every side */
+    padding-left: calc(var(--sp-3) + 2px + 6px + var(--sp-3));
     font-size: var(--fs-sm);
     color: var(--st-fg);
     border-color: var(--st-border);
@@ -956,12 +958,15 @@
   }
   .cx-relrow__line {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--sp-3);
     min-width: 0;
   }
-  .cx-relrow__title {
+  /* aside rows wrap long titles onto a second line instead of cutting them off */
+  .cx-relrow__title,
+  .cx-backref__title {
     min-width: 0;
+    overflow-wrap: anywhere;
   }
   .cx-relrow__end {
     display: flex;
@@ -983,10 +988,6 @@
   }
   .cx-relrow__in code {
     color: var(--fg-muted);
-  }
-  .cx-relrow__remove {
-    min-width: 0;
-    padding-inline: var(--sp-3);
   }
   .cx-relrow__empty {
     margin: 0;

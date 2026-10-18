@@ -26,7 +26,6 @@
     background: var(--_bg);
     border: var(--border-w) solid var(--_border);
     border-radius: var(--r-cyber);
-    cursor: default;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     outline: none;

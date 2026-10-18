@@ -29,7 +29,7 @@ const preview = (notes: string): string => {
       <ul class="cx-minilist">
         {refs.map((ref) => (
           <li class="cx-minilist__row cx-backref cx-rowlink">
-            <a class="cx-minilist__title cx-rowlink__main cx-truncate" href={`/context/${ref.context}`}>
+            <a class="cx-minilist__title cx-rowlink__main cx-backref__title" href={`/context/${ref.context}`}>
               {ref.context}
             </a>
             <a

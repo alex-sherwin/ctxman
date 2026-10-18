@@ -74,7 +74,7 @@ function ContextsSection({ selected }: { selected: readonly string[] }) {
                 <span className="cx-subtle cx-ctxlist__links">{c.linkCount ?? 0} links</span>
               </Checkbox>
               <a
-                className="cx-ctxlist__open"
+                className="ck-iconbtn cx-ctxlist__open"
                 href={`/context/${c.slug}`}
                 target="_blank"
                 rel="noreferrer"

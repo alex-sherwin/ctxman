@@ -79,6 +79,7 @@ export function SearchWidget() {
             <Button
               variant="ghost"
               size="sm"
+              glow
               onPress={closeSearch}
               aria-label="Close search"
               data-testid="search-close"

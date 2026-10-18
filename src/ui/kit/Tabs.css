@@ -25,7 +25,6 @@
     white-space: nowrap;
     color: var(--fg-subtle);
     border-bottom: 2px solid transparent;
-    cursor: default;
     outline: none;
   }
   .ck-tabs__tab[data-hovered] {

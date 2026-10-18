@@ -2,7 +2,6 @@
   .ck-link {
     color: var(--accent-text);
     text-decoration: none;
-    cursor: pointer;
     outline: none;
     transition: text-shadow var(--dur-fast) var(--ease);
   }
@@ -17,6 +16,5 @@
   }
   .ck-link[data-disabled] {
     opacity: 0.4;
-    cursor: default;
   }
 }

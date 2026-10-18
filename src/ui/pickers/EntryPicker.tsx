@@ -243,6 +243,7 @@ export function EntryPicker({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      size="large"
       className="cx-picker"
       testId={testId}
     >

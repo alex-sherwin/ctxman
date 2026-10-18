@@ -18,6 +18,12 @@ export interface ModalProps extends Omit<ModalOverlayProps, 'className'> {
   variant?: 'dialog' | 'fullscreen';
   /** Border/title accent. Default 'accent'. */
   tone?: 'accent' | 'danger';
+  /**
+   * 'auto' (default) sizes to the content: small confirms and two-field forms. 'large' is a fixed
+   * min(60rem, 90vw) x 80vh box for dialogs with a list, an editor or a longer form, so filtering or
+   * switching content never changes its size (the body scrolls inside). Ignored by 'fullscreen'.
+   */
+  size?: 'auto' | 'large';
   className?: string;
   /** `data-testid` of the `.ck-modal` element. */
   testId?: string;
@@ -27,6 +33,7 @@ export interface ModalProps extends Omit<ModalOverlayProps, 'className'> {
 export function Modal({
   variant = 'dialog',
   tone = 'accent',
+  size = 'auto',
   className,
   testId,
   children,
@@ -42,6 +49,7 @@ export function Modal({
         className={cx(
           'ck-modal',
           fullscreen && 'ck-modal--fullscreen',
+          !fullscreen && size === 'large' && 'ck-modal--large',
           tone === 'danger' && 'ck-modal--danger',
           className,
         )}

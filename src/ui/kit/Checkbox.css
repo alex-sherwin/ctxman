@@ -6,7 +6,6 @@
     gap: var(--sp-3);
     font-size: var(--fs-md);
     color: var(--fg);
-    cursor: default;
     -webkit-tap-highlight-color: transparent;
   }
   .ck-checkbox[data-disabled],

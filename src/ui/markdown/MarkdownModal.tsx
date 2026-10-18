@@ -164,6 +164,7 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
         onOpenChange={(open) => {
           if (!open) cancel();
         }}
+        size="large"
         className="cx-mdmodal"
         testId="md-modal"
       >
@@ -221,7 +222,7 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
               <LazyCodeEditor
                 language="markdown"
                 compact={false}
-                height={{ mode: 'auto', minLines: 10, maxLines: 28 }}
+                height={{ mode: 'fill' }}
                 value={ready.draft}
                 onChange={edited}
                 onSave={() => void save()}

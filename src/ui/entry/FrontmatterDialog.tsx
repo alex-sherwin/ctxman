@@ -197,6 +197,7 @@ export function FrontmatterDialog({
         onOpenChange={(open) => {
           if (!open) cancel();
         }}
+        size="large"
         className="cx-fm"
         testId="fm-dialog"
       >

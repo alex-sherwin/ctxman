@@ -25,9 +25,6 @@
   }
 
   /* ---------- Edit details ---------- */
-  .cx-fm {
-    width: min(560px, 92vw);
-  }
   .cx-fm__keys {
     display: contents;
   }
@@ -114,9 +111,8 @@
   }
 
   /* ---------- Add to context / Build context / New concept ---------- */
-  .cx-a2c,
-  .cx-bctx,
-  .cx-nc {
+  /* Build context and New concept are Modal size="large"; Add to context (two fields) stays auto-sized */
+  .cx-a2c {
     width: min(520px, 92vw);
   }
   .cx-bctx__group {

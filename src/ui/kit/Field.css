@@ -88,28 +88,42 @@
     display: flex;
     align-items: center;
   }
+  /* SearchField (and its SSR twin, a plain `input.ck-input[type=search]`): 2px more padding on every side
+     than a TextField of the same size, so the box is 4px taller */
+  .ck-searchfield .ck-input,
+  input.ck-input[type='search']:not(.ck-searchfield *) {
+    height: calc(var(--control-h-md) + 4px);
+    padding-block: 2px;
+  }
   .ck-searchfield .ck-input {
-    padding-inline: 24px 24px;
+    padding-inline: 26px 26px;
+  }
+  input.ck-input[type='search']:not(.ck-searchfield *) {
+    padding-inline: calc(var(--sp-3) + 2px);
+  }
+  .ck-field--sm.ck-searchfield .ck-input {
+    height: calc(var(--control-h-sm) + 4px);
   }
   .ck-field--lg.ck-searchfield .ck-input {
-    padding-inline: 32px 32px;
+    height: calc(var(--control-h-lg) + 4px);
+    padding-inline: 34px 34px;
   }
   .ck-searchfield__icon {
     position: absolute;
-    left: var(--sp-3);
+    left: calc(var(--sp-3) + 2px);
     width: 13px;
     height: 13px;
     color: var(--accent);
     pointer-events: none;
   }
   .ck-field--lg .ck-searchfield__icon {
-    left: var(--sp-4);
+    left: calc(var(--sp-4) + 2px);
     width: 16px;
     height: 16px;
   }
   .ck-searchfield__clear {
     position: absolute;
-    right: var(--sp-1);
+    right: calc(var(--sp-1) + 2px);
     display: grid;
     place-items: center;
     width: 18px;
@@ -121,28 +135,21 @@
     background: transparent;
     border: 0;
     border-radius: var(--r-sm);
-    cursor: default;
     outline: none;
   }
-  .ck-searchfield__clear[data-hovered] {
-    color: var(--fg);
-    background: var(--bg-muted);
-  }
-  .ck-searchfield__clear[data-focus-visible] {
-    outline: var(--focus-w) solid var(--focus-ring);
-    outline-offset: 0;
-  }
+  /* hover / focus: the shared icon-button glow (Interactive.css) */
   .ck-searchfield[data-empty] .ck-searchfield__clear {
     visibility: hidden;
   }
+  /* SSR twin of the kit Select trigger (Select.css): same 2px-larger padding, same 4px-taller box */
   .ck-native-select {
     appearance: none;
-    padding: 0 calc(var(--sp-2) + 20px) 0 var(--sp-3);
+    height: calc(var(--control-h-md) + 4px);
+    padding: 2px calc(var(--sp-2) + 22px) 2px calc(var(--sp-3) + 2px);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%2300f0ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right var(--sp-2) center;
+    background-position: right calc(var(--sp-2) + 2px) center;
     background-size: 16px 16px;
-    cursor: pointer;
   }
   .ck-native-select:hover {
     border-color: var(--border-strong);
@@ -157,7 +164,7 @@
       display: inline-flex;
       align-items: center;
       gap: var(--sp-2);
-      padding-right: var(--sp-2);
+      padding-right: calc(var(--sp-2) + 2px);
       background-image: none;
     }
     .ck-native-select::picker-icon {

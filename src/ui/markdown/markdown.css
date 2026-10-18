@@ -99,9 +99,6 @@
   }
 
   /* ---------- MarkdownModal ---------- */
-  .cx-mdmodal {
-    width: min(880px, 92vw);
-  }
   /* status on the left of the footer, Save / Cancel on the right */
   .cx-mdmodal .cx-savebar {
     flex: 1;

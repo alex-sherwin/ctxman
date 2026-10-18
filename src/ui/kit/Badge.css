@@ -99,12 +99,17 @@
     font-weight: var(--fw-normal);
     text-transform: none;
     letter-spacing: 0;
-    color: var(--fg-muted);
+    color: var(--tag-fg);
     background: transparent;
-    border-color: var(--border);
+    border-color: var(--tag-border);
   }
   .ck-badge--tag::before {
     content: '#';
-    color: var(--fg-subtle);
+    color: var(--tag-hash);
+  }
+  a.ck-badge--tag:hover {
+    color: var(--fg);
+    border-color: var(--accent);
+    text-decoration: none;
   }
 }
