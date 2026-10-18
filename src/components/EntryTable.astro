@@ -74,6 +74,7 @@ const MAX_TAGS = 4;
             </th>
           ))
         }
+        <th scope="col" class="ck-table__th cx-table__th--menu" aria-label="Actions"></th>
       </tr>
     </thead>
     <tbody class="ck-table__body">
@@ -161,6 +162,16 @@ const MAX_TAGS = 4;
                   );
               }
             })}
+            <td class="ck-table__td cx-table__td--menu">
+              <span
+                data-entry-menu
+                data-context="row"
+                data-dataset={e.dataset}
+                data-slug={e.slug}
+                data-title={e.title ?? e.name}
+                data-testid="row-menu-slot"
+              />
+            </td>
           </tr>
         ))
       }

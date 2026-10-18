@@ -1,8 +1,23 @@
-import { chmodSync, readFileSync, statSync, utimesSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeDoc } from '../../src/lib/doc-io.ts';
-import { EntryIoError, patchEntry, readEntry, toJsonSafe } from '../../src/lib/entry-io.ts';
+import {
+  deleteEntry,
+  EntryIoError,
+  patchEntry,
+  readEntry,
+  toJsonSafe,
+} from '../../src/lib/entry-io.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 
 const tmp = trackTemp();
@@ -584,5 +599,51 @@ describe('patchEntry: the per-file lock serializes concurrent patches', () => {
       ),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+  });
+});
+
+describe('deleteEntry', () => {
+  it('removes the whole bundle folder', async () => {
+    const { dir } = tree();
+    mkdirSync(path.join(dir, 'task', 'do-it', 'concepts'), { recursive: true });
+    writeFileSync(path.join(dir, 'task', 'do-it', 'concepts', 'a.md'), '---\ntype: X\n---\n');
+    await deleteEntry('task', 'do-it', dir);
+    expect(existsSync(path.join(dir, 'task', 'do-it'))).toBe(false);
+    expect(existsSync(path.join(dir, 'task', 'bare', 'index.md'))).toBe(true);
+  });
+
+  it('removes a skill folder', async () => {
+    const { dir } = tree();
+    await deleteEntry('skill', 'my-skill', dir);
+    expect(existsSync(path.join(dir, 'skill', 'my-skill'))).toBe(false);
+  });
+
+  it('is not-found for a missing entry, bad-slug / bad-dataset for invalid input', async () => {
+    const { dir } = tree();
+    expect((await failure(deleteEntry('task', 'missing', dir))).code).toBe('not-found');
+    expect((await failure(deleteEntry('task', 'Not Valid', dir))).code).toBe('bad-slug');
+    expect((await failure(deleteEntry('task', '..', dir))).code).toBe('bad-slug');
+    expect((await failure(deleteEntry('task', '../kb', dir))).code).toBe('bad-slug');
+    expect((await failure(deleteEntry('reference', 'x', dir))).code).toBe('bad-dataset');
+    expect(existsSync(path.join(dir, 'kb', 'notes', 'index.md'))).toBe(true);
+  });
+
+  it('refuses a symlinked bundle dir and leaves the link target alone', async () => {
+    const { dir } = tree();
+    const outside = tmp.make({ 'keep/index.md': 'keep\n' });
+    symlinkSync(path.join(outside, 'keep'), path.join(dir, 'task', 'linked'), 'dir');
+    expect((await failure(deleteEntry('task', 'linked', dir))).code).toBe('not-found');
+    expect(existsSync(path.join(outside, 'keep', 'index.md'))).toBe(true);
+    // a symlink to another entry inside the data dir is refused as well
+    symlinkSync(path.join(dir, 'task', 'bare'), path.join(dir, 'task', 'alias'), 'dir');
+    expect((await failure(deleteEntry('task', 'alias', dir))).code).toBe('not-found');
+    expect(existsSync(path.join(dir, 'task', 'bare', 'index.md'))).toBe(true);
+  });
+
+  it('refuses a plain file named like an entry', async () => {
+    const { dir } = tree();
+    writeFileSync(path.join(dir, 'task', 'afile'), 'x');
+    expect((await failure(deleteEntry('task', 'afile', dir))).code).toBe('not-found');
+    expect(existsSync(path.join(dir, 'task', 'afile'))).toBe(true);
   });
 });

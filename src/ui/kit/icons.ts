@@ -9,7 +9,8 @@ export type IconName =
   | 'arrow-up'
   | 'arrow-down'
   | 'external'
-  | 'plus';
+  | 'plus'
+  | 'more';
 
 export interface IconDef {
   viewBox: string;
@@ -42,4 +43,14 @@ export const ICONS: Record<IconName, IconDef> = {
   'arrow-down': { viewBox: '0 0 16 16', stroke: true, paths: ['M8 3v10', 'M3.5 8.5 8 13l4.5-4.5'] },
   external: { viewBox: '0 0 16 16', stroke: true, paths: ['M6 3h7v7', 'M13 3 5 11', 'M3 6v7h7'] },
   plus: { viewBox: '0 0 16 16', stroke: true, paths: ['M8 3v10', 'M3 8h10'] },
+  more: {
+    viewBox: '0 0 16 16',
+    stroke: false,
+    paths: [],
+    circles: [
+      [3, 8, 1.3],
+      [8, 8, 1.3],
+      [13, 8, 1.3],
+    ],
+  },
 };

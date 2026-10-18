@@ -3,7 +3,7 @@
 // shared templates. A PATCH edits the YAML by SOURCE RANGE (frontmatter-patch.ts: every other byte of the file stays
 // as it was), runs under the file's `withFileLock`, is optimistically locked by mtime (`ifUnmodifiedSince`) and
 // NEVER writes frontmatter that fails the dataset schema (400 `invalid`, nothing written).
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   datasetDef,
@@ -828,4 +828,35 @@ export async function createEntry(
     }
   }
   return created;
+}
+
+/**
+ * Deletes a whole okf bundle / skill directory (DELETE). The directory must exist, be a REAL directory (a symlinked
+ * bundle is refused: the link target is never touched) and resolve inside the dataset directory; anything else is
+ * `not-found`. Throws EntryIoError: `bad-dataset`, `bad-slug`, `not-found`.
+ */
+export async function deleteEntry(
+  dataset: string,
+  slug: string,
+  dataDir: string = resolveDataDir(),
+): Promise<void> {
+  const located = locateEntry(dataset, slug, dataDir);
+  const root = datasetDir(located.dataset, dataDir);
+  const dir = path.resolve(root, slug);
+  const notFound = new EntryIoError('not-found', `${dataset} entry "${slug}" does not exist`);
+  try {
+    const info = await lstat(dir);
+    if (!info.isDirectory()) throw notFound;
+    const [realRoot, realDir] = await Promise.all([realpath(root), realpath(dir)]);
+    if (path.dirname(realDir) !== realRoot) throw notFound;
+  } catch (error) {
+    if (error instanceof EntryIoError) throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw notFound;
+    throw error;
+  }
+  try {
+    await rm(dir, { recursive: true, force: false });
+  } finally {
+    invalidateEntryIndex(dataDir);
+  }
 }

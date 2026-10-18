@@ -22,6 +22,7 @@ import Base from '../../../layouts/Base.astro';
 import EntryTools from '../../../ui/entry/EntryTools.tsx';
 import DataForm from '../../../ui/forms/DataForm.tsx';
 import DocEditor from '../../../ui/markdown/DocEditor.tsx';
+import EntryMenus from '../../../ui/menus/EntryMenus.tsx';
 import MarkdownTargets from '../../../ui/markdown/MarkdownTargets.tsx';
 import { contextNoteTargets, recipeTargets } from '../../../ui/markdown/targets.ts';
 
@@ -163,6 +164,14 @@ const tools =
           </a>
         )
       }
+      <span
+        class="cx-pagehead__menu"
+        data-entry-menu
+        data-context="detail"
+        data-dataset={def.id}
+        data-slug={slug}
+        data-title={title}
+        data-testid="detail-menu-slot"></span>
     </Fragment>
   </PageHeader>
 
@@ -240,4 +249,5 @@ const tools =
     }
     {!isDoc && <DetailAside dataset={def.id} slug={slug} detail={detail} />}
   </div>
+  <EntryMenus client:only="react" />
 </Base>

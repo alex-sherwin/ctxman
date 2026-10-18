@@ -10,6 +10,7 @@ import { getRelationGraph, listEntries } from '../../lib/entries.ts';
 import { childrenOf } from '../../lib/relations.ts';
 import { parseListParams } from '../../lib/url-state.ts';
 import Base from '../../layouts/Base.astro';
+import EntryMenus from '../../ui/menus/EntryMenus.tsx';
 
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def) return Astro.rewrite('/404');
@@ -68,7 +69,10 @@ const newHref =
 
   {
     entries.length > 0 ? (
-      <EntryTable def={def} entries={entries} sort={params.sort} />
+      <>
+        <EntryTable def={def} entries={entries} sort={params.sort} />
+        <EntryMenus client:only="react" />
+      </>
     ) : (
       <EmptyState
         title={

@@ -39,6 +39,7 @@ export {
   type FormDialogFooterProps,
 } from './Dialog.tsx';
 export { Popover } from './Popover.tsx';
+export { Menu, MenuTrigger, MenuItem, MenuSection, type MenuItemProps } from './Menu.tsx';
 export { Tooltip, type TooltipProps } from './Tooltip.tsx';
 export { Disclosure, type DisclosureProps } from './Disclosure.tsx';
 export { Checkbox } from './Checkbox.tsx';

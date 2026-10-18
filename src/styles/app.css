@@ -194,6 +194,10 @@
     gap: var(--sp-2);
     flex: none;
   }
+  .cx-pagehead__menu {
+    display: inline-flex;
+    align-items: center;
+  }
   .cx-pagehead__meta {
     color: var(--fg-muted);
     font-size: var(--fs-sm);
@@ -396,6 +400,15 @@
   }
   .cx-table__slug {
     display: block;
+  }
+  /* the actions column: narrow, right-aligned; the EntryMenus island portals the menu button into the slot. The
+     button sits above the cx-rowlink overlay through the generic `.cx-rowlink button` rule. */
+  .cx-table__th--menu,
+  .cx-table__td--menu {
+    width: 1%;
+    padding-inline: var(--sp-2);
+    text-align: right;
+    white-space: nowrap;
   }
   .cx-table__desc {
     font-size: var(--fs-sm);

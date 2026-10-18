@@ -296,11 +296,9 @@ test('PATCH / GET error statuses and 415 / 403 / 405', async ({ request }) => {
   expect(badJson.status()).toBe(400);
   expect((await errorOf(badJson)).error).toBe('bad-json');
 
-  for (const method of ['put', 'delete'] as const) {
-    const response = await request[method](entryUrl('task', task));
-    expect(response.status(), method).toBe(405);
-    expect(response.headers().allow).toBe('GET, PATCH');
-  }
+  const put = await request.put(entryUrl('task', task));
+  expect(put.status()).toBe(405);
+  expect(put.headers().allow).toBe('GET, PATCH, DELETE');
   const post = await request.get(`${API}/entry/task`);
   expect(post.status()).toBe(405);
   expect(post.headers().allow).toBe('POST');
