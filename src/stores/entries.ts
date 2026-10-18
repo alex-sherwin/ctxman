@@ -1,7 +1,7 @@
 // Entries cache for the Forge (UI_SPEC §0.6, §H): one `GET /api/entries?dataset=<id>` per dataset, kept in
 // a map store and filtered client-side with the shared `filterEntries`. The same cache resolves titles /
 // states for the links list and the context Select (dataset `context`). `ensureAllEntries` prefetches every
-// linkable dataset (tab counts, link titles); `waitForEntry` polls until a just-created entry is listed;
+// linkable dataset (tab counts, link titles);
 // `loadAllEntries` is the awaitable form for Monaco's link completion (ROUND3_SPEC §F.2) and the EntryPicker.
 import { map } from 'nanostores';
 import { DATASET_IDS, LINKABLE_DATASETS } from '../datasets/registry.ts';
@@ -120,40 +120,4 @@ export function loadAllEntries(
 
 export function findEntry(ds: DatasetId, slug: string): EntrySummary | undefined {
   return $entries.get()[ds]?.entries.find((e) => e.slug === slug);
-}
-
-export interface WaitForEntryOptions {
-  /** Give up after this long. Default 5000. */
-  timeoutMs?: number;
-  /** Pause between two requests. Default 250. */
-  intervalMs?: number;
-}
-
-/**
- * Poll `GET /api/entries?dataset=<ds>` until `slug` is listed or `timeoutMs` passes. A new okf / skill /
- * reference entry shows up ~0.6 s after it was written (the glob loader's watcher, BACKEND_SPEC §E); contexts and
- * recipes are runtime reads and appear at once. Resolves true as soon as the entry is listed, and then stores that
- * (fresh) response as the cache of `ds`; resolves false on timeout. Request errors are retried until the deadline.
- * Never rejects.
- */
-export async function waitForEntry(
-  ds: DatasetId,
-  slug: string,
-  opts: WaitForEntryOptions = {},
-): Promise<boolean> {
-  const timeoutMs = opts.timeoutMs ?? 5000;
-  const intervalMs = Math.max(1, opts.intervalMs ?? 250);
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const state = await fetchEntries(ds);
-    if (state.status === 'ready' && state.entries.some((e) => e.slug === slug)) {
-      // Supersede any older in-flight load of this dataset, then publish the response that has the entry.
-      generation.set(ds, (generation.get(ds) ?? 0) + 1);
-      $entries.setKey(ds, state);
-      return true;
-    }
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) return false;
-    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
-  }
 }

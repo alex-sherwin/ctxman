@@ -1,5 +1,5 @@
 // NewEntryForm store (src/stores/new-entry.ts): validation filtering, the POST, error mapping and the
-// parked navigation after a create. Browser globals are stubbed; fetch answers `GET /api/entries?dataset=`
+// navigation after a create. Browser globals are stubbed; fetch answers `GET /api/entries?dataset=`
 // and `POST /api/entry/<ds>`.
 import { cleanStores } from 'nanostores';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,11 +19,8 @@ import {
   submitNewEntry,
 } from '../../src/stores/new-entry.ts';
 
-const NAV_KEY = 'ctxman:saved:new-entry-nav';
-
 interface Env {
   assign: ReturnType<typeof vi.fn>;
-  storage: Map<string, string>;
   posts: { path: string; body: unknown }[];
   /** Entries `GET /api/entries?dataset=<ds>` lists. */
   listed: Record<string, string[]>;
@@ -49,17 +46,11 @@ const summary = (dataset: string, slug: string): EntrySummary =>
 function stubBrowser(): Env {
   const env: Env = {
     assign: vi.fn(),
-    storage: new Map(),
     posts: [],
     listed: { task: ['taken'], project: ['ctxman-v1'] },
     answer: () => json({ url: '/task/fresh' }, 201),
   };
   vi.stubGlobal('location', { pathname: '/new/task', search: '', hash: '', assign: env.assign });
-  vi.stubGlobal('sessionStorage', {
-    getItem: (k: string) => env.storage.get(k) ?? null,
-    setItem: (k: string, v: string) => void env.storage.set(k, v),
-    removeItem: (k: string) => void env.storage.delete(k),
-  });
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -116,27 +107,6 @@ describe('initNewEntry', () => {
     await loaded();
     expect($newErrors.get()).toEqual({});
   });
-
-  it('a fresh parked navigation resumes instead of showing the form', () => {
-    const env = stubBrowser();
-    env.storage.set(NAV_KEY, `${Date.now()}|/task/fresh`);
-    initNewEntry({ dataset: 'task', parent: null });
-    expect(env.assign).toHaveBeenCalledExactlyOnceWith('/task/fresh');
-    expect($newDone.get()).toBe(true);
-    expect(env.storage.has(NAV_KEY)).toBe(false);
-  });
-
-  it('drops a stale or foreign parked navigation', () => {
-    const env = stubBrowser();
-    env.storage.set(NAV_KEY, `${Date.now() - 60_000}|/task/fresh`);
-    initNewEntry({ dataset: 'task', parent: null });
-    env.storage.set(NAV_KEY, `${Date.now()}|//evil.example/x`);
-    initNewEntry({ dataset: 'task', parent: null });
-    env.storage.set(NAV_KEY, `${Date.now()}|https://evil.example/x`);
-    initNewEntry({ dataset: 'task', parent: null });
-    expect(env.assign).not.toHaveBeenCalled();
-    expect($newDone.get()).toBe(false);
-  });
 });
 
 describe('errors shown', () => {
@@ -176,13 +146,12 @@ describe('submitNewEntry', () => {
     expect($newSave.get()).toEqual({ kind: 'error', message: 'Fix the highlighted fields' });
   });
 
-  it('POSTs the body, parks the target, waits until the entry is listed, then navigates', async () => {
+  it('POSTs the body and navigates to the new entry at once', async () => {
     const env = stubBrowser();
     initNewEntry({ dataset: 'task', parent: 'ctxman-v1' });
     await loaded();
     fill();
     setNewField('tags', ['auth']);
-    env.listed.task = ['taken', 'fresh'];
     expect(await submitNewEntry()).toBe('sent');
     expect(env.posts).toEqual([
       {
@@ -199,28 +168,6 @@ describe('submitNewEntry', () => {
     expect(env.assign).toHaveBeenCalledExactlyOnceWith('/task/fresh');
     expect($newDone.get()).toBe(true);
     expect($newDirty.get()).toBe(false);
-    expect(env.storage.has(NAV_KEY)).toBe(false); // parked only while waiting
-  });
-
-  it('parks the target before the wait so a reload that lands first can resume it', async () => {
-    const env = stubBrowser();
-    initNewEntry({ dataset: 'task', parent: null });
-    await loaded();
-    fill();
-    // The entry is never listed: the wait runs its (shortened) course while the target stays parked.
-    vi.useFakeTimers();
-    try {
-      const pending = submitNewEntry();
-      await vi.advanceTimersByTimeAsync(100);
-      expect(env.storage.get(NAV_KEY)).toMatch(/^\d+\|\/task\/fresh$/);
-      expect(env.assign).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(4000);
-      await pending;
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(env.assign).toHaveBeenCalledExactlyOnceWith('/task/fresh');
-    expect(env.storage.has(NAV_KEY)).toBe(false);
   });
 
   it('a 409 puts the error on the name and keeps the form editable', async () => {
@@ -282,10 +229,10 @@ describe('submitNewEntry', () => {
     initNewEntry({ dataset: 'task', parent: null });
     await loaded();
     fill();
-    env.listed.task.push('fresh'); // listed at once, so the post-create wait resolves without its timeout
     const first = submitNewEntry();
     expect(await submitNewEntry()).toBe('busy');
     await first;
     expect(env.posts).toHaveLength(1);
+    expect(env.assign).toHaveBeenCalledOnce();
   });
 });

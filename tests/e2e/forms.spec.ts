@@ -318,7 +318,6 @@ test.describe('YAML tab', () => {
 const nProject = uniqueName('e2e-nf-proj');
 const nTask = uniqueName('e2e-nf-task');
 const nSkill = uniqueName('e2e-nf-skill');
-const NAV_KEY = 'ctxman:saved:new-entry-nav';
 
 async function openNewEntry(page: Page, ds: string, search = ''): Promise<void> {
   await page.goto(`/new/${ds}${search}`);
@@ -475,25 +474,6 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await openNewEntry(page, 'bug');
     await page.getByTestId('new-cancel').click();
     await expect(page).toHaveURL(/\/bug$/);
-  });
-
-  test('a fresh parked navigation resumes; a stale one does not', async ({ page }) => {
-    await openNewEntry(page, 'task');
-    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
-      NAV_KEY,
-      `${Date.now() - 60_000}|/kb/ctxman`,
-    ] as const);
-    await page.reload();
-    await expect(page.getByTestId('new-name')).toBeVisible();
-    // The resume decision is synchronous at mount (initNewEntry): a stale park leaves the URL alone.
-    await expect(page).toHaveURL(/\/new\/task$/);
-
-    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
-      NAV_KEY,
-      `${Date.now()}|/kb/ctxman`,
-    ] as const);
-    await page.reload();
-    await expect(page).toHaveURL(/\/kb\/ctxman$/);
   });
 
   test('the list page "New" button of an okf dataset opens its form', async ({ page }) => {
