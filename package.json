@@ -29,7 +29,6 @@
     "check:collections": "node --env-file-if-exists=.env scripts/check-collections.ts",
     "check:schemas": "node scripts/check-schemas.ts",
     "gen:schemas": "node scripts/gen-schemas.ts",
-    "migrate:index": "node --env-file-if-exists=.env scripts/migrate-index.ts",
     "fix:yaml-comments": "node --env-file-if-exists=.env scripts/fix-yaml-comments.ts",
     "typecheck": "astro sync && tsc --noEmit --runExternalCode -p tsconfig.json",
     "lint": "oxlint",
