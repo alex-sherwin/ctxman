@@ -34,16 +34,18 @@ It runs on a Node backend with API routes and can run local scripts. It is never
 * **Agent material**: `skill` folders that follow the agentskills.io format, and `reference` records that point at things outside this repo.
 * **Contexts**: `context` records that link to any of the above without copying it.
 * **Recipes**: `recipe` records that turn contexts and extra items into one ready-to-use document for Claude Code, Codex or a generic agent.
+* **Agent access**: an embedded [MCP server](/concepts/mcp.md) at `POST /mcp` lets an agent search, read, render recipes and update entries without going through the UI.
 
-Every entry is a folder or file under `data/`. There is no database. See [Datasets](/concepts/datasets.md) for the exact shapes. Entries point at each other with typed [relations](/concepts/relations.md) (a project owns its children, a task can depend on another), and every entry page shows what it links to and what links to it. Entries are normally edited in your IDE (the UI follows along); markdown files, references, contexts and recipes can also be edited in the browser, see [Editing](/concepts/editing.md).
+Every entry is a folder or file in your data directory (`CTXMAN_DATA_DIR`, required; the repository's sample corpus is `tests/data/`). There is no database, and files are read from the disk on every request, so what you see is always the current state. See [Datasets](/concepts/datasets.md) for the exact shapes. Entries point at each other with typed [relations](/concepts/relations.md) (a project owns its children, a task can depend on another), and every entry page shows what it links to and what links to it. Entries are normally edited in your IDE (the UI follows along); markdown files, references, contexts and recipes can also be edited in the browser, see [Editing](/concepts/editing.md).
 
 ## How an agent should use it
 
 1. Find the relevant context (or build one in the [context forge](/concepts/context-forge.md)). A context lists links plus optional notes that narrow what the agent should read.
 2. Follow each link to the underlying entry. Contexts are pointers, so the entry is always the current version.
 3. Connect entries with typed [relations](/concepts/relations.md) (a project lists its tasks as children, a task can depend on another) and add any entry to a context from its page.
-4. To hand a whole session brief to an agent, compose a recipe in [context inflate](/concepts/context-inflate.md) and generate its document.
-5. When you learn something durable, record it as a new entry with the [add scripts or the create forms](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
+4. Agents can do all of this through [MCP](/concepts/mcp.md) (`claude mcp add --transport http ctxman http://127.0.0.1:4321/mcp`).
+5. To hand a whole session brief to an agent, compose a recipe in [context inflate](/concepts/context-inflate.md) and generate its document.
+6. When you learn something durable, record it as a new entry with the [add scripts or the create forms](/concepts/adding-entries.md) and run the [checks](/concepts/compliance-checks.md).
 
 The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for working on ctxman itself.
 
@@ -58,7 +60,8 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [Routes and API](/concepts/routes-and-api.md) - pages, URL parameters, endpoints.
 * [Adding entries](/concepts/adding-entries.md) - scaffold and author new entries.
 * [Compliance checks](/concepts/compliance-checks.md) - OKF, link and collection checks.
-* [Runtime modes](/concepts/runtime-modes.md) - dev server versus built server.
+* [Runtime modes](/concepts/runtime-modes.md) - the data directory, the per-request read path, dev server versus built server.
+* [MCP server](/concepts/mcp.md) - the embedded MCP endpoint for agents: setup, tools and resources.
 * [Editing](/concepts/editing.md) - editing in the browser: the Save model, drafts, markdown editor with link completion, Details dialog and forms, Open in IDE, JSON Schemas.
 
 ## Quick facts
@@ -67,7 +70,8 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 | --- | --- |
 | Package manager | pnpm only (never npm, npx or yarn) |
 | Primary way to run | `pnpm run dev`, served at http://127.0.0.1:4321 |
-| Data directory | `./data`, overridable with the `CTXMAN_DATA_DIR` environment variable |
+| Data directory | Required: the `CTXMAN_DATA_DIR` environment variable, from the shell or a `.env` file at the repo root (see `.env.example`); `tests/data` is the sample corpus |
+| MCP endpoint | `POST http://127.0.0.1:4321/mcp` (Streamable HTTP, stateless, loopback only) |
 | Scripts | TypeScript run directly by Node 24, no transpile step |
 
 ## Context inflate

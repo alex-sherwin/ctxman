@@ -53,9 +53,9 @@ A project lists its tasks, features, bugs and ideas as `rel: child` links in its
 
 ## The entry index
 
-Relations come from one scan of `data/`, not from the content collections. `src/lib/entry-index.ts` reads, for every okf entry and every skill, the frontmatter of the entry file, its schema issues, its structured links, every `ctxman:` mention in the folder's markdown and the folder's newest mtime. It caches each entry folder by the `(mtime, size)` of its files (an unchanged folder is not re-read, and a finished build is reused for 200 ms because one page render asks several times). Every write route clears that short memo. `src/lib/relations.ts` (pure) turns the entries into the graph and answers "links to", "linked from", "children of" and "parents of".
+Relations come from one scan of the data directory (there are no content collections). `src/lib/entry-index.ts` reads, for every okf entry and every skill, the frontmatter of the entry file, its schema issues, its structured links, every `ctxman:` mention in the folder's markdown and the folder's newest mtime. It caches each entry folder by the `(mtime, size)` of its files (an unchanged folder is not re-read, and a finished build is reused for 200 ms because one page render asks several times). Every write route clears that short memo. `src/lib/relations.ts` (pure) turns the entries into the graph and answers "links to", "linked from", "children of" and "parents of".
 
-The same index backs the list pages, the detail pages' frontmatter, the `?project=` filter and the invalid-file reporting. That is deliberate: Astro's content layer notices a written file about a second late and silently keeps the old entry when the new frontmatter fails the schema. With disk-backed summaries a state change, a PATCH or a create shows on the very next request, and an invalid file is listed with its issues (an "invalid" badge in lists and the dashboard, a banner with the issues and a link into the editor on its page). The collections still provide the rendered HTML, the `docs` collection and the search index, and their loaders and watchers are unchanged. See [Runtime modes](/concepts/runtime-modes.md).
+The same index backs the list pages, the detail pages' frontmatter, the `?project=` filter and the invalid-file reporting. That is deliberate: the disk is the truth on every request, so a state change, a PATCH or a create shows on the very next request, and an invalid file is listed with its issues (an "invalid" badge in lists and the dashboard, a banner with the issues and a link into the editor on its page). Bodies are rendered per request and the search index is built from the disk too. See [Runtime modes](/concepts/runtime-modes.md).
 
 ## Editing relations in the UI
 
@@ -63,7 +63,7 @@ Everything below is the EntryTools island on okf and skill detail pages (see [Ed
 
 * `+ Link` in Links to opens the entry picker with a relation select (Related by default, Depends on, Child). `+ Add existing` in Children uses the same picker fixed to `child`. Entries already linked are shown as "added" and cannot be picked twice.
 * Removing a row asks for confirmation. Both actions send `PATCH /api/entry/<dataset>/<slug>` with `addLinks` or `removeLinks`; the last removal deletes the `links:` key.
-* After a write the page reloads (the dev server does it by itself) and shows a status line such as "Linked Write AGENTS.md".
+* After a write the page reloads itself and shows a status line such as "Linked Write AGENTS.md".
 * Writing a link by hand works too: the markdown editors complete `ctxman:`, `](` and `[[`, and "Insert link…" (Mod+Alt+K) opens the picker. Those links are mentions, not structured relations; use `+ Link` when the relation should be typed.
 
 ## Add to context and Build context

@@ -14,10 +14,10 @@ Search is a full-screen modal available on every page. It queries every dataset 
 
 ## What is indexed
 
-`GET /api/search-index.json` returns `{ generatedAt, docs }`. Documents are built on the server from the content collections, so they follow the dev server's file watching (about a second after a write) and a built server shows new entries in search only after a rebuild:
+`GET /api/search-index.json` returns `{ generatedAt, docs }`. Documents are built on the server on every request by reading the files on disk, so a new or changed entry is searchable at once, in the dev server and in a built server alike (reload the page to refresh the index the widget downloaded):
 
-* One document per markdown file in every OKF bundle (`main.md` and the concepts). A bundle's `index.md` and `log.md` are left out: they are navigation and history, not knowledge.
-* One document per skill, from the `SKILL.md` body.
+* One document per markdown file in every OKF bundle (`main.md` and the concepts), found by walking the bundle folder. A bundle's `index.md` and `log.md` are left out at any depth: they are navigation and history, not knowledge.
+* One document per skill with valid frontmatter, from the `SKILL.md` body.
 * One document per reference, context and recipe, made from their field values flattened to text, so data records are searchable by their fields. A recipe's text is its description, target and layout, the listed contexts and ad hoc item keys, the preamble and the markdown blocks; its page is `/recipe/<slug>`.
 
 Each document carries `dataset`, `slug`, `path` (null for the entry file itself), `title`, `name`, `description`, `tags`, `headings`, `body`, optional `state` and the page `url`.
@@ -47,4 +47,5 @@ The widget pushes one history entry when it opens, updates the URL with replace 
 ## Related
 
 * [Routes and API](/concepts/routes-and-api.md) lists the endpoint and the other URL parameters.
-* [Runtime modes](/concepts/runtime-modes.md) explains why the index is recomputed per request rather than cached at build time.
+* [Runtime modes](/concepts/runtime-modes.md) explains why the index is recomputed from the disk per request rather than cached at build time.
+* [MCP](/concepts/mcp.md): the `search` tool ranks the same documents with the same fuse.js options.

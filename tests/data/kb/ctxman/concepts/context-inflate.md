@@ -23,7 +23,7 @@ Two axes decide what happens to each item. The **mode** says how the item is rep
 
 ## What a recipe holds
 
-A recipe is `data/recipe/<name>.yaml`. It selects contexts, adds ad hoc items, says how each item is included and placed, fixes the order, injects your own markdown and names the output directory. The seed `ctxman-dev-brief` shows every part:
+A recipe is `recipe/<name>.yaml` in the data directory. It selects contexts, adds ad hoc items, says how each item is included and placed, fixes the order, injects your own markdown and names the output directory. The seed `ctxman-dev-brief` shows every part:
 
 ```yaml
 name: ctxman-dev-brief
@@ -347,7 +347,7 @@ ctxman deletes or replaces ONLY paths recorded in the previous manifest. A recor
 
 ### Safety rules
 
-* The directory must be absolute or start with `~/` (`~user` is refused), must not be a filesystem root or your home directory, must not contain or be inside the ctxman repository or the data directory (Vite watches the repository; a clone inside it would flood the watcher), and must not have a `node_modules` or `.git` segment. The real path of an existing directory (a symlink) is checked again against the same rules.
+* The directory must be absolute or start with `~/` (`~user` is refused), must not be a filesystem root or your home directory, must not contain or be inside the ctxman repository or the data directory and must not have a `node_modules` or `.git` segment. The real path of an existing directory (a symlink) is checked again against the same rules.
 * A directory that exists and is not empty (apart from `.DS_Store`, `Thumbs.db`, `desktop.ini`) needs a readable ctxman manifest or `allowNonEmpty`. An unreadable manifest with `allowNonEmpty` runs with nothing removed (`manifest-unreadable`).
 * Every step target is joined with `safeJoin` and the real path of its parent must stay inside the real path of `<W>`.
 * Processes are spawned with an argument list and no shell. Git runs with `GIT_TERMINAL_PROMPT=0` and `ssh -o BatchMode=yes` (a missing credential fails fast instead of hanging), with a 15 minute limit; extraction has 5 minutes. Archive members are extracted by the system tools, which refuse absolute and `..` members; symbolic links are dropped from installed skills.
@@ -380,7 +380,7 @@ There is no options endpoint: the modes, materials, targets and options tables l
 
 ### Write-path safety (document mode)
 
-`/api/inflate/write` is the only place besides a directory run where the tool writes outside `data/recipe`. The path must pass these rules (first failure wins):
+`/api/inflate/write` is the only place besides a directory run where the tool writes outside `recipe/` in the data directory. The path must pass these rules (first failure wins):
 
 1. A non-empty string of at most 1024 characters without NUL.
 2. Absolute (relative paths are refused, so the output never lands somewhere implied by the server's working directory).
@@ -423,4 +423,4 @@ All under `src/lib/inflate/` unless noted:
 | `jobs.ts` | server | The in-memory job store, one run at a time |
 | `src/lib/proc.ts` | server | `spawnCapture`: child processes with a timeout, abort and line callback |
 
-Recipes are read and written through `src/lib/recipe-io.ts` (the mirror of `context-io.ts`), never through `getCollection('recipe')`; see [Runtime modes](/concepts/runtime-modes.md). The island may import only the pure files. Related: [Architecture](/concepts/architecture.md), [Datasets](/concepts/datasets.md) and [Compliance checks](/concepts/compliance-checks.md) for the recipe warnings.
+Recipes are read and written through `src/lib/recipe-io.ts` (the mirror of `context-io.ts`); like every dataset they are read from the disk per request, see [Runtime modes](/concepts/runtime-modes.md). The island may import only the pure files. Related: [Architecture](/concepts/architecture.md), [Datasets](/concepts/datasets.md) and [Compliance checks](/concepts/compliance-checks.md) for the recipe warnings.

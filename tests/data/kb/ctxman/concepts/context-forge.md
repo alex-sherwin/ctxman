@@ -10,7 +10,7 @@ generated:
 
 # Context forge
 
-A **context** is the unit ctxman hands to an agentic coding session. It is a small YAML file under `data/context/` that lists links to entries in the other datasets. The forge at `/forge` is the UI for building them. The feature record is [context-forge](ctxman:feature/context-forge).
+A **context** is the unit ctxman hands to an agentic coding session. It is a small YAML file under `context/` in the data directory that lists links to entries in the other datasets. The forge at `/forge` is the UI for building them. The feature record is [context-forge](ctxman:feature/context-forge).
 
 ## Context file shape
 
@@ -44,7 +44,7 @@ A context never vendors content. It stores `dataset` and `slug` only, so editing
 2. In the Discover pane, switch dataset tabs, filter by text, state and tag, and press Add on a row. Rows already in the context show as added. Every tab shows its entry count (a dimmed ellipsis while it loads). The **All** tab comes first and lists entries of every linkable dataset together (a dataset badge on each row, tag chips over the merge, no state chips); `dataset=all` is URL state like any other tab. A row whose entry has children (a project) also offers **+ Add with N children**: it adds the entry and then its children in file order, skipping links the context already has, and N counts only the children still missing. An entry whose file is invalid is listed, marked and dimmed instead of vanishing.
 3. In the Context pane, reorder links by dragging the grip in the first column (mouse, or keyboard: focus the handle, Enter, Up or Down, Enter to drop, Esc to cancel) or with the up and down buttons, and open "Notes for the agent" to write markdown guidance in the notes editor. After a button move the focus stays on the moved row.
 4. Use the raw YAML mode to edit the whole document; it validates against the same schema before saving, and the editor underlines schema problems (unknown keys, wrong types, a bad `dataset`) as you type, with hover text and completion, using the generated `schemas/context.schema.json`.
-5. Save with the button or Cmd/Ctrl+S. Unsaved changes are kept as a draft in `localStorage` (14 days): after a reload, a closed tab or a dev reload the forge restores the working copy with a "Restored unsaved changes" banner and a Discard button, and warns when the context changed on disk meanwhile (saving then overwrites it). There is no native leave prompt; switching contexts still asks first. A new, never-saved context is not persisted.
+5. Save with the button or Cmd/Ctrl+S. Unsaved changes are kept as a draft in `localStorage` (14 days): after a reload or a closed tab the forge restores the working copy with a "Restored unsaved changes" banner and a Discard button, and warns when the context changed on disk meanwhile (saving then overwrites it). There is no native leave prompt; switching contexts still asks first. A new, never-saved context is not persisted.
 
 A context also grows from other pages: **Add to context** on any okf, skill or reference page appends that entry (`POST /api/context/<slug>/links`), and **Build context** on a project page creates a context from the project and its children and opens it here. See [Relations](/concepts/relations.md).
 

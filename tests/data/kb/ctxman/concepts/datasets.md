@@ -10,29 +10,29 @@ generated:
 
 # Datasets
 
-All data lives under `data/`. Every entry has a required unique `name` (kebab-case, at most 64 characters) and a required `description`. The name equals the folder name or file stem and doubles as the slug and the content collection entry id.
+All data lives in the data directory, the folder `CTXMAN_DATA_DIR` points at (see [Runtime modes](/concepts/runtime-modes.md)); the paths below are relative to it. The repository's own sample corpus, which includes these docs, is `tests/data/`. Every entry has a required unique `name` (kebab-case, at most 64 characters) and a required `description`. The name equals the folder name or file stem and doubles as the slug.
 
 ## The eleven datasets
 
 | Dataset | Kind | Entry file | Lifecycle states |
 | --- | --- | --- | --- |
-| `kb` | OKF bundle | `data/kb/<name>/main.md` | none |
-| `rca` | OKF bundle | `data/rca/<name>/main.md` | none |
-| `idea` | OKF bundle | `data/idea/<name>/main.md` | pending, in-progress, complete, abandoned |
-| `task` | OKF bundle | `data/task/<name>/main.md` | pending, in-progress, complete, wont-do |
-| `bug` | OKF bundle | `data/bug/<name>/main.md` | pending, in-progress, fixed, wont-fix |
-| `feature` | OKF bundle | `data/feature/<name>/main.md` | pending, in-progress, complete, wont-do |
-| `project` | OKF bundle | `data/project/<name>/main.md` | pending, in-progress, complete, wont-do |
-| `skill` | agentskills.io folder | `data/skill/<name>/SKILL.md` | none |
-| `reference` | YAML file | `data/reference/<name>.yaml` | none |
-| `context` | YAML file | `data/context/<name>.yaml` | none |
-| `recipe` | YAML file | `data/recipe/<name>.yaml` | none |
+| `kb` | OKF bundle | `kb/<name>/main.md` | none |
+| `rca` | OKF bundle | `rca/<name>/main.md` | none |
+| `idea` | OKF bundle | `idea/<name>/main.md` | pending, in-progress, complete, abandoned |
+| `task` | OKF bundle | `task/<name>/main.md` | pending, in-progress, complete, wont-do |
+| `bug` | OKF bundle | `bug/<name>/main.md` | pending, in-progress, fixed, wont-fix |
+| `feature` | OKF bundle | `feature/<name>/main.md` | pending, in-progress, complete, wont-do |
+| `project` | OKF bundle | `project/<name>/main.md` | pending, in-progress, complete, wont-do |
+| `skill` | agentskills.io folder | `skill/<name>/SKILL.md` | none |
+| `reference` | YAML file | `reference/<name>.yaml` | none |
+| `context` | YAML file | `context/<name>.yaml` | none |
+| `recipe` | YAML file | `recipe/<name>.yaml` | none |
 
 State values are stored kebab-case in the files; the UI shows labels such as "in progress" and "won't do".
 
 ## OKF bundles
 
-Seven datasets are Open Knowledge Format v0.2 bundles vendored into the repo. A bundle folder contains:
+Seven datasets are Open Knowledge Format v0.2 bundles. A bundle folder contains:
 
 * `index.md`: bundle navigation. Its only frontmatter is `okf_version: "0.2"`.
 * `main.md`: the entry concept. Frontmatter holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`.
@@ -47,7 +47,7 @@ A skill folder follows agentskills.io: `SKILL.md` with `name` (equal to the fold
 
 ## References
 
-A reference points outside the repo. Its `type` selects the field set:
+A reference points outside the data directory. Its `type` selects the field set:
 
 | Type | Fields |
 | --- | --- |
@@ -57,7 +57,7 @@ A reference points outside the repo. Its `type` selects the field set:
 
 `owner` is `me` or `not-me`. All reference types also carry `name`, `description` and optional `tags`.
 
-Every dataset can be created in the UI (`/new/<dataset>`). References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Unlike contexts and recipes, references keep their watched collection, so the dev server reloads the page after a write and server-rendered lists catch up about 0.6 s later; list summaries carry the `owner` of a reference.
+Every dataset can be created in the UI (`/new/<dataset>`). References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Like contexts and recipes, a reference is read from the disk on every request, so a write shows on the next one; list summaries carry the `owner` of a reference. A reference file that fails its schema is listed flagged "invalid" (lists and the dashboard), but its detail page is a 404 until it is fixed.
 
 ### URI rules
 
@@ -69,20 +69,20 @@ A context aggregates links to the other nine linkable datasets (everything excep
 
 ## Recipes
 
-A recipe is the saved input of the [Context inflate](/concepts/context-inflate.md) tool: which contexts to expand, extra items, how each item is included and (for a working directory) placed, the order, injected markdown and a preamble, for one target (`claude-code`, `codex` or `generic`). Like a context it is a pointer file: it stores slugs and settings, never the linked content. Fields: `name`, `description`, `tags`, `target`, `layout`, `output`, `preamble`, `contexts`, `items`, `markdown`, `overrides`, `order`, `defaults`. `output` (`dir`, `contextFile`, `primary`, `allowNonEmpty`, `stubs`) names the working directory a run inflates into; overrides and defaults also carry a `material` (what is placed there: symlink, copy, clone, install or nothing) and `materialOptions`. The schema is strict and rejects duplicates and modes or materials that do not fit an item kind; the working-directory settings are explained in [Context inflate](/concepts/context-inflate.md). A recipe may list contexts and items of any linkable dataset but is not itself linkable: a context cannot link to a recipe, so recipes do not appear in the Forge or in the Inflate item search (a `ctxman:recipe/<name>` link in markdown still resolves to the recipe page). The name cannot be changed after creation. Recipes are always read and written through `src/lib/recipe-io.ts` (atomic write), never through `getCollection('recipe')`.
+A recipe is the saved input of the [Context inflate](/concepts/context-inflate.md) tool: which contexts to expand, extra items, how each item is included and (for a working directory) placed, the order, injected markdown and a preamble, for one target (`claude-code`, `codex` or `generic`). Like a context it is a pointer file: it stores slugs and settings, never the linked content. Fields: `name`, `description`, `tags`, `target`, `layout`, `output`, `preamble`, `contexts`, `items`, `markdown`, `overrides`, `order`, `defaults`. `output` (`dir`, `contextFile`, `primary`, `allowNonEmpty`, `stubs`) names the working directory a run inflates into; overrides and defaults also carry a `material` (what is placed there: symlink, copy, clone, install or nothing) and `materialOptions`. The schema is strict and rejects duplicates and modes or materials that do not fit an item kind; the working-directory settings are explained in [Context inflate](/concepts/context-inflate.md). A recipe may list contexts and items of any linkable dataset but is not itself linkable: a context cannot link to a recipe, so recipes do not appear in the Forge or in the Inflate item search (a `ctxman:recipe/<name>` link in markdown still resolves to the recipe page). The name cannot be changed after creation. Recipes are always read and written through `src/lib/recipe-io.ts` (atomic write).
 
 ## JSON Schemas and the magic comment
 
-`reference`, `context` and `recipe` also exist as generated JSON Schemas in `schemas/<dataset>.schema.json`. They come from the arktype models in `src/datasets/arktypes.ts` (which mirror the zod schemas; the zod schemas stay the runtime validator) via `pnpm run gen:schemas`, and `pnpm run check:schemas` fails when a file is stale. Rules JSON Schema cannot express (duplicate links, name equals file stem, URI shapes) remain zod checks and are listed in each schema's `$comment`.
+`reference`, `context` and `recipe` also exist as generated JSON Schemas in `schemas/<dataset>.schema.json`. They come from the arktype Types in `src/datasets/schemas.ts`, the same Types that validate the files at runtime (arktype is the only validator), via `pnpm run gen:schemas`; `pnpm run check:schemas` fails when a file is stale, and `GET /api/schemas/<dataset>` serves them. Rules JSON Schema cannot express (duplicate links, name equals file stem, URI shapes) are custom narrows of the same Types and are listed in each schema's `$comment`.
 
-Every file of these three datasets starts with the yaml-language-server comment on line 1, which points editors at the schema so the Red Hat YAML extension (and the browser YAML editors) validate as you type:
+Every file of these three datasets starts with the yaml-language-server comment on line 1, which points editors at the schema so the Red Hat YAML extension validates as you type:
 
 ```yaml
-# yaml-language-server: $schema=../../schemas/context.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/context
 name: ctxman-dev
 ```
 
-The file writers add it (context-io, recipe-io, reference-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong and `pnpm run fix:yaml-comments` repairs a hand-made file. See [Editing](/concepts/editing.md).
+The URL is the running app's schema endpoint, so the schema resolves while ctxman runs (the endpoint answers with CORS `*` and also accepts `/api/schemas/context.schema.json`). The origin comes from `CTXMAN_SERVER_ORIGIN`, default `http://127.0.0.1:4321`. The file writers add the line (context-io, recipe-io, reference-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong: it accepts any loopback origin and port (127.0.0.1, localhost, [::1]) and an optional `.schema.json` suffix for that dataset, so a file written for another port still passes. `pnpm run fix:yaml-comments` repairs a hand-made file. The browser YAML editors never show the line; they match the schemas on a model path. See [Editing](/concepts/editing.md).
 
 ## Relations: the `links` field
 
@@ -95,7 +95,7 @@ links:
     rel: child
 ```
 
-`dataset` is a linkable dataset (not `context` or `recipe`), `slug` an entry name, and `rel` is `child` (this entry contains the target; a project owns its children), `related` (the default when `rel` is absent) or `depends-on`. One link per target, no link to the entry itself. Skills have no `links` key. `links/relation-target` (warning) and `links/relation-self` (error) check them; ctxman writes them in block style with the keys in the order `dataset`, `slug`, `rel`, from the Links and Children panels and `PATCH /api/entry`. The okf `links` field has no JSON Schema or arktype twin: the zod schema is its only definition.
+`dataset` is a linkable dataset (not `context` or `recipe`), `slug` an entry name, and `rel` is `child` (this entry contains the target; a project owns its children), `related` (the default when `rel` is absent) or `depends-on`. One link per target, no link to the entry itself. Skills have no `links` key. `links/relation-target` (warning) and `links/relation-self` (error) check them; ctxman writes them in block style with the keys in the order `dataset`, `slug`, `rel`, from the Links and Children panels and `PATCH /api/entry`. The okf `links` field has no JSON Schema: the arktype Type `entryLinksSchema` is its only definition.
 
 ## Links between entries
 
