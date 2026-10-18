@@ -8,6 +8,7 @@ import {
   entryUrl,
 } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
+import { isLocalReference } from '../datasets/schemas.ts';
 import type { ContextData, RecipeData, ReferenceData, SkillData } from '../datasets/schemas.ts';
 import type { SearchDoc } from './entry-summary.ts';
 import { TARGETS, itemKey } from './inflate/catalog.ts';
@@ -245,9 +246,9 @@ export function skillToSearchDoc(slug: string, data: SkillData, body: string): S
   };
 }
 
-/** A reference: the body is its data fields flattened to one readable line. */
+/** A reference: the body is its data fields flattened to one readable line, then the text of its info. */
 export function referenceToSearchDoc(slug: string, data: ReferenceData): SearchDoc {
-  const location = data.type === 'local-repo' ? data.path : data.uri;
+  const location = isLocalReference(data) ? data.path : data.uri;
   const uriKind = data.type === 'remote-skill' ? classifyRemoteUri(data.uri) : null;
   const body = [
     REFERENCE_TYPE_LABELS[data.type],
@@ -258,6 +259,7 @@ export function referenceToSearchDoc(slug: string, data: ReferenceData): SearchD
   ]
     .filter((part): part is string => part !== undefined && part !== '')
     .join(' · ');
+  const info = data.info === undefined ? '' : markdownToText(data.info);
   return {
     id: `reference/${slug}`,
     dataset: 'reference',
@@ -268,7 +270,7 @@ export function referenceToSearchDoc(slug: string, data: ReferenceData): SearchD
     description: data.description,
     tags: [...data.tags],
     headings: [],
-    body,
+    body: info === '' ? body : truncate(`${body} ${info}`, MAX_BODY_CHARS),
     url: entryUrl('reference', slug),
   };
 }

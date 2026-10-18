@@ -166,8 +166,8 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
               tone={owner === 'me' ? 'muted' : 'neutral'}
               title={
                 owner === 'me'
-                  ? 'Your own repository'
-                  : "Someone else's repository: treat it as reference material"
+                  ? `Your own ${refType === 'local-folder' ? 'folder' : 'repository'}`
+                  : `Someone else's ${refType === 'local-folder' ? 'folder' : 'repository'}: treat it as reference material`
               }
             >
               {owner === 'me' ? 'mine' : 'not mine'}

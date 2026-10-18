@@ -104,13 +104,23 @@ export function isEntryRel(value: unknown): value is EntryRel {
   return typeof value === 'string' && (ENTRY_RELS as readonly string[]).includes(value);
 }
 
-export const REFERENCE_TYPES = ['local-repo', 'remote-repo', 'remote-skill'] as const;
+export const REFERENCE_TYPES = [
+  'local-repo',
+  'local-folder',
+  'remote-repo',
+  'remote-skill',
+] as const;
 export type ReferenceType = (typeof REFERENCE_TYPES)[number];
 export const REFERENCE_TYPE_LABELS: Readonly<Record<ReferenceType, string>> = {
   'local-repo': 'Local repo',
+  'local-folder': 'Local folder',
   'remote-repo': 'Remote repo',
   'remote-skill': 'Remote skill',
 };
+
+/** Reference types that live at a `path` on this machine (a git repository, or a plain folder); the others have a `uri`. */
+export const LOCAL_REFERENCE_TYPES = ['local-repo', 'local-folder'] as const;
+export type LocalReferenceType = (typeof LOCAL_REFERENCE_TYPES)[number];
 
 export const OWNERS = ['me', 'not-me'] as const;
 export type Owner = (typeof OWNERS)[number];
@@ -290,6 +300,10 @@ export function isLinkableDatasetId(value: unknown): value is LinkableDatasetId 
 
 export function isReferenceType(value: unknown): value is ReferenceType {
   return typeof value === 'string' && (REFERENCE_TYPES as readonly string[]).includes(value);
+}
+
+export function isLocalReferenceType(value: unknown): value is LocalReferenceType {
+  return typeof value === 'string' && (LOCAL_REFERENCE_TYPES as readonly string[]).includes(value);
 }
 
 /** Group for a state id; 'neutral' when the dataset has no lifecycle or the state is unknown. */

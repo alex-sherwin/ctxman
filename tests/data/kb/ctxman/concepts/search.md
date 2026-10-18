@@ -18,7 +18,7 @@ Search is a full-screen modal available on every page. It queries every dataset 
 
 * One document per markdown file in every OKF bundle (the entry `index.md` and the concepts), found by walking the bundle folder. A nested `index.md` and every `log.md` are left out: they are navigation and history, not knowledge (the root `index.md` is the entry itself).
 * One document per skill with valid frontmatter, from the `SKILL.md` body.
-* One document per reference, context and recipe, made from their field values flattened to text, so data records are searchable by their fields. A recipe's text is its description, target and layout, the listed contexts and ad hoc item keys, the preamble and the markdown blocks; its page is `/recipe/<slug>`.
+* One document per reference, context and recipe, made from their field values flattened to text, so data records are searchable by their fields. A reference's text ends with the plain text of its `info` markdown. A recipe's text is its description, target and layout, the listed contexts and ad hoc item keys, the preamble and the markdown blocks; its page is `/recipe/<slug>`.
 
 Each document carries `dataset`, `slug`, `path` (null for the entry file itself), `title`, `name`, `description`, `tags`, `headings`, `body`, optional `state` and the page `url`.
 

@@ -50,13 +50,14 @@ A reference points outside the data directory. Its `type` selects the field set:
 
 | Type | Fields |
 | --- | --- |
-| `local-repo` | `path`, optional `subpath`, `owner` |
+| `local-repo` | `path` (a git repository on this machine), optional `subpath`, `owner` |
+| `local-folder` | `path` (a plain folder on this machine, not a git repository), optional `subpath`, `owner` |
 | `remote-repo` | `uri` (git URI), optional `subpath`, `owner` |
 | `remote-skill` | `uri` (git URI or HTTPS archive), `subpath` (empty or absent means the repo or archive root), `owner` |
 
-`owner` is `me` or `not-me`. All reference types also carry `name`, `description` and optional `tags`.
+`owner` is `me` or `not-me`. All reference types also carry `name`, `description`, optional `tags` and an optional `info`: markdown about the referenced thing (how it is laid out, how to build or use it, what to watch out for), shown in the Info panel of the reference page and inlined under the reference by [Context inflate](/concepts/context-inflate.md); it is written last, as a literal block (`info: |`), and a blank one is dropped. `local-repo` and `local-folder` have the same fields; the type tells agents (and Context Inflate) whether to expect git: a local folder is placed under `folders/` instead of `repos/`, is described as files in a folder, and can never be the primary repository of a recipe (see [Context inflate](/concepts/context-inflate.md)).
 
-Every dataset can be created in the UI (`/new/<dataset>`). References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`), the same one the add script and every seed file use. Like contexts and recipes, a reference is read from the disk on every request, so a write shows on the next one; list summaries carry the `owner` of a reference. A reference file that fails its schema is listed flagged "invalid" (lists and the dashboard), but its detail page is a 404 until it is fixed.
+Every dataset can be created in the UI (`/new/<dataset>`). References can be created, edited and deleted in the UI (`/new/reference`, `/reference/<slug>?edit=1`) and through `GET|PUT|DELETE /api/reference/<slug>` and `POST /api/reference`. `src/lib/reference-io.ts` does the atomic file write with a fixed key order (`name`, `description`, `type`, `path` or `uri`, `subpath`, `owner`, `tags`, `info`), the same one the add script and every seed file use. Like contexts and recipes, a reference is read from the disk on every request, so a write shows on the next one; list summaries carry the `owner` of a reference. A reference file that fails its schema is listed flagged "invalid" (lists and the dashboard), but its detail page is a 404 until it is fixed.
 
 ### URI rules
 

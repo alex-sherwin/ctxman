@@ -9,6 +9,7 @@ import {
   DIR_MANIFEST_FILE,
   EXTRA_KEY,
   FAMILY_MATERIALS,
+  FOLDERS_DIR,
   FAMILY_MODES,
   INFLATE_LAYOUTS,
   INFLATE_TARGETS,
@@ -146,7 +147,7 @@ describe('inlineCode', () => {
 });
 
 describe('item kinds', () => {
-  it('lists the 11 kinds in order', () => {
+  it('lists the 12 kinds in order', () => {
     expect([...ITEM_KINDS]).toEqual([
       'kb',
       'rca',
@@ -157,6 +158,7 @@ describe('item kinds', () => {
       'project',
       'skill',
       'local-repo',
+      'local-folder',
       'remote-repo',
       'remote-skill',
     ]);
@@ -173,6 +175,7 @@ describe('item kinds', () => {
       project: 'Project',
       skill: 'Skill',
       'local-repo': 'Local repo',
+      'local-folder': 'Local folder',
       'remote-repo': 'Remote repo',
       'remote-skill': 'Remote skill',
     });
@@ -292,6 +295,7 @@ describe('defaultModeFor (spec 4.3, ROUND3 §H.1: every okf kind is inline-main)
     project: ['inline-main', 'inline-main', 'inline-main'],
     skill: ['install', 'install', 'pointer'],
     'local-repo': ['describe', 'describe', 'describe'],
+    'local-folder': ['describe', 'describe', 'describe'],
     'remote-repo': ['describe', 'describe', 'describe'],
     'remote-skill': ['install', 'install', 'describe'],
   };
@@ -386,6 +390,7 @@ describe('modes per placement (plans/INFLATE_V3_PLAN.md §3.3)', () => {
       project: ['summary', 'summary', 'summary'],
       skill: ['pointer', 'pointer', 'pointer'],
       'local-repo': ['describe', 'describe', 'describe'],
+      'local-folder': ['describe', 'describe', 'describe'],
       'remote-repo': ['describe', 'describe', 'describe'],
       'remote-skill': ['describe', 'describe', 'describe'],
     };
@@ -619,6 +624,7 @@ describe('output constants and helpers (plans/INFLATE_V2_SPEC.md §3)', () => {
     expect(DIR_MANIFEST_FILE).toBe('.ctxman-inflate.json');
     expect(STAGE_DIR).toBe('.ctxman-tmp');
     expect(REPOS_DIR).toBe('repos');
+    expect(FOLDERS_DIR).toBe('folders');
     expect(DEFAULT_DIR_TEMPLATE).toBe('~/ctxman-inflate/{name}');
     expect(defaultDirFor('ctxman-dev-brief')).toBe('~/ctxman-inflate/ctxman-dev-brief');
   });
@@ -729,6 +735,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       'okf',
       'skill',
       'local-repo',
+      'local-folder',
       'remote-repo',
       'remote-skill',
     ]);
@@ -786,6 +793,22 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       ],
       notPlaced,
     ]);
+  });
+
+  it("local-folder: symlink, copy, Don't place, placed under folders/", () => {
+    expect(row('local-folder')).toEqual([
+      ['symlink', 'Symlink', 'Link to the original folder at folders/<name>; edits change it.', []],
+      [
+        'copy',
+        'Copy',
+        'Snapshot without node_modules at folders/<name>; replaced on every run.',
+        [],
+      ],
+      notPlaced,
+    ]);
+    // same modes as a local repository, also when placed
+    expect(modesFor('local-folder')).toBe(modesFor('local-repo'));
+    expect(modesForPlacement('local-folder', true).map((m) => m.id)).toEqual(['describe', 'tree']);
   });
 
   it("remote-repo: clone, Don't place", () => {
@@ -849,7 +872,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     const used = new Set(Object.values(FAMILY_MATERIALS).flatMap((defs) => defs.map((d) => d.id)));
     expect([...used].sort()).toEqual([...MATERIAL_IDS].sort());
     const referenceIds = new Set(
-      (['local-repo', 'remote-repo', 'remote-skill'] as const).flatMap((k) =>
+      (['local-repo', 'local-folder', 'remote-repo', 'remote-skill'] as const).flatMap((k) =>
         materialsFor(k).map((m) => m.id),
       ),
     );
@@ -884,6 +907,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
         project: 'symlink',
         skill: 'symlink',
         'local-repo': 'symlink',
+        'local-folder': 'symlink',
         'remote-repo': 'clone',
         'remote-skill': 'install',
       });
@@ -907,14 +931,20 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     expect(isPrimaryEligible('remote-repo', null)).toBe(false);
     // a copy has no .git
     expect(isPrimaryEligible('local-repo', 'copy')).toBe(false);
+    // a local folder is not a git repository
+    expect(isPrimaryEligible('local-folder', 'symlink')).toBe(false);
+    expect(isPrimaryEligible('local-folder', 'copy')).toBe(false);
   });
 
-  it('isEditEligible: local-repo symlink or none, remote-repo clone (plans/INFLATE_V3_PLAN.md §3.2)', () => {
+  it('isEditEligible: local-repo / local-folder symlink or none, remote-repo clone (plans/INFLATE_V3_PLAN.md §3.2)', () => {
     expect(isEditEligible('local-repo', 'symlink')).toBe(true);
     expect(isEditEligible('local-repo', 'none')).toBe(true);
+    expect(isEditEligible('local-folder', 'symlink')).toBe(true);
+    expect(isEditEligible('local-folder', 'none')).toBe(true);
     expect(isEditEligible('remote-repo', 'clone')).toBe(true);
     // a copy is a snapshot, a not-cloned remote cannot be edited
     expect(isEditEligible('local-repo', 'copy')).toBe(false);
+    expect(isEditEligible('local-folder', 'copy')).toBe(false);
     expect(isEditEligible('remote-repo', 'none')).toBe(false);
     expect(isEditEligible('remote-skill', 'install')).toBe(false);
     expect(isEditEligible('skill', 'symlink')).toBe(false);
@@ -1014,6 +1044,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       '.agents/skills/okf-authoring',
     );
     expect(materialDest('local-repo', 'reference', 'blasto', 'claude-code')).toBe('repos/blasto');
+    expect(materialDest('local-folder', 'reference', 'notes', 'codex')).toBe('folders/notes');
     expect(materialDest('remote-repo', 'reference', 'astro-docs', 'codex')).toBe(
       'repos/astro-docs',
     );

@@ -20,7 +20,7 @@ pnpm run add:<dataset> <name> [--title "..."] [--description "..."] [--state <st
 
 `<dataset>` is any of the eleven dataset ids (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `context`, `recipe`), for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
 
-Reference entries also take `--type local-repo|remote-repo|remote-skill`, `--path`, `--uri`, `--subpath` and `--owner me|not-me`. Add `--json` for machine output.
+Reference entries also take `--type local-repo|local-folder|remote-repo|remote-skill`, `--path` (the local types), `--uri` (the remote types), `--subpath` and `--owner me|not-me`. Add `--json` for machine output.
 
 The script validates the name (kebab-case, at most 64 characters) and the state, refuses to overwrite anything that exists, writes the files, then re-validates them against the schemas. The same operation is available on the `/tools` page.
 
@@ -45,7 +45,7 @@ The `/tools` page still lists the check scripts; its Add Entry panel is now a th
 | `recipe` | `<name>.yaml` with target `claude-code`, layout `grouped` and empty `contexts` and `items` lists |
 
 Every yaml file starts with the line `# yaml-language-server: $schema=../../schemas/<dataset>.schema.json`. The script and the forms write it; never strip it, and run `pnpm run fix:yaml-comments` for a file made by hand.
-The first state in the dataset's list is the default, so new tasks start as `pending`. Descriptions default to a `TODO:` placeholder; replace it. A new reference also gets placeholder locations (`~/repos/<name>` for `local-repo`, `https://github.com/TODO/<name>.git` for the others) that pass the checks, so replace those too.
+The first state in the dataset's list is the default, so new tasks start as `pending`. Descriptions default to a `TODO:` placeholder; replace it. A new reference also gets placeholder locations (`~/repos/<name>` for `local-repo`, `~/<name>` for `local-folder`, `https://github.com/TODO/<name>.git` for the others) that pass the checks, so replace those too.
 
 Recipes are normally authored in the [Inflate](/concepts/context-inflate.md) UI (`/inflate?recipe=new`), which also offers "Open in Inflate" after creating one on the tools page; `pnpm run add:recipe my-brief --description "..."` creates the same starter file, which you then edit in the UI. Like contexts, recipes have no lifecycle state, so `--state` is refused; `--title` only shapes the default description. The template does not take a target flag: change `target` in the UI or the file. It has no `output` either; set a directory in the Compose view (Output directory) when the recipe should inflate into a working directory.
 

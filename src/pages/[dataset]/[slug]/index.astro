@@ -24,7 +24,11 @@ import DataForm from '../../../ui/forms/DataForm.tsx';
 import DocEditor from '../../../ui/markdown/DocEditor.tsx';
 import EntryMenus from '../../../ui/menus/EntryMenus.tsx';
 import MarkdownTargets from '../../../ui/markdown/MarkdownTargets.tsx';
-import { contextNoteTargets, recipeTargets } from '../../../ui/markdown/targets.ts';
+import {
+  contextNoteTargets,
+  recipeTargets,
+  referenceTargets,
+} from '../../../ui/markdown/targets.ts';
 
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def) return Astro.rewrite('/404');
@@ -218,7 +222,8 @@ const tools =
       !yamlEdit && detail.kind === 'reference' && (
         <article class="cx-detail__main" data-testid="detail-content">
           <p class="cx-detail__lede">{detail.summary.description}</p>
-          <ReferenceFields data={detail.data} />
+          <ReferenceFields data={detail.data} infoHtml={detail.infoHtml} />
+          <MarkdownTargets client:only="react" targets={referenceTargets(slug)} />
         </article>
       )
     }

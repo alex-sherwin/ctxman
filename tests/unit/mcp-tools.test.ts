@@ -482,6 +482,21 @@ describe('tools on a private corpus copy (tests that write)', () => {
       expect(ref).toContain('uri: https://github.com/acme/widgets.git');
       expect(ref).toContain('owner: not-me');
 
+      await ok('create-entry', {
+        dataset: 'reference',
+        name: 'mcp-folder',
+        description: 'A folder.',
+        type: 'local-folder',
+        path: '~/notes',
+      });
+      expect(read('reference', 'mcp-folder.yaml')).toContain('type: local-folder\npath: ~/notes\n');
+      const folders = data<{ entries: { slug: string; refType?: string }[] }>(
+        await ok('list-entries', { dataset: 'reference', type: 'local-folder' }),
+      );
+      expect(folders.entries.map((e) => [e.slug, e.refType])).toEqual([
+        ['mcp-folder', 'local-folder'],
+      ]);
+
       await ok('create-entry', { dataset: 'context', name: 'mcp-ctx', description: 'A context.' });
       await ok('create-entry', { dataset: 'recipe', name: 'mcp-recipe', description: 'A recipe.' });
       expect(read('context', 'mcp-ctx.yaml')).toContain('links: []');

@@ -6,9 +6,11 @@
 // are not PURE are `import type`s (erased).
 import { OKF_DATASET_IDS } from '../../datasets/registry.ts';
 import type { Owner } from '../../datasets/registry.ts';
+import { isLocalReference } from '../../datasets/schemas.ts';
 import {
   DEFAULT_CONTEXT_FILE,
   DIR_MANIFEST_FILE,
+  FOLDERS_DIR,
   ITEM_KIND_LABELS,
   MATERIAL_OPTION_DEFS,
   REPOS_DIR,
@@ -111,7 +113,7 @@ export interface MaterialView {
   description: string;
   /** Posix rel dest in <W>; null for 'none'. */
   dest: string | null;
-  /** okf / skill root, local repo root (abs). */
+  /** okf / skill root, local repo or local folder root (abs). */
   sourceAbs: string | null;
   uri: string | null;
   subpath: string | null;
@@ -292,7 +294,7 @@ export function createPathMapper(
 
 /**
  * `.gitignore` of a working directory: the manifest, the staging folder, then one line per distinct "ignore
- * root" in map order (`/repos/`, `/<dataset>/`, each skill destination). `paths` = the placed destinations;
+ * root" in map order (`/repos/`, `/folders/`, `/<dataset>/`, each skill destination). `paths` = the placed destinations;
  * `links` = those among them that are symlinks themselves (a symlinked skill): git does not match a symlink
  * with a trailing-slash pattern, so these are written without the slash.
  */
@@ -301,7 +303,12 @@ export function gitignoreText(
   paths: readonly string[],
   links: readonly string[] = [],
 ): string {
-  const isRepo = (p: string): boolean => p === REPOS_DIR || p.startsWith(`${REPOS_DIR}/`);
+  const under =
+    (root: string) =>
+    (p: string): boolean =>
+      p === root || p.startsWith(`${root}/`);
+  const isRepo = under(REPOS_DIR);
+  const isFolder = under(FOLDERS_DIR);
   const dataset = (p: string): string | undefined =>
     OKF_DATASET_IDS.find((ds) => p === ds || p.startsWith(`${ds}/`));
   const roots: string[] = [];
@@ -309,11 +316,14 @@ export function gitignoreText(
     if (!roots.includes(root)) roots.push(root);
   };
   if (paths.some(isRepo)) add(`/${REPOS_DIR}/`);
+  if (paths.some(isFolder)) add(`/${FOLDERS_DIR}/`);
   for (const ds of OKF_DATASET_IDS) {
     if (paths.some((p) => dataset(p) === ds)) add(`/${ds}/`);
   }
   for (const p of paths) {
-    if (!isRepo(p) && dataset(p) === undefined) add(links.includes(p) ? `/${p}` : `/${p}/`);
+    if (!isRepo(p) && !isFolder(p) && dataset(p) === undefined) {
+      add(links.includes(p) ? `/${p}` : `/${p}/`);
+    }
   }
   return (
     [
@@ -364,8 +374,8 @@ interface Placed {
 
 /**
  * Pure and deterministic: the same input always gives the same steps, in the order of spec §6.2 (ensureDir,
- * removals, okf, skills, local repos, remote repos, remote skills, stage cleanup, context file, stubs,
- * manifest). Items that cannot be placed are demoted to material `none` with a warning (no step).
+ * removals, okf, skills, local repos, local folders, remote repos, remote skills, stage cleanup, context file,
+ * stubs, manifest). Items that cannot be placed are demoted to material `none` with a warning (no step).
  */
 export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
   const { plan, content, dir, dirExists, previous, tools } = input;
@@ -408,10 +418,10 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       sourceAbs:
         family === 'okf' || family === 'skill'
           ? (ic?.rootAbs ?? null)
-          : family === 'local-repo'
+          : family === 'local-repo' || family === 'local-folder'
             ? (ic?.local?.root ?? null)
             : null,
-      uri: ref !== undefined && ref.type !== 'local-repo' ? ref.uri : null,
+      uri: ref !== undefined && !isLocalReference(ref) ? ref.uri : null,
       subpath: subpath === '' ? null : subpath,
       depth: clone ? (opts.cloneDepth ?? DEFAULT_CLONE_DEPTH) : null,
       branch: (clone || material === 'install') && branch !== '' ? branch : null,
@@ -429,8 +439,8 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       view.depth = null;
       view.branch = null;
       view.sparse = false;
-      // Not placed any more: a local repository is editable at its original path only when asked for (the
-      // primary default needs a placed repository), anything else loses the flag.
+      // Not placed any more: a local repository or folder is editable at its original path only when asked for
+      // (the primary default needs a placed repository), anything else loses the flag.
       view.edit = isEditEligible(kind, 'none')
         ? seg.editSource === 'override' && seg.edit === true
         : null;
@@ -466,7 +476,8 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
           demote('source-missing', 'the source path is unknown');
         }
         break;
-      case 'local-repo': {
+      case 'local-repo':
+      case 'local-folder': {
         const local = ic?.local;
         if (material !== 'symlink' && material !== 'copy') {
           demote(
@@ -637,7 +648,7 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
           },
     );
   }
-  for (const { view } of group('local-repo')) {
+  for (const { view } of [...group('local-repo'), ...group('local-folder')]) {
     const dest = view.dest as string;
     const source = view.sourceAbs as string;
     steps.push(

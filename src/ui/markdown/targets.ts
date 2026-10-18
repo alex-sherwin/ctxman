@@ -1,15 +1,16 @@
 // Browser-safe (fetch via ui/edit/api.ts only inside functions; no Monaco, no React, nothing touches the DOM at
 // import, so the SSR Astro components import the id helpers too): the descriptors and adapters behind the
-// markdown popup editors (ROUND2_UI_SPEC §F.2). A "target" is one small markdown area of a context or recipe
-// yaml: a link's `notes`, a recipe's `preamble`, or one `markdown` block `body`. The pure adapters
-// (`readTarget` / `writeTarget` / `endpoint` / `hasTarget`) never mutate; `loadTarget` / `saveTarget` are the
-// read-modify-write round trip against `/api/context/:slug` and `/api/recipe/:slug`.
+// markdown popup editors (ROUND2_UI_SPEC §F.2). A "target" is one small markdown area of a context, recipe or
+// reference yaml: a link's `notes`, a recipe's `preamble`, one `markdown` block `body`, or a reference's `info`.
+// The pure adapters (`readTarget` / `writeTarget` / `endpoint` / `hasTarget`) never mutate; `loadTarget` /
+// `saveTarget` are the read-modify-write round trip against `/api/context/:slug`, `/api/recipe/:slug` and
+// `/api/reference/:slug`.
 //
 // Those PUTs have no `ifUnmodifiedSince` (unlike `/api/doc`), so `saveTarget` re-GETs right before the PUT and
 // compares `lastModified` with the one the editor was opened on (D11). The PUT then carries the FRESH document
 // with only this target replaced, so concurrent edits to other parts of the file are never rolled back.
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import type { RecipeData } from '../../datasets/schemas.ts';
+import type { RecipeData, ReferenceData } from '../../datasets/schemas.ts';
 import type { ContextDoc } from '../../lib/entry-summary.ts';
 import { getJson, sendJson } from '../edit/api.ts';
 
@@ -40,6 +41,14 @@ export type MdTarget =
       slug: string;
       blockId: string;
       label: string;
+    }
+  | {
+      kind: 'reference-info';
+      /** `info` */
+      id: string;
+      /** The reference's slug. */
+      slug: string;
+      label: string;
     };
 
 // ---------------------------------------------------------------- ids shared with the SSR buttons
@@ -50,6 +59,8 @@ export const noteTargetId = (dataset: string, slug: string): string => `notes:${
 export const PREAMBLE_TARGET_ID = 'preamble';
 /** `data-md-edit` of a recipe markdown block's pencil button. */
 export const blockTargetId = (blockId: string): string => `block:${blockId}`;
+/** `data-md-edit` of a reference's info pencil button. */
+export const INFO_TARGET_ID = 'info';
 
 /** The `MarkdownTargets` props of a context detail page: one notes target per link, in context order. */
 export function contextNoteTargets(
@@ -80,16 +91,33 @@ export function recipeTargets(slug: string, blocks: readonly { id: string }[]): 
   ];
 }
 
-/** The yaml document a target lives in: a context (`links`) or a recipe. */
-export type MdDoc = ContextDoc | RecipeData;
+/** The `MarkdownTargets` props of a reference detail page: its info. */
+export function referenceTargets(slug: string): MdTarget[] {
+  return [{ kind: 'reference-info', id: INFO_TARGET_ID, slug, label: 'info' }];
+}
+
+/** The yaml document a target lives in: a context (`links`), a recipe or a reference (`type`). */
+export type MdDoc = ContextDoc | RecipeData | ReferenceData;
 
 function isContextDoc(doc: MdDoc): doc is ContextDoc {
   return 'links' in doc;
 }
 
-/** `/api/context/<slug>` or `/api/recipe/<slug>`. */
+function isReferenceDoc(doc: MdDoc): doc is ReferenceData {
+  return 'type' in doc && 'owner' in doc;
+}
+
+function isRecipeDoc(doc: MdDoc): doc is RecipeData {
+  return !isContextDoc(doc) && !isReferenceDoc(doc);
+}
+
+/** The API collection of a target's document. */
+const collectionOf = (t: MdTarget): 'context' | 'recipe' | 'reference' =>
+  t.kind === 'context-notes' ? 'context' : t.kind === 'reference-info' ? 'reference' : 'recipe';
+
+/** `/api/context/<slug>`, `/api/recipe/<slug>` or `/api/reference/<slug>`. */
 export function endpoint(t: MdTarget): string {
-  return `/api/${t.kind === 'context-notes' ? 'context' : 'recipe'}/${encodeURIComponent(t.slug)}`;
+  return `/api/${collectionOf(t)}/${encodeURIComponent(t.slug)}`;
 }
 
 /** The target with the given SSR button id, or undefined. */
@@ -108,9 +136,11 @@ export function hasTarget(t: MdTarget, doc: MdDoc): boolean {
         isContextDoc(doc) && doc.links.some((l) => l.dataset === t.dataset && l.slug === t.target)
       );
     case 'recipe-preamble':
-      return !isContextDoc(doc);
+      return isRecipeDoc(doc);
     case 'recipe-block':
-      return !isContextDoc(doc) && doc.markdown.some((b) => b.id === t.blockId);
+      return isRecipeDoc(doc) && doc.markdown.some((b) => b.id === t.blockId);
+    case 'reference-info':
+      return isReferenceDoc(doc);
   }
 }
 
@@ -122,15 +152,17 @@ export function readTarget(t: MdTarget, doc: MdDoc): string {
         ? (doc.links.find((l) => l.dataset === t.dataset && l.slug === t.target)?.notes ?? '')
         : '';
     case 'recipe-preamble':
-      return isContextDoc(doc) ? '' : (doc.preamble ?? '');
+      return isRecipeDoc(doc) ? (doc.preamble ?? '') : '';
     case 'recipe-block':
-      return isContextDoc(doc) ? '' : (doc.markdown.find((b) => b.id === t.blockId)?.body ?? '');
+      return isRecipeDoc(doc) ? (doc.markdown.find((b) => b.id === t.blockId)?.body ?? '') : '';
+    case 'reference-info':
+      return isReferenceDoc(doc) ? (doc.info ?? '') : '';
   }
 }
 
 /**
- * A copy of `doc` with the area set to `text`. Blank notes delete the `notes` key and a blank preamble deletes
- * `preamble` (like the Forge and Inflate editors); a block body is written as is. `doc` is not mutated, and a
+ * A copy of `doc` with the area set to `text`. Blank notes delete the `notes` key, a blank preamble deletes
+ * `preamble` (like the Forge and Inflate editors) and a blank info deletes `info`; a block body is written as is. `doc` is not mutated, and a
  * document that does not contain the area is returned unchanged (check with `hasTarget`).
  */
 export function writeTarget(t: MdTarget, doc: MdDoc, text: string): MdDoc {
@@ -147,16 +179,21 @@ export function writeTarget(t: MdTarget, doc: MdDoc, text: string): MdDoc {
       };
     }
     case 'recipe-preamble': {
-      if (isContextDoc(doc)) return doc;
+      if (!isRecipeDoc(doc)) return doc;
       const { preamble: _removed, ...rest } = doc;
       return text.trim() === '' ? rest : { ...rest, preamble: text };
     }
     case 'recipe-block': {
-      if (isContextDoc(doc)) return doc;
+      if (!isRecipeDoc(doc)) return doc;
       return {
         ...doc,
         markdown: doc.markdown.map((b) => (b.id === t.blockId ? { ...b, body: text } : b)),
       };
+    }
+    case 'reference-info': {
+      if (!isReferenceDoc(doc)) return doc;
+      const { info: _removed, ...rest } = doc;
+      return text.trim() === '' ? rest : { ...rest, info: text };
     }
   }
 }
@@ -174,6 +211,7 @@ export type LoadResult = { ok: true; loaded: LoadedTarget } | { ok: false; messa
 interface DocResponse {
   context?: ContextDoc;
   recipe?: RecipeData;
+  reference?: ReferenceData;
   lastModified: string;
 }
 
@@ -181,7 +219,7 @@ interface DocResponse {
 export async function loadTarget(t: MdTarget): Promise<LoadResult> {
   const res = await getJson<DocResponse>(endpoint(t));
   if (!res.ok) return { ok: false, message: res.message };
-  const doc = t.kind === 'context-notes' ? res.body.context : res.body.recipe;
+  const doc = res.body[collectionOf(t)];
   if (doc === undefined || typeof res.body.lastModified !== 'string') {
     return { ok: false, message: 'Unexpected response from the server' };
   }

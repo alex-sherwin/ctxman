@@ -568,6 +568,10 @@
     font-size: var(--fs-md);
     overflow-wrap: anywhere;
   }
+  /* the reference's info markdown, inside a Panel under the fields */
+  .cx-refinfo__body {
+    padding: var(--sp-3) var(--sp-4);
+  }
 
   /* F.3 context links: one row per link in the context's stored order (ContextLinkList.astro) */
   /* the list sits inside a Panel (ContextLinkList.astro): the panel supplies the frame */

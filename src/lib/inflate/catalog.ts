@@ -111,6 +111,7 @@ export const ITEM_KINDS = [
   'project',
   'skill',
   'local-repo',
+  'local-folder',
   'remote-repo',
   'remote-skill',
 ] as const;
@@ -128,16 +129,24 @@ export const ITEM_KIND_LABELS: Readonly<Record<ItemKind, string>> = {
   project: okfLabel('project'),
   skill: 'Skill',
   'local-repo': REFERENCE_TYPE_LABELS['local-repo'],
+  'local-folder': REFERENCE_TYPE_LABELS['local-folder'],
   'remote-repo': REFERENCE_TYPE_LABELS['remote-repo'],
   'remote-skill': REFERENCE_TYPE_LABELS['remote-skill'],
 };
 
-export type ModeFamily = 'okf' | 'skill' | 'local-repo' | 'remote-repo' | 'remote-skill';
+export type ModeFamily =
+  | 'okf'
+  | 'skill'
+  | 'local-repo'
+  | 'local-folder'
+  | 'remote-repo'
+  | 'remote-skill';
 
 export function familyOf(kind: ItemKind): ModeFamily {
   switch (kind) {
     case 'skill':
     case 'local-repo':
+    case 'local-folder':
     case 'remote-repo':
     case 'remote-skill':
       return kind;
@@ -322,6 +331,22 @@ const pointerMode = (description: string): ModeDef => ({
   options: ['eager'],
 });
 
+/** Local repositories and local folders: both live at a path on this machine. */
+const LOCAL_PATH_MODES: readonly ModeDef[] = [
+  {
+    id: 'describe',
+    label: 'Describe',
+    description: 'Name, description, path and owner.',
+    options: [],
+  },
+  {
+    id: 'tree',
+    label: 'Describe + tree',
+    description: 'Also list the top-level entries of the path.',
+    options: ['treeLimit'],
+  },
+];
+
 export const FAMILY_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
   okf: [
     {
@@ -359,20 +384,8 @@ export const FAMILY_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
     },
     pointerMode('Description plus the SKILL.md path.'),
   ],
-  'local-repo': [
-    {
-      id: 'describe',
-      label: 'Describe',
-      description: 'Name, description, path and owner.',
-      options: [],
-    },
-    {
-      id: 'tree',
-      label: 'Describe + tree',
-      description: 'Also list the top-level entries of the path.',
-      options: ['treeLimit'],
-    },
-  ],
+  'local-repo': LOCAL_PATH_MODES,
+  'local-folder': LOCAL_PATH_MODES,
   'remote-repo': [
     {
       id: 'describe',
@@ -442,6 +455,7 @@ const PLACED_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
   okf: PLACED_OKF_MODES,
   skill: PLACED_SKILL_MODES,
   'local-repo': FAMILY_MODES['local-repo'],
+  'local-folder': FAMILY_MODES['local-folder'],
   'remote-repo': FAMILY_MODES['remote-repo'].filter((m) => m.id === 'describe'),
   'remote-skill': FAMILY_MODES['remote-skill'].filter((m) => m.id === 'describe'),
 };
@@ -474,7 +488,7 @@ export function defaultModeFor(kind: ItemKind, target: InflateTarget, placed = f
     case 'skill':
       return placed || target === 'generic' ? 'pointer' : 'install';
     case 'local-repo':
-      return 'describe';
+    case 'local-folder':
     case 'remote-repo':
       return 'describe';
     case 'remote-skill':
@@ -589,6 +603,8 @@ export const DIR_MANIFEST_FILE = '.ctxman-inflate.json';
 export const STAGE_DIR = '.ctxman-tmp';
 /** Destination folder of cloned / linked repositories. */
 export const REPOS_DIR = 'repos';
+/** Destination folder of linked / copied local folders (plain folders, not git repositories). */
+export const FOLDERS_DIR = 'folders';
 
 export const STUB_IDS = ['agentsMd', 'claudeMd', 'gitignore'] as const;
 export type StubId = (typeof STUB_IDS)[number];
@@ -732,6 +748,21 @@ export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[
     },
     dontPlace(),
   ],
+  'local-folder': [
+    {
+      id: 'symlink',
+      label: 'Symlink',
+      description: 'Link to the original folder at folders/<name>; edits change it.',
+      options: [],
+    },
+    {
+      id: 'copy',
+      label: 'Copy',
+      description: 'Snapshot without node_modules at folders/<name>; replaced on every run.',
+      options: [],
+    },
+    dontPlace(),
+  ],
   'remote-repo': [
     {
       id: 'clone',
@@ -799,13 +830,17 @@ export function materialDescription(
   return materialDef(kind, material)?.description ?? '';
 }
 
-/** okf symlink · skill symlink · local-repo symlink · remote-repo clone · remote-skill install (all targets). */
+/**
+ * okf symlink · skill symlink · local-repo symlink · local-folder symlink · remote-repo clone · remote-skill
+ * install (all targets).
+ */
 export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): MaterialId {
   // The first entry of each family list (checked by a unit test).
   switch (familyOf(kind)) {
     case 'okf':
     case 'skill':
     case 'local-repo':
+    case 'local-folder':
       return 'symlink';
     case 'remote-repo':
       return 'clone';
@@ -814,7 +849,10 @@ export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): Mate
   }
 }
 
-/** A primary repository is a remote-repo with material clone, or a local-repo with material symlink (a copy has no .git). */
+/**
+ * A primary repository is a remote-repo with material clone, or a local-repo with material symlink (a copy has no
+ * .git). A local folder is never primary: it is not a git repository.
+ */
 export function isPrimaryEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
   return (
     (kind === 'remote-repo' && material === 'clone') ||
@@ -823,14 +861,15 @@ export function isPrimaryEligible(kind: ItemKind | null, material: MaterialId | 
 }
 
 /**
- * May the session change files in this repository (plans/INFLATE_V3_PLAN.md §3.2)? A local repository that is
- * symlinked or not placed (its original path), or a cloned remote repository. A copy is a snapshot and a
- * not-cloned remote cannot be edited, so neither is eligible. The default is `true` for the valid primary and
- * `false` for every other repository.
+ * May the session change files in this repository or folder (plans/INFLATE_V3_PLAN.md §3.2)? A local repository
+ * or local folder that is symlinked or not placed (its original path), or a cloned remote repository. A copy is
+ * a snapshot and a not-cloned remote cannot be edited, so neither is eligible. The default is `true` for the
+ * valid primary and `false` for every other item.
  */
 export function isEditEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
   return (
-    (kind === 'local-repo' && (material === 'symlink' || material === 'none')) ||
+    ((kind === 'local-repo' || kind === 'local-folder') &&
+      (material === 'symlink' || material === 'none')) ||
     (kind === 'remote-repo' && material === 'clone')
   );
 }
@@ -909,8 +948,8 @@ export function remoteSkillDirName(slug: string, subpath: string | null | undefi
 }
 
 /**
- * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<slug>` · remote-skill
- * `<skillsDir>/<remoteSkillDirName>`.
+ * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<slug>` · local folder
+ * `folders/<slug>` · remote-skill `<skillsDir>/<remoteSkillDirName>`.
  */
 export function materialDest(
   kind: ItemKind,
@@ -927,6 +966,8 @@ export function materialDest(
     case 'local-repo':
     case 'remote-repo':
       return `${REPOS_DIR}/${slug}`;
+    case 'local-folder':
+      return `${FOLDERS_DIR}/${slug}`;
     case 'remote-skill':
       return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath)}`;
   }

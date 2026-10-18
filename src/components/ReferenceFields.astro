@@ -1,21 +1,31 @@
 ---
 import { OWNER_LABELS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
+import { isLocalReference } from '../datasets/schemas.ts';
 import type { ReferenceData } from '../datasets/schemas.ts';
 import { classifyRemoteUri } from '../lib/remote-uri.ts';
+import { INFO_TARGET_ID } from '../ui/markdown/targets.ts';
 import CopyButton from './CopyButton.astro';
+import EmptyState from './EmptyState.astro';
+import MdEditButton from './MdEditButton.astro';
+import Panel from './Panel.astro';
 
-// Reference records have no markdown: their fields are the content (main column of the detail page).
+// A reference's fields are the content (main column of the detail page), plus the optional `info` markdown in
+// its own panel. Its pencil button is enabled by the MarkdownTargets island, which the PAGE mounts.
 interface Props {
   data: ReferenceData;
+  /** `info` rendered with the project's markdown pipeline. */
+  infoHtml?: string | undefined;
 }
 
-const { data } = Astro.props;
+const { data, infoHtml } = Astro.props;
 
-const where =
-  data.type === 'local-repo' ? { label: 'Path', value: data.path } : { label: 'URI', value: data.uri };
+const where = isLocalReference(data)
+  ? { label: 'Path', value: data.path }
+  : { label: 'URI', value: data.uri };
 const subpath = data.subpath ?? '';
 const uriKind = data.type === 'remote-skill' ? classifyRemoteUri(data.uri) : null;
 const isUrl = /^https?:\/\//i.test(where.value);
+const root = uriKind === 'archive' ? 'archive root' : data.type === 'local-folder' ? 'folder root' : 'repo root';
 ---
 
 <dl class="cx-fields" data-testid="reference-fields">
@@ -48,7 +58,20 @@ const isUrl = /^https?:\/\//i.test(where.value);
     <CopyButton text={where.value} ariaLabel={`Copy ${where.label.toLowerCase()}`} />
   </dd>
   <dt class="ck-label">Subpath</dt>
-  <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{uriKind === 'archive' ? 'archive root' : 'repo root'}</span>}</dd>
+  <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{root}</span>}</dd>
   <dt class="ck-label">Owner</dt>
   <dd>{OWNER_LABELS[data.owner]}</dd>
 </dl>
+
+<Panel title="Info" id="h-ref-info" testid="reference-info">
+  <Fragment slot="actions">
+    <MdEditButton id={INFO_TARGET_ID} label="info" testid="reference-edit-info" />
+  </Fragment>
+  {
+    infoHtml !== undefined ? (
+      <div class="cx-refinfo__body cx-prose cx-prose--compact" set:html={infoHtml} />
+    ) : (
+      <EmptyState compact title="None" />
+    )
+  }
+</Panel>

@@ -145,6 +145,18 @@ describe('planNewEntry skill, reference, context', () => {
     );
     const [localDefault] = planNewEntry('reference', 'r1', { now, type: 'local-repo' });
     expect(localDefault?.content).toContain('path: ~/repos/r1\n');
+    const [folder] = planNewEntry('reference', 'notes', {
+      now,
+      description: 'd',
+      type: 'local-folder',
+      path: '~/Documents/notes',
+    });
+    expect(folder?.content).toBe(
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference\n' +
+        'name: notes\ndescription: d\ntype: local-folder\npath: ~/Documents/notes\nowner: me\n',
+    );
+    const [folderDefault] = planNewEntry('reference', 'notes', { now, type: 'local-folder' });
+    expect(folderDefault?.content).toContain('path: ~/notes\n');
     const [skill] = planNewEntry('reference', 'r2', {
       now,
       description: 'd',

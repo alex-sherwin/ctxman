@@ -1,7 +1,7 @@
 // PURE (no fs, no astro:*; browser-safe): the deterministic YAML form of a reference and its validation, shared by
 // reference-io.ts (file writes) and islands (YAML preview). The yaml-language-server comment is NOT part of
 // the serializer: file writers add it with `withSchemaComment('reference', ...)` (schema-comment.ts).
-import { referenceSchema } from '../datasets/schemas.ts';
+import { isLocalReference, referenceSchema } from '../datasets/schemas.ts';
 import type { ReferenceData, ReferenceInput } from '../datasets/schemas.ts';
 import { validate } from '../datasets/validate.ts';
 import { describeIssue, issuePath } from './findings.ts';
@@ -17,17 +17,18 @@ export interface ReferenceIssue {
 }
 
 /**
- * The plain object that is serialized. Key order: name, description, type, path (local-repo) | uri
- * (remote-*), subpath (omitted when undefined / null / ''), owner, tags (omitted when empty). Matches every
- * seed file and the `add:reference` template.
+ * The plain object that is serialized. Key order: name, description, type, path (local-repo, local-folder) | uri
+ * (remote-*), subpath (omitted when undefined / null / ''), owner, tags (omitted when empty), info (omitted when
+ * blank; a literal block scalar). Matches every seed file and the `add:reference` template.
  */
 export function referenceToYamlObject(r: ReferenceData): Record<string, unknown> {
   const doc: Record<string, unknown> = { name: r.name, description: r.description, type: r.type };
-  if (r.type === 'local-repo') doc.path = r.path;
+  if (isLocalReference(r)) doc.path = r.path;
   else doc.uri = r.uri;
   if (r.subpath !== undefined && r.subpath !== null && r.subpath !== '') doc.subpath = r.subpath;
   doc.owner = r.owner;
   if (r.tags.length > 0) doc.tags = r.tags;
+  if (r.info !== undefined && r.info.trim() !== '') doc.info = r.info;
   return doc;
 }
 

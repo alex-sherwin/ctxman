@@ -9,6 +9,7 @@ import {
   OWNER_LABELS,
   REFERENCE_TYPES,
   REFERENCE_TYPE_LABELS,
+  isLocalReferenceType,
 } from '../../datasets/registry.ts';
 import { INFLATE_LAYOUTS, INFLATE_TARGETS, LAYOUT_LABELS, TARGETS } from '../inflate/catalog.ts';
 import { describeIssue } from '../findings.ts';
@@ -38,9 +39,10 @@ export interface FieldDef {
   kind: FieldKind;
   required?: boolean;
   mono?: boolean;
-  /** Static help text, or one that depends on the working document (reference `uri` per type). */
+  /** Static help text, or one that depends on the working document (reference `path` / `uri` per type). */
   help?: string | ((doc: FormDoc) => string);
-  placeholder?: string;
+  /** Static, or depending on the working document like `help`. */
+  placeholder?: string | ((doc: FormDoc) => string);
   options?: readonly FieldOption[];
   /** Shown only when true for the working doc (the reference type switch). */
   when?: (doc: FormDoc) => boolean;
@@ -63,7 +65,7 @@ const LAYOUT_OPTIONS: readonly FieldOption[] = INFLATE_LAYOUTS.map((id) => ({
   label: LAYOUT_LABELS[id],
 }));
 
-const isLocal = (doc: FormDoc): boolean => doc.type === 'local-repo';
+const isLocal = (doc: FormDoc): boolean => isLocalReferenceType(doc.type);
 
 const URI_HELP: Record<string, string> = {
   'remote-repo':
@@ -100,8 +102,11 @@ export const FORM_FIELDS: Record<YamlDatasetId, readonly FieldDef[]> = {
       kind: 'text',
       required: true,
       mono: true,
-      help: 'Absolute or ~/ path of the repo root',
-      placeholder: '~/repos/my-repo',
+      help: (doc) =>
+        doc.type === 'local-folder'
+          ? 'Absolute or ~/ path of the folder'
+          : 'Absolute or ~/ path of the repo root',
+      placeholder: (doc) => (doc.type === 'local-folder' ? '~/my-folder' : '~/repos/my-repo'),
       when: isLocal,
     },
     {
@@ -119,9 +124,15 @@ export const FORM_FIELDS: Record<YamlDatasetId, readonly FieldDef[]> = {
       label: 'Subpath',
       kind: 'text',
       mono: true,
-      help: 'Folder inside the repo (or archive); empty = the root',
+      help: 'Folder inside the repo, folder or archive; empty = the root',
     },
     { id: 'owner', label: 'Owner', kind: 'select', required: true, options: OWNER_OPTIONS },
+    {
+      id: 'info',
+      label: 'Info',
+      kind: 'markdown',
+      help: 'What an agent should know about it (markdown); Context Inflate inlines it under the reference',
+    },
   ],
   context: [NAME_FIELD, DESCRIPTION_FIELD, TAGS_FIELD],
   recipe: [
@@ -146,6 +157,10 @@ export function visibleFields(ds: YamlDatasetId, doc: FormDoc): readonly FieldDe
 
 export function fieldHelp(def: FieldDef, doc: FormDoc): string | undefined {
   return typeof def.help === 'function' ? def.help(doc) : def.help;
+}
+
+export function fieldPlaceholder(def: FieldDef, doc: FormDoc): string | undefined {
+  return typeof def.placeholder === 'function' ? def.placeholder(doc) : def.placeholder;
 }
 
 /** Where the data the form cannot edit is edited (context links, recipe composition). */
@@ -199,9 +214,9 @@ function put(out: FormDoc, key: string, value: unknown): void {
 }
 
 /**
- * The document the API receives: strings trimmed, optional empty values (subpath, tags, preamble) dropped.
- * Reference keeps only the keys of the active type variant (`path` for local-repo, `uri` for the remote
- * types), in the serializer's key order; context and recipe keep every other key (links, composition) as is.
+ * The document the API receives: strings trimmed, optional empty values (subpath, tags, info, preamble) dropped.
+ * Reference keeps only the keys of the active type variant (`path` for local-repo and local-folder,
+ * `uri` for the remote types), in the serializer's key order; context and recipe keep every other key (links, composition) as is.
  */
 export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
   const tags = tagList(doc.tags);
@@ -216,6 +231,7 @@ export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
     if (typeof subpath === 'string' && subpath !== '') out.subpath = subpath;
     put(out, 'owner', doc.owner);
     if (tags.length > 0) out.tags = tags;
+    if (typeof doc.info === 'string' && doc.info.trim() !== '') out.info = doc.info;
     return out;
   }
   const out: FormDoc = { ...doc, name: trimmed(doc.name), description: trimmed(doc.description) };

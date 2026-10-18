@@ -84,7 +84,7 @@ order:
 | `markdown` | Injected blocks `{id, body}`; `id` is kebab-case, new blocks are named `b1`, `b2` and so on. |
 | `overrides` | Per-item `{key, mode?, options?, material?, materialOptions?, edit?, exclude?}`, where `key` is `<dataset>/<slug>`. `edit` (the Editable flag of a repository) is only valid on a `reference/<slug>` key. Entries that set nothing are dropped when saving. |
 | `order` | Segment keys that pin the order (see below). Written only when non-empty. |
-| `defaults` | Per item kind `{mode?, options?, material?, materialOptions?}`, keyed by `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `local-repo`, `remote-repo` or `remote-skill`. |
+| `defaults` | Per item kind `{mode?, options?, material?, materialOptions?}`, keyed by `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `local-repo`, `local-folder`, `remote-repo` or `remote-skill`. |
 
 The `output` object:
 
@@ -134,7 +134,7 @@ The **mode** says how the document presents an item. Which modes exist depends o
 | --- | --- | --- |
 | `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | `inline-main`, `inline-bundle`, `summary`, `pointer` | `summary` ("Summary + links"), `pointer`, `inline-main`, `inline-bundle` |
 | `skill` | `install` (`pointer` for the generic target), `inline`, `pointer` | `pointer` ("Link"), `inline` |
-| reference `local-repo` | `describe`, `tree` | `describe`, `tree` |
+| reference `local-repo`, `local-folder` | `describe`, `tree` | `describe`, `tree` |
 | reference `remote-repo` | `describe`, `clone` | `describe` |
 | reference `remote-skill` | `install` (`describe` for the generic target), `describe` | `describe` |
 
@@ -155,6 +155,8 @@ What each mode writes:
 | `tree` | `describe`, then the top-level entries of the local path (`treeLimit`). |
 | `clone` | Not placed only: `git clone` commands into the project. |
 | `install` (remote-skill) | Not placed only: commands that clone or download the skill into the skills directory. |
+
+**Reference info.** Whatever the mode, a reference with an `info` (markdown in the reference file) gets it inlined under its item: after the description in the single document, between the facts line (and context notes) and the `Details:` line in a working directory. Its headings are nested below the item heading, and `ctxman:` links are resolved like in inline bodies (relative links when the target is placed); other links stay as written, since a reference has no bundle. A `ctxman:` link that does not resolve adds an `unresolved-link` warning. The Primary repository, Repositories, Folders and Skills sections stay one-liners and do not repeat it.
 
 Options a mode accepts (others are ignored and not stored):
 
@@ -182,19 +184,20 @@ The material of an item is independent of its mode, and it comes first: it decid
 | `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project` | Symlink (`symlink`), Copy (`copy`), Don't place (`none`) | `<dataset>/<slug>` |
 | `skill` | Symlink, Copy, Don't place | `<skillsDir>/<slug>` |
 | reference `local-repo` | Symlink, Copy, Don't place | `repos/<slug>` |
+| reference `local-folder` | Symlink, Copy, Don't place | `folders/<slug>` |
 | reference `remote-repo` | Clone (`clone`), Don't place | `repos/<slug>` |
 | reference `remote-skill` | Clone for a git URI or Download for an archive (`install`), Don't place | `<skillsDir>/<last subpath segment, or the slug>` |
 
-The defaults are the same for every target (the target only decides `<skillsDir>`): knowledge, skills and local repositories are symlinked, remote repositories and remote skills are fetched. `install` of a remote skill is labelled by the URI kind (Clone, Download, or "Clone or download" while the kind is unknown). Don't place means nothing is placed and `LLM_CONTEXT.md` points at the original path or URI.
+The defaults are the same for every target (the target only decides `<skillsDir>`): knowledge, skills, local repositories and local folders are symlinked, remote repositories and remote skills are fetched. `install` of a remote skill is labelled by the URI kind (Clone, Download, or "Clone or download" while the kind is unknown). Don't place means nothing is placed and `LLM_CONTEXT.md` points at the original path or URI.
 
-* **Symlink** links the folder to the original (a ctxman entry, a ctxman skill folder or the repository root; on Windows a junction). Edits through the link change the source, and a re-run leaves it `unchanged`.
+* **Symlink** links the folder to the original (a ctxman entry, a ctxman skill folder, the repository root or the local folder; on Windows a junction). Edits through the link change the source, and a re-run leaves it `unchanged`.
 * **Copy** is a snapshot made through a temporary sibling and a rename, so files removed from the source disappear on the next run (it is `replaced` every run). `.git`, `node_modules` and `.DS_Store` are not copied, so a copied repository has no history and can be neither primary nor editable.
 * **Clone** runs `git clone` into `repos/<slug>` and `git pull --ff-only` on later runs. Options: `cloneDepth` (1, 10, 50 or 0 for full history; default 1), `branch` (a branch or tag; default the remote's default branch) and `subpathOnly` (a sparse checkout of the reference's `subpath`; offered in the UI only for a reference that has a subpath).
 * **Clone or Download** (remote-skill `install`): a git URI is cloned shallowly into the stage folder `.ctxman-tmp/<slug>` (sparse when there is a subpath), an https archive is downloaded (limit 256 MiB, 10 minutes) and extracted with the system `tar`. The skill folder is then located (the subpath, else `SKILL.md` at the root, else the single wrapper folder of an archive), copied to the destination without symbolic links, and the stage folder is removed. The destination folder name is the last subpath segment when that is a valid entry name (so `skills/skill-creator` installs as `skill-creator`, as agentskills.io requires the folder to equal the skill name), else the reference slug. The branch option does not apply to an archive.
-* **Primary repository**: `output.primary` names one `reference/<slug>`, a remote-repo with `clone` or a local-repo with `symlink`. The document then leads with a "Primary repository" section (source, a "Start in" link when the reference has a subpath, and "Work in `repos/<slug>` unless the task says otherwise"). It is single-select in the UI: ticking Primary on another item moves it.
-* **Editable**: whether the session may change files in a repository. Eligible: a `local-repo` that is symlinked or not placed (it lives at its original path) and a cloned `remote-repo`. A copy is a snapshot that the next run replaces, and a remote repository that is not cloned has nothing to edit, so neither has the flag. The default is **on for the valid primary and off for every other repository**. It is stored as the `edit` field of the `reference/<slug>` override (only a value that differs from the default is kept; the override is invalid on any other key), or given for one run as a run override. The document says `editable` or `read-only` for every repository, the Placement legend says what that means, and a read-only primary ends with "Read it to answer the task; it is read-only." instead of "Work in ...". Editable is guidance for the agent: nothing is made read-only on disk.
+* **Primary repository**: `output.primary` names one `reference/<slug>`, a remote-repo with `clone` or a local-repo with `symlink` (never a `local-folder`: it is not a git repository). The document then leads with a "Primary repository" section (source, a "Start in" link when the reference has a subpath, and "Work in `repos/<slug>` unless the task says otherwise"). It is single-select in the UI: ticking Primary on another item moves it.
+* **Editable**: whether the session may change files in a repository or local folder. Eligible: a `local-repo` or `local-folder` that is symlinked or not placed (it lives at its original path) and a cloned `remote-repo`. A copy is a snapshot that the next run replaces, and a remote repository that is not cloned has nothing to edit, so neither has the flag. The default is **on for the valid primary and off for every other repository and folder**. It is stored as the `edit` field of the `reference/<slug>` override (only a value that differs from the default is kept; the override is invalid on any other key), or given for one run as a run override. The document says `editable` or `read-only` for every repository and folder, the Placement legend says what that means, and a read-only primary ends with "Read it to answer the task; it is read-only." instead of "Work in ...". Editable is guidance for the agent: nothing is made read-only on disk.
 
-A material that cannot be placed is demoted to `none` with a warning and nothing is done for it: `dest-collision` (two items want the same destination; the first wins), `source-missing` (a local repository path or an unknown URI kind), `tool-missing` (git, or tar / unzip for an archive, is not installed). The renderer follows the outcome, not the intention: a demoted or failed item is written as not placed.
+A material that cannot be placed is demoted to `none` with a warning and nothing is done for it: `dest-collision` (two items want the same destination; the first wins), `source-missing` (a local repository or folder path, or an unknown URI kind), `tool-missing` (git, or tar / unzip for an archive, is not installed). The renderer follows the outcome, not the intention: a demoted or failed item is written as not placed.
 
 ## Targets
 
@@ -272,12 +275,13 @@ Section order:
 
 1. Header: the title, the session line, a note that `<W>` is the working root (printed once, the only absolute path of the directory; "Links and paths below are relative to it"), the skills line, and which stub loads the file.
 2. The preamble.
-3. `## Working directory map`: a `text` block listing the context file and stubs, then one group per folder (`repos/`, one per knowledge dataset, the skills directory) with what each entry is (`symlink`, `copy`, `git clone[, sparse][, branch x]`, `cloned` / `downloaded` for a remote skill), a `primary` and an `editable` marker (read-only is the default and not repeated) and the first words of its description.
-4. `## Placement`: a legend with one line per placement kind that occurs (**symlink**, **copy**, **git clone**, **downloaded** / **cloned** skill, **not placed**), what **editable** and **read-only** mean when a repository is listed, and a line saying that ctxman knowledge, work items and skills are the user's own notes (`owner` says whether a repository or remote skill is theirs).
+3. `## Working directory map`: a `text` block listing the context file and stubs, then one group per folder (`repos/`, `folders/`, one per knowledge dataset, the skills directory) with what each entry is (`symlink`, `copy`, `git clone[, sparse][, branch x]`, `cloned` / `downloaded` for a remote skill), a `primary` and an `editable` marker (read-only is the default and not repeated) and the first words of its description.
+4. `## Placement`: a legend with one line per placement kind that occurs (**symlink**, **copy**, **git clone**, **downloaded** / **cloned** skill, **not placed**), what **editable** and **read-only** mean when a repository or folder is listed (the line names "repositories", "folders" or both), and a line saying that ctxman knowledge, work items and skills are the user's own notes (`owner` says whether a repository or remote skill is theirs).
 5. `## Primary repository` (only with a valid primary): title, link, key, `owner: me|not me`, `editable` or `read-only`; the description; `Source:` (symlink to a path, or git clone of a URI with depth, branch and sparse path); `Start in:` as a link when the reference has a subpath; and the closing line (`Work in <link> unless the task says otherwise.` or `Read it to answer the task; it is read-only.`).
 6. `## Repositories`: every other repository, placed or not, one bullet each: title, link (or `not cloned` / `not placed` with the URI or absolute link), the placement phrase, `owner`, `editable` or `read-only`, the description.
-7. `## Skills`: the placed skills first, under a line naming the skills directory (a link to the skill folder, the title, `symlink to the ctxman skill` / `copy of the ctxman skill` / `downloaded from <uri>` / `cloned from <uri>`, `owner`, the description), then a "Not installed:" list.
-8. The segments in plan order. An item starts with a **facts line**, `` `key` · kind · state, stale, tags · link to the file or folder (or "not placed: <absolute link>") · placement word [· primary] [· editable | read-only] ``, then the context notes (as blockquotes) and the content of its mode: an okf `summary` prints the description and the `Files:` links (at most 20, then "and N more in <folder>"), a skill in `pointer` mode the description, the inline modes the bodies (the "More in this bundle" and "Other files" lists use links). **Repositories and remote skills are compact**: the facts line and the notes, then `Details: see Primary repository.` / `see Repositories.` / `see Skills.`, because those sections carry the details; a local repository in `tree` mode still prints its tree. An item that failed during the run is written as not placed, with the reason.
+7. `## Folders`: every local folder (a plain folder, not a git repository), placed or not, with the same bullet as a local repository.
+8. `## Skills`: the placed skills first, under a line naming the skills directory (a link to the skill folder, the title, `symlink to the ctxman skill` / `copy of the ctxman skill` / `downloaded from <uri>` / `cloned from <uri>`, `owner`, the description), then a "Not installed:" list.
+9. The segments in plan order. An item starts with a **facts line**, `` `key` · kind · state, stale, tags · link to the file or folder (or "not placed: <absolute link>") · placement word [· primary] [· editable | read-only] ``, then the context notes (as blockquotes) and the content of its mode: an okf `summary` prints the description and the `Files:` links (at most 20, then "and N more in <folder>"), a skill in `pointer` mode the description, the inline modes the bodies (the "More in this bundle" and "Other files" lists use links). **Repositories, local folders and remote skills are compact**: the facts line and the notes, the reference's `info` when it has one, then `Details: see Primary repository.` / `see Repositories.` / `see Folders.` / `see Skills.`, because those sections carry the details; a local repository or folder in `tree` mode still prints its tree. An item that failed during the run is written as not placed, with the reason.
 
 A trimmed example, generated by a dry run of the seed recipe with two extra items (the local repository `ctxman-repo` and the remote skill `anthropic-skills`) and without the seed's `inline-bundle` override of `kb/ctxman` (`<W>` = `~/ctxman-inflate/ctxman-dev-brief`, the Astro docs cloned as primary and editable, the local repository read-only; `...` marks cut text):
 
@@ -385,7 +389,7 @@ Details: see Primary repository.
 
 * `CLAUDE.md` (default for `claude-code`): a title, one sentence naming the recipe and the context file, and a bare `@LLM_CONTEXT.md` line, which Claude Code loads at session start.
 * `AGENTS.md` (default for `codex` and `generic`): the same sentence, "read it first", and a note that paths are relative to the directory.
-* `.gitignore` (default for all): `/.ctxman-inflate.json`, `/.ctxman-tmp/` and the folders that hold placed material (`/repos/`, `/kb/`, `/.claude/skills/<name>/`, ...), so the directory can be a git repository of your own notes without committing machine-specific content. A symlinked skill is listed without the trailing slash (`/.claude/skills/<name>`), because git does not match a symlink with a directory pattern.
+* `.gitignore` (default for all): `/.ctxman-inflate.json`, `/.ctxman-tmp/` and the folders that hold placed material (`/repos/`, `/folders/`, `/kb/`, `/.claude/skills/<name>/`, ...), so the directory can be a git repository of your own notes without committing machine-specific content. A symlinked skill is listed without the trailing slash (`/.claude/skills/<name>`), because git does not match a symlink with a directory pattern.
 
 Stubs are only written when absent or when the file still has the hash ctxman recorded; an edited or foreign stub is kept and reported. `LLM_CONTEXT.md` is output: it is always regenerated, with a warning (`context-file-edited`) when local edits are replaced. A stub whose name equals the context file name (case-insensitive) is not written.
 
@@ -403,7 +407,7 @@ Steps run in this order, with these ids (the seed's dry run has 15):
 | --- | --- |
 | `dir` | Create the directory (or use the existing one). A failure aborts everything else. |
 | `rm:<path>` | Remove a path the previous manifest lists and the new plan no longer places. |
-| `okf:<key>`, `skill:<key>`, `link:<key>` | Symlink or copy knowledge bundles, symlink or copy skills, symlink or copy local repositories. |
+| `okf:<key>`, `skill:<key>`, `link:<key>` | Symlink or copy knowledge bundles, symlink or copy skills, symlink or copy local repositories (then local folders). |
 | `clone:<key>` | `git clone` (or `git pull --ff-only` when the same clone exists). |
 | `stage:<key>`, `dl:<key>`, `x:<key>`, `skill:<key>` | Remote skill: clone or download into `.ctxman-tmp/`, extract, place. |
 | `stage-cleanup` | Remove `.ctxman-tmp/`. |
@@ -427,7 +431,7 @@ The ownership record, JSON with 2-space indentation: `format: "ctxman-inflate"`,
 { "path": "CLAUDE.md", "type": "file", "role": "claude-md", "sha256": "..." }
 ```
 
-Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`, `gitignore`). A symlinked skill or local repository is a `symlink` entry, a copy a `copy` entry. Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
+Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`, `gitignore`). A symlinked skill, local repository or local folder is a `symlink` entry, a copy a `copy` entry. Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
 
 ### Cleanup rule
 

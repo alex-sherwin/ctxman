@@ -7,6 +7,7 @@ import {
   YAML_DATASETS,
   emptyDoc,
   fieldHelp,
+  fieldPlaceholder,
   isYamlDatasetId,
   normalizeDoc,
   readonlySummary,
@@ -26,9 +27,19 @@ describe('YAML_DATASETS', () => {
 });
 
 describe('FORM_FIELDS / visibleFields', () => {
-  it('reference: the type switch shows path for local-repo and uri for the remote types', () => {
-    const local = visibleFields('reference', { type: 'local-repo' });
-    expect(ids(local)).toEqual(['name', 'description', 'tags', 'type', 'path', 'subpath', 'owner']);
+  it('reference: the type switch shows path for the local types and uri for the remote types', () => {
+    for (const type of ['local-repo', 'local-folder']) {
+      expect(ids(visibleFields('reference', { type }))).toEqual([
+        'name',
+        'description',
+        'tags',
+        'type',
+        'path',
+        'subpath',
+        'owner',
+        'info',
+      ]);
+    }
     for (const type of ['remote-repo', 'remote-skill']) {
       expect(ids(visibleFields('reference', { type }))).toEqual([
         'name',
@@ -38,20 +49,37 @@ describe('FORM_FIELDS / visibleFields', () => {
         'uri',
         'subpath',
         'owner',
+        'info',
       ]);
     }
+    expect(FORM_FIELDS.reference.find((f) => f.id === 'info')?.kind).toBe('markdown');
   });
 
   it('reference type options come from the registry', () => {
     const type = FORM_FIELDS.reference.find((f) => f.id === 'type');
-    expect(type?.options?.map((o) => o.id)).toEqual(['local-repo', 'remote-repo', 'remote-skill']);
+    expect(type?.options?.map((o) => o.id)).toEqual([
+      'local-repo',
+      'local-folder',
+      'remote-repo',
+      'remote-skill',
+    ]);
     expect(type?.options?.map((o) => o.label)).toEqual([
       'Local repo',
+      'Local folder',
       'Remote repo',
       'Remote skill',
     ]);
     const owner = FORM_FIELDS.reference.find((f) => f.id === 'owner');
     expect(owner?.options?.map((o) => o.label)).toEqual(['me', 'not me']);
+  });
+
+  it('path help and placeholder depend on the local type', () => {
+    const path = FORM_FIELDS.reference.find((f) => f.id === 'path')!;
+    expect(fieldHelp(path, { type: 'local-repo' })).toBe('Absolute or ~/ path of the repo root');
+    expect(fieldHelp(path, { type: 'local-folder' })).toBe('Absolute or ~/ path of the folder');
+    expect(fieldPlaceholder(path, { type: 'local-repo' })).toBe('~/repos/my-repo');
+    expect(fieldPlaceholder(path, { type: 'local-folder' })).toBe('~/my-folder');
+    expect(fieldPlaceholder(FORM_FIELDS.reference[0]!, {})).toBeUndefined();
   });
 
   it('uri help depends on the type', () => {
@@ -139,6 +167,35 @@ describe('normalizeDoc', () => {
       path: '~/repos/x',
       owner: 'me',
     });
+  });
+
+  it('reference: a local-folder keeps path and drops uri, like a local-repo', () => {
+    expect(
+      normalizeDoc('reference', {
+        name: 'notes',
+        description: 'My notes',
+        type: 'local-folder',
+        path: ' ~/notes ',
+        uri: 'git@github.com:org/x.git',
+        subpath: ' drafts ',
+        owner: 'me',
+      }),
+    ).toEqual({
+      name: 'notes',
+      description: 'My notes',
+      type: 'local-folder',
+      path: '~/notes',
+      subpath: 'drafts',
+      owner: 'me',
+    });
+  });
+
+  it('reference: info is kept as written (last key) and dropped when blank', () => {
+    const base = { name: 'r', description: 'd', type: 'local-repo', path: '/x', owner: 'me' };
+    const kept = normalizeDoc('reference', { ...base, info: '## Setup\n\nRun it.\n' });
+    expect(kept.info).toBe('## Setup\n\nRun it.\n');
+    expect(Object.keys(kept).at(-1)).toBe('info');
+    expect(normalizeDoc('reference', { ...base, info: '  \n' })).not.toHaveProperty('info');
   });
 
   it('reference: switching to a remote type drops path and keeps uri / subpath / tags', () => {

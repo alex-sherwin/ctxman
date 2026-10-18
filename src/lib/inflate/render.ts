@@ -2,9 +2,9 @@
 // the gathered file contents into ONE markdown document and a JSON manifest (plans/INFLATE_SPEC.md §6.3).
 // With `ctx.output` (a working directory, plans/INFLATE_V2_SPEC.md §9, plans/INFLATE_V3_PLAN.md §7) the same
 // document is rendered for the directory: every path into it is a relative markdown link, absolute links point
-// at what is not placed, and the directory map, the `## Placement` legend, the primary / repositories / skills
-// sections carry the details the (compact) repository and skill items only point to. Without it the output is
-// the single document with absolute paths in code spans, unchanged since v1. Brief quality
+// at what is not placed, and the directory map, the `## Placement` legend, the primary / repositories / folders /
+// skills sections carry the details the (compact) repository, folder and skill items only point to. Without it
+// the output is the single document with absolute paths in code spans, unchanged since v1. Brief quality
 // (plans/ROUND3_SPEC.md §H): the entry description is printed when the body lacks it, empty template sections
 // are dropped, markdown blocks nest under their group, links that do not resolve become `unresolved-link`
 // warnings. Never import from the browser island.
@@ -17,6 +17,7 @@ import {
 import { maskMarkdownCode, parseFrontmatterLoose, splitFrontmatter } from '../okf.ts';
 import { classifyRemoteUri } from '../remote-uri.ts';
 import {
+  FOLDERS_DIR,
   ITEM_KIND_LABELS,
   OPTION_DEFS,
   REPOS_DIR,
@@ -556,10 +557,37 @@ function withPointer(seg: ItemSegment, line: string): string[] {
   return [line, ...(notes === '' ? [] : [notes])];
 }
 
+/**
+ * A reference's `info` markdown, inlined under the item in every mode ('' when absent or blank): headings
+ * nested below the item heading, `ctxman:` links resolved like in inline bodies (relative when the target is
+ * placed). A reference has no bundle, so every other link stays as written, without a warning.
+ */
+function infoBody(c: ItemCtx): string {
+  const { seg, meta, level, env } = c;
+  const info = meta.ref?.info;
+  if (info === undefined || info.trim() === '') return '';
+  const body = rewriteLinks(nestHeadings(trimBlankLines(normalizeText(info)), level + 1), {
+    fromRel: '',
+    files: new Map(),
+    targets: env.targets,
+    onUnresolved: (destination, reason) => {
+      if (reason !== 'no-entry' && reason !== 'malformed') return;
+      env.warnings.push({
+        code: 'unresolved-link',
+        key: seg.key,
+        message: `${seg.key} info: link "${destination}" does not resolve (${UNRESOLVED_WHY[reason]})`,
+      });
+    },
+  });
+  return body.trim();
+}
+
 function documentItem(c: ItemCtx): string[] {
   const { seg, kind, mode, meta, ic, level, env } = c;
   const options = seg.options;
   const description = meta.description.trim();
+  // References: what the item is (description, then its info), ahead of where it is and how to get it.
+  const about = (): string[] => [description, infoBody(c)];
   switch (kind) {
     case 'kb':
     case 'rca':
@@ -590,32 +618,35 @@ function documentItem(c: ItemCtx): string[] {
       return withMeta(seg, ic.rootAbs, [description, ...skillInstallBody(seg, ic, env)]);
     }
     case 'local-repo':
-      return withMeta(seg, ic.local?.root ?? null, localBody(seg, ic, description));
+    case 'local-folder':
+      return withMeta(seg, ic.local?.root ?? null, localBody(seg, ic, about()));
     case 'remote-repo':
       return withMeta(
         seg,
         meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
-        remoteRepoBody(seg, description, env.root),
+        remoteRepoBody(seg, about(), env.root),
       );
     case 'remote-skill':
       return withMeta(
         seg,
         meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
-        remoteSkillBody(seg, description, env),
+        remoteSkillBody(seg, about(), env),
       );
   }
 }
 
-function localBody(seg: ItemSegment, ic: ItemContent, description: string): string[] {
+/** `about` = the description and the info of the reference (render.ts#documentItem). */
+function localBody(seg: ItemSegment, ic: ItemContent, about: readonly string[]): string[] {
   const local = ic.local;
   const ref = seg.meta?.ref;
-  if (local === undefined) return [description];
+  if (local === undefined) return [...about];
   const subpath = ref !== undefined && 'subpath' in ref ? cleanSubpath(ref.subpath) : '';
+  const [what, inside] = seg.kind === 'local-folder' ? ['files', 'folder'] : ['code', 'repository'];
   const out = [
-    description,
+    ...about,
     subpath === ''
-      ? `Read the code at ${inlineCode(local.target)} when the task needs it.`
-      : `Read the code at ${inlineCode(local.target)} (inside the repository ${inlineCode(local.root)}) when the task needs it.`,
+      ? `Read the ${what} at ${inlineCode(local.target)} when the task needs it.`
+      : `Read the ${what} at ${inlineCode(local.target)} (inside the ${inside} ${inlineCode(local.root)}) when the task needs it.`,
   ];
   if (!local.exists) {
     out.push(`The path ${inlineCode(local.target)} does not exist on this machine.`);
@@ -625,22 +656,22 @@ function localBody(seg: ItemSegment, ic: ItemContent, description: string): stri
   return out;
 }
 
-function remoteRepoBody(seg: ItemSegment, description: string, root: string): string[] {
+function remoteRepoBody(seg: ItemSegment, about: readonly string[], root: string): string[] {
   const ref = seg.meta?.ref;
-  if (ref === undefined || ref.type !== 'remote-repo') return [description];
+  if (ref === undefined || ref.type !== 'remote-repo') return [...about];
   if (seg.mode !== 'clone') {
     const subpath = cleanSubpath(ref.subpath);
     return [
-      description,
+      ...about,
       `Git repository ${inlineCode(ref.uri)}${subpath === '' ? '' : `, relevant path ${inlineCode(subpath)}`}. Clone it only if the task needs its contents.`,
     ];
   }
-  return [description, ...cloneCommands(seg, ref, root)];
+  return [...about, ...cloneCommands(seg, ref, root)];
 }
 
-function remoteSkillBody(seg: ItemSegment, description: string, env: Env): string[] {
+function remoteSkillBody(seg: ItemSegment, about: readonly string[], env: Env): string[] {
   const ref = seg.meta?.ref;
-  if (ref === undefined || ref.type !== 'remote-skill') return [description];
+  if (ref === undefined || ref.type !== 'remote-skill') return [...about];
   if (seg.mode === 'describe') {
     const subpath = cleanSubpath(ref.subpath);
     const lead =
@@ -648,18 +679,19 @@ function remoteSkillBody(seg: ItemSegment, description: string, env: Env): strin
         ? `Agent skill packaged as an archive at ${inlineCode(ref.uri)}`
         : `Agent skill in the git repository ${inlineCode(ref.uri)}`;
     return [
-      description,
+      ...about,
       `${lead}${subpath === '' ? '' : ` (skill folder ${inlineCode(subpath)})`}. Install it only if the task needs it.`,
     ];
   }
-  return [description, ...installCommands(seg, ref, env)];
+  return [...about, ...installCommands(seg, ref, env)];
 }
 
 // ---- the working-directory document (plans/INFLATE_V3_PLAN.md §7.3)
 
-/** `Details: see …` line of a compact repository / remote-skill item. */
+/** `Details: see …` line of a compact repository / folder / remote-skill item. */
 function detailsLine(seg: ItemSegment, env: Env): string {
   if (seg.kind === 'remote-skill') return 'Details: see Skills.';
+  if (seg.kind === 'local-folder') return 'Details: see Folders.';
   return env.dir?.primary === seg.key
     ? 'Details: see Primary repository.'
     : 'Details: see Repositories.';
@@ -677,7 +709,8 @@ function locationOf(c: ItemCtx, view: MaterialView | undefined): string {
       const link = pathRef(env, env.pathOf(ic.entryAbs));
       return placed ? link : unplaced(link);
     }
-    case 'local-repo': {
+    case 'local-repo':
+    case 'local-folder': {
       if (view?.dest != null) return pathRef(env, view.dest, true);
       const root = ic.local?.root ?? env.dir?.output.materials[seg.key]?.sourceAbs ?? null;
       return unplaced(root === null ? null : pathRef(env, root, true));
@@ -702,7 +735,7 @@ function factsLine(c: ItemCtx, view: MaterialView | undefined): string {
   if (meta.tags.length > 0) parts.push(`tags: ${meta.tags.join(', ')}`);
   parts.push(locationOf(c, view));
   if (view !== undefined) parts.push(placementWord(view));
-  if (isRepoKind(kind)) {
+  if (hasAccess(kind)) {
     if (env.dir?.primary === seg.key) parts.push('primary');
     parts.push(access(env.dir?.output.materials[seg.key]));
   }
@@ -774,9 +807,10 @@ function directoryItem(c: ItemCtx): string[] {
       // `install` while the skill is not placed: the commands; placed (a stale mode): just say where it is
       return facts([description, ...(view === undefined ? skillInstallBody(seg, ic, env) : [])]);
     }
-    case 'local-repo': {
+    case 'local-repo':
+    case 'local-folder': {
       const local = ic.local;
-      const out = [detailsLine(seg, env)];
+      const out = [infoBody(c), detailsLine(seg, env)];
       if (local !== undefined && !local.exists) {
         out.push(`The path ${inlineCode(local.target)} does not exist on this machine.`);
       } else if (local !== undefined) {
@@ -786,7 +820,7 @@ function directoryItem(c: ItemCtx): string[] {
     }
     case 'remote-repo': {
       const ref = meta.ref;
-      const out = [detailsLine(seg, env)];
+      const out = [infoBody(c), detailsLine(seg, env)];
       if (
         view === undefined &&
         mode === 'clone' &&
@@ -799,7 +833,7 @@ function directoryItem(c: ItemCtx): string[] {
     }
     case 'remote-skill': {
       const ref = meta.ref;
-      const out = [detailsLine(seg, env)];
+      const out = [infoBody(c), detailsLine(seg, env)];
       if (
         view === undefined &&
         mode === 'install' &&
@@ -861,6 +895,8 @@ const dashed = (description: string): string => {
 
 const isRepoKind = (kind: ItemKind): boolean => kind === 'local-repo' || kind === 'remote-repo';
 const isSkillKind = (kind: ItemKind): boolean => kind === 'skill' || kind === 'remote-skill';
+/** Repositories and local folders: listed `editable` or `read-only`. */
+const hasAccess = (kind: ItemKind): boolean => isRepoKind(kind) || kind === 'local-folder';
 
 /** `owner: me|not me` as a ` · `-prefixed suffix; '' when the owner is unknown. */
 const ownerPart = (view: MaterialView): string =>
@@ -880,7 +916,7 @@ function placementWord(view: MaterialView): string {
     case 'remote-skill':
       return fetchWord(view) ?? 'installed';
     default:
-      // okf, local skills and local repositories: a symlink or a copy
+      // okf, local skills, local repositories and local folders: a symlink or a copy
       return view.material === 'copy' ? 'copy' : 'symlink';
   }
 }
@@ -893,8 +929,9 @@ function placement(view: MaterialView): string {
 }
 
 /**
- * May the session change this repository? A cloned remote repository only when it is there; a local one stays
- * where it is (also when it is not placed or its link failed), so the flag counts there too.
+ * May the session change this repository or folder? A cloned remote repository only when it is there; a local
+ * repository or folder stays where it is (also when it is not placed or its link failed), so the flag counts
+ * there too.
  */
 function access(view: MaterialView | undefined): 'editable' | 'read-only' {
   if (view === undefined || view.edit !== true) return 'read-only';
@@ -923,7 +960,7 @@ function directoryMap(dir: DirEnv, target: TargetDef): string {
       const note = [
         placement(view),
         ...(dir.primary === view.key ? ['primary'] : []),
-        ...(isRepoKind(view.kind) && access(view) === 'editable' ? ['editable'] : []),
+        ...(hasAccess(view.kind) && access(view) === 'editable' ? ['editable'] : []),
         ...(description === '' ? [] : [description]),
       ].join(' · ');
       rows.push({ name: `  ${last}/`, note });
@@ -932,6 +969,10 @@ function directoryMap(dir: DirEnv, target: TargetDef): string {
   group(
     `${REPOS_DIR}/`,
     placed.filter((v) => isRepoKind(v.kind)),
+  );
+  group(
+    `${FOLDERS_DIR}/`,
+    placed.filter((v) => v.kind === 'local-folder'),
   );
   for (const ds of OKF_DATASET_IDS) {
     group(
@@ -951,8 +992,9 @@ function placementSection(dir: DirEnv): string {
   const placed = dir.views.filter(isPlacedView);
   const bullets: string[] = [];
   if (placed.some((v) => v.material === 'symlink')) {
+    const folder = placed.some((v) => v.material === 'symlink' && v.kind === 'local-folder');
     bullets.push(
-      '- **symlink**: the original folder, live; edits change the source (your ctxman entry or local repository).',
+      `- **symlink**: the original folder, live; edits change the source (your ctxman entry${folder ? ', local repository or local folder' : ' or local repository'}).`,
     );
   }
   if (placed.some((v) => v.material === 'copy')) {
@@ -977,9 +1019,12 @@ function placementSection(dir: DirEnv): string {
       '- **not placed**: outside this directory; open the absolute path, or fetch the URI only when the task needs it.',
     );
   }
-  if (dir.views.some((v) => isRepoKind(v.kind))) {
+  const repos = dir.views.some((v) => isRepoKind(v.kind));
+  const folders = dir.views.some((v) => v.kind === 'local-folder');
+  if (repos || folders) {
+    const what = repos && folders ? 'repositories and folders' : repos ? 'repositories' : 'folders';
     bullets.push(
-      '- **editable** repositories may be changed for this task; **read-only** ones are reference material: read them, do not change them.',
+      `- **editable** ${what} may be changed for this task; **read-only** ones are reference material: read them, do not change them.`,
     );
   }
   if (dir.views.some((v) => familyOf(v.kind) === 'okf' || v.kind === 'skill')) {
@@ -1020,35 +1065,44 @@ function primarySection(view: MaterialView): string {
     .join('\n\n');
 }
 
+/** One bullet of `## Repositories` / `## Folders`: where it is, how it got there, owner, access, description. */
+function sourceBullet(view: MaterialView): string {
+  const local = view.kind !== 'remote-repo';
+  const placed = isPlacedView(view);
+  const origin = local ? view.sourceAbs : view.uri;
+  // abs paths of local repositories and folders are links, URIs stay in backticks
+  const originRef =
+    origin === null ? '' : local ? pathLink(origin, { folder: true }) : inlineCode(origin);
+  const where = placed
+    ? pathLink(view.dest ?? '', { folder: true })
+    : view.state === 'failed'
+      ? `not placed (${view.reason ?? 'the step failed'}): ${originRef}`
+      : local
+        ? `not placed: ${originRef}`
+        : `not cloned: ${originRef}`;
+  const how = !placed
+    ? ''
+    : local
+      ? ` · ${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`
+      : ` · git clone of ${inlineCode(view.uri ?? '')}`;
+  const relevant =
+    view.subpath === null
+      ? ''
+      : ` · relevant path ${placed ? pathLink(`${view.dest}/${view.subpath}`, { folder: true }) : inlineCode(view.subpath)}`;
+  return `- **${view.title}** · ${where}${how}${relevant}${ownerPart(view)} · ${access(view)}${dashed(view.description)}`;
+}
+
 function repositoriesSection(dir: DirEnv): string {
   const bullets = dir.views
     .filter((v) => isRepoKind(v.kind) && v.key !== dir.primary)
-    .map((view) => {
-      const local = view.kind === 'local-repo';
-      const placed = isPlacedView(view);
-      const origin = local ? view.sourceAbs : view.uri;
-      // abs paths of local repositories are links, URIs stay in backticks
-      const originRef =
-        origin === null ? '' : local ? pathLink(origin, { folder: true }) : inlineCode(origin);
-      const where = placed
-        ? pathLink(view.dest ?? '', { folder: true })
-        : view.state === 'failed'
-          ? `not placed (${view.reason ?? 'the step failed'}): ${originRef}`
-          : local
-            ? `not placed: ${originRef}`
-            : `not cloned: ${originRef}`;
-      const how = !placed
-        ? ''
-        : local
-          ? ` · ${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`
-          : ` · git clone of ${inlineCode(view.uri ?? '')}`;
-      const relevant =
-        view.subpath === null
-          ? ''
-          : ` · relevant path ${placed ? pathLink(`${view.dest}/${view.subpath}`, { folder: true }) : inlineCode(view.subpath)}`;
-      return `- **${view.title}** · ${where}${how}${relevant}${ownerPart(view)} · ${access(view)}${dashed(view.description)}`;
-    });
+    .map(sourceBullet);
   return bullets.length === 0 ? '' : `${headingText(2, 'Repositories')}\n\n${bullets.join('\n')}`;
+}
+
+/** `## Folders`: every local folder (a plain folder, not a git repository), placed or not. */
+function foldersSection(dir: DirEnv): string {
+  const bullets = dir.views.filter((v) => v.kind === 'local-folder').map(sourceBullet);
+  return bullets.length === 0 ? '' : `${headingText(2, 'Folders')}\n\n${bullets.join('\n')}`;
 }
 
 function skillsSection(dir: DirEnv, env: Env): string {
@@ -1173,6 +1227,7 @@ export function renderPlan(
           placementSection(dirEnv),
           dirEnv.primary === null || primaryView === undefined ? '' : primarySection(primaryView),
           repositoriesSection(dirEnv),
+          foldersSection(dirEnv),
           skillsSection(dirEnv, env),
         ];
 

@@ -75,6 +75,8 @@ function world(extra: Record<string, string> = {}): World {
     ...ref('lr-sub', `type: local-repo\npath: ${repo}\nsubpath: src\nowner: not-me\n`),
     ...ref('lr-gone', `type: local-repo\npath: ${path.join(repo, 'missing')}\nowner: me\n`),
     ...ref('lr-home', 'type: local-repo\npath: ~/code/thing\nowner: me\n'),
+    ...ref('lf', `type: local-folder\npath: ${repo}\nowner: me\n`),
+    ...ref('lf-sub', `type: local-folder\npath: ${repo}\nsubpath: src\nowner: not-me\n`),
     ...ref(
       'rr',
       'type: remote-repo\nuri: https://github.com/o/r.git\nsubpath: docs\nowner: not-me\n',
@@ -1019,6 +1021,136 @@ describe('local-repo modes', () => {
   });
 });
 
+describe('local-folder modes', () => {
+  const only = (slug: string, r: Record<string, unknown> = {}): RecipeData =>
+    recipe({ layout: 'flat', items: [{ dataset: 'reference', slug }], ...r });
+
+  it('describe: a folder of files, not code in a repository', async () => {
+    const { D, repo } = world();
+    const { markdown } = await render(D, only('lf'));
+    expect(body(markdown)).toBe(
+      [
+        '## lf',
+        '',
+        `\`reference/lf\` · Local folder · owner: me · \`${repo}\``,
+        '',
+        'Desc lf.',
+        '',
+        `Read the files at \`${repo}\` when the task needs it.`,
+        '',
+      ].join('\n'),
+    );
+    const sub = await render(D, only('lf-sub'));
+    expect(sub.markdown).toContain(
+      `Read the files at \`${path.join(repo, 'src')}\` (inside the folder \`${repo}\`) when the task needs it.\n`,
+    );
+  });
+
+  it('tree: the same listing as a local repository', async () => {
+    const { D, repo } = world();
+    const { markdown } = await render(
+      D,
+      only('lf', { overrides: [{ key: 'reference/lf', mode: 'tree' }] }),
+    );
+    expect(markdown).toContain(
+      `Top-level entries of \`${repo}\` (4 of 4):\n\n\`\`\`text\nsrc/\nalpha.txt\nREADME.md\nZeta.txt\n\`\`\`\n`,
+    );
+  });
+});
+
+describe('reference info', () => {
+  const INFO_REF = {
+    'reference/rr-info.yaml': [
+      'name: rr-info',
+      'description: Desc rr-info.',
+      'type: remote-repo',
+      'uri: https://github.com/o/info.git',
+      'owner: me',
+      'info: |',
+      '  # Overview',
+      '',
+      '  See [the demo](ctxman:kb/demo), [docs](docs/a.md) and [gone](ctxman:kb/nope).',
+      '',
+      '  ## Build',
+      '',
+      '  Run `make`.',
+      '',
+    ].join('\n'),
+  };
+  const only = (r: Record<string, unknown> = {}): RecipeData =>
+    recipe({ layout: 'flat', items: [{ dataset: 'reference', slug: 'rr-info' }], ...r });
+
+  it('is inlined after the description: headings nested under the item, ctxman: links resolved', async () => {
+    const { D } = world(INFO_REF);
+    const { markdown, manifest } = await render(D, only());
+    expect(body(markdown)).toBe(
+      [
+        '## rr-info',
+        '',
+        '`reference/rr-info` · Remote repo · owner: me · `https://github.com/o/info.git`',
+        '',
+        'Desc rr-info.',
+        '',
+        '### Overview',
+        '',
+        `See [the demo](${D}/kb/demo/index.md), [docs](docs/a.md) and [gone](ctxman:kb/nope).`,
+        '',
+        '#### Build',
+        '',
+        'Run `make`.',
+        '',
+        'Git repository `https://github.com/o/info.git`. Clone it only if the task needs its contents.',
+        '',
+      ].join('\n'),
+    );
+    // only the ctxman: link that does not resolve is reported; other links of a reference stay as written
+    expect(manifest.warnings).toEqual([
+      {
+        code: 'unresolved-link',
+        key: 'reference/rr-info',
+        message: 'reference/rr-info info: link "ctxman:kb/nope" does not resolve (no such entry)',
+      },
+    ]);
+  });
+
+  it('is printed in every mode, also with the clone commands; nested deeper in the grouped layout', async () => {
+    const { D } = world(INFO_REF);
+    const cloned = await render(
+      D,
+      only({ overrides: [{ key: 'reference/rr-info', mode: 'clone' }] }),
+    );
+    expect(cloned.markdown).toMatch(
+      /Desc rr-info\.\n\n### Overview\n[\s\S]*Run `make`\.\n\nClone it into the project/,
+    );
+    const grouped = await render(
+      D,
+      recipe({ layout: 'grouped', items: [{ dataset: 'reference', slug: 'rr-info' }] }),
+    );
+    expect(grouped.markdown).toContain('\n#### Overview\n');
+    expect(grouped.markdown).toContain('\n##### Build\n');
+  });
+
+  it('a blank info adds nothing', async () => {
+    const { D } = world({
+      'reference/rr-info.yaml':
+        'name: rr-info\ndescription: Desc rr-info.\ntype: remote-repo\nuri: https://github.com/o/info.git\nowner: me\ninfo: "  "\n',
+    });
+    const { markdown } = await render(D, only());
+    expect(body(markdown)).toBe(
+      [
+        '## rr-info',
+        '',
+        '`reference/rr-info` · Remote repo · owner: me · `https://github.com/o/info.git`',
+        '',
+        'Desc rr-info.',
+        '',
+        'Git repository `https://github.com/o/info.git`. Clone it only if the task needs its contents.',
+        '',
+      ].join('\n'),
+    );
+  });
+});
+
 describe('remote-repo modes', () => {
   const only = (slug: string, r: Record<string, unknown> = {}): RecipeData =>
     recipe({ layout: 'flat', items: [{ dataset: 'reference', slug }], ...r });
@@ -1386,9 +1518,10 @@ const WD = '/Users/me/ctxman-inflate/ctxman-dev-brief';
 interface DirWorld {
   D: string;
   repo: string;
+  folder: string;
 }
 
-/** The seed-like tree plus a local repo, a missing local repo, and one remote shape of every kind. */
+/** The seed-like tree plus a local repo, a missing local repo, a local folder and one remote shape of every kind. */
 function dirWorld(extra: Record<string, string> = {}): DirWorld {
   const repo = tmp.make({
     'README.md': '',
@@ -1396,6 +1529,7 @@ function dirWorld(extra: Record<string, string> = {}): DirWorld {
     'src/util.ts': '',
     'docs/a.md': '',
   });
+  const folder = tmp.make({ 'notes.md': '', 'drafts/a.md': '' });
   const D = tmp.make(
     seedTree({
       'skill/foo/SKILL.md': `---\nname: foo\ndescription: A local skill.\n---\n\n# Foo\n\nSee [steps](references/steps.md).\n`,
@@ -1424,10 +1558,14 @@ function dirWorld(extra: Record<string, string> = {}): DirWorld {
         'rs-tgz',
         'type: remote-skill\nuri: https://h.test/skill.tar.gz\nowner: me\n',
       ),
+      'reference/lf.yaml': referenceYaml(
+        'lf',
+        `type: local-folder\npath: ${folder}\nsubpath: drafts\nowner: not-me\n`,
+      ),
       ...extra,
     }),
   );
-  return { D, repo };
+  return { D, repo, folder };
 }
 
 interface DirRender {
@@ -2263,6 +2401,127 @@ describe('renderPlan with output: repositories', () => {
     expect(result.markdown).not.toContain('## Repositories');
     expect(result.markdown).not.toContain('## Skills');
     expect(result.markdown).not.toContain('## Primary repository');
+  });
+});
+
+describe('renderPlan with output: local folders', () => {
+  it('a folders/ group in the map, after repos/', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/lf', 'reference/lr'], [{ key: 'reference/lf', edit: true }]),
+    );
+    expect(section(result.markdown, 'Working directory map')).toBe(
+      [
+        '## Working directory map',
+        '',
+        '```text',
+        'LLM_CONTEXT.md  this file',
+        'CLAUDE.md       loads this file',
+        '.gitignore      ignores the machine-specific paths below',
+        'repos/',
+        '  lr/           symlink · Desc lr.',
+        'folders/',
+        '  lf/           symlink · editable · Desc lf.',
+        '```',
+      ].join('\n'),
+    );
+  });
+
+  it('## Folders lists every local folder, placed or not; ## Repositories stays repositories only', async () => {
+    const w = dirWorld();
+    const placed = await renderDir(w, flatDir(['reference/lf', 'reference/lr']));
+    expect(section(placed.result.markdown, 'Folders')).toBe(
+      [
+        '## Folders',
+        '',
+        `- **lf** · [\`folders/lf/\`](folders/lf/) · symlink to \`${w.folder}\` · relevant path [\`folders/lf/drafts/\`](folders/lf/drafts/) · owner: not me · read-only — Desc lf.`,
+      ].join('\n'),
+    );
+    expect(section(placed.result.markdown, 'Repositories')).not.toContain('**lf**');
+    const unplaced = await renderDir(
+      w,
+      flatDir(['reference/lf'], [{ key: 'reference/lf', material: 'none', edit: true }]),
+    );
+    expect(section(unplaced.result.markdown, 'Folders')).toBe(
+      [
+        '## Folders',
+        '',
+        `- **lf** · not placed: [\`${w.folder}/\`](${w.folder}/) · relevant path \`drafts\` · owner: not me · editable — Desc lf.`,
+      ].join('\n'),
+    );
+    expect(unplaced.result.markdown).not.toContain('## Repositories');
+  });
+
+  it('the item is compact: facts line with placement and editable|read-only, then "Details: see Folders."', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['reference/lf']));
+    expect(section(result.markdown, 'lf')).toBe(
+      [
+        '## lf',
+        '',
+        '`reference/lf` · Local folder · [`folders/lf/`](folders/lf/) · symlink · read-only',
+        '',
+        'Details: see Folders.',
+      ].join('\n'),
+    );
+  });
+
+  it('the Placement legend names folders in the symlink and editable lines', async () => {
+    const w = dirWorld();
+    const lines = async (items: string[]): Promise<string[]> => {
+      const { result } = await renderDir(w, flatDir(items));
+      return section(result.markdown, 'Placement').split('\n').slice(2);
+    };
+    expect(await lines(['reference/lf'])).toEqual([
+      '- **symlink**: the original folder, live; edits change the source (your ctxman entry, local repository or local folder).',
+      '- **editable** folders may be changed for this task; **read-only** ones are reference material: read them, do not change them.',
+    ]);
+    expect(await lines(['reference/lf', 'reference/lr'])).toContain(
+      '- **editable** repositories and folders may be changed for this task; **read-only** ones are reference material: read them, do not change them.',
+    );
+  });
+
+  it('a local folder named as the primary is not one (primary-invalid), and the document has no primary section', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(['reference/lf'], [], { output: { dir: WD, primary: 'reference/lf' } }),
+    );
+    expect(result.markdown).not.toContain('## Primary repository');
+    expect(result.manifest.warnings).toContainEqual({
+      code: 'primary-invalid',
+      message: 'primary reference/lf must be a remote-repo or local-repo reference',
+      key: 'reference/lf',
+    });
+  });
+});
+
+describe('renderPlan with output: reference info', () => {
+  it('a compact item carries its info between the facts line and Details; ctxman: links are relative when placed', async () => {
+    const repo = tmp.make({ 'README.md': '' });
+    const w = dirWorld({
+      'reference/lr-info.yaml': referenceYaml(
+        'lr-info',
+        `type: local-repo\npath: ${repo}\nowner: me\ninfo: |\n  ## Notes\n\n  Read [the brief](ctxman:kb/ctxman) first.\n`,
+      ),
+    });
+    const { result } = await renderDir(w, flatDir(['reference/lr-info', 'kb/ctxman']));
+    expect(section(result.markdown, 'lr-info')).toBe(
+      [
+        '## lr-info',
+        '',
+        '`reference/lr-info` · Local repo · [`repos/lr-info/`](repos/lr-info/) · symlink · read-only',
+        '',
+        '### Notes',
+        '',
+        'Read [the brief](kb/ctxman/index.md) first.',
+        '',
+        'Details: see Repositories.',
+      ].join('\n'),
+    );
+    // the Repositories section keeps its one-line bullets
+    expect(section(result.markdown, 'Repositories')).not.toContain('Notes');
   });
 });
 

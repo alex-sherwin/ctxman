@@ -20,7 +20,7 @@ import type { APIRequestContext, APIResponse } from '@playwright/test';
 import { API, E2E_DATA_DIR, pollUntil } from './helpers.ts';
 import { E2E_GIT_FIXTURE, E2E_GIT_URI, E2E_LOCAL_FIXTURE, STEP_DELAY_HEADER } from './paths.ts';
 
-// Serial: the server runs ONE Inflate job at a time (409 busy) and the tests share the base dir and two references.
+// Serial: the server runs ONE Inflate job at a time (409 busy) and the tests share the base dir and three references.
 test.describe.configure({ mode: 'serial' });
 
 interface ErrorBody {
@@ -76,6 +76,7 @@ interface Manifest {
 const HAS_GIT = existsSync(path.join(E2E_GIT_FIXTURE, '.git'));
 const REPO_REF = 'e2e-run-repo';
 const LOCAL_REF = 'e2e-run-local';
+const FOLDER_REF = 'e2e-run-folder';
 const TERMINAL = new Set(['done', 'failed', 'cancelled']);
 
 let base = '';
@@ -105,11 +106,23 @@ test.beforeAll(async ({ request }) => {
     },
   });
   expect(local.status()).toBe(201);
+  const folder = await request.post(`${API}/reference`, {
+    data: {
+      name: FOLDER_REF,
+      description: 'Fixture plain folder for the Inflate run spec.',
+      type: 'local-folder',
+      path: E2E_LOCAL_FIXTURE,
+      owner: 'not-me',
+      info: '## Notes\n\nPlain files, no git.\n',
+    },
+  });
+  expect(folder.status()).toBe(201);
 });
 
 test.afterAll(async ({ request }) => {
   await request.delete(`${API}/reference/${REPO_REF}`);
   await request.delete(`${API}/reference/${LOCAL_REF}`);
+  await request.delete(`${API}/reference/${FOLDER_REF}`);
   rmSync(base, { recursive: true, force: true });
 });
 
@@ -636,6 +649,42 @@ test.describe('placement and editable (v3)', () => {
       });
     }
     expect(stepStatus(second)['okf:kb/okf-format']).toBe('unchanged');
+  });
+
+  test('a local folder is symlinked into folders/<name>, listed under Folders and its info inlined', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'folders');
+    const body = {
+      recipe: {
+        ...recipe(dir),
+        items: [{ dataset: 'reference', slug: FOLDER_REF }],
+        overrides: [],
+        output: { dir },
+      },
+    };
+    const job = await runToEnd(request, body);
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(stepStatus(job)[`link:reference/${FOLDER_REF}`]).toBe('ok');
+    const linked = path.join(dir, 'folders', FOLDER_REF);
+    expect(isLink(linked)).toBe(true);
+    expect(realpathSync(linked)).toBe(realpathSync(E2E_LOCAL_FIXTURE));
+    expect(readManifest(dir).entries).toContainEqual({
+      path: `folders/${FOLDER_REF}`,
+      type: 'symlink',
+      key: `reference/${FOLDER_REF}`,
+      target: E2E_LOCAL_FIXTURE,
+    });
+    expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toContain('\n/folders/\n');
+
+    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    expect(context).toContain(
+      `- **${FOLDER_REF}** · [\`folders/${FOLDER_REF}/\`](folders/${FOLDER_REF}/) · symlink to \`${E2E_LOCAL_FIXTURE}\` · owner: not me · read-only`,
+    );
+    expect(context).toContain('Details: see Folders.');
+    expect(context).not.toContain('## Repositories');
+    // the reference info, nested under the item (### in the grouped layout)
+    expect(context).toContain('#### Notes\n\nPlain files, no git.\n\nDetails: see Folders.');
   });
 });
 

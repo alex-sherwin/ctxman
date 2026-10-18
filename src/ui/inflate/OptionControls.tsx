@@ -224,18 +224,19 @@ function PrimaryCheckbox({ seg }: { seg: ItemSegment }) {
 }
 
 function EditableCheckbox({ seg }: { seg: ItemSegment }) {
-  // null = this repository cannot be edited (a copy, a remote repository that is not cloned)
+  // null = this repository or folder cannot be edited (a copy, a remote repository that is not cloned)
   if (seg.edit === null) return null;
+  const noun = seg.kind === 'local-folder' ? 'folder' : 'repository';
   return (
     <span
       className="cx-seg__opt"
-      title="The session may change files in this repository; otherwise it is reference material."
+      title={`The session may change files in this ${noun}; otherwise it is reference material.`}
     >
       <Checkbox
         isSelected={seg.edit}
         onChange={(on) => setEdit(seg.key, on)}
         data-testid="inflate-segment-edit"
-        aria-label={`Editable repository: ${seg.title}`}
+        aria-label={`Editable ${noun}: ${seg.title}`}
       >
         Editable
       </Checkbox>

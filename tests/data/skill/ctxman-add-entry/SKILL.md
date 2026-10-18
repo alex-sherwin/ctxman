@@ -32,7 +32,7 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
    | `feature` | a user-facing capability | pending |
    | `project` | a large scope spanning many entries | pending |
    | `skill` | an agent skill folder | none |
-   | `reference` | a pointer to a local repo, remote repo or remote skill | none |
+   | `reference` | a pointer to a local repo, local folder, remote repo or remote skill | none |
    | `context` | a reusable set of links to other entries | none |
    | `recipe` | a saved Context Inflate composition: contexts, extra items, include modes, order and instructions for one agent target | none |
 
@@ -44,7 +44,7 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
    pnpm run add:task fix-login-redirect --title "Fix login redirect" --description "Users land on the home page after login."
    ```
 
-   Other options: `--state <state>` for lifecycle datasets; for references `--type local-repo|remote-repo|remote-skill`, `--path`, `--uri` (git URI such as `git@github.com:org/repo.git` or `https://github.com/org/repo`; a `remote-skill` may instead use an https `.tar.gz`/`.tgz`/`.zip` URL), `--subpath`, `--owner me|not-me`; `--json` for machine-readable output. Do not add a `--` separator before the flags (pnpm 11 forwards it literally and the script rejects it). The script refuses to overwrite anything that already exists. A reference created without `--path` or `--uri` gets a placeholder location (`~/repos/<name>` or `https://github.com/TODO/<name>.git`) that still passes the checks, so pass the real value or replace it afterwards.
+   Other options: `--state <state>` for lifecycle datasets; for references `--type local-repo|local-folder|remote-repo|remote-skill` (`local-folder` = a plain folder that is not a git repository), `--path` (the local types), `--uri` (git URI such as `git@github.com:org/repo.git` or `https://github.com/org/repo`; a `remote-skill` may instead use an https `.tar.gz`/`.tgz`/`.zip` URL), `--subpath`, `--owner me|not-me`; `--json` for machine-readable output. Do not add a `--` separator before the flags (pnpm 11 forwards it literally and the script rejects it). The script refuses to overwrite anything that already exists. A reference created without `--path` or `--uri` gets a placeholder location (`~/repos/<name>`, `~/<name>` for a local folder, or `https://github.com/TODO/<name>.git`) that still passes the checks, so pass the real value or replace it afterwards.
 
 4. **Fill in the generated files.** For OKF datasets edit the sections of the entry `index.md` (in the data directory), set `tags`, and replace the `TODO:` description. For the OKF details load the skill `okf-authoring`. A `recipe` is a YAML file (`recipe/<name>.yaml` in the data directory) that starts with `target: claude-code`, `layout: grouped` and empty `contexts` and `items`; recipes have no lifecycle state (`--state` is refused), so fill in the description and then compose it at `/inflate?recipe=<name>` instead of hand-editing the lists (the schema is strict; the fields are documented in `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman)).
 

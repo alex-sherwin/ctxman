@@ -53,14 +53,14 @@ Every list row ends in a `⋯` button and every detail page header has one next 
 
 ## Popup editors for small markdown areas
 
-On a context page each link's notes, and on a recipe page the preamble and each markdown block, have a pencil button that opens a modal Monaco editor for just that text. Opening it loads the current document; Save re-reads the file right before writing and replaces only that one text, so concurrent edits elsewhere in the file are not rolled back. A changed file is reported as a conflict. After a save the page reloads, so the server-rendered page shows the new text.
+On a context page each link's notes, on a recipe page the preamble and each markdown block, and on a reference page its Info have a pencil button that opens a modal Monaco editor for just that text. Opening it loads the current document; Save re-reads the file right before writing and replaces only that one text, so concurrent edits elsewhere in the file are not rolled back. A changed file is reported as a conflict. After a save the page reloads, so the server-rendered page shows the new text.
 
 ## Forms for reference, context and recipe (DataForm)
 
 The three yaml datasets can be managed in the UI without the Forge or Inflate:
 
 * `/new/reference`, `/new/context` and `/new/recipe` create an entry. The okf datasets and skills have their own create form at `/new/<dataset>` (the NewEntryForm: name, title, description, state, tags and, for work items, "Part of project"; see [Adding entries](/concepts/adding-entries.md)).
-* `/<dataset>/<slug>?edit=1` edits one. The Form tab shows typed fields and the YAML tab a Monaco editor; both edit the same working document, and `view=form|yaml` in the URL selects the tab. The name is immutable after creation.
+* `/<dataset>/<slug>?edit=1` edits one. The Form tab shows typed fields (single-line text fields, and a Monaco markdown editor for a recipe's preamble and a reference's Info) and the YAML tab a Monaco editor; both edit the same working document, and `view=form|yaml` in the URL selects the tab. The name is immutable after creation.
 * Delete asks for confirmation. A conflict dialog covers an entry that changed on disk since the form loaded it.
 * After a write (and after a delete) the form navigates at once; every dataset is read from the disk, so the target page is current.
 

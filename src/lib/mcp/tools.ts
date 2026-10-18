@@ -916,7 +916,7 @@ const createEntryTool = defineTool({
   name: 'create-entry',
   title: 'Create entry',
   description:
-    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | remote-repo | remote-skill), path or uri, subpath, owner. context and recipe start empty (add links with append-context-links).',
+    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, owner. context and recipe start empty (add links with append-context-links).',
   readOnly: false,
   input: type({
     '+': 'reject',

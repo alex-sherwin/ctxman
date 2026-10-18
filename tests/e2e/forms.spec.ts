@@ -146,6 +146,38 @@ test.describe('/new/reference', () => {
       tags: ['forms', 'e2e'],
     });
   });
+
+  test('creates a local folder: the path field with folder help, then the detail page', async ({
+    page,
+  }) => {
+    const name = uniqueName('e2e-folder');
+    created.push({ ds: 'reference', name });
+    await openNew(page, 'reference');
+    await page.getByTestId('dform-field-name').fill(name);
+    await page.getByTestId('dform-field-description').fill('A plain folder');
+    await pick(page, 'type', 'Local folder');
+    await expect(page.getByTestId('dform-field-uri')).toHaveCount(0);
+    await expect(page.getByTestId('dform-field-path')).toHaveAttribute(
+      'placeholder',
+      '~/my-folder',
+    );
+    await expect(page.getByTestId('dform')).toContainText('Absolute or ~/ path of the folder');
+    await page.getByTestId('dform-field-path').fill('~/e2e-notes');
+    await page.getByTestId('dform-save').click();
+
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    expect(readYaml(`reference/${name}.yaml`)).toEqual({
+      name,
+      description: 'A plain folder',
+      type: 'local-folder',
+      path: '~/e2e-notes',
+      owner: 'me',
+    });
+    const fields = page.getByTestId('reference-fields');
+    await expect(fields).toContainText('Local folder');
+    await expect(fields).toContainText('~/e2e-notes');
+    await expect(fields).toContainText('folder root');
+  });
 });
 
 test.describe('/new/context', () => {
@@ -585,6 +617,25 @@ test.describe('edit: reference', () => {
       owner: 'not-me',
       tags: ['e2e', 'edited'],
     });
+  });
+
+  test('Info is a Monaco markdown field: Save writes it and the page renders it', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-ref');
+    await createReference(request, name);
+    await openEdit(page, 'reference', name);
+    const info = page.getByTestId('dform-field-info');
+    await expect(info.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
+    await info.locator('.monaco-editor textarea').focus();
+    await page.keyboard.type('Build with make.');
+    await expect(page.getByTestId('dform-status')).toHaveText('Unsaved changes');
+    await page.getByTestId('dform-save').click();
+
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    await expect(page.getByTestId('reference-info')).toContainText('Build with make.');
+    expect(readYaml(`reference/${name}.yaml`)).toMatchObject({ name, info: 'Build with make.' });
   });
 
   test('Cancel goes back to the detail page, and asks first when something changed', async ({

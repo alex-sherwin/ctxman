@@ -45,6 +45,30 @@ describe('entries.ts on the seed corpus', () => {
     expect((await getEntryDetail('reference', 'ctxman-repo'))?.kind).toBe('reference');
   });
 
+  it('renders a reference info as HTML (ctxman: links routed, missing ones flagged); none without info', async () => {
+    writeTree(dir, {
+      'reference/with-info.yaml': [
+        'name: with-info',
+        'description: d',
+        'type: local-folder',
+        'path: /tmp/x',
+        'owner: me',
+        'info: |',
+        '  ## Layout',
+        '',
+        '  See [ctxman](ctxman:kb/ctxman) and [gone](ctxman:kb/gone).',
+        '',
+      ].join('\n'),
+    });
+    const detail = await getEntryDetail('reference', 'with-info');
+    const html = detail?.kind === 'reference' ? (detail.infoHtml ?? '') : '';
+    expect(html).toContain('Layout</h2>');
+    expect(html).toContain('href="/kb/ctxman"');
+    expect(html).toContain('cx-link--broken');
+    const plain = await getEntryDetail('reference', 'ctxman-repo');
+    expect(plain?.kind === 'reference' && plain.infoHtml).toBe(undefined);
+  });
+
   it('renders the entry and a concept body at request time', async () => {
     const detail = await getEntryDetail('kb', 'ctxman');
     expect(detail?.kind).toBe('okf');

@@ -113,6 +113,54 @@ describe('serializeReference', () => {
     );
   });
 
+  it('a local-folder serializes its path like a local-repo', () => {
+    const folder = parse({
+      name: 'notes',
+      description: 'Meeting notes.',
+      type: 'local-folder',
+      path: '~/notes',
+      owner: 'me',
+    });
+    expect(serializeReference(folder)).toBe(
+      [
+        'name: notes',
+        'description: Meeting notes.',
+        'type: local-folder',
+        'path: ~/notes',
+        'owner: me',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('writes info last as a literal block and omits it when blank', () => {
+    const withInfo = parse({ ...remoteRepo, info: '## Build\n\nRun `make`.\n' });
+    expect(serializeReference(withInfo)).toBe(
+      [
+        'name: blasto',
+        'description: ksa mod for ground landing vfx',
+        'type: remote-repo',
+        'uri: git@github.com:meow-sci/blasto.git',
+        'owner: me',
+        'tags:',
+        '  - ksa',
+        '  - mod',
+        'info: |',
+        '  ## Build',
+        '',
+        '  Run `make`.',
+        '',
+      ].join('\n'),
+    );
+    expect(parse(parseYaml(serializeReference(withInfo)))).toEqual(withInfo);
+    for (const info of ['', '  \n']) {
+      expect(
+        Object.keys(referenceToYamlObject(parse({ ...remoteRepo, info }))),
+        info,
+      ).not.toContain('info');
+    }
+  });
+
   it('omits subpath for undefined, null and the empty string', () => {
     for (const subpath of [undefined, null, '']) {
       const input = { ...remoteSkill, subpath } as unknown as ReferenceData;

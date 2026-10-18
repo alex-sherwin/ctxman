@@ -144,7 +144,13 @@ export type EntryDetail = {
       /** ISO mtime of SKILL.md itself. */
       fileModified: string;
     }
-  | { kind: 'reference'; data: ReferenceData; relations: EntryRelations }
+  | {
+      kind: 'reference';
+      data: ReferenceData;
+      relations: EntryRelations;
+      /** `info` rendered with the project's markdown pipeline (absent when blank). */
+      infoHtml?: string;
+    }
   | { kind: 'context'; data: ContextData; links: ResolvedLink[] }
   | {
       kind: 'recipe';
@@ -585,6 +591,7 @@ export async function getEntryDetail(
     if (error instanceof ReferenceIoError) return null;
     throw error;
   }
+  const info = nonEmpty(reference.reference.info);
   return {
     kind: 'reference',
     summary: summarize(dataset, slug, reference.reference, new Date(reference.lastModified), nowMs),
@@ -592,6 +599,17 @@ export async function getEntryDetail(
     fileRelPath,
     data: reference.reference,
     relations: await relationsFor(index, dataDir, dataset, slug),
+    // Like a recipe preamble: only ctxman: and external links are rewritten (a reference has no bundle).
+    ...(info === undefined
+      ? {}
+      : {
+          infoHtml: rewriteRenderedHtml(await renderMarkdown(info), {
+            dataset,
+            slug,
+            fromRelPath: '',
+            dataDir,
+          }),
+        }),
   };
 }
 

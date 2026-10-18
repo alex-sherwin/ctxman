@@ -72,8 +72,8 @@ function okfFrontmatterYaml(frontmatter: Record<string, unknown>): string {
 /**
  * Files to create for a new entry of `dataset`. Throws `Error` with a user-facing message on an invalid
  * name, state or reference type. Defaults: title from the name; description `TODO: describe <title>.`;
- * state = first lifecycle state; reference type remote-repo, owner me, path ~/repos/<name>,
- * uri https://github.com/TODO/<name>.git.
+ * state = first lifecycle state; reference type remote-repo, owner me, path ~/repos/<name>
+ * (local-repo) or ~/<name> (local-folder), uri https://github.com/TODO/<name>.git.
  */
 export function planNewEntry(
   dataset: DatasetId,
@@ -197,6 +197,7 @@ function referenceDoc(
   }
   const doc: Record<string, unknown> = { name, description, type };
   if (type === 'local-repo') doc.path = opts.path?.trim() || `~/repos/${name}`;
+  else if (type === 'local-folder') doc.path = opts.path?.trim() || `~/${name}`;
   else doc.uri = opts.uri?.trim() || `https://github.com/TODO/${name}.git`;
   const subpath = opts.subpath?.trim();
   if (subpath) doc.subpath = subpath;

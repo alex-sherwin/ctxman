@@ -196,7 +196,7 @@ function RunItem({ seg }: { seg: ItemSegment }) {
             isSelected={seg.edit}
             onChange={(on) => setRunEdit(seg.key, on)}
             data-testid="inflate-run-item-edit"
-            aria-label={`Editable repository: ${seg.title}`}
+            aria-label={`Editable ${seg.kind === 'local-folder' ? 'folder' : 'repository'}: ${seg.title}`}
           >
             Editable
           </Checkbox>

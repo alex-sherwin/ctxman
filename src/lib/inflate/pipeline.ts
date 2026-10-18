@@ -3,6 +3,7 @@
 // the document (plans/INFLATE_SPEC.md §5.6, §6.2). Never import from the browser island.
 import { OKF_ENTRY_FILE } from '../../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, OkfDatasetId } from '../../datasets/registry.ts';
+import { isLocalReference } from '../../datasets/schemas.ts';
 import type { RecipeData } from '../../datasets/schemas.ts';
 import { classifyHref, extractLinks, parseCtxmanHref, resolveBundleHref } from '../links.ts';
 import { parseFrontmatterLoose, splitFrontmatter } from '../okf.ts';
@@ -168,14 +169,16 @@ export async function gatherContent(
   const items: Record<string, ItemContent> = {};
   const ctxmanKeys = new Set<string>();
 
-  const collectTargets = (text: string | null, rewrite: boolean): void => {
-    if (text === null || !rewrite) return;
-    const body = splitFrontmatter(text.replace(/\r\n?/g, '\n'))?.body ?? text;
+  const collectLinks = (body: string): void => {
     for (const link of extractLinks(body)) {
       if (classifyHref(link.href) !== 'ctxman') continue;
       const target = parseCtxmanHref(link.href);
       if (target !== null) ctxmanKeys.add(`${target.dataset}/${target.slug}`);
     }
+  };
+  const collectTargets = (text: string | null, rewrite: boolean): void => {
+    if (text === null || !rewrite) return;
+    collectLinks(splitFrontmatter(text.replace(/\r\n?/g, '\n'))?.body ?? text);
   };
 
   const gather = async (seg: ItemSegment): Promise<void> => {
@@ -184,6 +187,9 @@ export async function gatherContent(
     const content: ItemContent = { ...sources.itemPaths(seg.dataset, seg.slug) };
     items[seg.key] = content;
     const rewrite = seg.options.rewriteLinks ?? (OPTION_DEFS.rewriteLinks.default as boolean);
+    // A reference's `info` is inlined in every mode; its ctxman: links are resolved (render.ts#infoBody).
+    const info = seg.meta?.ref?.info;
+    if (info !== undefined) collectLinks(info.replace(/\r\n?/g, '\n'));
 
     if (kind === 'skill') {
       if (mode !== 'inline') return;
@@ -195,9 +201,9 @@ export async function gatherContent(
       return;
     }
 
-    if (kind === 'local-repo') {
+    if (kind === 'local-repo' || kind === 'local-folder') {
       const ref = seg.meta?.ref;
-      if (ref === undefined || ref.type !== 'local-repo') return;
+      if (ref === undefined || !isLocalReference(ref)) return;
       const { root, target } = sources.localPaths(ref.path, ref.subpath);
       const exists = (await sources.statPath(target)) === 'dir';
       content.local = { root, target, exists };

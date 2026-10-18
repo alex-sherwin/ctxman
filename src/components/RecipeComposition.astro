@@ -47,8 +47,9 @@ const materialOptionText = (options: Record<string, unknown> | undefined): strin
     .join(', ');
 
 // "Place" label of a material (INFLATE_V3_PLAN §3.1). An override names a key, not a kind: for a reference the
-// kind follows from the material (clone: remote repository, install: remote skill, else a local repository), and
-// the URI kind of a remote skill is unknown here, so its install reads "Clone or download".
+// kind follows from the material (clone: remote repository, install: remote skill, else a local repository; a local
+// folder has the same labels), and the URI kind of a remote skill is unknown here, so its install reads "Clone or
+// download".
 const overrideMaterialText = (key: string, material: MaterialId | undefined): string => {
   if (material === undefined) return '';
   const dataset = key.slice(0, key.indexOf('/'));

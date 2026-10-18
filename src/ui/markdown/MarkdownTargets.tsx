@@ -1,5 +1,5 @@
 // MarkdownTargets island (ROUND2_UI_SPEC §F.2): turns the server-rendered pencil buttons
-// (`<button data-md-edit="<target id>" disabled>`) of a context or recipe detail page into popup markdown
+// (`<button data-md-edit="<target id>" disabled>`) of a context, recipe or reference detail page into popup markdown
 // editors. It renders nothing itself except the open modal: on mount it enables the SSR buttons and listens
 // for clicks on the document (delegated, so it works for every button on the page, rows included).
 // Mounted by src/pages/[dataset]/[slug]/index.astro with client:only="react" (no fallback; the SSR buttons are

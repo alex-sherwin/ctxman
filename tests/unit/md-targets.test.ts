@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RecipeData } from '../../src/datasets/schemas.ts';
+import type { RecipeData, ReferenceData } from '../../src/datasets/schemas.ts';
 import type { ContextDoc } from '../../src/lib/entry-summary.ts';
 import {
+  INFO_TARGET_ID,
   PREAMBLE_TARGET_ID,
   blockTargetId,
   contextNoteTargets,
@@ -11,6 +12,7 @@ import {
   noteTargetId,
   readTarget,
   recipeTargets,
+  referenceTargets,
   saveTarget,
   targetById,
   writeTarget,
@@ -45,12 +47,23 @@ const recipe: RecipeData = {
   defaults: {},
 };
 
+const reference: ReferenceData = {
+  name: 'repo',
+  description: 'Demo reference',
+  tags: [],
+  type: 'local-folder',
+  path: '~/notes',
+  owner: 'me',
+  info: '## Layout\n\nOne file per week.\n',
+};
+
 const notesOne = contextNoteTargets('demo', [
   { dataset: 'kb', slug: 'one', title: 'One' },
 ])[0] as MdTarget;
 const notesTwo = contextNoteTargets('demo', [{ dataset: 'task', slug: 'two' }])[0] as MdTarget;
 const preamble = recipeTargets('brief', [])[0] as MdTarget;
 const block1 = recipeTargets('brief', [{ id: 'b1' }])[1] as MdTarget;
+const info = referenceTargets('repo')[0] as MdTarget;
 
 describe('ids and target builders', () => {
   it('builds the ids the SSR buttons carry in data-md-edit', () => {
@@ -115,6 +128,28 @@ describe('ids and target builders', () => {
     expect(endpoint(notesOne)).toBe('/api/context/demo');
     expect(endpoint(preamble)).toBe('/api/recipe/brief');
     expect(endpoint(block1)).toBe('/api/recipe/brief');
+  });
+
+  it('referenceTargets: the info of a reference, at the reference API', () => {
+    expect(INFO_TARGET_ID).toBe('info');
+    expect(info).toEqual({ kind: 'reference-info', id: 'info', slug: 'repo', label: 'info' });
+    expect(endpoint(info)).toBe('/api/reference/repo');
+  });
+});
+
+describe('reference info target', () => {
+  it('reads, sets and (blank) deletes info; never matches a recipe or context document', () => {
+    expect(hasTarget(info, reference)).toBe(true);
+    expect(readTarget(info, reference)).toBe('## Layout\n\nOne file per week.\n');
+    expect(readTarget(info, { ...reference, info: undefined })).toBe('');
+    expect(writeTarget(info, reference, 'New text')).toEqual({ ...reference, info: 'New text' });
+    expect(writeTarget(info, reference, ' \n')).not.toHaveProperty('info');
+    expect(reference.info).toBe('## Layout\n\nOne file per week.\n');
+    expect(hasTarget(info, recipe)).toBe(false);
+    expect(hasTarget(info, context)).toBe(false);
+    // and a recipe target never matches a reference
+    expect(hasTarget(preamble, reference)).toBe(false);
+    expect(writeTarget(preamble, reference, 'x')).toBe(reference);
   });
 });
 
@@ -270,6 +305,22 @@ describe('loadTarget / saveTarget', () => {
         { dataset: 'task', slug: 'two', notes: 'new notes' },
       ],
     });
+  });
+
+  it('loadTarget / saveTarget round-trip a reference info through /api/reference', async () => {
+    const calls = stub([
+      { body: { reference, lastModified: 'T1' } },
+      { body: { reference, lastModified: 'T1' } },
+      { body: { reference, lastModified: 'T2' } },
+    ]);
+    expect(await loadTarget(info)).toMatchObject({ ok: true, loaded: { lastModified: 'T1' } });
+    expect(await saveTarget(info, { lastModified: 'T1' }, 'Updated')).toEqual({ ok: true });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'GET /api/reference/repo',
+      'GET /api/reference/repo',
+      'PUT /api/reference/repo',
+    ]);
+    expect(calls[2]?.body).toEqual({ ...reference, info: 'Updated' });
   });
 
   it('saveTarget refuses with a conflict when the file changed since the popup opened', async () => {

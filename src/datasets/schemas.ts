@@ -16,6 +16,7 @@ import {
   OWNERS,
   PROJECT_STATES,
   TASK_STATES,
+  isLocalReferenceType,
 } from './registry.ts';
 import type { DatasetId } from './registry.ts';
 import {
@@ -214,6 +215,9 @@ export const skillSchema = type({
 
 // ---------------------------------------------------------------- reference (yaml, discriminated)
 
+/** Optional markdown about the referenced thing, inlined under its item by Context Inflate. */
+const referenceInfo = type('string');
+
 export const localRepoReferenceSchema = type({
   '+': 'reject',
   name: nameSchema,
@@ -224,6 +228,19 @@ export const localRepoReferenceSchema = type({
   path: 'string > 0',
   'subpath?': 'string',
   owner,
+  'info?': referenceInfo,
+});
+export const localFolderReferenceSchema = type({
+  '+': 'reject',
+  name: nameSchema,
+  description: nonBlank,
+  tags,
+  type: "'local-folder'",
+  /** Absolute path (or ~-prefixed) to a plain folder (not a git repository) on this machine. */
+  path: 'string > 0',
+  'subpath?': 'string',
+  owner,
+  'info?': referenceInfo,
 });
 export const remoteRepoReferenceSchema = type({
   '+': 'reject',
@@ -235,6 +252,7 @@ export const remoteRepoReferenceSchema = type({
   uri: type('string > 0').narrow(gitUriNarrow).describe(GIT_URI_MESSAGE),
   'subpath?': 'string',
   owner,
+  'info?': referenceInfo,
 });
 export const remoteSkillReferenceSchema = type({
   '+': 'reject',
@@ -247,8 +265,10 @@ export const remoteSkillReferenceSchema = type({
   /** Skill folder inside the repo / archive; '' / null / absent = root. */
   'subpath?': 'string | null',
   owner,
+  'info?': referenceInfo,
 });
 export const referenceSchema = localRepoReferenceSchema
+  .or(localFolderReferenceSchema)
   .or(remoteRepoReferenceSchema)
   .or(remoteSkillReferenceSchema);
 
@@ -510,6 +530,10 @@ export type SkillData = typeof skillSchema.infer;
 export type ReferenceData = typeof referenceSchema.infer;
 /** Input shape (before defaults): what API bodies carry. */
 export type ReferenceInput = typeof referenceSchema.inferIn;
+/** local-repo and local-folder: a `path` on this machine (the remote types carry a `uri`). */
+export type LocalReferenceData = Extract<ReferenceData, { path: string }>;
+export const isLocalReference = (r: ReferenceData): r is LocalReferenceData =>
+  isLocalReferenceType(r.type);
 /** A structured relation of an okf entry; `rel` is always present after parsing (default 'related'). */
 export type EntryLink = typeof entryLinkSchema.infer;
 /** Input shape (before the `rel` default): what API clients send. */

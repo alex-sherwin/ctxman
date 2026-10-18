@@ -421,3 +421,43 @@ test.describe('recipe preamble and blocks', () => {
     expect(dataExists(`recipe/${name}.yaml`)).toBe(true);
   });
 });
+
+test.describe('reference info', () => {
+  const references: string[] = [];
+  test.afterEach(async ({ request }) => {
+    for (const name of references.splice(0)) await request.delete(`${API}/reference/${name}`);
+  });
+
+  test('the Info pencil writes the info through the reference API; the page renders it after the reload', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-mdref');
+    const response = await request.post(`${API}/reference`, {
+      data: {
+        name,
+        description: 'E2E reference',
+        type: 'local-folder',
+        path: '/tmp/x',
+        owner: 'me',
+      },
+    });
+    expect(response.status()).toBe(201);
+    references.push(name);
+
+    await page.goto(`/reference/${name}`);
+    await expect(page.getByTestId('reference-info')).toContainText('None');
+    await openPopup(page, page.getByTestId('reference-edit-info'));
+    await expect(page.getByTestId('md-modal')).toContainText('Edit info');
+    await typeAtEnd(page, '## Layout\n\nOne file per week.');
+    await afterReload(page, () => page.getByTestId('md-save').click());
+
+    const saved = readYaml(`reference/${name}.yaml`) as Record<string, unknown>;
+    expect(saved).toMatchObject({ name, type: 'local-folder', path: '/tmp/x' });
+    expect(String(saved.info)).toContain('## Layout');
+    expect(String(saved.info)).toContain('One file per week.');
+    const panel = page.getByTestId('reference-info');
+    await expect(panel.locator('h2', { hasText: 'Layout' })).toBeVisible();
+    await expect(panel).toContainText('One file per week.');
+  });
+});

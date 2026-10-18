@@ -19,7 +19,8 @@ const TITLES: Record<SchemaDatasetId, string> = {
   recipe: 'ctxman Inflate recipe',
 };
 const DESCRIPTIONS: Record<SchemaDatasetId, string> = {
-  reference: 'reference/<name>.yaml: a pointer to a local repo, remote repo or remote skill.',
+  reference:
+    'reference/<name>.yaml: a pointer to a local repo, local folder, remote repo or remote skill.',
   context: 'context/<name>.yaml: a reusable, evergreen set of links to other ctxman entries.',
   recipe: 'recipe/<name>.yaml: a saved Context Inflate composition.',
 };

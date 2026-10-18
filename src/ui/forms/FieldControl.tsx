@@ -5,7 +5,7 @@ import { TagEditor } from '../edit/TagEditor.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
-import { fieldHelp } from '../../lib/forms/fields.ts';
+import { fieldHelp, fieldPlaceholder } from '../../lib/forms/fields.ts';
 import type { FieldDef, FormDoc } from '../../lib/forms/fields.ts';
 
 export interface FieldControlProps {
@@ -59,7 +59,7 @@ export function FieldControl({ def, doc, mode, error, onChange, onSave }: FieldC
           isInvalid={invalid}
           errorMessage={error}
           description={help}
-          placeholder={def.placeholder}
+          placeholder={fieldPlaceholder(def, doc)}
           mono={def.mono}
           autoComplete="off"
           spellCheck={def.mono ? 'false' : undefined}

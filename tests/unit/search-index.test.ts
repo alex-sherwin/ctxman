@@ -364,6 +364,34 @@ describe('referenceToSearchDoc', () => {
     );
   });
 
+  it('flattens a local folder using its path', () => {
+    const data = assertValid(referenceSchema, {
+      name: 'notes',
+      description: 'My notes',
+      type: 'local-folder',
+      path: '~/notes',
+      subpath: 'drafts',
+      owner: 'me',
+    });
+    expect(referenceToSearchDoc('notes', data).body).toBe(
+      'Local folder · ~/notes · drafts · owner: me',
+    );
+  });
+
+  it('appends the plain text of the info markdown', () => {
+    const data = assertValid(referenceSchema, {
+      name: 'notes',
+      description: 'My notes',
+      type: 'local-folder',
+      path: '~/notes',
+      owner: 'me',
+      info: '## Layout\n\nOne **file** per [week](ctxman:kb/demo).\n',
+    });
+    expect(referenceToSearchDoc('notes', data).body).toBe(
+      'Local folder · ~/notes · owner: me Layout One file per week.',
+    );
+  });
+
   it('flattens a remote skill with a null or empty subpath', () => {
     const base = {
       name: 'skills',

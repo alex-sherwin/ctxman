@@ -253,11 +253,13 @@ describe('skill (agentskills.io, strict)', () => {
 describe('reference (discriminated by type)', () => {
   const base = { name: 'demo', description: 'd', owner: 'me' };
   const local = { ...base, type: 'local-repo', path: '~/repos/x', subpath: 'docs' };
+  const folder = { ...base, type: 'local-folder', path: '~/notes', subpath: 'drafts' };
   const remote = { ...base, type: 'remote-repo', uri: 'git@github.com:o/r.git', owner: 'not-me' };
   const skill = { ...base, type: 'remote-skill', uri: 'https://x.test/r.git' };
 
   it('accepts each variant', () => {
     expect(validate(referenceSchema, local).success).toBe(true);
+    expect(validate(referenceSchema, folder).success).toBe(true);
     expect(validate(referenceSchema, remote).success).toBe(true);
     expect(validate(referenceSchema, skill).success).toBe(true);
   });
@@ -268,13 +270,25 @@ describe('reference (discriminated by type)', () => {
     const noPath = validate(referenceSchema, { ...base, type: 'local-repo' });
     expect(noPath.success).toBe(false);
     expect(JSON.stringify(issuesOf(noPath))).toContain('path');
+    const noFolderPath = validate(referenceSchema, { ...base, type: 'local-folder' });
+    expect(noFolderPath.success).toBe(false);
+    expect(JSON.stringify(issuesOf(noFolderPath))).toContain('path');
     const noUri = validate(referenceSchema, { ...base, type: 'remote-repo' });
     expect(noUri.success).toBe(false);
     expect(JSON.stringify(issuesOf(noUri))).toContain('uri');
   });
 
+  it('every variant takes an optional markdown info string', () => {
+    const info = '## Setup\n\nRun `make`.\n';
+    for (const variant of [local, folder, remote, skill]) {
+      expect(validate(referenceSchema, { ...variant, info }).success, variant.type).toBe(true);
+      expect(validate(referenceSchema, { ...variant, info: 42 }).success, variant.type).toBe(false);
+    }
+  });
+
   it('is strict per variant (fields of another variant are rejected)', () => {
     expect(validate(referenceSchema, { ...local, uri: 'https://x.test' }).success).toBe(false);
+    expect(validate(referenceSchema, { ...folder, uri: 'https://x.test' }).success).toBe(false);
     expect(validate(referenceSchema, { ...remote, path: '/x' }).success).toBe(false);
   });
 

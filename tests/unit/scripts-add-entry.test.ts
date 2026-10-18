@@ -74,6 +74,10 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       'reference/my-ref.yaml',
     ],
     [
+      ['reference', 'my-folder', '--type', 'local-folder', '--path', '/tmp', '--owner', 'me'],
+      'reference/my-folder.yaml',
+    ],
+    [
       [
         'reference',
         'my-skill-ref',
@@ -136,6 +140,7 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       ['reference', 'x', '--owner', 'them'],
       ['reference', 'x', '--type', 'remote-repo', '--path', '/tmp'],
       ['reference', 'x', '--type', 'local-repo', '--uri', 'https://x'],
+      ['reference', 'x', '--type', 'local-folder', '--uri', 'https://x'],
       ['reference', 'x', '--type', 'remote-repo', '--uri', 'not a uri'],
       ['reference', 'x', '--type', 'remote-repo', '--uri', 'https://h.test/a/b.tar.gz'],
       ['reference', 'x', '--type', 'remote-skill', '--uri', 'https://h.test/b.rar'],

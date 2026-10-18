@@ -107,8 +107,9 @@ describe.each(SCHEMA_DATASETS)('JSON Schema of %s', (ds) => {
 describe('reference schema', () => {
   const variants = (parsed('reference').anyOf ?? []) as (Node & { properties: Node })[];
 
-  it('is an anyOf of the three variants, told apart by the type const', () => {
+  it('is an anyOf of the four variants, told apart by the type const', () => {
     expect(variants.map((v) => (v.properties.type as Node).const)).toEqual([
+      'local-folder',
       'local-repo',
       'remote-repo',
       'remote-skill',

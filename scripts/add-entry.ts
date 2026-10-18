@@ -1,6 +1,6 @@
 // Scaffold a new entry of any dataset from its template. Never overwrites.
 // Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S]
-//          [--type local-repo|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
+//          [--type local-repo|local-folder|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
 //          [--owner me|not-me] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
 import path from 'node:path';
@@ -10,6 +10,7 @@ import {
   DATASET_IDS,
   entryUrl,
   isDatasetId,
+  isLocalReferenceType,
   isReferenceType,
   OWNERS,
   REFERENCE_TYPES,
@@ -38,7 +39,7 @@ Options:
   --description D    one-line description (default: "TODO: describe <title>.")
   --state S          lifecycle state (idea, task, bug, feature, project only; default: first state)
   --type T           reference only: ${REFERENCE_TYPES.join(' | ')} (default: remote-repo)
-  --path P           reference local-repo: repo root on this machine
+  --path P           reference local-repo: repo root on this machine; local-folder: the folder
   --uri U            reference remote-repo: git URI (git@host:org/repo.git, ssh://…, https://…);
                      remote-skill: git URI or https URL ending .tar.gz / .tgz / .zip
   --subpath S        reference: repo-relative sub folder
@@ -126,10 +127,10 @@ async function main(): Promise<void> {
   }
   if (dataset === 'reference') {
     const type = values.type ?? 'remote-repo';
-    if (values.path !== undefined && type !== 'local-repo') {
-      return finish(EXIT_USAGE, '--path only applies to --type local-repo');
+    if (values.path !== undefined && !isLocalReferenceType(type)) {
+      return finish(EXIT_USAGE, '--path only applies to --type local-repo or local-folder');
     }
-    if (values.uri !== undefined && type === 'local-repo') {
+    if (values.uri !== undefined && isLocalReferenceType(type)) {
       return finish(EXIT_USAGE, '--uri only applies to --type remote-repo or remote-skill');
     }
     if (values.uri !== undefined) {

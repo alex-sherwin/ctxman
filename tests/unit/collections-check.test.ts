@@ -261,6 +261,8 @@ describe('checkCollections', () => {
           'name: rr\ndescription: d\ntype: remote-repo\nuri: https://example.com/o/rr.git\nowner: me\n',
         'reference/rs.yaml':
           'name: rs\ndescription: d\ntype: remote-skill\nuri: https://example.com/o/rs.git\nowner: me\n',
+        'reference/lf.yaml':
+          'name: lf\ndescription: d\ntype: local-folder\npath: /tmp/lf\nowner: me\n',
         'context/refs.yaml':
           'name: refs\ndescription: d\nlinks:\n  - dataset: reference\n    slug: rr\n',
       };
@@ -349,6 +351,14 @@ describe('checkCollections', () => {
         expect(await only(override('repo', 'none'))).toEqual([]);
         expect(await only(override('rr', 'clone'))).toEqual([]);
         expect(await only(override('rs', 'install'))).toEqual([]);
+        // a local folder has the materials of a local repository
+        expect(await only(override('lf', 'copy'))).toEqual([]);
+        expect(await only(override('lf', 'clone'))).toEqual([
+          rule(
+            'recipe-material-invalid',
+            'material "clone" does not apply to reference/lf (Local folder)',
+          ),
+        ]);
         expect(await only('overrides:\n  - key: reference/repo\n    mode: tree\n')).toEqual([]);
         // missing or schema-invalid references have no type to check against
         expect(await only(override('ghost', 'clone'))).toEqual([]);
@@ -373,6 +383,13 @@ describe('checkCollections', () => {
           rule(
             'recipe-primary-invalid',
             'primary reference/rs must be a remote-repo or local-repo reference',
+          ),
+        ]);
+        // a local folder is not a git repository
+        expect(await run('output:\n  primary: reference/lf\n')).toEqual([
+          rule(
+            'recipe-primary-invalid',
+            'primary reference/lf must be a remote-repo or local-repo reference',
           ),
         ]);
       });

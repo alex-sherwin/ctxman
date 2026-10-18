@@ -40,7 +40,7 @@ For example, `/kb/ctxman/doc/concepts/search` renders the [search concept](/conc
 | `state` | Repeatable; entries in any selected state |
 | `tag` | Repeatable; entries having all selected tags |
 | `sort` | `modified` (default), `name` or `state` |
-| `type` | References only: `local-repo`, `remote-repo` or `remote-skill` |
+| `type` | References only: `local-repo`, `local-folder`, `remote-repo` or `remote-skill` |
 | `project` | Only the children of that project (any dataset; the project's `rel: child` links). Shown as a checked chip; the New button then adds `?parent=` |
 
 The global search uses a different set (`search`, `sq`, `in`); see [Search](/concepts/search.md). The forge uses `context`, `dataset` (a linkable dataset or `all`), `q`, `state` and `tag`. Inflate uses `recipe` (a name, or `new`), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc item tab, a linkable dataset or `all`), `q`, `job` (the run being watched; only with `view=run`) and `paths` (`absolute` shows the single-document preview; relative is the default and omitted). The tools page uses `add` to preselect a dataset, and `/new/<dataset>` uses `parent`.
