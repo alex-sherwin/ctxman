@@ -11,5 +11,15 @@ const dataDir = resolveDataDir();
   <code class="cx-mono" data-testid="footer-data-dir">{dataDir}</code>
   <CopyButton text={dataDir} ariaLabel="Copy data directory path" />
   <span class="cx-footer__spacer"></span>
+  <button
+    type="button"
+    class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+    data-shortcuts-open
+    data-testid="footer-shortcuts"
+    aria-label="Keyboard shortcuts"
+    title="Keyboard shortcuts"
+  >
+    <span class="ck-button__label">?</span>
+  </button>
   <span class="cx-mono">ctxman v{pkg.version}</span>
 </footer>

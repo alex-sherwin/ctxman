@@ -1,0 +1,40 @@
+/* Keyboard shortcuts help dialog (src/ui/shortcuts). Imported by src/styles/global.css. */
+@layer cx-app {
+  /* the footer "?" button must fit the 24px footer */
+  .cx-footer .ck-button {
+    height: 20px;
+    min-width: 20px;
+    padding: 0 var(--sp-2);
+  }
+
+  .cx-shortcuts {
+    min-width: min(40rem, 90vw);
+  }
+  .cx-shortcuts__list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+  }
+  .cx-shortcuts__row {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-1);
+    align-items: baseline;
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .cx-shortcuts__row:last-child {
+    border-bottom: 0;
+  }
+  .cx-shortcuts__keys {
+    display: inline-flex;
+    gap: var(--sp-1);
+    align-items: center;
+  }
+  .cx-shortcuts__where {
+    grid-column: 2;
+    font-size: var(--fs-xs);
+  }
+}

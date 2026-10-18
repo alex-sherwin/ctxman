@@ -44,7 +44,7 @@ const newHref =
     : `/new/${def.id}`;
 ---
 
-<Base title={def.label} active={def.id}>
+<Base title={def.label} active={def.id} createHref={newHref}>
   <PageHeader title={def.label}>
     <DatasetBadge slot="eyebrow" dataset={def.id} />
     <a

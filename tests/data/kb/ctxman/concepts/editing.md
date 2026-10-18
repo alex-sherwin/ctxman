@@ -11,7 +11,7 @@ Files stay the source of truth. Nothing watches the data directory, so a file yo
 
 ## The Save model
 
-* Saving is explicit: a Save button or Cmd/Ctrl+S. There is no autosave and no debounce.
+* Saving is explicit: a Save button or Cmd/Ctrl+S. There is no autosave and no debounce. Press `?` anywhere for the list of [keyboard shortcuts](/concepts/keyboard-shortcuts.md).
 * A save that succeeds leaves edit mode and shows "Saved" (plus the validator findings, if any). `?edit=1` is removed from the URL, using `replaceState`, so edit mode never creates history entries.
 * Unsaved text is a **draft** mirrored to `localStorage` (see Drafts below), so a reload, a closed tab or a crash does not lose it.
 * A markdown save sends `ifUnmodifiedSince` (the mtime it loaded). If the file changed on disk meanwhile the server answers 409 and a dialog offers "Keep editing", "Load disk version" (your edits are dropped) or "Overwrite".

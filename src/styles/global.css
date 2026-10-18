@@ -28,6 +28,7 @@
 @import '../ui/forms/forms.css'; /* @layer cx-app (round 2: DataForm) */
 @import '../ui/pickers/pickers.css'; /* @layer cx-app (round 3: EntryPicker) */
 @import '../ui/entry/entry.css'; /* @layer cx-app (round 3: EntryTools island, W8b) */
+@import './shortcuts.css'; /* @layer cx-app (keyboard shortcuts dialog) */
 @import './prose.css'; /* @layer cx-prose */
 
 /* 5. Then the cx-base and cx-utilities layer blocks (UI_SPEC §A.2). */

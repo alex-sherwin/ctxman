@@ -34,7 +34,7 @@ const recipeMeta = (r: EntrySummary): string =>
   `${r.contextCount ?? 0} ctx${r.recipeTarget ? ` · ${TARGETS[r.recipeTarget].label}` : ''}`;
 ---
 
-<Base title="Dashboard" active="home">
+<Base title="Dashboard" active="home" createHref="/new/task">
   <PageHeader title="Dashboard">
     <span slot="meta"
       >{totalEntries} entries · {DATASETS.length} datasets · {staleEntries.length} stale</span

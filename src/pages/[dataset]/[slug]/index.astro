@@ -40,6 +40,8 @@ if (detail === null) return Astro.rewrite('/404');
 const title = detail.summary.title ?? detail.summary.name;
 const isDoc = detail.kind === 'okf' || detail.kind === 'skill';
 const yamlEdit = edit && isYamlDatasetId(def.id);
+// `c` creates a sibling of this page's dataset; on a project page a task that is a child of it.
+const createHref = def.id === 'project' ? `/new/task?parent=${slug}` : `/new/${def.id}`;
 
 // Relations (okf, skill, reference): the data the EntryTools island needs (ROUND3_MOUNT_CONTRACT) and the parent chips.
 const relations = 'relations' in detail ? detail.relations : undefined;
@@ -65,7 +67,12 @@ const tools =
     : undefined;
 ---
 
-<Base title={title} active={def.id}>
+<Base
+  title={title}
+  active={def.id}
+  createHref={createHref}
+  linkShortcut={detail.kind === 'okf'}
+>
   <Breadcrumbs
     items={[
       { label: 'ctxman', href: '/' },

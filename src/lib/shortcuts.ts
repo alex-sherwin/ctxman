@@ -1,0 +1,91 @@
+// Keyboard shortcuts: the table shown in the help dialog and the pure key matcher. PURE (no fs, no DOM):
+// the `Shortcuts` island (src/ui/shortcuts) reads the DOM and calls `shortcutAction`.
+
+/** One row of the help dialog. `keys` is a single key combo, `Mod` is rendered as Cmd or Ctrl. */
+export interface ShortcutDef {
+  id: string;
+  keys: readonly string[];
+  label: string;
+  where: string;
+}
+
+export const SHORTCUTS: readonly ShortcutDef[] = [
+  { id: 'help', keys: ['?'], label: 'Show keyboard shortcuts', where: 'Every page' },
+  { id: 'search', keys: ['Mod', 'K'], label: 'Search', where: 'Every page' },
+  {
+    id: 'create',
+    keys: ['c'],
+    label:
+      'New entry: of the dataset of the page, a child of the project in scope; a new context on Forge, a new recipe on Inflate',
+    where: 'Lists, entry pages, dashboard, Tools, Forge, Inflate',
+  },
+  {
+    id: 'link',
+    keys: ['l'],
+    label: 'Add a link to another entry',
+    where: 'Entry pages of okf datasets',
+  },
+  { id: 'save', keys: ['Mod', 'S'], label: 'Save', where: 'Editors' },
+  {
+    id: 'insert-link',
+    keys: ['Mod', 'Alt', 'K'],
+    label: 'Insert link to entry',
+    where: 'Markdown editors',
+  },
+  { id: 'close', keys: ['Esc'], label: 'Close the dialog', where: 'Dialogs' },
+];
+
+/** Selector of the + Link button that `l` clicks (an enabled one only: EntryTools enables it on mount). */
+export const LINK_BUTTON_SELECTOR = '[data-entry-action="add-relation"]:not([disabled])';
+
+/** Elements that take typed text: shortcuts never fire there. */
+export const TYPING_SELECTOR = 'input, textarea, select, [contenteditable], .monaco-editor';
+
+/** The subset of `KeyboardEvent` the matcher needs. */
+export interface KeyInfo {
+  key: string;
+  shiftKey: boolean;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  defaultPrevented: boolean;
+  isComposing: boolean;
+}
+
+export interface ShortcutContext {
+  /** `data-shortcut-create` of the body: where `c` goes, absent = no create shortcut on this page. */
+  createHref: string | null;
+  /** `data-shortcut-link` is present: the page has a + Link button. */
+  linkShortcut: boolean;
+  /** The event target is a typing target (see {@link isTypingTarget}). */
+  typing: boolean;
+  /** Some `[role="dialog"]` / `[role="alertdialog"]` is open. */
+  dialogOpen: boolean;
+}
+
+export type ShortcutAction =
+  | { kind: 'help' }
+  | { kind: 'navigate'; href: string }
+  | { kind: 'click'; selector: string };
+
+/** True for an element (or a descendant of one) that takes typed text. `null` is not a typing target. */
+export function isTypingTarget(el: { closest(selector: string): unknown } | null): boolean {
+  return el !== null && el.closest(TYPING_SELECTOR) != null;
+}
+
+/** What a key press does, or `null` to let it through. Never touches the DOM. */
+export function shortcutAction(e: KeyInfo, ctx: ShortcutContext): ShortcutAction | null {
+  if (e.defaultPrevented || e.isComposing) return null;
+  if (e.metaKey || e.ctrlKey || e.altKey) return null;
+  if (ctx.typing || ctx.dialogOpen) return null;
+  if (e.key === '?') return { kind: 'help' };
+  if (e.shiftKey) return null;
+  if (e.key === 'c') {
+    return ctx.createHref !== null && ctx.createHref !== ''
+      ? { kind: 'navigate', href: ctx.createHref }
+      : null;
+  }
+  if (e.key === 'l')
+    return ctx.linkShortcut ? { kind: 'click', selector: LINK_BUTTON_SELECTOR } : null;
+  return null;
+}
