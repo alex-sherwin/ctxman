@@ -5,6 +5,7 @@ import { cleanStores } from 'nanostores';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EntrySummary } from '../../src/lib/entry-summary.ts';
 import { $entries } from '../../src/stores/entries.ts';
+import { armUnloadGuard, isUnloadAllowed } from '../../src/ui/edit/unload-guard.ts';
 import {
   $newAttempted,
   $newDirty,
@@ -81,6 +82,7 @@ function fill(patch: { name?: string; description?: string } = {}): void {
 }
 
 beforeEach(() => {
+  armUnloadGuard();
   $entries.set({});
   $newDone.set(false);
   $newPartial.set(null);
@@ -166,6 +168,7 @@ describe('submitNewEntry', () => {
       },
     ]);
     expect(env.assign).toHaveBeenCalledExactlyOnceWith('/task/fresh');
+    expect(isUnloadAllowed()).toBe(true);
     expect($newDone.get()).toBe(true);
     expect($newDirty.get()).toBe(false);
   });

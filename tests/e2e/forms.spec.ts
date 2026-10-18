@@ -126,9 +126,16 @@ test.describe('/new/reference', () => {
     await page.getByTestId('dform-field-tags-add-tag').press('Enter');
     await expect(page.getByTestId('dform-field-tags-tags')).toContainText('forms');
     await expect(page.getByTestId('dform-save')).toHaveText('Create');
+    // the happy path never raises the browser's "Leave site?" prompt (the unsaved guard stands down first)
+    const dialogs: string[] = [];
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.type());
+      void dialog.dismiss();
+    });
     await page.getByTestId('dform-save').click();
 
     await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    expect(dialogs).toEqual([]);
     expect(readYaml(`reference/${name}.yaml`)).toEqual({
       name,
       description: 'Created by the forms spec',
@@ -368,9 +375,16 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await page.getByTestId('new-add-tag').press('Enter');
     await expect(page.getByTestId('new-tags')).toContainText('alpha');
     await expect(page.getByTestId('new-tags')).toContainText('beta');
+    // the happy path never raises the browser's "Leave site?" prompt (the unsaved guard stands down first)
+    const dialogs: string[] = [];
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.type());
+      void dialog.dismiss();
+    });
     await page.getByTestId('new-submit').click();
 
     await expect(page).toHaveURL(new RegExp(`/task/${nTask}$`));
+    expect(dialogs).toEqual([]);
     await expect(page.getByTestId('detail-slug')).toHaveText(nTask);
     await expect(page.getByTestId('detail-meta')).toContainText('In progress');
     await expect(page.getByTestId('detail-meta')).toContainText('alpha');

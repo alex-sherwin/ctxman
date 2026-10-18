@@ -17,6 +17,7 @@ import type { NewEntryDataset, NewEntryDraft, NewEntryField } from '../lib/forms
 import { sendJson } from '../ui/edit/api.ts';
 import type { SaveStatus } from '../ui/edit/status.ts';
 import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
+import { allowUnload } from '../ui/edit/unload-guard.ts';
 
 export interface NewEntryMeta {
   dataset: NewEntryDataset;
@@ -176,6 +177,7 @@ export async function submitNewEntry(): Promise<NewEntrySubmit> {
   }
   $newSave.set({ kind: 'saved', message: `Created ${def.singular}, opening…` });
   $newDone.set(true);
+  allowUnload();
   location.assign(url);
   return 'sent';
 }

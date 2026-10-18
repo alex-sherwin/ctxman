@@ -16,6 +16,7 @@ import { getJson, sendJson } from '../ui/edit/api.ts';
 import type { ApiResult } from '../ui/edit/api.ts';
 import type { SaveStatus } from '../ui/edit/status.ts';
 import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
+import { allowUnload } from '../ui/edit/unload-guard.ts';
 
 export type FormView = EditView;
 export type { FormDoc, YamlDatasetId };
@@ -333,6 +334,7 @@ function failure(res: Extract<ApiResult<unknown>, { ok: false }>, mode: FormMeta
 /** Go to `url` (the data is read from disk on every request, so the target page is already current). */
 function navigateTo(url: string): void {
   $formDone.set(true);
+  allowUnload();
   location.assign(url);
 }
 
