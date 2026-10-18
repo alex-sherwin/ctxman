@@ -1,6 +1,7 @@
 # Update log
 
 ## 2026-10-18
+* **Update**: keyboard shortcut `i` opens the current entry in the IDE: [Keyboard shortcuts](/concepts/keyboard-shortcuts.md).
 * **Add**: Delete any entry from the browser: a `⋯` menu on every list row and detail header (new EntryMenus island, the kit `Menu` is back) opens a confirm dialog; new `DELETE /api/entry/<dataset>/<slug>` removes an okf or skill folder (symlinked folders are refused). [Editing](/concepts/editing.md) (Deleting entries), [Routes and API](/concepts/routes-and-api.md) and [Architecture](/concepts/architecture.md) follow.
 * **Update**: Tests: e2e runs on the built server, one per Playwright worker, fully parallel; event-only waits (lint-enforced); faster CLI unit tests. [Architecture](/concepts/architecture.md), [Runtime modes](/concepts/runtime-modes.md) and [Editing](/concepts/editing.md) follow.
 * **Update**: UI kit consolidation: one recipe per look (`Status`, `ErrorText`, `Notice`, `Loading`, `ChipToggle`, `FormDialogFooter`, `EntryRow`, the label typography), one `DraftNotice` for every editor, dead CSS and superseded files removed, and a unit guard for unused or undefined `ck-`/`cx-` classes. [Architecture](/concepts/architecture.md) (kit recipes and the ownership rule) and [Editing](/concepts/editing.md) (the shared draft banner) follow.

@@ -16,7 +16,7 @@ test('? opens the shortcuts dialog and Esc closes it', async ({ page }) => {
   await page.keyboard.press('?');
   const dialog = page.getByTestId('shortcuts-dialog');
   await expect(dialog).toBeVisible();
-  expect(await page.getByTestId('shortcut-row').count()).toBe(7);
+  expect(await page.getByTestId('shortcut-row').count()).toBe(8);
   await expect(dialog).toContainText('New entry');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -69,6 +69,19 @@ test('l on an okf entry page opens the relation picker', async ({ page }) => {
   await expect(page.getByTestId('relation-add')).toBeEnabled();
   await page.keyboard.press('l');
   await expect(page.getByTestId('relation-picker')).toBeVisible();
+});
+
+test('i on an entry page opens it in the IDE', async ({ page }) => {
+  await ready(page, '/kb/ctxman');
+  await expect(page.getByTestId('detail-open-ide')).toBeEnabled();
+  await page.keyboard.press('i');
+  await expect(page.locator('[data-ide-status]')).toContainText('Opened');
+});
+
+test('i does nothing on a page without an Open in IDE button', async ({ page }) => {
+  await ready(page, '/task');
+  await page.keyboard.press('i');
+  await expect(page.locator('[data-ide-status]')).toHaveCount(0);
 });
 
 test('l does nothing on a page without a + Link button', async ({ page }) => {

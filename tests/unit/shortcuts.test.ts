@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  IDE_BUTTON_SELECTOR,
   LINK_BUTTON_SELECTOR,
   SHORTCUTS,
   isTypingTarget,
@@ -20,6 +21,7 @@ const key = (k: string, extra: Partial<KeyInfo> = {}): KeyInfo => ({
 const ctx = (extra: Partial<ShortcutContext> = {}): ShortcutContext => ({
   createHref: '/new/task',
   linkShortcut: true,
+  ideShortcut: true,
   typing: false,
   dialogOpen: false,
   ...extra,
@@ -48,6 +50,15 @@ describe('shortcutAction', () => {
   it('c does nothing without a create href', () => {
     expect(shortcutAction(key('c'), ctx({ createHref: null }))).toBeNull();
     expect(shortcutAction(key('c'), ctx({ createHref: '' }))).toBeNull();
+  });
+
+  it('i clicks the Open in IDE button only when the page has an enabled one', () => {
+    expect(shortcutAction(key('i'), ctx({}))).toEqual({
+      kind: 'click',
+      selector: IDE_BUTTON_SELECTOR,
+    });
+    expect(shortcutAction(key('i'), ctx({ ideShortcut: false }))).toBeNull();
+    expect(shortcutAction({ ...key('i'), shiftKey: true }, ctx({}))).toBeNull();
   });
 
   it('l clicks the link button only on pages with the link shortcut', () => {
@@ -126,8 +137,8 @@ describe('SHORTCUTS', () => {
     for (const s of SHORTCUTS) expect(s.keys.length).toBeGreaterThan(0);
   });
 
-  it('lists ?, Mod+K, c, l, Mod+S, Mod+Alt+K and Esc', () => {
+  it('lists ?, Mod+K, c, l, i, Mod+S, Mod+Alt+K and Esc', () => {
     const combos = SHORTCUTS.map((s) => s.keys.join('+'));
-    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', 'Mod+S', 'Mod+Alt+K', 'Esc']);
+    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', 'i', 'Mod+S', 'Mod+Alt+K', 'Esc']);
   });
 });

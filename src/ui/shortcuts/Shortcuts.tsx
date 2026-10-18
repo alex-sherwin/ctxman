@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { SHORTCUTS, isTypingTarget, shortcutAction } from '../../lib/shortcuts.ts';
+import {
+  IDE_BUTTON_SELECTOR,
+  SHORTCUTS,
+  isTypingTarget,
+  shortcutAction,
+} from '../../lib/shortcuts.ts';
 import { isMac, modKeyLabel } from '../../stores/platform.ts';
 // Kit parts are imported BY FILE: the kit barrel pulls in Monaco.
 import { Dialog, Modal } from '../kit/Dialog.tsx';
@@ -29,6 +34,7 @@ export function Shortcuts() {
       const action = shortcutAction(e, {
         createHref: body.getAttribute('data-shortcut-create'),
         linkShortcut: body.hasAttribute('data-shortcut-link'),
+        ideShortcut: document.querySelector(IDE_BUTTON_SELECTOR) !== null,
         typing: isTypingTarget(target),
         dialogOpen: document.querySelector(DIALOG_SELECTOR) !== null,
       });

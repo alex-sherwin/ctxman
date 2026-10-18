@@ -18,6 +18,7 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 | Cmd/Ctrl+K | Open the [search](/concepts/search.md) | every page |
 | `c` | New entry for the page's context | lists, entry pages, dashboard, Tools, Forge, Inflate |
 | `l` | Add a link to another entry (the + Link dialog) | entry pages of okf datasets |
+| `i` | Open in IDE (the entry folder with the current file) | entry and document pages, when an IDE command is available |
 | Cmd/Ctrl+S | Save | editors, see [Editing](/concepts/editing.md) |
 | Cmd/Ctrl+Alt+K | Insert link to entry | markdown editors |
 | `Esc` | Close the dialog | dialogs |

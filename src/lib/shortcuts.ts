@@ -25,6 +25,12 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     label: 'Add a link to another entry',
     where: 'Entry pages of okf datasets',
   },
+  {
+    id: 'ide',
+    keys: ['i'],
+    label: 'Open in IDE',
+    where: 'Entry and document pages, when an IDE command is available',
+  },
   { id: 'save', keys: ['Mod', 'S'], label: 'Save', where: 'Editors' },
   {
     id: 'insert-link',
@@ -37,6 +43,9 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
 
 /** Selector of the + Link button that `l` clicks (an enabled one only: EntryTools enables it on mount). */
 export const LINK_BUTTON_SELECTOR = '[data-entry-action="add-relation"]:not([disabled])';
+
+/** Selector of the Open in IDE button that `i` clicks (enabled only: shell.ts disables it when no IDE command exists). */
+export const IDE_BUTTON_SELECTOR = '[data-ide-open]:not([disabled])';
 
 /** Elements that take typed text: shortcuts never fire there. */
 export const TYPING_SELECTOR = 'input, textarea, select, [contenteditable], .monaco-editor';
@@ -57,6 +66,8 @@ export interface ShortcutContext {
   createHref: string | null;
   /** `data-shortcut-link` is present: the page has a + Link button. */
   linkShortcut: boolean;
+  /** The page has an ENABLED Open in IDE button (`IDE_BUTTON_SELECTOR` matches). */
+  ideShortcut: boolean;
   /** The event target is a typing target (see {@link isTypingTarget}). */
   typing: boolean;
   /** Some `[role="dialog"]` / `[role="alertdialog"]` is open. */
@@ -87,5 +98,7 @@ export function shortcutAction(e: KeyInfo, ctx: ShortcutContext): ShortcutAction
   }
   if (e.key === 'l')
     return ctx.linkShortcut ? { kind: 'click', selector: LINK_BUTTON_SELECTOR } : null;
+  if (e.key === 'i')
+    return ctx.ideShortcut ? { kind: 'click', selector: IDE_BUTTON_SELECTOR } : null;
   return null;
 }
