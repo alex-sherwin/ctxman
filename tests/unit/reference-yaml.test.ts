@@ -8,8 +8,9 @@ import {
   serializeReference,
 } from '../../src/lib/reference-yaml.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
+import { assertValid } from '../../src/datasets/validate.ts';
 
-const parse = (input: unknown): ReferenceData => referenceSchema.parse(input);
+const parse = (input: unknown): ReferenceData => assertValid(referenceSchema, input);
 
 const local = parse({
   name: 'my-repo',

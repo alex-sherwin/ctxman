@@ -4,6 +4,7 @@ import { datasetDef, entryUrl, isReferenceType, OWNERS } from '../datasets/regis
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { entryLinkSchema } from '../datasets/schemas.ts';
 import type { ContextInput, ContextLink, EntryLink } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import type { Issue } from './context-io.ts';
 import { isInflateTarget } from './inflate/catalog.ts';
 import type { InflateTarget } from './inflate/catalog.ts';
@@ -81,7 +82,7 @@ export interface SearchDoc {
 }
 
 /**
- * Context API payload (POST/PUT body): same as the zod input of `contextSchema` but with `links`
+ * Context API payload (POST/PUT body): same as the input type of `contextSchema` but with `links`
  * required, exactly as UI_SPEC §0.5 declares it. Assignable to `ContextInput`.
  */
 export type ContextDoc = Omit<ContextInput, 'links'> & { links: ContextLink[] };
@@ -95,7 +96,7 @@ function relationsOf(links: unknown): EntryLink[] {
   if (!Array.isArray(links)) return [];
   const out: EntryLink[] = [];
   for (const item of links) {
-    const parsed = entryLinkSchema.safeParse(item);
+    const parsed = validate(entryLinkSchema, item);
     if (parsed.success) out.push(parsed.data);
   }
   return out;

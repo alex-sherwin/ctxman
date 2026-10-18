@@ -9,6 +9,7 @@ import type {
   RecipeData,
   RecipeOutput,
 } from '../../datasets/schemas.ts';
+import { validate } from '../../datasets/validate.ts';
 import { describeIssue, issuePath } from '../findings.ts';
 import { stringifyYaml } from '../yaml.ts';
 import {
@@ -19,14 +20,14 @@ import {
   STUB_IDS,
 } from './catalog.ts';
 
-/** Same shape as context-io `Issue`: path = zod issue path joined with '.', '' for the root. */
+/** Same shape as context-io `Issue`: path = issue path joined with '.', '' for the root. */
 export interface RecipeIssue {
   path: string;
   message: string;
 }
 
 /**
- * recipeSchema.safeParse plus an optional `name === expectedName` check
+ * validate(recipeSchema, …) plus an optional `name === expectedName` check
  * (code 'name-mismatch': recipe names cannot be changed).
  */
 export function parseRecipe(
@@ -35,12 +36,12 @@ export function parseRecipe(
 ):
   | { ok: true; recipe: RecipeData }
   | { ok: false; code: 'invalid' | 'name-mismatch'; issues: RecipeIssue[] } {
-  const parsed = recipeSchema.safeParse(input);
+  const parsed = validate(recipeSchema, input);
   if (!parsed.success) {
     return {
       ok: false,
       code: 'invalid',
-      issues: parsed.error.issues.map((i) => ({
+      issues: parsed.issues.map((i) => ({
         path: issuePath(i.path),
         message: describeIssue(i, input ?? {}),
       })),
@@ -269,9 +270,9 @@ export function parseRunRequest(
   }
 
   const rawOverrides = record.overrides ?? {};
-  const parsedOverrides = runOverridesSchema.safeParse(rawOverrides);
+  const parsedOverrides = validate(runOverridesSchema, rawOverrides);
   if (!parsedOverrides.success) {
-    for (const issue of parsedOverrides.error.issues) {
+    for (const issue of parsedOverrides.issues) {
       issues.push({
         path: prefixed('overrides', issuePath(issue.path)),
         message: describeIssue(issue, rawOverrides),

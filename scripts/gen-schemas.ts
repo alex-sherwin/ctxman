@@ -1,5 +1,5 @@
 // Generates schemas/<dataset>.schema.json (reference, context, recipe) from the arktype models in
-// src/datasets/arktypes.ts. Writes a file only when its text changed (keeps mtimes). Deterministic.
+// src/datasets/schemas.ts. Writes a file only when its text changed (keeps mtimes). Deterministic.
 // Usage: node scripts/gen-schemas.ts [--json]
 // Exit 0 ok, 2 usage error.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -12,7 +12,7 @@ import { SCHEMA_DATASETS, schemaFileName } from '../src/lib/schema-comment.ts';
 import { EXIT_OK, EXIT_USAGE, writeError, writeJson, writeLine } from './cli.ts';
 
 const USAGE = `Usage: node scripts/gen-schemas.ts [--json]
-  Writes schemas/<dataset>.schema.json for ${SCHEMA_DATASETS.join(', ')} from src/datasets/arktypes.ts.
+  Writes schemas/<dataset>.schema.json for ${SCHEMA_DATASETS.join(', ')} from src/datasets/schemas.ts.
   Only files whose text changed are rewritten. Exit 0 ok, 2 usage error.`;
 
 async function main(): Promise<number> {

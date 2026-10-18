@@ -14,6 +14,8 @@ import {
 import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { SEED_RECIPE_YAML } from './fixtures/seed-recipe.ts';
+import { assertValid, validate } from '../../src/datasets/validate.ts';
+import { dataOf, issuesOf } from './fixtures/validation.ts';
 
 const ORIGIN = 'http://127.0.0.1:4321';
 
@@ -34,7 +36,7 @@ function issues(input: Record<string, unknown>): [string, string][] {
 
 describe('recipeSchema defaults', () => {
   it('fills every default', () => {
-    expect(recipeSchema.parse(base)).toEqual({
+    expect(assertValid(recipeSchema, base)).toEqual({
       name: 'r',
       description: 'd',
       tags: [],
@@ -50,12 +52,12 @@ describe('recipeSchema defaults', () => {
   });
 
   it('is strict: unknown keys are rejected at every level', () => {
-    expect(recipeSchema.safeParse({ ...base, extra: 1 }).success).toBe(false);
+    expect(validate(recipeSchema, { ...base, extra: 1 }).success).toBe(false);
     expect(
-      recipeSchema.safeParse({ ...base, items: [{ dataset: 'kb', slug: 'a', x: 1 }] }).success,
+      validate(recipeSchema, { ...base, items: [{ dataset: 'kb', slug: 'a', x: 1 }] }).success,
     ).toBe(false);
     expect(
-      recipeSchema.safeParse({ ...base, overrides: [{ key: 'kb/a', options: { nope: true } }] })
+      validate(recipeSchema, { ...base, overrides: [{ key: 'kb/a', options: { nope: true } }] })
         .success,
     ).toBe(false);
   });
@@ -146,15 +148,15 @@ describe('recipeSchema superRefine (spec 3.2 table)', () => {
   });
 
   it('defaults: an unknown kind is rejected (partialRecord)', () => {
-    const result = recipeSchema.safeParse({
+    const result = validate(recipeSchema, {
       ...base,
       defaults: { reference: { mode: 'describe' } },
     });
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.code).toBe('unrecognized_keys');
-    expect(recipeSchema.safeParse({ ...base, defaults: {} }).success).toBe(true);
+    expect(issuesOf(result)[0]?.kind).toBe('unknown-key');
+    expect(validate(recipeSchema, { ...base, defaults: {} }).success).toBe(true);
     expect(
-      recipeSchema.safeParse({ ...base, defaults: { kb: {}, task: { mode: 'pointer' } } }).success,
+      validate(recipeSchema, { ...base, defaults: { kb: {}, task: { mode: 'pointer' } } }).success,
     ).toBe(true);
   });
 
@@ -390,12 +392,12 @@ describe('sameRecipe', () => {
 
 describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', () => {
   it('output is optional; contextFile defaults to LLM_CONTEXT.md inside it', () => {
-    expect(recipeSchema.parse(base).output).toBeUndefined();
-    expect(recipeSchema.parse({ ...base, output: {} }).output).toEqual({
+    expect(assertValid(recipeSchema, base).output).toBeUndefined();
+    expect(assertValid(recipeSchema, { ...base, output: {} }).output).toEqual({
       contextFile: 'LLM_CONTEXT.md',
     });
     expect(
-      recipeSchema.parse({
+      assertValid(recipeSchema, {
         ...base,
         output: {
           dir: '  ~/ctxman-inflate/r  ',
@@ -424,12 +426,12 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
     expect(issues({ output: { contextFile: 'a/b.md' } })).toEqual([
       [
         'output.contextFile',
-        'must be a file name ending in .md (letters, digits, . _ -; no folders)',
+        'must be a file name ending in .md (letters, digits, . _ -; no folders) (was "a/b.md")',
       ],
     ]);
     expect(parseRecipe({ ...base, output: { contextFile: 'notes.txt' } }).ok).toBe(false);
     expect(issues({ output: { primary: 'kb/x' } })).toEqual([
-      ['output.primary', 'must be reference/<slug>'],
+      ['output.primary', 'must be reference/<slug> (was "kb/x")'],
     ]);
     expect(parseRecipe({ ...base, output: { primary: 'reference/Bad' } }).ok).toBe(false);
     expect(parseRecipe({ ...base, output: { extra: 1 } }).ok).toBe(false);
@@ -467,7 +469,7 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
     expect(issues({ overrides: o({ branch: '-x' }) })).toEqual([
       [
         'overrides.0.materialOptions.branch',
-        'must be a branch or tag name (letters, digits, . _ - /; no "..", no leading "-")',
+        'must be a branch or tag name (letters, digits, . _ - /; no "..", no leading "-") (was "-x")',
       ],
     ]);
     expect(
@@ -663,7 +665,7 @@ defaults:
 });
 
 describe('applyRunOverrides (plans/INFLATE_V2_SPEC.md §4.3)', () => {
-  const run = (given: InflateRunOverridesInput = {}) => runOverridesSchema.parse(given);
+  const run = (given: InflateRunOverridesInput = {}) => assertValid(runOverridesSchema, given);
   const withOutput = parse({
     output: { dir: '~/ctxman-inflate/r', primary: 'reference/app', stubs: { gitignore: false } },
     overrides: [
@@ -796,13 +798,13 @@ describe('applyRunOverrides (plans/INFLATE_V2_SPEC.md §4.3)', () => {
         items: { 'reference/app': { material: 'symlink' }, 'skill/s': { material: 'copy' } },
       }),
     );
-    expect(recipeSchema.safeParse(out).success).toBe(true);
+    expect(validate(recipeSchema, out).success).toBe(true);
   });
 });
 
 describe('runOverrideCount', () => {
   const count = (given: InflateRunOverridesInput) =>
-    runOverrideCount(runOverridesSchema.parse(given));
+    runOverrideCount(assertValid(runOverridesSchema, given));
 
   it('counts dir, contextFile, primary (also null), allowNonEmpty and items with a material or options', () => {
     expect(count({})).toBe(0);
@@ -832,23 +834,23 @@ describe('runOverrideCount', () => {
 
 describe('runOverridesSchema', () => {
   it('defaults items to {} and is strict', () => {
-    expect(runOverridesSchema.parse({})).toEqual({ items: {} });
-    expect(runOverridesSchema.safeParse({ other: 1 }).success).toBe(false);
-    expect(runOverridesSchema.safeParse({ items: { 'kb/a': { mode: 'summary' } } }).success).toBe(
+    expect(assertValid(runOverridesSchema, {})).toEqual({ items: {} });
+    expect(validate(runOverridesSchema, { other: 1 }).success).toBe(false);
+    expect(validate(runOverridesSchema, { items: { 'kb/a': { mode: 'summary' } } }).success).toBe(
       false,
     );
-    expect(runOverridesSchema.safeParse({ items: { nope: { material: 'copy' } } }).success).toBe(
+    expect(validate(runOverridesSchema, { items: { nope: { material: 'copy' } } }).success).toBe(
       false,
     );
-    expect(runOverridesSchema.safeParse({ items: { 'context/x': {} } }).success).toBe(false);
-    expect(runOverridesSchema.safeParse({ items: { 'kb/a': { material: 'bogus' } } }).success).toBe(
+    expect(validate(runOverridesSchema, { items: { 'context/x': {} } }).success).toBe(false);
+    expect(validate(runOverridesSchema, { items: { 'kb/a': { material: 'bogus' } } }).success).toBe(
       false,
     );
-    expect(runOverridesSchema.safeParse({ dir: '' }).success).toBe(false);
-    expect(runOverridesSchema.safeParse({ contextFile: 'x/y.md' }).success).toBe(false);
-    expect(runOverridesSchema.safeParse({ primary: 'kb/x' }).success).toBe(false);
-    expect(runOverridesSchema.safeParse({ primary: null }).success).toBe(true);
-    expect(runOverridesSchema.safeParse({ dir: ' /x ' }).data?.dir).toBe('/x');
+    expect(validate(runOverridesSchema, { dir: '' }).success).toBe(false);
+    expect(validate(runOverridesSchema, { contextFile: 'x/y.md' }).success).toBe(false);
+    expect(validate(runOverridesSchema, { primary: 'kb/x' }).success).toBe(false);
+    expect(validate(runOverridesSchema, { primary: null }).success).toBe(true);
+    expect(dataOf(validate(runOverridesSchema, { dir: ' /x ' }))?.dir).toBe('/x');
   });
 });
 
@@ -888,19 +890,22 @@ describe('parseRunRequest', () => {
   });
 
   it('prefixes recipe issues with recipe. (recipe for a root issue) and override issues with overrides.', () => {
+    // a narrow rule (here: material applicability) only runs when the rest of the recipe is valid
+    const narrow = parseRunRequest({
+      recipe: { name: 'ok', description: 'd', overrides: [{ key: 'kb/a', material: 'clone' }] },
+    });
+    expect(narrow.ok).toBe(false);
+    if (!narrow.ok) {
+      expect(narrow.issues.map((i) => i.path)).toEqual(['recipe.overrides.0.material']);
+    }
     const bad = parseRunRequest({
-      recipe: {
-        name: 'Bad Name',
-        description: 'd',
-        overrides: [{ key: 'kb/a', material: 'clone' }],
-      },
+      recipe: { name: 'Bad Name', description: 'd' },
       overrides: { items: { 'kb/a': { material: 'bogus' } }, dir: '' },
     });
     expect(bad.ok).toBe(false);
     if (bad.ok) return;
     const paths = bad.issues.map((i) => i.path);
     expect(paths).toContain('recipe.name');
-    expect(paths).toContain('recipe.overrides.0.material');
     expect(paths.some((p) => p === 'overrides.dir')).toBe(true);
     expect(paths.some((p) => p.startsWith('overrides.items.'))).toBe(true);
     expect(paths.every((p) => p.startsWith('recipe.') || p.startsWith('overrides.'))).toBe(true);

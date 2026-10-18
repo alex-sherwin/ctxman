@@ -236,14 +236,14 @@ describe('YAML view', () => {
     setYamlDraft('name: demo\ndescription: d\nbogus: 1\nlinks: []\n');
     expect($yamlCheck.get().ok).toBe(false);
     expect($yamlMarkers.get()).toEqual([]);
-    // duplicate link: zod only
+    // duplicate link: custom predicate only
     setYamlDraft(
       'name: demo\ndescription: d\nlinks:\n  - dataset: kb\n    slug: a\n  - dataset: kb\n    slug: a\n',
     );
     expect($yamlMarkers.get()).toHaveLength(1);
     expect($yamlMarkers.get()[0]?.message).toContain('duplicate link');
     expect($yamlMarkers.get()[0]?.startLineNumber).toBe(6);
-    // renamed: zod only
+    // renamed: custom predicate only
     setYamlDraft('name: other\ndescription: d\nlinks: []\n');
     expect($yamlMarkers.get().map((m) => m.message)).toEqual([
       expect.stringContaining('name must stay "demo"'),

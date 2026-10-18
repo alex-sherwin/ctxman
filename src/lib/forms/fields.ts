@@ -1,8 +1,9 @@
 // PURE (no fs, no astro:*; browser-safe): which fields the DataForm shows for each yaml dataset (reference,
 // context, recipe), the empty / normalized document shapes and the client-side validation (ROUND2_UI_SPEC §H.1).
-// The zod schemas in src/datasets/schemas.ts stay the source of truth; this module only decides what the form
-// renders and maps zod issues to one message per field.
+// The arktype schemas in src/datasets/schemas.ts stay the source of truth; this module only decides what the form
+// renders and maps validation issues to one message per field.
 import { DATASET_SCHEMAS } from '../../datasets/schemas.ts';
+import { validate } from '../../datasets/validate.ts';
 import {
   OWNERS,
   OWNER_LABELS,
@@ -237,7 +238,7 @@ export type ValidateResult =
 export const FORM_ERROR_KEY = '_';
 
 /**
- * Validates `doc` as it would be sent (`normalizeDoc`) with the dataset's zod schema. `errors` has one message
+ * Validates `doc` as it would be sent (`normalizeDoc`) with the dataset's arktype schema. `errors` has one message
  * per top-level field id (the first issue wins); a required empty text field says 'Required'; `name` follows
  * `nameProblem` (src/lib/names.ts). `expectedName` (edit mode) makes a different name an error.
  */
@@ -262,11 +263,12 @@ export function validateDoc(
     if (value === undefined || value === '') errors[def.id] = 'Required';
   }
 
-  const parsed = DATASET_SCHEMAS[ds].safeParse(normalized);
+  const parsed = validate(DATASET_SCHEMAS[ds], normalized);
   if (parsed.success && Object.keys(errors).length === 0) return { ok: true, doc: parsed.data };
   if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      const first = issue.path[0];
+    for (const issue of parsed.issues) {
+      // an undeclared key is reported on the object that holds it (the form level for the top object)
+      const first = (issue.kind === 'unknown-key' ? issue.path.slice(0, -1) : issue.path)[0];
       const key = first === undefined ? FORM_ERROR_KEY : String(first);
       if (errors[key] === undefined) errors[key] = describeIssue(issue, normalized);
     }

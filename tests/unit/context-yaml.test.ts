@@ -269,7 +269,7 @@ describe('coveredBySchema', () => {
 
   it('leaves exactly the issues monaco-yaml cannot show', () => {
     const issues = issuesOf(
-      'name: other\nextra: 1\ndescription: d\nlinks:\n  - {dataset: kb, slug: x}\n  - {dataset: kb, slug: x}\n',
+      'name: other\ndescription: d\nlinks:\n  - {dataset: kb, slug: x}\n  - {dataset: kb, slug: x}\n',
     );
     const own = issues.filter((i) => !i.coveredBySchema).map((i) => i.message);
     expect(own).toHaveLength(2);

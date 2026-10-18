@@ -278,7 +278,7 @@ test.describe('YAML tab', () => {
       page,
       'name: e2e-ref-yaml\ndescription: d\ntype: local-repo\npath: ~/x\nowner: someone\n',
     );
-    // the JSON-Schema warning comes from monaco-yaml, the list entry from the zod check
+    // the JSON-Schema warning comes from monaco-yaml, the list entry from the schema check
     await expect(
       page.getByTestId('dform-yaml-editor').locator('.squiggly-warning'),
     ).not.toHaveCount(0);

@@ -6,6 +6,7 @@ import { isValidName } from '../datasets/registry.ts';
 import type { LinkableDatasetId } from '../datasets/registry.ts';
 import { contextLinkSchema, contextSchema } from '../datasets/schemas.ts';
 import type { ContextData } from '../datasets/schemas.ts';
+import { assertValid, validate } from '../datasets/validate.ts';
 import { withFileLock, writeFileAtomic } from './atomic-write.ts';
 import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { describeIssue, issuePath } from './findings.ts';
@@ -24,7 +25,7 @@ export interface ContextRecord {
   file: string;
 }
 
-/** path = zod issue path joined with '.', '' for the root. */
+/** path = issue path joined with '.', '' for the root. */
 export interface Issue {
   path: string;
   message: string;
@@ -66,7 +67,7 @@ function errorCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | null)?.code;
 }
 
-function zodIssues(issues: readonly PathIssue[], root: unknown): Issue[] {
+function validationIssues(issues: readonly PathIssue[], root: unknown): Issue[] {
   return issues.map((i) => ({ path: issuePath(i.path), message: describeIssue(i, root ?? {}) }));
 }
 
@@ -77,9 +78,9 @@ export function validateContext(
 ):
   | { ok: true; context: ContextData }
   | { ok: false; issues: Issue[]; code: 'invalid' | 'name-mismatch' } {
-  const parsed = contextSchema.safeParse(input);
+  const parsed = validate(contextSchema, input);
   if (!parsed.success)
-    return { ok: false, issues: zodIssues(parsed.error.issues, input), code: 'invalid' };
+    return { ok: false, issues: validationIssues(parsed.issues, input), code: 'invalid' };
   if (parsed.data.name !== slug) {
     return {
       ok: false,
@@ -195,12 +196,12 @@ export async function createContext(
   input: unknown,
   dataDir: string = resolveDataDir(),
 ): Promise<ContextRecord> {
-  const parsed = contextSchema.safeParse(input);
+  const parsed = validate(contextSchema, input);
   if (!parsed.success) {
     throw new ContextIoError(
       'invalid',
       'context does not match the schema',
-      zodIssues(parsed.error.issues, input),
+      validationIssues(parsed.issues, input),
     );
   }
   const context = parsed.data;
@@ -302,9 +303,9 @@ function parseAppendBody(input: unknown): ContextLinkInput[] {
     issues.push({ path: 'links', message: `must be an array of 1 to ${APPEND_LINKS_MAX} links` });
   } else {
     links.forEach((item: unknown, index: number) => {
-      const parsed = contextLinkSchema.safeParse(item);
+      const parsed = validate(contextLinkSchema, item);
       if (parsed.success) return;
-      for (const issue of parsed.error.issues) {
+      for (const issue of parsed.issues) {
         issues.push({
           path: ['links', String(index), ...issue.path.map(String)].join('.'),
           message: describeIssue(issue, item ?? {}),
@@ -315,7 +316,7 @@ function parseAppendBody(input: unknown): ContextLinkInput[] {
   if (issues.length > 0) {
     throw new ContextIoError('invalid', 'request body is invalid', issues);
   }
-  return (links as unknown[]).map((item) => contextLinkSchema.parse(item));
+  return (links as unknown[]).map((item) => assertValid(contextLinkSchema, item, 'context link'));
 }
 
 /**

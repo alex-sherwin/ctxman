@@ -7,6 +7,7 @@ import { DATASET_IDS, OKF_DATASET_IDS, REFERENCE_TYPE_LABELS } from '../datasets
 import type { DatasetId, OkfDatasetId, ReferenceType } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, docSchema } from '../datasets/schemas.ts';
 import type { RecipeData } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { issueMessage, sortFindings } from './findings.ts';
@@ -95,8 +96,8 @@ async function checkOkfDataset(ctx: Ctx, dataset: OkfDatasetId): Promise<void> {
           );
           continue;
         }
-        const result = DATASET_SCHEMAS[dataset].safeParse(parsed.doc.data);
-        if (!result.success) schemaIssues(ctx, file, result.error.issues, parsed.doc.data);
+        const result = validate(DATASET_SCHEMAS[dataset], parsed.doc.data);
+        if (!result.success) schemaIssues(ctx, file, result.issues, parsed.doc.data);
         const name = parsed.doc.data.name;
         if (typeof name === 'string' && name !== bundle) {
           add(
@@ -118,8 +119,8 @@ async function checkOkfDataset(ctx: Ctx, dataset: OkfDatasetId): Promise<void> {
         add(ctx, 'error', 'collections/schema', file, `frontmatter: ${(error as Error).message}`);
         continue;
       }
-      const result = docSchema.safeParse(data);
-      if (!result.success) schemaIssues(ctx, file, result.error.issues, data);
+      const result = validate(docSchema, data);
+      if (!result.success) schemaIssues(ctx, file, result.issues, data);
     }
   }
 }
@@ -208,9 +209,9 @@ async function checkYamlDataset(
       continue;
     }
     const input = value !== null && typeof value === 'object' ? value : {};
-    const result = DATASET_SCHEMAS[dataset].safeParse(input);
+    const result = validate(DATASET_SCHEMAS[dataset], input);
     if (!result.success) {
-      schemaIssues(ctx, rel, result.error.issues, input);
+      schemaIssues(ctx, rel, result.issues, input);
       continue;
     }
     const name = (result.data as { name: string }).name;

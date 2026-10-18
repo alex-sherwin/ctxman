@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { YAML_CODECS } from '../../src/lib/forms/codecs.ts';
+import { validate } from '../../src/datasets/validate.ts';
 import {
   FORM_FIELDS,
   LINKED_EDITOR,
@@ -227,7 +228,7 @@ describe('validateDoc', () => {
     if (!bad.ok) expect(bad.errors.name).toMatch(/lowercase letters/);
   });
 
-  it('reference: reports a bad uri with the zod message, first message per field', () => {
+  it('reference: reports a bad uri with the schema message, first message per field', () => {
     for (const type of ['remote-repo', 'remote-skill']) {
       const r = validateDoc('reference', {
         name: 'x',
@@ -341,7 +342,7 @@ describe('YAML_CODECS', () => {
         '',
       ].join('\n'),
     );
-    expect(YAML_CODECS.reference.schema.safeParse(doc).success).toBe(true);
+    expect(validate(YAML_CODECS.reference.schema, doc).success).toBe(true);
   });
 
   it('serializes an invalid document best-effort instead of throwing', () => {

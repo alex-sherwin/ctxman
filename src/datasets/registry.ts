@@ -37,7 +37,7 @@ export const LINKABLE_DATASETS = [
 ] as const;
 export type LinkableDatasetId = (typeof LINKABLE_DATASETS)[number];
 
-// Lifecycle state ids are kebab-case in data files (tuples feed z.enum in schemas.ts).
+// Lifecycle state ids are kebab-case in data files (tuples feed type.enumerated in schemas.ts).
 export const IDEA_STATES = ['pending', 'in-progress', 'complete', 'abandoned'] as const;
 export const TASK_STATES = ['pending', 'in-progress', 'complete', 'wont-do'] as const;
 export const BUG_STATES = ['pending', 'in-progress', 'fixed', 'wont-fix'] as const;

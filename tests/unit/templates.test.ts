@@ -6,6 +6,7 @@ import { schemaCommentLine, schemaCommentStatus } from '../../src/lib/schema-com
 import { linkText, planNewEntry, titleFromName } from '../../src/lib/templates.ts';
 import type { PlannedFile } from '../../src/lib/templates.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
+import { validate } from '../../src/datasets/validate.ts';
 
 const ORIGIN = 'http://127.0.0.1:4321';
 
@@ -259,10 +260,10 @@ describe('planned files validate against the schemas', () => {
             const parsed = parseFrontmatter(file.content);
             expect(parsed.ok).toBe(true);
             if (parsed.ok)
-              expect(DATASET_SCHEMAS.skill.safeParse(parsed.doc.data).success).toBe(true);
+              expect(validate(DATASET_SCHEMAS.skill, parsed.doc.data).success).toBe(true);
           } else {
             const data = parseYaml(file.content);
-            const result = DATASET_SCHEMAS[dataset].safeParse(data);
+            const result = validate(DATASET_SCHEMAS[dataset], data);
             expect(result.success, file.relPath).toBe(true);
           }
         }

@@ -8,7 +8,9 @@ import path from 'node:path';
 import { datasetDef, isOkfDatasetId } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { resolveDataDir } from './data-dir.ts';
+import { describeIssue, issuePath } from './findings.ts';
 import { entryAbsPath } from './freshness.ts';
 import { parseFrontmatter, validateOkfFile } from './okf.ts';
 import type { PlannedFile } from './templates.ts';
@@ -40,7 +42,7 @@ export class EntryCreateError extends Error {
 
 /**
  * The validation errors of one freshly generated file: okf files through `validateOkfFile` (errors only), skill
- * and data files through their zod schema (+ `name` must equal the entry name). `source` is what was read back
+ * and data files through their arktype schema (+ `name` must equal the entry name). `source` is what was read back
  * from disk. Empty = fine.
  */
 export function plannedProblems(
@@ -52,11 +54,11 @@ export function plannedProblems(
   const def = datasetDef(dataset);
   const fail = (message: string): string[] => [`${planned.relPath}: ${message}`];
   const schemaProblems = (data: unknown): string[] => {
-    const result = DATASET_SCHEMAS[dataset].safeParse(data);
+    const result = validate(DATASET_SCHEMAS[dataset], data);
     const issues = result.success
       ? []
-      : result.error.issues.map(
-          (i) => `${planned.relPath}: ${i.path.map(String).join('.') || '(root)'}: ${i.message}`,
+      : result.issues.map(
+          (i) => `${planned.relPath}: ${issuePath(i.path) || '(root)'}: ${describeIssue(i, data)}`,
         );
     const given = (data as { name?: unknown } | null)?.name;
     if (result.success && given !== name)

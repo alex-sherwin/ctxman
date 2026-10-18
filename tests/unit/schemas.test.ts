@@ -3,7 +3,12 @@ import { DATASET_IDS } from '../../src/datasets/registry.ts';
 import type { DatasetId } from '../../src/datasets/registry.ts';
 import {
   DATASET_SCHEMAS,
+  CLONE_DIR_PATTERN,
+  GIT_REF_PATTERN,
   OKF_STATUSES,
+  recipeSchema,
+  REMOTE_URI_HINT_PATTERN,
+  YAML_DATASET_TYPES,
   contextLinkSchema,
   contextSchema,
   dateSchema,
@@ -17,7 +22,10 @@ import {
   referenceSchema,
   skillSchema,
 } from '../../src/datasets/schemas.ts';
+import { isSafeGitRef, isSafeRelativeDir } from '../../src/lib/inflate/catalog.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
+import { assertValid, validate } from '../../src/datasets/validate.ts';
+import { dataOf, issuesOf } from './fixtures/validation.ts';
 
 const okfBase = { type: 'Knowledge Base', name: 'demo', description: 'A demo entry' };
 
@@ -48,27 +56,27 @@ describe('DATASET_SCHEMAS', () => {
   });
 
   it.each([...DATASET_IDS])('%s accepts a minimal valid object', (id) => {
-    const result = DATASET_SCHEMAS[id].safeParse(MINIMAL[id]);
-    expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+    const result = validate(DATASET_SCHEMAS[id], MINIMAL[id]);
+    expect(result.success, JSON.stringify(issuesOf(result))).toBe(true);
   });
 
   it.each([...DATASET_IDS])('%s rejects a missing name and an invalid name', (id) => {
     const { name: _name, ...withoutName } = MINIMAL[id];
-    expect(DATASET_SCHEMAS[id].safeParse(withoutName).success).toBe(false);
-    expect(DATASET_SCHEMAS[id].safeParse({ ...MINIMAL[id], name: 'Not Kebab' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS[id], withoutName).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS[id], { ...MINIMAL[id], name: 'Not Kebab' }).success).toBe(
       false,
     );
   });
 
   it.each([...DATASET_IDS])('%s rejects a blank description', (id) => {
-    expect(DATASET_SCHEMAS[id].safeParse({ ...MINIMAL[id], description: '   ' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS[id], { ...MINIMAL[id], description: '   ' }).success).toBe(
       false,
     );
   });
 
   it('defaults tags to [] (okf, reference, context, recipe)', () => {
     for (const id of ['kb', 'idea', 'reference', 'context', 'recipe'] as const) {
-      const parsed = DATASET_SCHEMAS[id].parse(MINIMAL[id]) as { tags: string[] };
+      const parsed = assertValid(DATASET_SCHEMAS[id], MINIMAL[id]) as { tags: string[] };
       expect(parsed.tags, id).toEqual([]);
     }
   });
@@ -77,10 +85,10 @@ describe('DATASET_SCHEMAS', () => {
 describe('name', () => {
   it('accepts kebab-case and rejects everything else', () => {
     for (const ok of ['a', 'a-b', 'a1-b2', 'x'.repeat(64)]) {
-      expect(nameSchema.safeParse(ok).success, ok).toBe(true);
+      expect(validate(nameSchema, ok).success, ok).toBe(true);
     }
     for (const bad of ['', 'A', '-a', 'a-', 'a--b', 'a_b', 'a b', 'x'.repeat(65)]) {
-      expect(nameSchema.safeParse(bad).success, bad).toBe(false);
+      expect(validate(nameSchema, bad).success, bad).toBe(false);
     }
   });
 });
@@ -88,12 +96,12 @@ describe('name', () => {
 describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
   it('requires type', () => {
     const { type: _type, ...rest } = okfBase;
-    expect(DATASET_SCHEMAS.kb.safeParse(rest).success).toBe(false);
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...okfBase, type: '  ' }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, rest).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, { ...okfBase, type: '  ' }).success).toBe(false);
   });
 
   it('preserves unknown keys', () => {
-    const parsed = DATASET_SCHEMAS.kb.parse({ ...okfBase, custom_key: { nested: [1, 2] } });
+    const parsed = assertValid(DATASET_SCHEMAS.kb, { ...okfBase, custom_key: { nested: [1, 2] } });
     expect(parsed).toMatchObject({ custom_key: { nested: [1, 2] } });
   });
 
@@ -101,45 +109,48 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     '%s requires a valid lifecycle state',
     (id) => {
       const schema = DATASET_SCHEMAS[id];
-      expect(schema.safeParse({ ...MINIMAL[id], state: 'done' }).success).toBe(false);
-      expect(schema.safeParse({ ...MINIMAL[id], state: 'in progress' }).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], state: 'done' }).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], state: 'in progress' }).success).toBe(false);
       const { state: _state, ...withoutState } = MINIMAL[id];
-      expect(schema.safeParse(withoutState).success).toBe(false);
-      expect(schema.safeParse({ ...MINIMAL[id], state: 'in-progress' }).success).toBe(true);
+      expect(validate(schema, withoutState).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], state: 'in-progress' }).success).toBe(true);
     },
   );
 
   it('uses a different state set per dataset', () => {
-    expect(DATASET_SCHEMAS.idea.safeParse({ ...MINIMAL.idea, state: 'abandoned' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS.idea, { ...MINIMAL.idea, state: 'abandoned' }).success).toBe(
       true,
     );
-    expect(DATASET_SCHEMAS.idea.safeParse({ ...MINIMAL.idea, state: 'fixed' }).success).toBe(false);
-    expect(DATASET_SCHEMAS.bug.safeParse({ ...MINIMAL.bug, state: 'fixed' }).success).toBe(true);
-    expect(DATASET_SCHEMAS.bug.safeParse({ ...MINIMAL.bug, state: 'wont-fix' }).success).toBe(true);
-    expect(DATASET_SCHEMAS.bug.safeParse({ ...MINIMAL.bug, state: 'complete' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS.idea, { ...MINIMAL.idea, state: 'fixed' }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.bug, { ...MINIMAL.bug, state: 'fixed' }).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.bug, { ...MINIMAL.bug, state: 'wont-fix' }).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.bug, { ...MINIMAL.bug, state: 'complete' }).success).toBe(
       false,
     );
-    expect(DATASET_SCHEMAS.task.safeParse({ ...MINIMAL.task, state: 'wont-do' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS.task, { ...MINIMAL.task, state: 'wont-do' }).success).toBe(
       true,
     );
-    expect(DATASET_SCHEMAS.task.safeParse({ ...MINIMAL.task, state: 'abandoned' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS.task, { ...MINIMAL.task, state: 'abandoned' }).success).toBe(
       false,
     );
   });
 
   it('kb and rca have no lifecycle (state is just an unknown key)', () => {
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...okfBase, state: 'whatever' }).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.kb, { ...okfBase, state: 'whatever' }).success).toBe(true);
   });
 
   it('accepts stale_after as a Date and as a YYYY-MM-DD string, outputting a Date', () => {
-    const fromDate = DATASET_SCHEMAS.kb.parse({ ...okfBase, stale_after: new Date('2027-04-01') });
-    const fromString = DATASET_SCHEMAS.kb.parse({ ...okfBase, stale_after: '2027-04-01' });
+    const fromDate = assertValid(DATASET_SCHEMAS.kb, {
+      ...okfBase,
+      stale_after: new Date('2027-04-01'),
+    });
+    const fromString = assertValid(DATASET_SCHEMAS.kb, { ...okfBase, stale_after: '2027-04-01' });
     expect((fromDate as { stale_after: Date }).stale_after).toBeInstanceOf(Date);
     expect((fromString as { stale_after: Date }).stale_after).toBeInstanceOf(Date);
     expect((fromString as { stale_after: Date }).stale_after.toISOString()).toBe(
       '2027-04-01T00:00:00.000Z',
     );
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...okfBase, stale_after: 'not a date' }).success).toBe(
+    expect(validate(DATASET_SCHEMAS.kb, { ...okfBase, stale_after: 'not a date' }).success).toBe(
       false,
     );
   });
@@ -148,7 +159,7 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     const data = parseYaml(
       'type: Knowledge Base\nname: demo\ndescription: d\nstale_after: 2027-04-01\n',
     );
-    const parsed = DATASET_SCHEMAS.kb.parse(data) as { stale_after: Date };
+    const parsed = assertValid(DATASET_SCHEMAS.kb, data) as { stale_after: Date };
     expect(parsed.stale_after.toISOString()).toBe('2027-04-01T00:00:00.000Z');
   });
 
@@ -162,53 +173,53 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
       verified: [{ by: 'human:alex', at: '2026-10-17' }],
       status: 'draft',
     };
-    expect(DATASET_SCHEMAS.kb.safeParse(full).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.kb, full).success).toBe(true);
     expect(
-      DATASET_SCHEMAS.kb.safeParse({ ...full, verified: { by: 'human:alex', at: '2026-10-17' } })
+      validate(DATASET_SCHEMAS.kb, { ...full, verified: { by: 'human:alex', at: '2026-10-17' } })
         .success,
     ).toBe(true);
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...full, generated: { by: 'x' } }).success).toBe(false);
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...full, status: 'published' }).success).toBe(false);
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...full, sources: [{ id: 'x' }] }).success).toBe(false);
-    expect(DATASET_SCHEMAS.kb.safeParse({ ...full, tags: [''] }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, { ...full, generated: { by: 'x' } }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, { ...full, status: 'published' }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, { ...full, sources: [{ id: 'x' }] }).success).toBe(false);
+    expect(validate(DATASET_SCHEMAS.kb, { ...full, tags: [''] }).success).toBe(false);
     expect([...OKF_STATUSES]).toEqual(['draft', 'stable', 'deprecated']);
   });
 
   it('okfConceptSchema (any non-reserved concept) needs only a type', () => {
-    expect(okfConceptSchema.safeParse({ type: 'Concept' }).success).toBe(true);
-    expect(okfConceptSchema.safeParse({}).success).toBe(false);
-    expect(okfConceptSchema.safeParse({ type: 'Concept', generated: { by: 'x' } }).success).toBe(
+    expect(validate(okfConceptSchema, { type: 'Concept' }).success).toBe(true);
+    expect(validate(okfConceptSchema, {}).success).toBe(false);
+    expect(validate(okfConceptSchema, { type: 'Concept', generated: { by: 'x' } }).success).toBe(
       false,
     );
-    expect(okfEventSchema.safeParse({ by: 'human:alex', at: '2026-10-17' }).success).toBe(true);
+    expect(validate(okfEventSchema, { by: 'human:alex', at: '2026-10-17' }).success).toBe(true);
   });
 
   it('okfIndexSchema allows only okf_version "0.2"', () => {
-    expect(okfIndexSchema.safeParse({}).success).toBe(true);
-    expect(okfIndexSchema.safeParse({ okf_version: '0.2' }).success).toBe(true);
-    expect(okfIndexSchema.safeParse({ okf_version: '0.1' }).success).toBe(false);
-    expect(okfIndexSchema.safeParse({ okf_version: '0.2', title: 'x' }).success).toBe(false);
+    expect(validate(okfIndexSchema, {}).success).toBe(true);
+    expect(validate(okfIndexSchema, { okf_version: '0.2' }).success).toBe(true);
+    expect(validate(okfIndexSchema, { okf_version: '0.1' }).success).toBe(false);
+    expect(validate(okfIndexSchema, { okf_version: '0.2', title: 'x' }).success).toBe(false);
   });
 
   it('docSchema is loose', () => {
-    expect(docSchema.safeParse({}).success).toBe(true);
-    expect(docSchema.safeParse({ okf_version: 0.2, anything: 1, state: 'weird' }).success).toBe(
+    expect(validate(docSchema, {}).success).toBe(true);
+    expect(validate(docSchema, { okf_version: 0.2, anything: 1, state: 'weird' }).success).toBe(
       true,
     );
-    expect(docSchema.parse({}).tags).toEqual([]);
+    expect(assertValid(docSchema, {}).tags).toEqual([]);
   });
 });
 
 describe('dateSchema', () => {
   it('coerces strings to Dates and rejects garbage', () => {
-    expect(dateSchema.parse('2026-10-17')).toBeInstanceOf(Date);
-    expect(dateSchema.safeParse('nope').success).toBe(false);
+    expect(assertValid(dateSchema, '2026-10-17')).toBeInstanceOf(Date);
+    expect(validate(dateSchema, 'nope').success).toBe(false);
   });
 });
 
 describe('skill (agentskills.io, strict)', () => {
   it('accepts the spec fields', () => {
-    const result = skillSchema.safeParse({
+    const result = validate(skillSchema, {
       name: 'demo',
       description: 'd',
       license: 'MIT',
@@ -220,21 +231,21 @@ describe('skill (agentskills.io, strict)', () => {
   });
 
   it('rejects unknown keys such as tags', () => {
-    expect(skillSchema.safeParse({ ...MINIMAL.skill, tags: ['x'] }).success).toBe(false);
-    expect(skillSchema.safeParse({ ...MINIMAL.skill, type: 'Skill' }).success).toBe(false);
+    expect(validate(skillSchema, { ...MINIMAL.skill, tags: ['x'] }).success).toBe(false);
+    expect(validate(skillSchema, { ...MINIMAL.skill, type: 'Skill' }).success).toBe(false);
   });
 
   it('enforces length limits and string-only metadata', () => {
-    expect(skillSchema.safeParse({ ...MINIMAL.skill, description: 'x'.repeat(1024) }).success).toBe(
+    expect(validate(skillSchema, { ...MINIMAL.skill, description: 'x'.repeat(1024) }).success).toBe(
       true,
     );
-    expect(skillSchema.safeParse({ ...MINIMAL.skill, description: 'x'.repeat(1025) }).success).toBe(
+    expect(validate(skillSchema, { ...MINIMAL.skill, description: 'x'.repeat(1025) }).success).toBe(
       false,
     );
     expect(
-      skillSchema.safeParse({ ...MINIMAL.skill, compatibility: 'x'.repeat(501) }).success,
+      validate(skillSchema, { ...MINIMAL.skill, compatibility: 'x'.repeat(501) }).success,
     ).toBe(false);
-    expect(skillSchema.safeParse({ ...MINIMAL.skill, metadata: { n: 1 } }).success).toBe(false);
+    expect(validate(skillSchema, { ...MINIMAL.skill, metadata: { n: 1 } }).success).toBe(false);
   });
 });
 
@@ -245,25 +256,25 @@ describe('reference (discriminated by type)', () => {
   const skill = { ...base, type: 'remote-skill', uri: 'https://x.test/r.git' };
 
   it('accepts each variant', () => {
-    expect(referenceSchema.safeParse(local).success).toBe(true);
-    expect(referenceSchema.safeParse(remote).success).toBe(true);
-    expect(referenceSchema.safeParse(skill).success).toBe(true);
+    expect(validate(referenceSchema, local).success).toBe(true);
+    expect(validate(referenceSchema, remote).success).toBe(true);
+    expect(validate(referenceSchema, skill).success).toBe(true);
   });
 
   it('discriminates on type and reports the missing variant field', () => {
-    expect(referenceSchema.safeParse({ ...local, type: 'bogus' }).success).toBe(false);
-    expect(referenceSchema.safeParse({ ...base }).success).toBe(false);
-    const noPath = referenceSchema.safeParse({ ...base, type: 'local-repo' });
+    expect(validate(referenceSchema, { ...local, type: 'bogus' }).success).toBe(false);
+    expect(validate(referenceSchema, { ...base }).success).toBe(false);
+    const noPath = validate(referenceSchema, { ...base, type: 'local-repo' });
     expect(noPath.success).toBe(false);
-    expect(JSON.stringify(noPath.error?.issues)).toContain('path');
-    const noUri = referenceSchema.safeParse({ ...base, type: 'remote-repo' });
+    expect(JSON.stringify(issuesOf(noPath))).toContain('path');
+    const noUri = validate(referenceSchema, { ...base, type: 'remote-repo' });
     expect(noUri.success).toBe(false);
-    expect(JSON.stringify(noUri.error?.issues)).toContain('uri');
+    expect(JSON.stringify(issuesOf(noUri))).toContain('uri');
   });
 
   it('is strict per variant (fields of another variant are rejected)', () => {
-    expect(referenceSchema.safeParse({ ...local, uri: 'https://x.test' }).success).toBe(false);
-    expect(referenceSchema.safeParse({ ...remote, path: '/x' }).success).toBe(false);
+    expect(validate(referenceSchema, { ...local, uri: 'https://x.test' }).success).toBe(false);
+    expect(validate(referenceSchema, { ...remote, path: '/x' }).success).toBe(false);
   });
 
   it('remote-repo accepts scp, ssh and https git URIs and rejects anything else', () => {
@@ -273,7 +284,7 @@ describe('reference (discriminated by type)', () => {
       'https://github.com/org/repo',
       'https://github.com/org/repo.git',
     ]) {
-      expect(referenceSchema.safeParse({ ...remote, uri }).success, uri).toBe(true);
+      expect(validate(referenceSchema, { ...remote, uri }).success, uri).toBe(true);
     }
     for (const uri of [
       'not a uri',
@@ -281,10 +292,10 @@ describe('reference (discriminated by type)', () => {
       'ftp://h.test/o/r.git',
       'https://h.test',
     ]) {
-      expect(referenceSchema.safeParse({ ...remote, uri }).success, uri).toBe(false);
+      expect(validate(referenceSchema, { ...remote, uri }).success, uri).toBe(false);
     }
     // An archive is not a git repo.
-    expect(referenceSchema.safeParse({ ...remote, uri: 'https://h.test/a/b.tar.gz' }).success).toBe(
+    expect(validate(referenceSchema, { ...remote, uri: 'https://h.test/a/b.tar.gz' }).success).toBe(
       false,
     );
   });
@@ -297,37 +308,40 @@ describe('reference (discriminated by type)', () => {
       'https://h.test/d/skill.tgz',
       'https://h.test/d/skill.ZIP',
     ]) {
-      expect(referenceSchema.safeParse({ ...skill, uri }).success, uri).toBe(true);
+      expect(validate(referenceSchema, { ...skill, uri }).success, uri).toBe(true);
     }
     for (const uri of ['http://h.test/d/skill.tar.gz', 'https://h.test/skill.rar', 'nope']) {
-      const result = referenceSchema.safeParse({ ...skill, uri });
+      const result = validate(referenceSchema, { ...skill, uri });
       expect(result.success, uri).toBe(false);
     }
-    const bad = referenceSchema.safeParse({ ...skill, uri: 'nope' });
-    expect(JSON.stringify(bad.error?.issues)).toContain('.tar.gz');
+    const bad = validate(referenceSchema, { ...skill, uri: 'nope' });
+    expect(JSON.stringify(issuesOf(bad))).toContain('.tar.gz');
   });
 
   it('validates owner', () => {
-    expect(referenceSchema.safeParse({ ...local, owner: 'someone' }).success).toBe(false);
-    expect(referenceSchema.safeParse({ ...local, owner: 'not-me' }).success).toBe(true);
+    expect(validate(referenceSchema, { ...local, owner: 'someone' }).success).toBe(false);
+    expect(validate(referenceSchema, { ...local, owner: 'not-me' }).success).toBe(true);
     const { owner: _owner, ...noOwner } = local;
-    expect(referenceSchema.safeParse(noOwner).success).toBe(false);
+    expect(validate(referenceSchema, noOwner).success).toBe(false);
   });
 
   it('remote-skill subpath may be absent, empty, or null (repo root)', () => {
-    expect(referenceSchema.safeParse({ ...skill, subpath: null }).success).toBe(true);
-    expect(referenceSchema.safeParse({ ...skill, subpath: '' }).success).toBe(true);
-    expect(referenceSchema.safeParse({ ...skill, subpath: 'skills/x' }).success).toBe(true);
+    expect(validate(referenceSchema, { ...skill, subpath: null }).success).toBe(true);
+    expect(validate(referenceSchema, { ...skill, subpath: '' }).success).toBe(true);
+    expect(validate(referenceSchema, { ...skill, subpath: 'skills/x' }).success).toBe(true);
     // local-repo / remote-repo subpath is optional but not nullable.
-    expect(referenceSchema.safeParse({ ...local, subpath: null }).success).toBe(false);
-    expect(referenceSchema.safeParse({ ...remote, subpath: undefined }).success).toBe(true);
+    expect(validate(referenceSchema, { ...local, subpath: null }).success).toBe(false);
+    expect(validate(referenceSchema, { ...remote, subpath: undefined }).success).toBe(true);
   });
 
   it('parses a reference yaml document end to end', () => {
     const data = parseYaml(
       'name: astro-docs\ndescription: Astro docs\ntype: remote-repo\nuri: https://github.com/withastro/docs.git\nsubpath: src/content/docs/en\nowner: not-me\ntags: [docs]\n',
     );
-    expect(referenceSchema.parse(data)).toMatchObject({ type: 'remote-repo', tags: ['docs'] });
+    expect(assertValid(referenceSchema, data)).toMatchObject({
+      type: 'remote-repo',
+      tags: ['docs'],
+    });
   });
 });
 
@@ -335,7 +349,8 @@ describe('context', () => {
   const ctx = (links: unknown[]) => ({ name: 'demo', description: 'd', links });
 
   it('accepts links to every linkable dataset, with optional notes', () => {
-    const result = contextSchema.safeParse(
+    const result = validate(
+      contextSchema,
       ctx([
         { dataset: 'kb', slug: 'a' },
         { dataset: 'rca', slug: 'a' },
@@ -348,11 +363,11 @@ describe('context', () => {
         { dataset: 'project', slug: 'a' },
       ]),
     );
-    expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+    expect(result.success, JSON.stringify(issuesOf(result))).toBe(true);
   });
 
   it('defaults links and tags to empty arrays', () => {
-    expect(contextSchema.parse({ name: 'demo', description: 'd' })).toEqual({
+    expect(assertValid(contextSchema, { name: 'demo', description: 'd' })).toEqual({
       name: 'demo',
       description: 'd',
       tags: [],
@@ -361,12 +376,13 @@ describe('context', () => {
   });
 
   it('rejects a link to the context dataset itself or an unknown dataset', () => {
-    expect(contextSchema.safeParse(ctx([{ dataset: 'context', slug: 'a' }])).success).toBe(false);
-    expect(contextSchema.safeParse(ctx([{ dataset: 'nope', slug: 'a' }])).success).toBe(false);
+    expect(validate(contextSchema, ctx([{ dataset: 'context', slug: 'a' }])).success).toBe(false);
+    expect(validate(contextSchema, ctx([{ dataset: 'nope', slug: 'a' }])).success).toBe(false);
   });
 
   it('rejects duplicate links with a path pointing at the second one', () => {
-    const result = contextSchema.safeParse(
+    const result = validate(
+      contextSchema,
       ctx([
         { dataset: 'kb', slug: 'a' },
         { dataset: 'task', slug: 'a' },
@@ -374,22 +390,22 @@ describe('context', () => {
       ]),
     );
     expect(result.success).toBe(false);
-    const issue = result.error?.issues.find((i) => i.message.includes('duplicate'));
+    const issue = issuesOf(result).find((i) => i.message.includes('duplicate'));
     expect(issue?.path).toEqual(['links', 2]);
     expect(issue?.message).toContain('kb/a');
   });
 
   it('is strict and validates slugs', () => {
-    expect(contextSchema.safeParse({ ...ctx([]), extra: 1 }).success).toBe(false);
-    expect(contextLinkSchema.safeParse({ dataset: 'kb', slug: 'Bad Slug' }).success).toBe(false);
-    expect(contextLinkSchema.safeParse({ dataset: 'kb', slug: 'a', extra: 1 }).success).toBe(false);
+    expect(validate(contextSchema, { ...ctx([]), extra: 1 }).success).toBe(false);
+    expect(validate(contextLinkSchema, { dataset: 'kb', slug: 'Bad Slug' }).success).toBe(false);
+    expect(validate(contextLinkSchema, { dataset: 'kb', slug: 'a', extra: 1 }).success).toBe(false);
   });
 
   it('parses a context yaml document end to end (literal-block notes)', () => {
     const data = parseYaml(
       'name: demo\ndescription: d\ntags: [x]\nlinks:\n  - dataset: kb\n    slug: ctxman\n    notes: |\n      line one\n      line two\n',
     );
-    const parsed = contextSchema.parse(data);
+    const parsed = assertValid(contextSchema, data);
     expect(parsed.links[0]?.notes).toBe('line one\nline two\n');
   });
 });
@@ -398,7 +414,8 @@ describe('okf entry links (frontmatter `links`)', () => {
   const withLinks = (links: unknown) => ({ ...okfBase, links });
 
   it('defaults a missing rel to related and keeps explicit rels', () => {
-    const parsed = DATASET_SCHEMAS.kb.parse(
+    const parsed = assertValid(
+      DATASET_SCHEMAS.kb,
       withLinks([
         { dataset: 'task', slug: 'a' },
         { dataset: 'feature', slug: 'b', rel: 'depends-on' },
@@ -406,7 +423,7 @@ describe('okf entry links (frontmatter `links`)', () => {
       ]),
     ) as { links: { dataset: string; slug: string; rel: string }[] };
     expect(parsed.links.map((l) => l.rel)).toEqual(['related', 'depends-on', 'child']);
-    expect(entryLinkSchema.parse({ dataset: 'kb', slug: 'x' })).toEqual({
+    expect(assertValid(entryLinkSchema, { dataset: 'kb', slug: 'x' })).toEqual({
       dataset: 'kb',
       slug: 'x',
       rel: 'related',
@@ -414,18 +431,18 @@ describe('okf entry links (frontmatter `links`)', () => {
   });
 
   it('is optional, and an empty list is fine', () => {
-    expect(DATASET_SCHEMAS.kb.safeParse(okfBase).success).toBe(true);
-    expect(DATASET_SCHEMAS.kb.safeParse(withLinks([])).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.kb, okfBase).success).toBe(true);
+    expect(validate(DATASET_SCHEMAS.kb, withLinks([])).success).toBe(true);
   });
 
   it('keeps links on every lifecycle dataset (the schema is extended, not rebuilt)', () => {
     for (const id of ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const) {
-      const parsed = DATASET_SCHEMAS[id].safeParse({
+      const parsed = validate(DATASET_SCHEMAS[id], {
         ...MINIMAL[id],
         links: [{ dataset: 'kb', slug: 'x' }],
       });
       expect(parsed.success, id).toBe(true);
-      expect((parsed.data as { links: unknown[] }).links, id).toHaveLength(1);
+      expect((dataOf(parsed) as { links: unknown[] }).links, id).toHaveLength(1);
     }
   });
 
@@ -436,17 +453,17 @@ describe('okf entry links (frontmatter `links`)', () => {
       { dataset: 'task', slug: 'a' },
     ];
     for (const id of ['kb', 'task'] as const) {
-      const result = DATASET_SCHEMAS[id].safeParse({ ...MINIMAL[id], links });
+      const result = validate(DATASET_SCHEMAS[id], { ...MINIMAL[id], links });
       expect(result.success, id).toBe(false);
-      const issue = result.error?.issues.find((i) => i.message.includes('duplicate'));
+      const issue = issuesOf(result).find((i) => i.message.includes('duplicate'));
       expect(issue?.path, id).toEqual(['links', 1]);
       expect(issue?.message, id).toBe('duplicate link kb/a');
     }
-    expect(entryLinksSchema.safeParse(links).success).toBe(false);
+    expect(validate(entryLinksSchema, links).success).toBe(false);
   });
 
   it('is strict per item and validates dataset, slug and rel', () => {
-    const bad = (item: unknown) => DATASET_SCHEMAS.kb.safeParse(withLinks([item])).success;
+    const bad = (item: unknown) => validate(DATASET_SCHEMAS.kb, withLinks([item])).success;
     expect(bad({ dataset: 'kb', slug: 'a', extra: 1 })).toBe(false);
     expect(bad({ dataset: 'context', slug: 'a' })).toBe(false);
     expect(bad({ dataset: 'recipe', slug: 'a' })).toBe(false);
@@ -454,7 +471,7 @@ describe('okf entry links (frontmatter `links`)', () => {
     expect(bad({ dataset: 'kb', slug: 'a', rel: 'parent' })).toBe(false);
     expect(bad({ dataset: 'kb' })).toBe(false);
     expect(bad('kb/a')).toBe(false);
-    expect(DATASET_SCHEMAS.kb.safeParse(withLinks({ dataset: 'kb', slug: 'a' })).success).toBe(
+    expect(validate(DATASET_SCHEMAS.kb, withLinks({ dataset: 'kb', slug: 'a' })).success).toBe(
       false,
     );
   });
@@ -462,11 +479,11 @@ describe('okf entry links (frontmatter `links`)', () => {
   it('is not part of concept files, skills, or the loose docs schema', () => {
     const links = [{ dataset: 'kb', slug: 'a', rel: 'nonsense' }];
     // concept files keep it as an unknown key (loose), without validating it
-    expect(okfConceptSchema.safeParse({ type: 'Concept', links }).success).toBe(true);
-    expect(docSchema.safeParse({ links }).success).toBe(true);
+    expect(validate(okfConceptSchema, { type: 'Concept', links }).success).toBe(true);
+    expect(validate(docSchema, { links }).success).toBe(true);
     // skills are strict: no links
     expect(
-      skillSchema.safeParse({ ...MINIMAL.skill, links: [{ dataset: 'kb', slug: 'a' }] }).success,
+      validate(skillSchema, { ...MINIMAL.skill, links: [{ dataset: 'kb', slug: 'a' }] }).success,
     ).toBe(false);
   });
 
@@ -474,12 +491,123 @@ describe('okf entry links (frontmatter `links`)', () => {
     const data = parseYaml(
       'type: Task\nname: demo\ndescription: d\nstate: pending\nlinks:\n  - dataset: feature\n    slug: a\n    rel: depends-on\n  - dataset: kb\n    slug: b\n',
     );
-    const parsed = DATASET_SCHEMAS.task.parse(data) as {
+    const parsed = assertValid(DATASET_SCHEMAS.task, data) as {
       links: { slug: string; rel: string }[];
     };
     expect(parsed.links.map((l) => [l.slug, l.rel])).toEqual([
       ['a', 'depends-on'],
       ['b', 'related'],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------- JSON Schema hints
+
+const CLONE_DIRS = [
+  '.ctxman/{name}',
+  '{name}',
+  '../x',
+  'a/./b',
+  'a//b',
+  '/abs',
+  '{nam}',
+  'a b',
+  '...',
+  'a/..',
+  '.x',
+  'x.',
+  'x'.repeat(200),
+  'x'.repeat(201),
+  '{name}{name}',
+  '.{name}',
+  'ok/dir-1_2',
+  '',
+  '.',
+  '..',
+  './a',
+  'a/',
+  'a\\b',
+  'a/b/c/{name}',
+  'é',
+];
+
+const GIT_REFS = [
+  '',
+  'main',
+  'release/1.2',
+  'v1.0.0',
+  'feature/a-b_c',
+  '-x',
+  '--upload-pack=x',
+  'a..b',
+  '..',
+  'a//b',
+  'a/',
+  '/a',
+  'x.lock',
+  'x.lock.y',
+  'a/b.lock',
+  'a b',
+  'a@{1}',
+  '.a',
+  'a.',
+  '9',
+  'a\nb',
+  'é',
+  'a'.repeat(200),
+  'a'.repeat(201),
+];
+
+describe('JSON Schema hint patterns', () => {
+  it('GIT_REF_PATTERN is the regex form of isSafeGitRef', () => {
+    for (const ref of GIT_REFS) {
+      if (ref.length > 200) continue;
+      expect(GIT_REF_PATTERN.test(ref), JSON.stringify(ref)).toBe(isSafeGitRef(ref));
+    }
+  });
+
+  it('CLONE_DIR_PATTERN is the regex form of isSafeRelativeDir (every length 1..200 sample)', () => {
+    for (const cloneDir of CLONE_DIRS) {
+      if (cloneDir.length < 1 || cloneDir.length > 200) continue;
+      expect(CLONE_DIR_PATTERN.test(cloneDir), JSON.stringify(cloneDir)).toBe(
+        isSafeRelativeDir(cloneDir),
+      );
+    }
+  });
+
+  it('the recipe schema accepts exactly the branches and clone dirs the catalog accepts', () => {
+    const recipe = { name: 'r', description: 'd' };
+    for (const branch of GIT_REFS) {
+      const overrides = [{ key: 'reference/x', materialOptions: { branch } }];
+      expect(validate(recipeSchema, { ...recipe, overrides }).success, JSON.stringify(branch)).toBe(
+        branch.length <= 200 && isSafeGitRef(branch),
+      );
+    }
+    for (const cloneDir of CLONE_DIRS) {
+      const overrides = [{ key: 'reference/x', options: { cloneDir } }];
+      expect(
+        validate(recipeSchema, { ...recipe, overrides }).success,
+        JSON.stringify(cloneDir),
+      ).toBe(cloneDir.length >= 1 && cloneDir.length <= 200 && isSafeRelativeDir(cloneDir));
+    }
+  });
+
+  it('REMOTE_URI_HINT_PATTERN is a superset of the strict uri rules', () => {
+    const hint = new RegExp(REMOTE_URI_HINT_PATTERN);
+    for (const uri of [
+      'git@github.com:org/repo.git',
+      'ssh://git@host/org/repo.git',
+      'https://host/org/repo',
+      'https://h.test/d/skill.tar.gz',
+    ]) {
+      expect(hint.test(uri), uri).toBe(true);
+    }
+    expect(hint.test('nope')).toBe(false);
+  });
+
+  it('YAML_DATASET_TYPES are the schemas the datasets validate with', () => {
+    expect(YAML_DATASET_TYPES.reference).toBe(DATASET_SCHEMAS.reference);
+    expect(YAML_DATASET_TYPES.context).toBe(DATASET_SCHEMAS.context);
+    expect(YAML_DATASET_TYPES.recipe).toBe(DATASET_SCHEMAS.recipe);
   });
 });

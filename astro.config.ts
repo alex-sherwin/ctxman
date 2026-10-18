@@ -44,6 +44,7 @@ export default defineConfig({
         'react-aria-components',
         'fuse.js',
         'nanostores',
+        'arktype',
         '@nanostores/react',
         'monaco-editor',
         '@monaco-editor/react',

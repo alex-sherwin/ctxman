@@ -5,9 +5,11 @@ import { realpathSync } from 'node:fs';
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { z } from 'zod';
+import { type } from 'arktype';
+import { validate } from '../../datasets/validate.ts';
 import { safeJoin } from '../bundles.ts';
 import { resolveDataDir } from '../data-dir.ts';
+import { issueMessage } from '../findings.ts';
 import { DIR_MANIFEST_FILE, INFLATE_TARGETS } from './catalog.ts';
 import type { BlockingCode, InflateDirManifest, ManifestEntry } from './material-plan.ts';
 
@@ -90,56 +92,60 @@ export function checkOutputDir(raw: unknown, opts: DirCheckOptions = {}): DirChe
 
 // ---------------------------------------------------------------- manifest file
 
-const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
-const entryPathSchema = z.string().min(1).max(1024);
+const sha256Schema = type(/^[0-9a-f]{64}$/);
+const entryPathSchema = type('1 <= string <= 1024');
 
-const manifestEntrySchema = z.discriminatedUnion('type', [
-  z.strictObject({
+const manifestEntrySchema = type({
+  '+': 'reject',
+  path: entryPathSchema,
+  type: "'symlink'",
+  key: 'string',
+  target: 'string',
+})
+  .or({
+    '+': 'reject',
     path: entryPathSchema,
-    type: z.literal('symlink'),
-    key: z.string(),
-    target: z.string(),
-  }),
-  z.strictObject({
+    type: "'copy'",
+    key: 'string',
+    source: 'string',
+  })
+  .or({
+    '+': 'reject',
     path: entryPathSchema,
-    type: z.literal('copy'),
-    key: z.string(),
-    source: z.string(),
-  }),
-  z.strictObject({
+    type: "'clone'",
+    key: 'string',
+    uri: 'string',
+    branch: 'string | null',
+    depth: 'number.integer >= 0',
+    sparse: 'string | null',
+  })
+  .or({
+    '+': 'reject',
     path: entryPathSchema,
-    type: z.literal('clone'),
-    key: z.string(),
-    uri: z.string(),
-    branch: z.string().nullable(),
-    depth: z.number().int().min(0),
-    sparse: z.string().nullable(),
-  }),
-  z.strictObject({
+    type: "'skill'",
+    key: 'string',
+    uri: 'string',
+    subpath: 'string | null',
+  })
+  .or({
+    '+': 'reject',
     path: entryPathSchema,
-    type: z.literal('skill'),
-    key: z.string(),
-    uri: z.string(),
-    subpath: z.string().nullable(),
-  }),
-  z.strictObject({
-    path: entryPathSchema,
-    type: z.literal('file'),
-    role: z.enum(['context', 'agents-md', 'claude-md', 'gitignore']),
+    type: "'file'",
+    role: type.enumerated('context', 'agents-md', 'claude-md', 'gitignore'),
     sha256: sha256Schema,
-  }),
-]);
+  });
 
 /** `.ctxman-inflate.json` (INFLATE_V2_SPEC §7.3); strict, key order = `InflateDirManifest`. */
-export const dirManifestSchema = z.strictObject({
-  format: z.literal('ctxman-inflate'),
-  version: z.literal(1),
-  recipe: z.string(),
-  target: z.enum(INFLATE_TARGETS),
-  contextFile: z.string(),
-  generatedAt: z.string(),
-  jobId: z.string(),
-  entries: z.array(manifestEntrySchema),
+export const dirManifestSchema = type({
+  '+': 'reject',
+  format: "'ctxman-inflate'",
+  version: '1',
+  recipe: 'string',
+  target: type.enumerated(...INFLATE_TARGETS),
+  contextFile: 'string',
+  generatedAt: 'string',
+  jobId: 'string',
+  entries: manifestEntrySchema.array(),
 });
 
 export type ManifestParse =
@@ -177,13 +183,12 @@ export function parseDirManifest(text: string, dirAbs: string): ManifestParse {
   if (head.format === 'ctxman-inflate' && head.version !== 1) {
     return { status: 'unknown-version', message: `unknown version ${String(head.version)}` };
   }
-  const parsed = dirManifestSchema.safeParse(data);
+  const parsed = validate(dirManifestSchema, data);
   if (!parsed.success) {
-    const first = parsed.error.issues[0];
+    const first = parsed.issues[0];
     return {
       status: 'invalid',
-      message:
-        first === undefined ? 'invalid manifest' : `${first.path.join('.')}: ${first.message}`,
+      message: first === undefined ? 'invalid manifest' : issueMessage(first, data),
     };
   }
   const manifest = parsed.data as InflateDirManifest;

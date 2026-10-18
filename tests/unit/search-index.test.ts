@@ -15,6 +15,7 @@ import {
   referenceSchema,
   skillSchema,
 } from '../../src/datasets/schemas.ts';
+import { assertValid } from '../../src/datasets/validate.ts';
 
 describe('markdownToText', () => {
   it('drops frontmatter (LF, CRLF, BOM) but keeps a later --- rule out of the way', () => {
@@ -281,7 +282,10 @@ describe('okfDocToSearchDoc', () => {
 
 describe('skillToSearchDoc', () => {
   it('indexes SKILL.md', () => {
-    const data = skillSchema.parse({ name: 'okf-authoring', description: 'Author OKF bundles' });
+    const data = assertValid(skillSchema, {
+      name: 'okf-authoring',
+      description: 'Author OKF bundles',
+    });
     const doc = skillToSearchDoc(
       'okf-authoring',
       data,
@@ -303,14 +307,14 @@ describe('skillToSearchDoc', () => {
   });
 
   it('falls back to the skill name for the title', () => {
-    const data = skillSchema.parse({ name: 'plain', description: 'd' });
+    const data = assertValid(skillSchema, { name: 'plain', description: 'd' });
     expect(skillToSearchDoc('plain', data, 'no heading').title).toBe('plain');
   });
 });
 
 describe('referenceToSearchDoc', () => {
   it('flattens a remote repo', () => {
-    const data = referenceSchema.parse({
+    const data = assertValid(referenceSchema, {
       name: 'astro-docs',
       description: 'Astro docs',
       type: 'remote-repo',
@@ -335,7 +339,7 @@ describe('referenceToSearchDoc', () => {
   });
 
   it('flattens a local repo using its path and skips an absent subpath', () => {
-    const data = referenceSchema.parse({
+    const data = assertValid(referenceSchema, {
       name: 'ctxman-repo',
       description: 'This repo',
       type: 'local-repo',
@@ -355,18 +359,18 @@ describe('referenceToSearchDoc', () => {
       uri: 'https://github.com/anthropics/skills.git',
       owner: 'not-me',
     };
-    const nullSub = referenceSchema.parse({ ...base, subpath: null });
-    const emptySub = referenceSchema.parse({ ...base, subpath: '' });
+    const nullSub = assertValid(referenceSchema, { ...base, subpath: null });
+    const emptySub = assertValid(referenceSchema, { ...base, subpath: '' });
     const expected =
       'Remote skill · git · https://github.com/anthropics/skills.git · owner: not me';
     expect(referenceToSearchDoc('skills', nullSub).body).toBe(expected);
     expect(referenceToSearchDoc('skills', emptySub).body).toBe(expected);
-    const withSub = referenceSchema.parse({ ...base, subpath: 'skills/skill-creator' });
+    const withSub = assertValid(referenceSchema, { ...base, subpath: 'skills/skill-creator' });
     expect(referenceToSearchDoc('skills', withSub).body).toContain('skills/skill-creator');
   });
 
   it('flags a remote skill tarball as archive', () => {
-    const data = referenceSchema.parse({
+    const data = assertValid(referenceSchema, {
       name: 'ksa-modding',
       description: 'd',
       type: 'remote-skill',
@@ -381,7 +385,7 @@ describe('referenceToSearchDoc', () => {
 
 describe('contextToSearchDoc', () => {
   it('flattens description, one line per link, and link notes as text', () => {
-    const data = contextSchema.parse({
+    const data = assertValid(contextSchema, {
       name: 'ctxman-dev',
       description: 'Everything for developing ctxman',
       tags: ['dev'],
@@ -416,7 +420,7 @@ describe('contextToSearchDoc', () => {
   });
 
   it('handles a context with no links', () => {
-    const data = contextSchema.parse({ name: 'empty', description: 'Nothing yet' });
+    const data = assertValid(contextSchema, { name: 'empty', description: 'Nothing yet' });
     expect(contextToSearchDoc('empty', data)).toMatchObject({
       body: 'Nothing yet',
       tags: [],
@@ -427,7 +431,7 @@ describe('contextToSearchDoc', () => {
 
 describe('recipeToSearchDoc', () => {
   it('flattens description, target and layout, contexts, ad hoc items, preamble and blocks', () => {
-    const data = recipeSchema.parse({
+    const data = assertValid(recipeSchema, {
       name: 'ctxman-dev-brief',
       description: 'Session brief for ctxman',
       tags: ['ctxman'],
@@ -463,11 +467,11 @@ describe('recipeToSearchDoc', () => {
   it('handles a bare recipe and truncates the body', () => {
     const bare = recipeToSearchDoc(
       'bare',
-      recipeSchema.parse({ name: 'bare', description: 'Nothing' }),
+      assertValid(recipeSchema, { name: 'bare', description: 'Nothing' }),
     );
     expect(bare.body).toBe('Nothing\ntarget: Claude Code · layout: grouped');
     expect(bare.tags).toEqual([]);
-    const long = recipeSchema.parse({
+    const long = assertValid(recipeSchema, {
       name: 'long',
       description: 'd',
       markdown: [{ id: 'b1', body: 'x'.repeat(MAX_BODY_CHARS * 2) }],

@@ -2,6 +2,7 @@
 // compliance check (collections-check.ts) and the doc editor (doc-io.ts) report the same findings.
 // Rule ids: collections/schema (frontmatter parse + agentskills.io strict schema), collections/name-mismatch.
 import { skillSchema } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { issueMessage } from './findings.ts';
 import type { Finding } from './findings.ts';
 import { parseFrontmatter } from './okf.ts';
@@ -27,9 +28,9 @@ export function validateSkillFile(source: string, dirName: string, file: string)
     return findings;
   }
   // Strict (agentskills.io): unknown keys are errors.
-  const result = skillSchema.safeParse(parsed.doc.data);
+  const result = validate(skillSchema, parsed.doc.data);
   if (!result.success) {
-    for (const issue of result.error.issues) {
+    for (const issue of result.issues) {
       add('collections/schema', issueMessage(issue, parsed.doc.data));
     }
   }

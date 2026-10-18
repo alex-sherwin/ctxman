@@ -17,6 +17,7 @@ import {
 import type { LinkableDatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, entryLinkSchema, OKF_STATUSES } from '../datasets/schemas.ts';
 import type { EntryLink } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { withFileLock, writeFileAtomic } from './atomic-write.ts';
 import { resolveBundleFile } from './bundles.ts';
 import type { Issue } from './context-io.ts';
@@ -169,9 +170,9 @@ function schemaIssues(
   data: Record<string, unknown>,
 ): Issue[] {
   const issues: Issue[] = [];
-  const result = DATASET_SCHEMAS[dataset].safeParse(data);
+  const result = validate(DATASET_SCHEMAS[dataset], data);
   if (!result.success) {
-    for (const issue of result.error.issues) {
+    for (const issue of result.issues) {
       issues.push({ path: issuePath(issue.path), message: describeIssue(issue, data) });
     }
   }
@@ -290,9 +291,9 @@ function parseLinkList(
   const out: EntryLink[] = [];
   let ok = true;
   value.forEach((item, index) => {
-    const parsed = entryLinkSchema.safeParse(item);
+    const parsed = validate(entryLinkSchema, item);
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
+      for (const issue of parsed.issues) {
         issues.push({
           path: [key, String(index), ...issue.path.map(String)].join('.'),
           message: describeIssue(issue, item),
@@ -485,7 +486,7 @@ const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON
 function currentLinks(raw: unknown): unknown[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
-    const parsed = entryLinkSchema.safeParse(item);
+    const parsed = validate(entryLinkSchema, item);
     return parsed.success ? parsed.data : item;
   });
 }

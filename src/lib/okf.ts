@@ -5,6 +5,7 @@ import path from 'node:path';
 import { datasetDef, isValidName, OKF_DATASET_IDS } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, okfConceptSchema, okfIndexSchema } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { issueMessage, sortFindings } from './findings.ts';
@@ -308,12 +309,12 @@ export function validateOkfFile(args: {
     }
   };
 
-  const concept = okfConceptSchema.safeParse(data);
-  if (!concept.success) reportIssues('okf/concept-schema', concept.error.issues);
+  const concept = validate(okfConceptSchema, data);
+  if (!concept.success) reportIssues('okf/concept-schema', concept.issues);
 
   if (relPath === 'main.md') {
-    const entry = DATASET_SCHEMAS[dataset].safeParse(data);
-    if (!entry.success) reportIssues('okf/entry-schema', entry.error.issues);
+    const entry = validate(DATASET_SCHEMAS[dataset], data);
+    if (!entry.success) reportIssues('okf/entry-schema', entry.issues);
     if (typeof data.name === 'string' && data.name !== bundle) {
       add(
         'error',
@@ -356,9 +357,9 @@ function validateRootIndex(source: string, add: AddFinding): void {
     return;
   }
   const data = value === undefined || value === null ? {} : value;
-  const result = okfIndexSchema.safeParse(data);
+  const result = validate(okfIndexSchema, data);
   if (!result.success) {
-    for (const issue of result.error.issues) {
+    for (const issue of result.issues) {
       add(
         'error',
         'okf/index-frontmatter',

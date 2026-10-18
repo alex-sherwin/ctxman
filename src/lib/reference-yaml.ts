@@ -3,13 +3,14 @@
 // the serializer: file writers add it with `withSchemaComment('reference', ...)` (schema-comment.ts).
 import { referenceSchema } from '../datasets/schemas.ts';
 import type { ReferenceData, ReferenceInput } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { describeIssue, issuePath } from './findings.ts';
 import { stringifyYaml } from './yaml.ts';
 
-/** API body type (zod input, before defaults). */
+/** API body type (schema input, before defaults). */
 export type ReferenceDoc = ReferenceInput;
 
-/** One validation problem; `path` is the zod issue path joined with '.', '' for the root. */
+/** One validation problem; `path` is the issue path joined with '.', '' for the root. */
 export interface ReferenceIssue {
   path: string;
   message: string;
@@ -42,7 +43,7 @@ export function sameReference(a: ReferenceData | null, b: ReferenceData | null):
 }
 
 /**
- * referenceSchema.safeParse plus an optional `name === expectedName` check (code 'name-mismatch': reference
+ * validate(referenceSchema, …) plus an optional `name === expectedName` check (code 'name-mismatch': reference
  * names cannot be changed).
  */
 export function parseReference(
@@ -51,12 +52,12 @@ export function parseReference(
 ):
   | { ok: true; reference: ReferenceData }
   | { ok: false; code: 'invalid' | 'name-mismatch'; issues: ReferenceIssue[] } {
-  const parsed = referenceSchema.safeParse(input);
+  const parsed = validate(referenceSchema, input);
   if (!parsed.success) {
     return {
       ok: false,
       code: 'invalid',
-      issues: parsed.error.issues.map((i) => ({
+      issues: parsed.issues.map((i) => ({
         path: issuePath(i.path),
         message: describeIssue(i, input ?? {}),
       })),

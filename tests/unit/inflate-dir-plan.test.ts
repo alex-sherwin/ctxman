@@ -24,6 +24,7 @@ import type { ProcRunner } from '../../src/lib/proc.ts';
 import { runOverridesSchema } from '../../src/datasets/schemas.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 import { SEED_NOW, seedRecipe, seedTree } from './fixtures/inflate-seed.ts';
+import { assertValid } from '../../src/datasets/validate.ts';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -31,8 +32,8 @@ const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
 
 const NOW = new Date(SEED_NOW);
-const noOverrides = runOverridesSchema.parse({});
-const overrides = (given: Record<string, unknown>) => runOverridesSchema.parse(given);
+const noOverrides = assertValid(runOverridesSchema, {});
+const overrides = (given: Record<string, unknown>) => assertValid(runOverridesSchema, given);
 
 /** Every tool "installed", nothing spawned. */
 const fakeProc: ProcRunner = () =>

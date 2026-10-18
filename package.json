@@ -49,6 +49,7 @@
     "@fontsource-variable/inter": "5.3.0",
     "@monaco-editor/react": "4.7.0",
     "@nanostores/react": "2.0.1",
+    "arktype": "2.2.8",
     "astro": "7.4.0",
     "cybercore-css": "0.3.0",
     "fuse.js": "7.5.0",
@@ -59,8 +60,7 @@
     "react": "19.3.1",
     "react-aria-components": "1.22.1",
     "react-dom": "19.3.1",
-    "yaml": "2.9.1",
-    "zod": "4.6.7"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@astrojs/ts-content-mapper": "0.2.0",
@@ -68,7 +68,6 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "arktype": "2.2.8",
     "eslint-plugin-react-hooks": "7.1.1",
     "oxfmt": "0.73.0",
     "oxlint": "1.88.0",

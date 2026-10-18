@@ -201,7 +201,7 @@ describe('validateOkfFile main.md rules', () => {
     expect(main('type: Task\nname: demo\ndescription: d\nstate: pending')).toEqual([]);
   });
 
-  it('okf/entry-schema: one finding per zod issue as "path: message"', () => {
+  it('okf/entry-schema: one finding per schema issue as "path: message"', () => {
     const found = main('type: Task\nname: demo\nstate: done');
     expect(ruleIds(found)).toEqual(['okf/entry-schema']);
     const messages = found.map((f) => f.message);

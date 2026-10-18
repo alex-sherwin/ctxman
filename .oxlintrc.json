@@ -44,6 +44,10 @@
             "name": "react-aria-components",
             "importNames": ["ListBoxItem"],
             "message": "Import ListBoxItem from src/ui/kit — the raw one is unstyled."
+          },
+          {
+            "name": "zod",
+            "message": "ctxman validates with arktype (src/datasets/schemas.ts + validate.ts)"
           }
         ]
       }

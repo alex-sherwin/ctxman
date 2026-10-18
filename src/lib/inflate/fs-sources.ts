@@ -6,6 +6,7 @@ import path from 'node:path';
 import { isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { DATASET_SCHEMAS, referenceSchema } from '../../datasets/schemas.ts';
+import { validate } from '../../datasets/validate.ts';
 import { listBundleFiles, readBundleText } from '../bundles.ts';
 import { ContextIoError, readContext } from '../context-io.ts';
 import { datasetDir, resolveDataDir } from '../data-dir.ts';
@@ -75,9 +76,9 @@ export function createFsSources(
     } catch (error) {
       return { status: 'invalid', message: messageOf(error) };
     }
-    const parsed = DATASET_SCHEMAS[dataset].safeParse(data);
+    const parsed = validate(DATASET_SCHEMAS[dataset], data);
     if (!parsed.success) {
-      const issue = parsed.error.issues[0];
+      const issue = parsed.issues[0];
       return {
         status: 'invalid',
         message: issue === undefined ? 'does not match the schema' : issueMessage(issue, data),
@@ -109,9 +110,9 @@ export function createFsSources(
       string,
       unknown
     >;
-    const parsed = referenceSchema.safeParse(data);
+    const parsed = validate(referenceSchema, data);
     if (!parsed.success) {
-      const issue = parsed.error.issues[0];
+      const issue = parsed.issues[0];
       return {
         status: 'invalid',
         message: issue === undefined ? 'does not match the schema' : issueMessage(issue, data),

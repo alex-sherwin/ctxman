@@ -492,7 +492,7 @@ describe('appendContextLinks', () => {
           dir,
         ),
       ),
-    ).toEqual(['links.1.dataset', 'links.2.slug', 'links.2']);
+    ).toEqual(['links.1.dataset', 'links.2.slug', 'links.2.foo']);
     const tooMany = Array.from({ length: 201 }, (_, i) => ({ dataset: 'kb', slug: `s-${i}` }));
     expect(await issuesOf(appendContextLinks('my-ctx', { links: tooMany }, dir))).toEqual([
       'links',

@@ -390,7 +390,7 @@ describe('YAML view', () => {
     expect($formYamlInvalid.get()).toBe(true);
     expect($formWorking.get()).toBe(before);
     expect($formDirty.get()).toBe(true);
-    // the duplicate is a zod-only issue: it becomes a marker; JSON-Schema-covered ones do not
+    // the duplicate is a custom-predicate-only issue: it becomes a marker; JSON-Schema-covered ones do not
     expect($formYamlMarkers.get().map((m) => m.message)).toEqual([
       expect.stringContaining('duplicate link'),
     ]);

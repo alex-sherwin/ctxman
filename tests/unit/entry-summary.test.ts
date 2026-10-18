@@ -3,6 +3,7 @@ import { summarize } from '../../src/lib/entry-summary.ts';
 import type { ContextDoc } from '../../src/lib/entry-summary.ts';
 import type { ContextInput } from '../../src/datasets/schemas.ts';
 import { contextSchema, DATASET_SCHEMAS } from '../../src/datasets/schemas.ts';
+import { assertValid, validate } from '../../src/datasets/validate.ts';
 
 const MODIFIED = new Date('2026-10-15T08:30:00.000Z');
 const NOW = new Date(2026, 9, 17, 12, 0).getTime(); // local noon, 2026-10-17
@@ -360,8 +361,8 @@ describe('summarize', () => {
     expect(JSON.parse(JSON.stringify(out))).toEqual(out);
   });
 
-  it('summarizes parsed schema output (Date stale_after from zod)', () => {
-    const data = DATASET_SCHEMAS.task.parse({
+  it('summarizes parsed schema output (Date stale_after from the schema)', () => {
+    const data = assertValid(DATASET_SCHEMAS.task, {
       type: 'Task',
       name: 'x',
       description: 'd',
@@ -376,14 +377,14 @@ describe('summarize', () => {
 });
 
 describe('ContextDoc', () => {
-  it('is assignable to the zod input and carries required links', () => {
+  it('is assignable to the schema input and carries required links', () => {
     const doc: ContextDoc = {
       name: 'demo',
       description: 'd',
       links: [{ dataset: 'kb', slug: 'a', notes: 'n' }],
     };
     const input: ContextInput = doc;
-    expect(contextSchema.safeParse(input).success).toBe(true);
+    expect(validate(contextSchema, input).success).toBe(true);
     expect(doc.links).toHaveLength(1);
   });
 });

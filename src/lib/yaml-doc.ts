@@ -2,11 +2,12 @@
 // machinery behind every YAML editor (the Forge's YAML view and the DataForm YAML tab). Extracted from
 // context-yaml.ts (ROUND2_UI_SPEC §H.1); `parseContextYaml` is now a thin wrapper around `parseYamlDoc`.
 // Parses with the same options as src/lib/yaml.ts `parseYaml` (core schema, timestamp tag, merge keys),
-// validates with a zod schema, and maps every problem to a 1-based source position that Monaco can show as
+// validates with an arktype schema (through src/datasets/validate.ts), and maps every problem to a 1-based source position that Monaco can show as
 // a marker.
 import { LineCounter, isMap, isScalar, parseDocument } from 'yaml';
 import type { Document } from 'yaml';
-import type { ZodType } from 'zod';
+import type { Type } from 'arktype';
+import { validate } from '../datasets/validate.ts';
 import { describeIssue, issuePath } from './findings.ts';
 
 export interface YamlIssue {
@@ -21,7 +22,7 @@ export interface YamlIssue {
   source: 'yaml' | 'schema';
   /**
    * True when the generated JSON Schema (schemas/<dataset>.schema.json, shown by monaco-yaml in an editor that
-   * sets `schemaDataset`) reports the same problem: syntax errors and every zod issue except `custom` ones.
+   * sets `schemaDataset`) reports the same problem: syntax errors and every issue except `custom` ones (narrow predicates).
    * False for what JSON Schema cannot express: duplicate links, a changed `name`. An editor with monaco-yaml
    * passes only `issues.filter((i) => !i.coveredBySchema)` as markers; `ok` / apply logic is unaffected.
    */
@@ -111,12 +112,6 @@ function spanOfKey(
   return spanAtPath(doc, lc, text, path);
 }
 
-function unrecognizedKeys(issue: { code: string }): string[] {
-  if (issue.code !== 'unrecognized_keys') return [];
-  const keys = (issue as { keys?: unknown }).keys;
-  return Array.isArray(keys) ? keys.map(String) : [];
-}
-
 function byPosition(a: YamlIssue, b: YamlIssue): number {
   return a.line - b.line || a.column - b.column;
 }
@@ -126,11 +121,11 @@ function byPosition(a: YamlIssue, b: YamlIssue): number {
  * syntactically valid YAML (a half-typed document would otherwise produce a wall of follow-up errors).
  * With `opts.expectedName` a different top-level `name:` is an extra (non-schema) issue.
  */
-export function parseYamlDoc<T>(
+export function parseYamlDoc<S extends Type<any, any>>(
   text: string,
-  schema: ZodType<T>,
+  schema: S,
   opts: ParseYamlDocOptions = {},
-): YamlDocResult<T> {
+): YamlDocResult<S['infer']> {
   const lc = new LineCounter();
   const doc = parseDocument(text, {
     lineCounter: lc,
@@ -151,30 +146,29 @@ export function parseYamlDoc<T>(
   }
 
   const value: unknown = doc.toJS() ?? {};
-  const parsed = schema.safeParse(value);
+  const parsed = validate(schema, value);
   const issues: YamlIssue[] = [];
 
   if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      const label = issuePath(issue.path);
-      const prefix = label === '' ? '' : `${label}: `;
-      const keys = unrecognizedKeys(issue);
-      if (keys.length > 0) {
-        for (const key of keys) {
-          issues.push({
-            ...spanOfKey(doc, lc, text, issue.path, key),
-            message: `${prefix}Unrecognized key "${key}"`,
-            source: 'schema',
-            coveredBySchema: true,
-          });
-        }
+    for (const issue of parsed.issues) {
+      if (issue.kind === 'unknown-key') {
+        // the issue path ends at the undeclared key; the label names the object that holds it
+        const parent = issue.path.slice(0, -1);
+        const label = issuePath(parent);
+        issues.push({
+          ...spanOfKey(doc, lc, text, parent, String(issue.path.at(-1))),
+          message: `${label === '' ? '' : `${label}: `}${describeIssue(issue, value)}`,
+          source: 'schema',
+          coveredBySchema: true,
+        });
         continue;
       }
+      const label = issuePath(issue.path);
       issues.push({
         ...spanAtPath(doc, lc, text, issue.path),
-        message: `${prefix}${describeIssue(issue, value)}`,
+        message: `${label === '' ? '' : `${label}: `}${describeIssue(issue, value)}`,
         source: 'schema',
-        coveredBySchema: issue.code !== 'custom',
+        coveredBySchema: issue.kind !== 'custom',
       });
     }
   }
@@ -184,7 +178,7 @@ export function parseYamlDoc<T>(
     const rawName =
       typeof value === 'object' && value !== null ? (value as { name?: unknown }).name : undefined;
     const nameIssueExists =
-      !parsed.success && parsed.error.issues.some((i) => issuePath(i.path) === 'name');
+      !parsed.success && parsed.issues.some((i) => issuePath(i.path) === 'name');
     if (typeof rawName === 'string' && rawName !== expectedName && !nameIssueExists) {
       issues.push({
         ...spanAtPath(doc, lc, text, ['name']),

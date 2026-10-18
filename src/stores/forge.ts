@@ -7,6 +7,7 @@
 import { atom, computed, map, onMount } from 'nanostores';
 import type { LinkableDatasetId } from '../datasets/registry.ts';
 import { contextSchema } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { filterEntries, stateCounts, tagCounts } from '../lib/entry-filter.ts';
 import type { ContextDoc, EntrySummary } from '../lib/entry-summary.ts';
 import { parseContextYaml, sameContext, serializeContext } from '../lib/context-yaml.ts';
@@ -295,7 +296,7 @@ function readDraft(doc: ContextDoc): { working: ContextDoc; base: string } | nul
   if (draft === null) return null;
   let working: ContextDoc | null = null;
   try {
-    const parsed = contextSchema.safeParse(JSON.parse(draft.text));
+    const parsed = validate(contextSchema, JSON.parse(draft.text));
     if (parsed.success && parsed.data.name === doc.name) working = parsed.data;
   } catch {
     // not JSON: dropped below

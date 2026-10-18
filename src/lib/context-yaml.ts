@@ -2,7 +2,7 @@
 // `serializeContext` writes exactly what the server's context-io.serializeContext writes (same key order,
 // same notes normalisation), so a context round-trips identically through the Forge and the API.
 // `parseContextYaml` is a thin wrapper around the generic `parseYamlDoc` (src/lib/yaml-doc.ts) with the
-// zod `contextSchema` and the immutable context name. No node:* / astro:* imports: it runs in the browser.
+// arktype `contextSchema` and the immutable context name. No node:* / astro:* imports: it runs in the browser.
 import { contextSchema } from '../datasets/schemas.ts';
 import type { ContextDoc } from './entry-summary.ts';
 import { parseYamlDoc } from './yaml-doc.ts';

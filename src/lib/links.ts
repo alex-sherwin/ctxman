@@ -12,6 +12,7 @@ import {
 } from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { entryLinkSchema } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { listBundles, maskMarkdownCode, splitFrontmatter } from './okf.ts';
 import { walkFiles } from './bundles.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
@@ -299,7 +300,7 @@ export function checkFrontmatterLinks(args: {
   const findings: Finding[] = [];
   const reported = new Set<string>();
   for (const item of links) {
-    const parsed = entryLinkSchema.safeParse(item);
+    const parsed = validate(entryLinkSchema, item);
     if (!parsed.success) continue;
     const { dataset: targetDataset, slug } = parsed.data;
     const key = `${targetDataset}/${slug}`;

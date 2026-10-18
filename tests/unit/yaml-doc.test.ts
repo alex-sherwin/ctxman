@@ -14,7 +14,7 @@ describe('parseYamlDoc (reference)', () => {
     });
   });
 
-  it('positions a bad uri on its value; the strict uri rule is zod-only (the JSON Schema pattern is a hint)', () => {
+  it('positions a bad uri on its value; the strict uri rule is a custom predicate (the JSON Schema pattern is a hint)', () => {
     const r = parse(
       ['name: r', 'description: d', 'type: remote-repo', 'uri: nope', 'owner: me', ''].join('\n'),
     );

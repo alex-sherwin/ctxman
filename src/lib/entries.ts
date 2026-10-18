@@ -24,6 +24,7 @@ import type {
   ReferenceData,
   SkillData,
 } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { listBundleFiles, safeJoin, walkFiles } from './bundles.ts';
 import type { BundleFile } from './bundles.ts';
 import { backRefs, ContextIoError, listContexts, readContext } from './context-io.ts';
@@ -557,7 +558,7 @@ export async function getEntryDetail(
     });
     // A valid file gets the schema's output (defaults, coerced dates).
     const parsed =
-      indexed.issues.length === 0 ? DATASET_SCHEMAS[indexed.dataset].safeParse(indexed.data) : null;
+      indexed.issues.length === 0 ? validate(DATASET_SCHEMAS[indexed.dataset], indexed.data) : null;
     const data = (parsed?.success === true ? parsed.data : indexed.data) as Record<string, unknown>;
     const base = {
       summary: summaryOf(indexed, nowMs),

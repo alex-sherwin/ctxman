@@ -13,6 +13,7 @@ import {
 import type { LinkableDatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import { DATASET_SCHEMAS, entryLinkSchema } from '../datasets/schemas.ts';
 import type { EntryLink } from '../datasets/schemas.ts';
+import { validate } from '../datasets/validate.ts';
 import { walkFiles } from './bundles.ts';
 import type { Issue } from './context-io.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
@@ -290,9 +291,9 @@ async function buildEntry(
   }
 
   if (issues.length === 0) {
-    const result = DATASET_SCHEMAS[dataset].safeParse(data);
+    const result = validate(DATASET_SCHEMAS[dataset], data);
     if (!result.success) {
-      for (const issue of result.error.issues) {
+      for (const issue of result.issues) {
         issues.push({ path: issuePath(issue.path), message: describeIssue(issue, data) });
       }
     }
@@ -335,7 +336,7 @@ function relationsOf(data: Record<string, unknown>): EntryLink[] {
   if (!Array.isArray(links)) return [];
   const out: EntryLink[] = [];
   for (const item of links) {
-    const result = entryLinkSchema.safeParse(item);
+    const result = validate(entryLinkSchema, item);
     if (result.success) out.push(result.data);
   }
   return out;

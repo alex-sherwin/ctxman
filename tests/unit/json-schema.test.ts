@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { REMOTE_URI_HINT_PATTERN } from '../../src/datasets/arktypes.ts';
+import { REMOTE_URI_HINT_PATTERN } from '../../src/datasets/schemas.ts';
 import { LINKABLE_DATASETS, OWNERS } from '../../src/datasets/registry.ts';
 import {
   INFLATE_LAYOUTS,
