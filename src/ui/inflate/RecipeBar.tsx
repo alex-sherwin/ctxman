@@ -10,7 +10,6 @@ import {
   isInflateTarget,
 } from '../../lib/inflate/catalog.ts';
 import type { InflateLayout } from '../../lib/inflate/catalog.ts';
-import { formatRelative } from '../../lib/time.ts';
 import { $entries } from '../../stores/entries.ts';
 import {
   $baseline,
@@ -28,15 +27,16 @@ import {
 import { selectView } from '../../stores/inflate-run.ts';
 import { $now } from '../../stores/now.ts';
 import { modKeyLabel } from '../../stores/platform.ts';
+import { saveStatusView } from '../edit/status.ts';
 import {
   Button,
   ButtonLink,
-  Chip,
-  ChipGroup,
+  ChipToggle,
   ConfirmDialog,
   Kbd,
   ListBoxItem,
   Select,
+  Status,
 } from '../kit/index.ts';
 
 const NEW_ITEM = '__new__';
@@ -101,50 +101,34 @@ function TargetSelect({ target }: { target: string }) {
 
 function LayoutToggle({ layout }: { layout: InflateLayout }) {
   return (
-    <ChipGroup
+    <ChipToggle
       label="Layout"
-      selectionMode="single"
-      disallowEmptySelection
-      selectedKeys={[layout]}
-      onSelectionChange={(keys) => {
-        const next = [...keys][0];
-        if (next === 'grouped' || next === 'flat') setLayout(next);
-      }}
-      data-testid="inflate-layout-toggle"
-    >
-      {INFLATE_LAYOUTS.map((l) => (
-        <Chip key={l} id={l} data-testid={`inflate-layout-${l}`}>
-          {LAYOUT_LABELS[l]}
-        </Chip>
-      ))}
-    </ChipGroup>
+      value={layout}
+      onChange={setLayout}
+      testId="inflate-layout-toggle"
+      options={INFLATE_LAYOUTS.map((l) => ({
+        id: l,
+        label: LAYOUT_LABELS[l],
+        testId: `inflate-layout-${l}`,
+      }))}
+    />
   );
 }
 
 function ViewToggle() {
   const { view } = useStore($inflateUrl);
   return (
-    <ChipGroup
+    <ChipToggle
       label="View"
-      selectionMode="single"
-      disallowEmptySelection
-      selectedKeys={[view]}
-      onSelectionChange={(keys) => {
-        const next = [...keys][0];
-        if (next === 'compose' || next === 'preview' || next === 'run') selectView(next);
-      }}
-      data-testid="inflate-view-toggle"
-    >
-      <Chip id="compose" data-testid="inflate-view-compose">
-        Compose
-      </Chip>
-      <Chip id="preview" data-testid="inflate-view-preview">
-        Preview
-      </Chip>
-      <Chip id="run" data-testid="inflate-view-run">
-        Run
-      </Chip>
-    </ChipGroup>
+      value={view}
+      onChange={selectView}
+      testId="inflate-view-toggle"
+      options={[
+        { id: 'compose', label: 'Compose', testId: 'inflate-view-compose' },
+        { id: 'preview', label: 'Preview', testId: 'inflate-view-preview' },
+        { id: 'run', label: 'Run', testId: 'inflate-view-run' },
+      ]}
+    />
   );
 }
 
@@ -153,30 +137,11 @@ function StatusLine() {
   const dirty = useStore($dirty);
   const status = useStore($saveStatus);
   const now = useStore($now);
-
-  let kind: 'idle' | 'dirty' | 'error' | 'saved' = 'idle';
-  let text = 'No changes';
-  if (status.kind === 'saving') {
-    text = 'Saving…';
-  } else if (status.kind === 'error') {
-    kind = 'error';
-    const detail = (status.issues ?? []).map((i) =>
-      i.path ? `${i.path}: ${i.message}` : i.message,
-    );
-    text = `Save failed: ${[status.message ?? 'unknown error', ...detail].join('; ')}`;
-  } else if (dirty) {
-    kind = 'dirty';
-    text = 'Unsaved changes';
-  } else if (status.kind === 'saved' && status.at !== undefined) {
-    kind = 'saved';
-    text = `Saved ${formatRelative(new Date(status.at).toISOString(), now)}`;
-  } else if (status.kind === 'deleted') {
-    text = status.message ?? 'Deleted';
-  }
+  const view = saveStatusView(status, dirty, now);
   return (
-    <span className="cx-forge__status" role="status" data-kind={kind} data-testid="inflate-status">
-      {text}
-    </span>
+    <Status kind={view.kind} testId="inflate-status" className="cx-forge__status">
+      {view.text}
+    </Status>
   );
 }
 

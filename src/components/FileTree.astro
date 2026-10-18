@@ -2,6 +2,7 @@
 import { docUrl, entryUrl, OKF_ENTRY_FILE } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import type { BundleFile } from '../lib/bundles.ts';
+import Panel from './Panel.astro';
 
 interface Props {
   dataset: OkfDatasetId | 'skill';
@@ -41,25 +42,21 @@ const items = files.map((file) => {
 });
 ---
 
-<nav class="cx-panel cx-files" aria-labelledby="h-files" data-testid="detail-files">
-  <h2 class="cx-panel__title" id="h-files">
-    Files
-    {
-      canCreate && (
-        <span class="cx-panel__actions">
-          <button
-            type="button"
-            class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-            disabled
-            data-entry-action="new-concept"
-            data-testid="files-new-concept"
-          >
-            <span class="ck-button__label">+ New concept</span>
-          </button>
-        </span>
-      )
-    }
-  </h2>
+<Panel as="nav" title="Files" id="h-files" testid="detail-files" class="cx-files">
+  {
+    canCreate && (
+      <button
+        slot="actions"
+        type="button"
+        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+        disabled
+        data-entry-action="new-concept"
+        data-testid="files-new-concept"
+      >
+        <span class="ck-button__label">+ New concept</span>
+      </button>
+    )
+  }
   <ul class="cx-files__list" role="list">
     {
       items.map((item) => (
@@ -84,4 +81,4 @@ const items = files.map((file) => {
       ))
     }
   </ul>
-</nav>
+</Panel>

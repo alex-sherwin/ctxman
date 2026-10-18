@@ -2,6 +2,9 @@
 import { datasetDef, entryUrl, LINKABLE_DATASETS, stateGroup } from '../datasets/registry.ts';
 import type { RelationRow } from '../lib/entries.ts';
 import DatasetBadge from './DatasetBadge.astro';
+import EmptyState from './EmptyState.astro';
+import Icon from './Icon.astro';
+import Panel from './Panel.astro';
 import StateBadge from './StateBadge.astro';
 
 // Project pages: the children (frontmatter `links` with `rel: child`) in file order, with progress, Add existing,
@@ -26,37 +29,41 @@ const withState = children.filter((row) => row.state !== undefined && !row.missi
 const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') === 'done').length;
 ---
 
-<section class="cx-panel cx-children" aria-labelledby="h-children" data-testid="children-panel">
-  <h2 class="cx-panel__title" id="h-children">
-    Children <span class="cx-panel__count" data-testid="children-count">{children.length}</span>
-    {
-      withState.length > 0 && (
-        <span class="cx-children__progress" data-testid="children-progress">
-          {done} of {withState.length} done
-        </span>
-      )
-    }
-    <span class="cx-panel__actions">
-      <button
-        type="button"
-        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-        disabled
-        data-entry-action="add-child"
-        data-testid="children-add"
-      >
-        <span class="ck-button__label">+ Add existing</span>
-      </button>
-      <button
-        type="button"
-        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-        disabled
-        data-entry-action="build-context"
-        data-testid="entry-build-context"
-      >
-        <span class="ck-button__label">Build context</span>
-      </button>
-    </span>
-  </h2>
+<Panel
+  title="Children"
+  id="h-children"
+  testid="children-panel"
+  class="cx-children"
+  count={children.length}
+  countTestId="children-count"
+>
+  {
+    withState.length > 0 && (
+      <span slot="meta" class="cx-children__progress" data-testid="children-progress">
+        {done} of {withState.length} done
+      </span>
+    )
+  }
+  <Fragment slot="actions">
+    <button
+      type="button"
+      class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+      disabled
+      data-entry-action="add-child"
+      data-testid="children-add"
+    >
+      <span class="ck-button__label">+ Add existing</span>
+    </button>
+    <button
+      type="button"
+      class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+      disabled
+      data-entry-action="build-context"
+      data-testid="entry-build-context"
+    >
+      <span class="ck-button__label">Build context</span>
+    </button>
+  </Fragment>
   {
     children.length > 0 ? (
       <ul class="cx-minilist">
@@ -69,12 +76,12 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
           >
             <DatasetBadge dataset={row.dataset} />
             {row.missing ? (
-              <span class="cx-minilist__title cx-truncate" title={row.key}>
+              <span class="ck-entryline__title cx-truncate" title={row.key}>
                 {row.title}
               </span>
             ) : (
               <a
-                class="cx-minilist__title cx-rowlink__main cx-truncate"
+                class="ck-entryline__title cx-rowlink__main cx-truncate"
                 href={entryUrl(row.dataset, row.slug)}
               >
                 {row.title}
@@ -94,13 +101,15 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
               aria-label={`Remove ${row.title} from the children`}
               data-testid="children-remove"
             >
-              <span class="ck-button__label" aria-hidden="true">×</span>
+              <span class="ck-button__label"><Icon name="close" size={12} /></span>
             </button>
           </li>
         ))}
       </ul>
     ) : (
-      <p class="cx-relrow__empty">No children yet. Use <strong>+ Add existing</strong> or one of the New links below.</p>
+      <EmptyState compact title="No children yet">
+        Use <strong>+ Add existing</strong> or one of the New links below.
+      </EmptyState>
     )
   }
   <div class="cx-children__foot">
@@ -137,4 +146,4 @@ const done = withState.filter((row) => stateGroup(row.dataset, row.state ?? '') 
       )
     }
   </div>
-</section>
+</Panel>

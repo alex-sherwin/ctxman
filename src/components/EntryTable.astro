@@ -85,21 +85,21 @@ const MAX_TAGS = 4;
                 case 'entry':
                   return (
                     <td class="ck-table__td">
-                      <a class="cx-table__title cx-rowlink__main" href={e.url}>
+                      <a class="ck-entryline__title cx-rowlink__main" href={e.url}>
                         {e.title ?? e.name}
                       </a>
                       {e.invalid && <>{" "}<InvalidBadge issues={e.invalid} /></>}
                       {e.stale && <>{" "}<StaleBadge since={e.staleAfter} /></>}
                       {(e.okfStatus === "draft" || e.okfStatus === "deprecated") && <>{" "}<OkfStatusBadge status={e.okfStatus} /></>}
                       {e.title !== undefined && e.title !== e.name && (
-                        <code class="cx-table__slug">{e.slug}</code>
+                        <code class="ck-entryline__slug cx-table__slug">{e.slug}</code>
                       )}
                     </td>
                   );
                 case 'desc':
                   return (
                     <td class="ck-table__td cx-table__desc">
-                      <span class="cx-truncate" title={e.description}>
+                      <span class="ck-entryline__desc cx-truncate" title={e.description}>
                         {e.description}
                       </span>
                     </td>

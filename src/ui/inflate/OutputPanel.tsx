@@ -2,7 +2,6 @@
 // material, the context file name, which stub files are generated and whether a non-empty directory is
 // fine. Everything here edits the RECIPE (`output`); one-off changes for a single run live in the Run view.
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
 import type { RecipeData } from '../../datasets/schemas.ts';
 import {
   CONTEXT_FILE_MESSAGE,
@@ -23,27 +22,24 @@ import {
   setStub,
 } from '../../stores/inflate.ts';
 import { $dirPlan, $runOverrideCount, selectView } from '../../stores/inflate-run.ts';
-import { Button, Checkbox, Disclosure, TextField } from '../kit/index.ts';
+import { useDraftField } from '../edit/useDraftField.ts';
+import { Button, Checkbox, Disclosure, Notice, TextField } from '../kit/index.ts';
 import { plural } from './format.ts';
 
 function DirField({ dir, name }: { dir: string; name: string }) {
   // What is being typed; the recipe takes every change, the field keeps the raw text while it has focus.
-  const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? dir;
+  const f = useDraftField(dir, setOutputDir);
   return (
     <TextField
       label="Directory"
       size="sm"
       mono
-      value={shown}
-      onChange={(v) => {
-        setDraft(v);
-        setOutputDir(v);
-      }}
-      onBlur={() => setDraft(null)}
+      value={f.shown}
+      onChange={f.onChange}
+      onBlur={f.onBlur}
       placeholder={defaultDirFor(name)}
       description="Absolute path or ~/…. Typed paths only: the browser cannot browse the server's folders."
-      isInvalid={shown.trim() !== '' && !isPortableAbsoluteDir(shown)}
+      isInvalid={f.shown.trim() !== '' && !isPortableAbsoluteDir(f.shown)}
       errorMessage="must be absolute or start with ~/"
       inputTestId="inflate-output-dir"
     />
@@ -52,20 +48,16 @@ function DirField({ dir, name }: { dir: string; name: string }) {
 
 function ContextFileField({ value }: { value: string }) {
   // Only valid file names reach the recipe.
-  const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? value;
+  const f = useDraftField(value, setContextFile, (v) => CONTEXT_FILE_PATTERN.test(v));
   return (
     <TextField
       label="Context file"
       size="sm"
       mono
-      value={shown}
-      onChange={(v) => {
-        setDraft(v);
-        if (CONTEXT_FILE_PATTERN.test(v)) setContextFile(v);
-      }}
-      onBlur={() => setDraft(null)}
-      isInvalid={draft !== null && !CONTEXT_FILE_PATTERN.test(draft)}
+      value={f.shown}
+      onChange={f.onChange}
+      onBlur={f.onBlur}
+      isInvalid={f.invalid}
       errorMessage={CONTEXT_FILE_MESSAGE}
       inputTestId="inflate-output-contextfile"
     />
@@ -149,9 +141,9 @@ export function OutputPanel({ working }: { working: RecipeData }) {
           )}
         </p>
         {overrides > 0 && (
-          <p className="cx-output__overrides" data-testid="inflate-output-overrides">
+          <Notice tone="warn" testId="inflate-output-overrides">
             {plural(overrides, 'run override')} not saved (Run view).
-          </p>
+          </Notice>
         )}
         <div className="cx-row">
           <Button size="sm" onPress={() => selectView('run')} data-testid="inflate-output-run">

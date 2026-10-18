@@ -6,18 +6,20 @@ import { useStore } from '@nanostores/react';
 import type { ContextLink } from '../../datasets/schemas.ts';
 import { $entries } from '../../stores/entries.ts';
 import { linkKey, saveIfDirty, setLinkNotes } from '../../stores/forge.ts';
+import { firstLine, lineCount, plural } from '../../lib/text.ts';
+import { invalidTitle } from '../pickers/picker-rows.ts';
 import {
   Badge,
   Button,
   CodeEditor,
   DatasetBadge,
   Disclosure,
+  Icon,
   StateBadge,
   Toolbar,
   Tooltip,
 } from '../kit/index.ts';
-import { invalidTitle, isMissing, labelOf } from './link-label.ts';
-import { firstLine, lineCount, plural } from './notes.ts';
+import { isMissing, labelOf } from './link-label.ts';
 
 export interface LinkRowProps {
   link: ContextLink;
@@ -40,14 +42,14 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
       <div className="cx-link__head">
         <DatasetBadge dataset={link.dataset} />
         <a
-          className="cx-link__title cx-truncate"
+          className="ck-entryline__title cx-truncate"
           href={entry?.url ?? `/${link.dataset}/${link.slug}`}
           target="_blank"
           rel="noreferrer"
         >
           {label}
         </a>
-        <code className="cx-link__slug">{link.slug}</code>
+        <code className="ck-entryline__slug">{link.slug}</code>
         {entry?.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
         {missing && (
           <Badge tone="danger" title="This entry no longer exists">
@@ -70,7 +72,7 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
               onPress={() => onMove(key, -1)}
               data-testid="forge-link-up"
             >
-              ↑
+              <Icon name="arrow-up" size={13} />
             </Button>
           </Tooltip>
           <Tooltip content="Move down">
@@ -83,7 +85,7 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
               onPress={() => onMove(key, 1)}
               data-testid="forge-link-down"
             >
-              ↓
+              <Icon name="arrow-down" size={13} />
             </Button>
           </Tooltip>
           <Tooltip content="Remove">
@@ -95,7 +97,7 @@ export function LinkRow({ link, index, count, onMove, onRemove }: LinkRowProps) 
               onPress={() => onRemove(key)}
               data-testid="forge-link-remove"
             >
-              ×
+              <Icon name="close" size={13} />
             </Button>
           </Tooltip>
         </Toolbar>

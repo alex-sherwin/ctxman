@@ -5,8 +5,13 @@ import { useStore } from '@nanostores/react';
 import type { InflateJob, JobStep, StepStatus } from '../../lib/inflate/material-plan.ts';
 import { $now } from '../../stores/now.ts';
 import { $ide, $job, attachJob, cancelRun, closeJob, openInIde } from '../../stores/inflate-run.ts';
-import { Button, CopyButton, Disclosure } from '../kit/index.ts';
+import { Button, CopyButton, Disclosure, Notice, Status } from '../kit/index.ts';
+import type { StatusKind } from '../kit/index.ts';
 import { formatDuration, plural } from './format.ts';
+
+/** The Status colour of a job: failed / error / lost read as errors, done as ok, the rest as neutral. */
+const jobKind = (s: string): StatusKind =>
+  s === 'failed' || s === 'error' || s === 'lost' ? 'error' : s === 'done' ? 'ok' : 'idle';
 
 const GLYPHS: Record<Exclude<StepStatus, 'running'>, string> = {
   pending: '○',
@@ -136,24 +141,18 @@ function Summary({ job }: { job: InflateJob }) {
             Open in IDE
           </Button>
         )}
-        <CopyButton
-          size="sm"
-          text={job.dir}
-          label="Copy path"
-          data-testid="inflate-job-copy-path"
-        />
+        <CopyButton text={job.dir} label="Copy path" data-testid="inflate-job-copy-path" />
         <Button size="sm" variant="ghost" onPress={closeJob} data-testid="inflate-job-back">
           Back to plan
         </Button>
       </div>
-      <p
+      <Status
+        kind={ide.status === 'opening' ? 'busy' : ide.status}
+        testId="inflate-job-ide-status"
         className="cx-job__idestatus"
-        role="status"
-        data-kind={ide.status}
-        data-testid="inflate-job-ide-status"
       >
         {ide.status === 'idle' || ide.status === 'opening' ? '' : (ide.message ?? '')}
-      </p>
+      </Status>
     </div>
   );
 }
@@ -176,17 +175,17 @@ export function JobProgress() {
       data-status={status}
     >
       <header className="cx-forge__pane-header">
-        <h2 id="inflate-job-h" className="cx-forge__pane-title">
+        <h2 id="inflate-job-h" className="cx-forge__pane-title ck-label">
           Run
         </h2>
-        <span
-          className="cx-forge__status cx-job__status"
-          role="status"
-          data-status={status}
-          data-testid="inflate-job-status"
+        <Status
+          kind={jobKind(status)}
+          testId="inflate-job-status"
+          className="cx-forge__status"
+          attrs={{ 'data-status': status }}
         >
           {statusText(state, now)}
-        </span>
+        </Status>
         {active && job.startedAt !== null && (
           <span className="cx-job__elapsed cx-mono cx-subtle" data-testid="inflate-job-elapsed">
             {formatDuration(elapsed(job, now))}
@@ -226,11 +225,18 @@ export function JobProgress() {
           </div>
         )}
         {job !== null && job.warnings.length > 0 && (
-          <ul className="cx-comp__warnings" data-testid="inflate-job-warnings">
-            {job.warnings.map((w) => (
-              <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
-            ))}
-          </ul>
+          <Notice
+            tone="warn"
+            role="none"
+            testId="inflate-job-warnings"
+            className="cx-comp__warnings"
+          >
+            <ul>
+              {job.warnings.map((w) => (
+                <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
+              ))}
+            </ul>
+          </Notice>
         )}
         {job !== null && (
           <ol className="cx-job__steps" data-testid="inflate-job-steps">

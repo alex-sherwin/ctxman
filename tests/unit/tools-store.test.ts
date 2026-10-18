@@ -117,7 +117,7 @@ describe('runScript', () => {
     expect($run.get()).toMatchObject({
       status: 'error',
       script: 'nope',
-      error: 'unknown script (x: bad)',
+      error: 'unknown script; x: bad',
     });
     expect(saved(env)).toBeNull();
   });

@@ -42,7 +42,7 @@
     flex: 1;
   }
   .cx-search__bar .ck-input {
-    background: var(--cyber-void-800);
+    background: var(--bg-deepest);
     border-color: var(--accent-line);
   }
 
@@ -146,7 +146,7 @@
     padding: 0 1px;
     color: var(--mark-fg);
     background: var(--mark-bg);
-    box-shadow: 0 1px 0 var(--cyber-yellow-500);
+    box-shadow: 0 1px 0 var(--warn-fg);
   }
 
   .cx-search__empty {

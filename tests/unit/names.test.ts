@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { TAG_PATTERN, nameProblem, normalizeTag, tagProblem } from '../../src/lib/names.ts';
-import { nameProblem as reExported } from '../../src/ui/forge/validate-name.ts';
 
 describe('nameProblem', () => {
   it('accepts kebab-case names up to 64 characters', () => {
@@ -42,10 +41,6 @@ describe('nameProblem', () => {
 
   it('reports format problems before uniqueness', () => {
     expect(nameProblem('Taken', new Set(['Taken']))).toContain('lowercase letters');
-  });
-
-  it('is re-exported from the old Forge path', () => {
-    expect(reExported).toBe(nameProblem);
   });
 });
 

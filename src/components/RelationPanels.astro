@@ -2,6 +2,8 @@
 import type { DatasetId } from '../datasets/registry.ts';
 import type { RelationRow as Row } from '../lib/entries.ts';
 import { datasetDef } from '../datasets/registry.ts';
+import EmptyState from './EmptyState.astro';
+import Panel from './Panel.astro';
 import RelationRow from './RelationRow.astro';
 
 // "Links to" and "Linked from" (ROUND3_SPEC §E.2): the relations of one entry, from the relation graph (frontmatter
@@ -25,23 +27,19 @@ const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
 
 {
   showLinksTo && (
-    <section class="cx-panel" aria-labelledby="h-links-to" data-testid="detail-links-to">
-      <h2 class="cx-panel__title" id="h-links-to">
-        Links to <span class="cx-panel__count">{linksTo.length}</span>
-        {canEdit && (
-          <span class="cx-panel__actions">
-            <button
-              type="button"
-              class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-              disabled
-              data-entry-action="add-relation"
-              data-testid="relation-add"
-            >
-              <span class="ck-button__label">+ Link</span>
-            </button>
-          </span>
-        )}
-      </h2>
+    <Panel title="Links to" id="h-links-to" testid="detail-links-to" count={linksTo.length}>
+      {canEdit && (
+        <button
+          slot="actions"
+          type="button"
+          class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+          disabled
+          data-entry-action="add-relation"
+          data-testid="relation-add"
+        >
+          <span class="ck-button__label">+ Link</span>
+        </button>
+      )}
       {linksTo.length > 0 ? (
         <ul class="cx-minilist">
           {linksTo.map((row) => (
@@ -49,18 +47,14 @@ const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
           ))}
         </ul>
       ) : (
-        <p class="cx-relrow__empty">
-          No links yet.
-          {canEdit && <> Use <strong>+ Link</strong> or type <code>[[</code> in the editor.</>}
-        </p>
+        <EmptyState compact title="No links yet">
+          {canEdit && <>Use <strong>+ Link</strong> or type <code>[[</code> in the editor.</>}
+        </EmptyState>
       )}
-    </section>
+    </Panel>
   )
 }
-<section class="cx-panel" aria-labelledby="h-linked-from" data-testid="detail-linked-from">
-  <h2 class="cx-panel__title" id="h-linked-from">
-    Linked from <span class="cx-panel__count">{linkedFrom.length}</span>
-  </h2>
+<Panel title="Linked from" id="h-linked-from" testid="detail-linked-from" count={linkedFrom.length}>
   {linkedFrom.length > 0 ? (
     <ul class="cx-minilist">
       {linkedFrom.map((row) => (
@@ -68,6 +62,6 @@ const fileOfSource = (row: Row): string => datasetDef(row.dataset).entryFile;
       ))}
     </ul>
   ) : (
-    <p class="cx-relrow__empty">Nothing links here yet.</p>
+    <EmptyState compact title="Nothing links here yet" />
   )}
-</section>
+</Panel>

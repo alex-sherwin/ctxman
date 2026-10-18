@@ -55,6 +55,7 @@ import { parseRecipe, sameRecipe } from '../lib/inflate/recipe.ts';
 import type { InflateResult } from '../lib/inflate/render.ts';
 import { filterEntries } from '../lib/entry-filter.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
+import { clone, omit } from '../lib/object.ts';
 import { reorderKeys } from '../lib/reorder.ts';
 import type { DropPosition } from '../lib/reorder.ts';
 import { parseInflateUrl, withParams } from '../lib/url-state.ts';
@@ -65,6 +66,7 @@ import type {
   InflateView,
   ParamPatchValue,
 } from '../lib/url-state.ts';
+import { failureText, getJson, sendJson } from '../ui/edit/api.ts';
 import { clearDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
 import { discoverSource } from './discover.ts';
 import { $entries, ensureAllEntries, ensureEntries, invalidateEntries } from './entries.ts';
@@ -267,35 +269,6 @@ function applyUrl(): void {
   ensureDiscover(url.dataset);
 }
 
-// ---------------------------------------------------------------- helpers
-
-const clone = <T>(value: T): T => structuredClone(value);
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
-async function messageOf(res: Response): Promise<{ message: string; issues?: Issue[] }> {
-  try {
-    const body = (await res.json()) as { message?: unknown; issues?: unknown };
-    const out: { message: string; issues?: Issue[] } = {
-      message: typeof body.message === 'string' ? body.message : `HTTP ${res.status}`,
-    };
-    if (Array.isArray(body.issues)) out.issues = body.issues as Issue[];
-    return out;
-  } catch {
-    return { message: `HTTP ${res.status}` };
-  }
-}
-
-/** `message` plus the first few issues (`path: message`) on one line. */
-export async function describeFailure(res: Response): Promise<string> {
-  const { message, issues } = await messageOf(res);
-  const detail = (issues ?? [])
-    .slice(0, 3)
-    .map((i) => (i.path ? `${i.path}: ${i.message}` : i.message));
-  return [message, ...detail].join('; ');
-}
-
 // ---------------------------------------------------------------- contexts used by the recipe
 
 const contextSeq = new Map<string, number>();
@@ -306,25 +279,12 @@ async function fetchContext(slug: string): Promise<void> {
   const settle = (value: ContextLookup): void => {
     if (contextSeq.get(slug) === seq) $contextDocs.setKey(slug, value);
   };
-  try {
-    const res = await fetch(`/api/context/${encodeURIComponent(slug)}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (res.status === 404) {
-      await res.body?.cancel();
-      settle({ status: 'missing' });
-    } else if (res.status === 422) {
-      settle({ status: 'invalid', message: (await messageOf(res)).message });
-    } else if (!res.ok) {
-      await res.body?.cancel();
-      settle({ status: 'invalid', message: `HTTP ${res.status}` });
-    } else {
-      const body = (await res.json()) as { context: ContextLike };
-      settle({ status: 'ready', context: body.context });
-    }
-  } catch (error) {
-    settle({ status: 'invalid', message: errorText(error) });
-  }
+  const res = await getJson<{ context: ContextLike }>(`/api/context/${encodeURIComponent(slug)}`);
+  if (res.ok) settle({ status: 'ready', context: res.body.context });
+  else if (res.status === 404) settle({ status: 'missing' });
+  else if (res.status === 0 || res.status === 422)
+    settle({ status: 'invalid', message: res.message });
+  else settle({ status: 'invalid', message: `HTTP ${res.status}` });
 }
 
 /** Fetch `slug` once. No-op when it is cached or in flight. */
@@ -359,30 +319,13 @@ export async function renderNow(): Promise<void> {
     return;
   }
   $render.set({ status: 'loading', result: $render.get().result });
-  try {
-    const res = await fetch('/api/inflate/render', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(working),
-    });
-    if (seq !== renderSeq) {
-      await res.body?.cancel();
-      return;
-    }
-    if (!res.ok) {
-      const message = await describeFailure(res);
-      if (seq === renderSeq) {
-        $render.set({ status: 'error', result: $render.get().result, message });
-      }
-      return;
-    }
-    const result = (await res.json()) as InflateResult;
-    if (seq === renderSeq) $render.set({ status: 'ready', result });
-  } catch (error) {
-    if (seq === renderSeq) {
-      $render.set({ status: 'error', result: $render.get().result, message: errorText(error) });
-    }
+  const res = await sendJson<InflateResult>('POST', '/api/inflate/render', working);
+  if (seq !== renderSeq) return;
+  if (!res.ok) {
+    $render.set({ status: 'error', result: $render.get().result, message: failureText(res) });
+    return;
   }
+  $render.set({ status: 'ready', result: res.body });
 }
 
 function onWorkingChange(working: RecipeData | null): void {
@@ -507,30 +450,18 @@ export async function loadRecipe(slug: string): Promise<void> {
   draftBase = null;
   resetOutputs();
   $recipeLoad.set({ status: 'loading' });
-  try {
-    const res = await fetch(`/api/recipe/${encodeURIComponent(slug)}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (seq !== loadSeq) {
-      await res.body?.cancel();
-      return;
-    }
-    if (res.status === 404) {
-      await res.body?.cancel(); // an unread body keeps the request "open" (network never idles)
-      $recipeLoad.set({ status: 'not-found' });
-      return;
-    }
-    if (!res.ok) {
-      $recipeLoad.set({ status: 'error', message: (await messageOf(res)).message });
-      return;
-    }
-    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
-    if (seq !== loadSeq) return;
-    adopt(body.recipe, body.lastModified ?? null, true);
-    $recipeLoad.set({ status: 'ready' });
-  } catch (error) {
-    if (seq === loadSeq) $recipeLoad.set({ status: 'error', message: errorText(error) });
+  const res = await getJson<{ recipe: RecipeData; lastModified?: string }>(
+    `/api/recipe/${encodeURIComponent(slug)}`,
+  );
+  if (seq !== loadSeq) return;
+  if (!res.ok) {
+    $recipeLoad.set(
+      res.status === 404 ? { status: 'not-found' } : { status: 'error', message: res.message },
+    );
+    return;
   }
+  adopt(res.body.recipe, res.body.lastModified ?? null, true);
+  $recipeLoad.set({ status: 'ready' });
 }
 
 /** Bring the loaded recipe in line with `$inflateUrl.recipe`. */
@@ -662,11 +593,6 @@ export function commitWorking(next: RecipeData): void {
 }
 
 // ---------------------------------------------------------------- output (working directory) helpers
-
-const omit = <T extends object, K extends keyof T>(o: T, key: K): Omit<T, K> => {
-  const { [key]: _removed, ...rest } = o;
-  return rest;
-};
 
 /**
  * `output` without the parts that say nothing: `allowNonEmpty: false`, stubs equal to the target's
@@ -1119,62 +1045,52 @@ export async function save(): Promise<void> {
   const baseline = $baseline.get();
   if (working === null || baseline === null) return;
   $saveStatus.set({ kind: 'saving' });
-  try {
-    const res = await fetch(`/api/recipe/${encodeURIComponent(baseline.name)}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(working),
-    });
-    if ($baseline.get() !== baseline) {
-      // The user moved to another recipe while this was in flight: only refresh the cache.
-      if (res.ok) invalidateEntries('recipe');
-      return;
-    }
-    if (!res.ok) {
-      const { message, issues } = await messageOf(res);
-      const status: SaveStatus = { kind: 'error', message };
-      if (issues !== undefined) status.issues = issues;
-      $saveStatus.set(status);
-      return;
-    }
-    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
-    $baseline.set(clone(body.recipe));
-    $baselineModified.set(body.lastModified ?? null);
-    // Keep keystrokes made while the request was in flight; the server copy only replaces a working
-    // copy that still equals what was sent AND differs from the response (never in practice).
-    if ($working.get() === working && !sameRecipe(working, body.recipe)) {
-      $working.set(clone(body.recipe));
-    }
-    dropDraft(body.recipe.name);
-    syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
-    $saveStatus.set({ kind: 'saved', at: Date.now() });
-    invalidateEntries('recipe');
-  } catch (error) {
-    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  const res = await sendJson<{ recipe: RecipeData; lastModified?: string }>(
+    'PUT',
+    `/api/recipe/${encodeURIComponent(baseline.name)}`,
+    working,
+  );
+  if ($baseline.get() !== baseline) {
+    // The user moved to another recipe while this was in flight: only refresh the cache.
+    if (res.ok) invalidateEntries('recipe');
+    return;
   }
+  if (!res.ok) {
+    $saveStatus.set({
+      kind: 'error',
+      message: res.message,
+      ...(res.issues ? { issues: res.issues } : {}),
+    });
+    return;
+  }
+  const { recipe, lastModified } = res.body;
+  $baseline.set(clone(recipe));
+  $baselineModified.set(lastModified ?? null);
+  // Keep keystrokes made while the request was in flight; the server copy only replaces a working
+  // copy that still equals what was sent AND differs from the response (never in practice).
+  if ($working.get() === working && !sameRecipe(working, recipe)) {
+    $working.set(clone(recipe));
+  }
+  dropDraft(recipe.name);
+  syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
+  $saveStatus.set({ kind: 'saved', at: Date.now() });
+  invalidateEntries('recipe');
 }
 
 export async function deleteRecipe(): Promise<void> {
   const baseline = $baseline.get();
   if (baseline === null) return;
-  try {
-    const res = await fetch(`/api/recipe/${encodeURIComponent(baseline.name)}`, {
-      method: 'DELETE',
-      headers: { accept: 'application/json' },
-    });
-    if (res.status !== 204 && !res.ok) {
-      $saveStatus.set({ kind: 'error', message: (await messageOf(res)).message });
-      return;
-    }
-    dropDraft(baseline.name);
-    clearRecipe();
-    invalidateEntries('recipe');
-    history.replaceState(history.state, '', hrefWith({ recipe: null }));
-    $inflateUrl.setKey('recipe', null);
-    $saveStatus.set({ kind: 'deleted', message: `Deleted ${baseline.name}` });
-  } catch (error) {
-    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  const res = await sendJson<null>('DELETE', `/api/recipe/${encodeURIComponent(baseline.name)}`);
+  if (!res.ok) {
+    $saveStatus.set({ kind: 'error', message: res.message });
+    return;
   }
+  dropDraft(baseline.name);
+  clearRecipe();
+  invalidateEntries('recipe');
+  history.replaceState(history.state, '', hrefWith({ recipe: null }));
+  $inflateUrl.setKey('recipe', null);
+  $saveStatus.set({ kind: 'deleted', message: `Deleted ${baseline.name}` });
 }
 
 export async function createRecipe(input: {
@@ -1182,38 +1098,30 @@ export async function createRecipe(input: {
   description: string;
   target: InflateTarget;
 }): Promise<{ ok: true } | { ok: false; field?: 'name'; message: string }> {
-  try {
-    const res = await fetch('/api/recipe', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        name: input.name,
-        description: input.description,
-        target: input.target,
-        layout: 'grouped',
-        contexts: [],
-        items: [],
-      }),
-    });
-    if (res.status === 409) {
-      await res.body?.cancel();
-      return { ok: false, field: 'name', message: 'A recipe with this name already exists.' };
-    }
-    if (!res.ok) return { ok: false, message: await describeFailure(res) };
-    const body = (await res.json()) as { recipe: RecipeData; lastModified?: string };
-    loadSeq++;
-    resetOutputs();
-    adopt(body.recipe, body.lastModified ?? null, false);
-    $recipeLoad.set({ status: 'ready' });
-    $saveStatus.set({ kind: 'idle' });
-    $newRecipePrefill.set('');
-    invalidateEntries('recipe');
-    history.replaceState(null, '', hrefWith({ recipe: body.recipe.name }));
-    $inflateUrl.setKey('recipe', body.recipe.name);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, message: errorText(error) };
+  const res = await sendJson<{ recipe: RecipeData; lastModified?: string }>('POST', '/api/recipe', {
+    name: input.name,
+    description: input.description,
+    target: input.target,
+    layout: 'grouped',
+    contexts: [],
+    items: [],
+  });
+  if (!res.ok) {
+    return res.status === 409
+      ? { ok: false, field: 'name', message: 'A recipe with this name already exists.' }
+      : { ok: false, message: failureText(res) };
   }
+  const { recipe, lastModified } = res.body;
+  loadSeq++;
+  resetOutputs();
+  adopt(recipe, lastModified ?? null, false);
+  $recipeLoad.set({ status: 'ready' });
+  $saveStatus.set({ kind: 'idle' });
+  $newRecipePrefill.set('');
+  invalidateEntries('recipe');
+  history.replaceState(null, '', hrefWith({ recipe: recipe.name }));
+  $inflateUrl.setKey('recipe', recipe.name);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- write to a file
@@ -1227,21 +1135,15 @@ export async function writeOutput(path: string): Promise<void> {
   const working = $working.get();
   if (working === null || $writeStatus.get().kind === 'writing') return;
   $writeStatus.set({ kind: 'writing' });
-  try {
-    const res = await fetch('/api/inflate/write', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ recipe: working, path }),
-    });
-    if (!res.ok) {
-      $writeStatus.set({ kind: 'error', message: await describeFailure(res) });
-      return;
-    }
-    const body = (await res.json()) as { path: string; bytes: number };
-    $writeStatus.set({ kind: 'written', path: body.path, bytes: body.bytes });
-  } catch (error) {
-    $writeStatus.set({ kind: 'error', message: errorText(error) });
+  const res = await sendJson<{ path: string; bytes: number }>('POST', '/api/inflate/write', {
+    recipe: working,
+    path,
+  });
+  if (!res.ok) {
+    $writeStatus.set({ kind: 'error', message: failureText(res) });
+    return;
   }
+  $writeStatus.set({ kind: 'written', path: res.body.path, bytes: res.body.bytes });
 }
 
 // ---------------------------------------------------------------- browser listeners (registered on mount)

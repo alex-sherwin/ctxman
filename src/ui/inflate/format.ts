@@ -1,9 +1,9 @@
 // PURE helpers for the Inflate island (INFLATE_SPEC §9.3): byte sizes, the collapsed markdown-block
 // summary (shared with the Forge notes) and the recipe name rule of the New recipe dialog.
 import type { Segment } from '../../lib/inflate/expand.ts';
-import { nameProblem } from '../forge/validate-name.ts';
+import { nameProblem } from '../../lib/names.ts';
 
-export { firstLine, lineCount, plural } from '../forge/notes.ts';
+export { firstLine, lineCount, plural } from '../../lib/text.ts';
 
 /** Plain-text label of a segment: row text value, drag preview and aria-labels. */
 export function labelOf(segment: Segment): string {

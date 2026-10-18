@@ -14,7 +14,7 @@ interface Props {
 const { issues, editable = true } = Astro.props;
 ---
 
-<div class="cx-invalid" role="alert" data-testid="invalid-banner">
+<div class="ck-notice cx-invalid" data-tone="danger" role="alert" data-testid="invalid-banner">
   <p class="cx-invalid__title">
     <InvalidBadge issues={issues} />
     This entry's file is invalid

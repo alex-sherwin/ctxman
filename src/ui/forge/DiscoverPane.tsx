@@ -8,7 +8,6 @@ import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { isDiscoverDataset } from '../../lib/url-state.ts';
 import type { DiscoverDataset } from '../../lib/url-state.ts';
-import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { discoverTabCount } from '../../stores/discover.ts';
 import { $entries, ensureAllEntries, ensureEntries } from '../../stores/entries.ts';
 import {
@@ -29,120 +28,25 @@ import {
   setTags,
 } from '../../stores/forge.ts';
 import {
-  Badge,
   Button,
   ButtonLink,
   Chip,
   ChipGroup,
-  DatasetBadge,
   Disclosure,
+  ErrorText,
   GridList,
-  GridListItem,
+  Icon,
+  Notice,
   SearchField,
-  StateBadge,
   Tab,
   TabList,
   TabPanel,
   Tabs,
 } from '../kit/index.ts';
-import { invalidTitle } from './link-label.ts';
+import { EntryRow } from '../pickers/EntryRow.tsx';
 
 /** Tag chips shown inline; the rest go into "More tags". */
 const VISIBLE_TAGS = 16;
-
-interface RowProps {
-  /** RAC infers the item id from this prop (the entries have no `id`/`key`): see useCachedChildren. */
-  id: string;
-  entry: EntrySummary;
-  added: boolean;
-  addDisabled: boolean;
-  /** The "All" tab: the dataset is not implied by the tab, so the row says it. */
-  showDataset: boolean;
-  /** Children of the entry that "Add with children" would append (not linked yet, present in the cache). */
-  addable: { dataset: LinkableDatasetId; slug: string }[];
-}
-
-function DiscoverRow({ id, entry, added, addDisabled, showDataset, addable }: RowProps) {
-  const title = entry.title ?? entry.name;
-  const flag = invalidTitle(entry);
-  const n = addable.length;
-  const kids = `${n} ${n === 1 ? 'child' : 'children'}`;
-  return (
-    <GridListItem
-      id={id}
-      textValue={title}
-      className="cx-discover__item"
-      data-testid="forge-result"
-      data-slug={entry.slug}
-      data-dataset={entry.dataset}
-      data-added={added || undefined}
-      data-invalid={entry.invalid ? '' : undefined}
-    >
-      <div className="cx-discover__main">
-        <div className="cx-row cx-discover__line">
-          <span className="cx-discover__title cx-truncate">{title}</span>
-          <code className="cx-discover__slug">{entry.slug}</code>
-          {showDataset && <DatasetBadge dataset={entry.dataset} />}
-          {entry.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
-          {entry.invalid && (
-            <span data-testid="forge-invalid">
-              <Badge tone="danger" title={flag}>
-                invalid
-              </Badge>
-            </span>
-          )}
-          {entry.stale && <Badge tone="warn">stale</Badge>}
-          {entry.tags.slice(0, 3).map((tag) => (
-            <Badge key={tag} tone="tag">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-        <p className="cx-discover__desc cx-truncate">{entry.description}</p>
-      </div>
-      <div className="cx-discover__actions">
-        <ButtonLink
-          href={entry.url}
-          target="_blank"
-          rel="noreferrer"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          aria-label={`Open ${title} in a new tab`}
-        >
-          ↗
-        </ButtonLink>
-        {n > 0 && (
-          <Button
-            size="sm"
-            variant="secondary"
-            isDisabled={addDisabled}
-            onPress={() =>
-              addLinks([
-                { dataset: entry.dataset as LinkableDatasetId, slug: entry.slug },
-                ...addable,
-              ])
-            }
-            aria-label={added ? `Add the ${kids} of ${title}` : `Add ${title} with ${kids}`}
-            data-testid="forge-add-children"
-          >
-            {added ? `+ Add ${kids}` : `+ Add with ${kids}`}
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant={added ? 'ghost' : 'secondary'}
-          isDisabled={added || addDisabled}
-          onPress={() => addLink(entry.dataset as LinkableDatasetId, entry.slug)}
-          aria-label={added ? `${title} already added` : `Add ${title} to context`}
-          data-testid="forge-add"
-        >
-          {added ? '✓ Added' : '+ Add'}
-        </Button>
-      </div>
-    </GridListItem>
-  );
-}
 
 function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
   const url = useStore($forgeUrl);
@@ -244,7 +148,7 @@ function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
           </ChipGroup>
         )}
         {moreTags.length > 0 && (
-          <Disclosure title={`More tags (${moreTags.length})`} headingLevel={3}>
+          <Disclosure title={`More tags (${moreTags.length})`}>
             <ChipGroup label="More tags" selectedKeys={url.tags} onSelectionChange={onMoreTags}>
               {moreTags.map(({ tag, count }) => (
                 <Chip key={tag} id={tag} count={count} data-testid={`forge-chip-tag-${tag}`}>
@@ -261,23 +165,23 @@ function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
         </div>
       </div>
       {working === null ? (
-        <p className="cx-discover__hint" data-testid="forge-add-hint">
+        <Notice tone="info" testId="forge-add-hint" className="cx-discover__hint">
           Select or create a context to add items.
-        </p>
+        </Notice>
       ) : (
         yamlInvalid && (
-          <p className="cx-discover__hint" data-testid="forge-add-hint">
+          <Notice tone="info" testId="forge-add-hint" className="cx-discover__hint">
             Fix YAML errors first.
-          </p>
+          </Notice>
         )
       )}
       {isAll && view.status === 'error' && view.items.length > 0 && (
-        <div className="cx-discover__error cx-discover__notice" role="alert">
+        <ErrorText as="div" className="ck-error--row cx-discover__notice">
           <span>{view.error ?? "Couldn't load some entries"}.</span>
           <Button size="sm" onPress={() => ensureAllEntries()}>
             Retry
           </Button>
-        </div>
+        </ErrorText>
       )}
       <GridList
         aria-label={`${def?.label ?? 'All'} results`}
@@ -288,7 +192,7 @@ function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
         renderEmptyState={
           view.status === 'error'
             ? () => (
-                <div className="ck-gridlist__empty cx-discover__error" role="alert">
+                <ErrorText as="div" className="ck-gridlist__empty ck-error--row">
                   <span>Couldn't load entries.</span>
                   <Button
                     size="sm"
@@ -296,23 +200,83 @@ function DiscoverPanel({ dataset }: { dataset: DiscoverDataset }) {
                   >
                     Retry
                   </Button>
-                </div>
+                </ErrorText>
               )
             : undefined
         }
         data-testid="forge-results"
         className="cx-discover"
       >
-        {(entry) => (
-          <DiscoverRow
-            id={linkKey(entry)}
-            entry={entry}
-            added={linked.has(linkKey(entry))}
-            addDisabled={!canAdd}
-            showDataset={isAll}
-            addable={addableChildren(entry, entries, linked)}
-          />
-        )}
+        {(entry) => {
+          const key = linkKey(entry);
+          const added = linked.has(key);
+          const addable = addableChildren(entry, entries, linked);
+          const title = entry.title ?? entry.name;
+          const n = addable.length;
+          const kids = `${n} ${n === 1 ? 'child' : 'children'}`;
+          const addDisabled = !canAdd;
+          return (
+            <EntryRow
+              id={key}
+              entry={entry}
+              testId="forge-result"
+              showDataset={isAll}
+              tags={3}
+              showInvalid
+              invalidTestId="forge-invalid"
+              attrs={{
+                'data-slug': entry.slug,
+                'data-dataset': entry.dataset,
+                'data-added': added ? 'true' : undefined,
+                'data-invalid': entry.invalid ? '' : undefined,
+              }}
+              actions={
+                <>
+                  <ButtonLink
+                    href={entry.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    aria-label={`Open ${title} in a new tab`}
+                  >
+                    <Icon name="external" size={13} />
+                  </ButtonLink>
+                  {n > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={addDisabled}
+                      onPress={() =>
+                        addLinks([
+                          { dataset: entry.dataset as LinkableDatasetId, slug: entry.slug },
+                          ...addable,
+                        ])
+                      }
+                      aria-label={
+                        added ? `Add the ${kids} of ${title}` : `Add ${title} with ${kids}`
+                      }
+                      data-testid="forge-add-children"
+                    >
+                      {added ? `+ Add ${kids}` : `+ Add with ${kids}`}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant={added ? 'ghost' : 'secondary'}
+                    isDisabled={added || addDisabled}
+                    onPress={() => addLink(entry.dataset as LinkableDatasetId, entry.slug)}
+                    aria-label={added ? `${title} already added` : `Add ${title} to context`}
+                    data-testid="forge-add"
+                  >
+                    {added ? '✓ Added' : '+ Add'}
+                  </Button>
+                </>
+              }
+            />
+          );
+        }}
       </GridList>
     </>
   );
@@ -328,7 +292,7 @@ export function DiscoverPane() {
       data-testid="forge-discover"
     >
       <header className="cx-forge__pane-header">
-        <h2 id="forge-discover-h" className="cx-forge__pane-title">
+        <h2 id="forge-discover-h" className="cx-forge__pane-title ck-label">
           Discover
         </h2>
       </header>

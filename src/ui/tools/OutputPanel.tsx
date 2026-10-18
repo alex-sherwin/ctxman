@@ -27,14 +27,14 @@ export function OutputPanel() {
         <span className="cyber-terminal__dot cyber-terminal__dot--red" aria-hidden="true" />
         <span className="cyber-terminal__dot cyber-terminal__dot--yellow" aria-hidden="true" />
         <span className="cyber-terminal__dot cyber-terminal__dot--green" aria-hidden="true" />
-        <h2 id="h-output" className="cyber-terminal__title cx-output__title">
+        <h2 id="h-output" className="cyber-terminal__title cx-output__title ck-label">
           Output
         </h2>
         <span role="status" className="cx-output__status" data-testid="tools-output-status">
           {run.status === 'idle' && 'Run a check to see output.'}
           {run.status === 'running' && (
             <>
-              <Spinner label={`Running ${run.script}`} /> Running {run.script}…
+              <Spinner /> Running {run.script}…
             </>
           )}
           {done && (
@@ -53,14 +53,7 @@ export function OutputPanel() {
           )}
         </span>
         <span className="cx-output__spacer" />
-        <CopyButton
-          variant="ghost"
-          size="sm"
-          glow
-          text={clipboard}
-          isDisabled={!done}
-          data-testid="tools-output-copy"
-        />
+        <CopyButton text={clipboard} isDisabled={!done} data-testid="tools-output-copy" />
         <Button
           variant="ghost"
           size="sm"
@@ -74,7 +67,7 @@ export function OutputPanel() {
       <div className="cyber-terminal__body cx-output__body">
         {stdout && (
           <>
-            <h3 className="cx-output__label">stdout</h3>
+            <h3 className="cx-output__label ck-label">stdout</h3>
             <pre className="cx-output__pre" data-testid="tools-stdout" tabIndex={0}>
               {stdout}
             </pre>
@@ -82,7 +75,7 @@ export function OutputPanel() {
         )}
         {stderr && (
           <>
-            <h3 className="cx-output__label cx-output__label--err">stderr</h3>
+            <h3 className="cx-output__label cx-output__label--err ck-label">stderr</h3>
             <pre
               className="cx-output__pre cx-output__pre--err"
               data-testid="tools-stderr"

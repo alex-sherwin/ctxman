@@ -17,8 +17,9 @@ import {
   revert,
   selectRecipe,
 } from '../../stores/inflate.ts';
-import { DraftBanner } from '../forge/DraftBanner.tsx';
-import { Button, ConfirmDialog, EmptyState, Spinner } from '../kit/index.ts';
+import { DiscardDialog } from '../edit/DiscardDialog.tsx';
+import { DraftNotice } from '../edit/DraftNotice.tsx';
+import { Button, EmptyState, Loading, Status } from '../kit/index.ts';
 import { CompositionPane } from './CompositionPane.tsx';
 import { NewRecipeDialog } from './NewRecipeDialog.tsx';
 import { PreviewPane } from './PreviewPane.tsx';
@@ -27,29 +28,25 @@ import { RunView } from './RunView.tsx';
 import { SourcesPane } from './SourcesPane.tsx';
 
 /** "Discard unsaved changes?" shown when the user switches recipe with a dirty working copy. */
-function DiscardDialog() {
+function SwitchDiscardDialog() {
   const pending = useStore($pendingSwitch);
   return (
-    <ConfirmDialog
+    <DiscardDialog
       isOpen={pending !== null}
-      title="Discard unsaved changes?"
-      confirmLabel="Discard"
-      tone="danger"
+      message="Switching recipe discards the edits you have not saved."
       onConfirm={confirmSwitch}
       onCancel={cancelSwitch}
       testId="inflate-discard-dialog"
-    >
-      Switching recipe discards the edits you have not saved.
-    </ConfirmDialog>
+    />
   );
 }
 
 /** The working copy came back from a saved draft (a reload, a dev reload): say so, offer Discard. */
-function DraftNotice() {
+function RestoredNotice() {
   const restored = useStore($draftRestored);
   const dirty = useStore($dirty);
   if (restored === null || !dirty) return null;
-  return <DraftBanner testIdPrefix="inflate" stale={restored.stale} onDiscard={revert} />;
+  return <DraftNotice testIdPrefix="inflate" stale={restored.stale} onDiscard={revert} />;
 }
 
 /** What the body shows while no recipe is loaded (loading, not found, error, nothing selected). */
@@ -60,8 +57,8 @@ function EmptyBody() {
 
   if (load.status === 'loading') {
     return (
-      <div className="cx-forge__loading cx-inflate__empty">
-        <Spinner label="Loading recipe" /> Loading recipe…
+      <div className="cx-inflate__empty">
+        <Loading label="Loading recipe…" />
       </div>
     );
   }
@@ -112,14 +109,9 @@ function EmptyBody() {
               New recipe
             </Button>
             {status.kind === 'deleted' && (
-              <span
-                className="cx-forge__status"
-                role="status"
-                data-kind="saved"
-                data-testid="inflate-status"
-              >
+              <Status kind="saved" testId="inflate-status" className="cx-forge__status">
                 {status.message}
-              </span>
+              </Status>
             )}
           </>
         }
@@ -151,12 +143,12 @@ export default function Inflate({ outDir }: { outDir: string }) {
   return (
     <div className="cx-inflate" data-testid="inflate">
       <RecipeBar />
-      <DraftNotice />
+      <RestoredNotice />
       <div className="cx-inflate__body" data-view={working ? view : 'compose'}>
         <Body outDir={outDir} />
       </div>
       <NewRecipeDialog />
-      <DiscardDialog />
+      <SwitchDiscardDialog />
     </div>
   );
 }

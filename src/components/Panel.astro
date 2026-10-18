@@ -5,16 +5,29 @@ interface Props {
   id: string;
   testid: string;
   count?: number | undefined;
+  /** `data-testid` of the count badge. */
+  countTestId?: string | undefined;
+  /** Root element; `nav` for the file tree. */
+  as?: 'section' | 'nav';
+  class?: string | undefined;
 }
 
-const { title, id, testid, count } = Astro.props;
+const { title, id, testid, count, countTestId, as, class: className } = Astro.props;
+const Tag = as ?? 'section';
 ---
 
-<section class="cx-panel" aria-labelledby={id} data-testid={testid}>
-  <h2 class="cx-panel__title" id={id}>
+<Tag class:list={['cx-panel', className]} aria-labelledby={id} data-testid={testid}>
+  <h2 class="cx-panel__title ck-label" id={id}>
     {title}
-    {count != null && <span class="cx-panel__count">{count}</span>}
-    <span class="cx-panel__actions"><slot name="actions" /></span>
+    {count != null && <span class="cx-panel__count" data-testid={countTestId}>{count}</span>}
+    <slot name="meta" />
+    {
+      Astro.slots.has('actions') && (
+        <span class="cx-panel__actions">
+          <slot name="actions" />
+        </span>
+      )
+    }
   </h2>
   <slot />
-</section>
+</Tag>

@@ -12,29 +12,28 @@ import { filterEntries, stateCounts, tagCounts } from '../lib/entry-filter.ts';
 import type { ContextDoc, EntrySummary } from '../lib/entry-summary.ts';
 import { parseContextYaml, sameContext, serializeContext } from '../lib/context-yaml.ts';
 import type { YamlIssue } from '../lib/context-yaml.ts';
+import { clone } from '../lib/object.ts';
 import { reorderKeys } from '../lib/reorder.ts';
 import type { DropPosition } from '../lib/reorder.ts';
 import { parseForgeUrl, withParams } from '../lib/url-state.ts';
 import type { DiscoverDataset, ForgeUrl, ParamPatchValue } from '../lib/url-state.ts';
+import { getJson, sendJson } from '../ui/edit/api.ts';
+import type { ApiIssue } from '../ui/edit/api.ts';
 import { clearDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
+import type { EditorSaveStatus } from '../ui/edit/status.ts';
 import { discoverSource } from './discover.ts';
 import type { EntriesMap } from './discover.ts';
 import { $entries, ensureAllEntries, ensureEntries, invalidateEntries } from './entries.ts';
 
 export type { ForgeUrl };
 export type ForgeView = 'form' | 'yaml';
-export type Issue = { path: string; message: string };
 
 export type ContextLoad = {
   status: 'none' | 'loading' | 'ready' | 'not-found' | 'error';
   message?: string;
 };
-export type SaveStatus = {
-  kind: 'idle' | 'saving' | 'saved' | 'error' | 'deleted';
-  at?: number;
-  message?: string;
-  issues?: Issue[];
-};
+export type SaveStatus = EditorSaveStatus;
+export type Issue = ApiIssue;
 
 /** `<dataset>:<slug>`: identity of a link inside a context and of a Discover row. */
 export const linkKey = (l: { dataset: string; slug: string }): string => `${l.dataset}:${l.slug}`;
@@ -319,8 +318,6 @@ function dropDraft(name: string): void {
 
 let loadSeq = 0;
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 /**
  * Make `doc` the loaded context: baseline and working copy are independent deep copies. With `restore`, a saved
  * draft of this context replaces the working copy (banner on; `stale` when `lastModified` is not the draft's base).
@@ -356,22 +353,6 @@ function clearContext(): void {
   $contextLoad.set({ status: 'none' });
 }
 
-async function messageOf(res: Response): Promise<{ message: string; issues?: Issue[] }> {
-  try {
-    const body = (await res.json()) as { message?: unknown; issues?: unknown };
-    const out: { message: string; issues?: Issue[] } = {
-      message: typeof body.message === 'string' ? body.message : `HTTP ${res.status}`,
-    };
-    if (Array.isArray(body.issues)) out.issues = body.issues as Issue[];
-    return out;
-  } catch {
-    return { message: `HTTP ${res.status}` };
-  }
-}
-
-const errorText = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
 export async function loadContext(slug: string): Promise<void> {
   if ($baseline.get()?.name === slug) {
     $contextLoad.set({ status: 'ready' });
@@ -385,27 +366,18 @@ export async function loadContext(slug: string): Promise<void> {
   draftBase = null;
   $yamlDraft.set(null);
   $contextLoad.set({ status: 'loading' });
-  try {
-    const res = await fetch(`/api/context/${encodeURIComponent(slug)}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (seq !== loadSeq) return;
-    if (res.status === 404) {
-      await res.body?.cancel(); // an unread body keeps the request "open" (network never idles)
-      $contextLoad.set({ status: 'not-found' });
-      return;
-    }
-    if (!res.ok) {
-      $contextLoad.set({ status: 'error', message: (await messageOf(res)).message });
-      return;
-    }
-    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
-    if (seq !== loadSeq) return;
-    adopt(body.context, body.lastModified ?? null, true);
-    $contextLoad.set({ status: 'ready' });
-  } catch (error) {
-    if (seq === loadSeq) $contextLoad.set({ status: 'error', message: errorText(error) });
+  const res = await getJson<{ context: ContextDoc; lastModified?: string }>(
+    `/api/context/${encodeURIComponent(slug)}`,
+  );
+  if (seq !== loadSeq) return;
+  if (!res.ok) {
+    $contextLoad.set(
+      res.status === 404 ? { status: 'not-found' } : { status: 'error', message: res.message },
+    );
+    return;
   }
+  adopt(res.body.context, res.body.lastModified ?? null, true);
+  $contextLoad.set({ status: 'ready' });
 }
 
 /** Bring the loaded context in line with `$forgeUrl.context`. */
@@ -603,20 +575,6 @@ export function setContextTags(tags: string[]): void {
   commitWorking({ ...w, tags });
 }
 
-export function addTag(tag: string): void {
-  const w = $working.get();
-  if (w === null || tag === '') return;
-  const tags = w.tags ?? [];
-  if (tags.includes(tag)) return;
-  commitWorking({ ...w, tags: [...tags, tag] });
-}
-
-export function removeTag(tag: string): void {
-  const w = $working.get();
-  if (w === null) return;
-  commitWorking({ ...w, tags: (w.tags ?? []).filter((t) => t !== tag) });
-}
-
 // ---------------------------------------------------------------- view toggle (§H.7)
 
 export function setView(view: ForgeView): void {
@@ -659,97 +617,78 @@ export async function save(): Promise<void> {
   const baseline = $baseline.get();
   if (working === null || baseline === null || $yamlInvalid.get()) return;
   $saveStatus.set({ kind: 'saving' });
-  try {
-    const res = await fetch(`/api/context/${encodeURIComponent(baseline.name)}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(working),
-    });
-    if ($baseline.get() !== baseline) {
-      // The user moved to another context while this was in flight: only refresh the cache.
-      if (res.ok) invalidateEntries('context');
-      return;
-    }
-    if (!res.ok) {
-      const { message, issues } = await messageOf(res);
-      const status: SaveStatus = { kind: 'error', message };
-      if (issues !== undefined) status.issues = issues;
-      $saveStatus.set(status);
-      return;
-    }
-    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
-    $baseline.set(clone(body.context));
-    $baselineModified.set(body.lastModified ?? null);
-    // Keep keystrokes made while the request was in flight: only adopt the response if nothing changed.
-    if ($working.get() === working) {
-      $working.set(clone(body.context));
-      if ($view.get() === 'yaml') $yamlDraft.set(serializeContext(body.context));
-    }
-    dropDraft(body.context.name);
-    syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
-    $saveStatus.set({ kind: 'saved', at: Date.now() });
-    invalidateEntries('context');
-  } catch (error) {
-    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  const res = await sendJson<{ context: ContextDoc; lastModified?: string }>(
+    'PUT',
+    `/api/context/${encodeURIComponent(baseline.name)}`,
+    working,
+  );
+  if ($baseline.get() !== baseline) {
+    // The user moved to another context while this was in flight: only refresh the cache.
+    if (res.ok) invalidateEntries('context');
+    return;
   }
+  if (!res.ok) {
+    $saveStatus.set({
+      kind: 'error',
+      message: res.message,
+      ...(res.issues ? { issues: res.issues } : {}),
+    });
+    return;
+  }
+  const { context, lastModified } = res.body;
+  $baseline.set(clone(context));
+  $baselineModified.set(lastModified ?? null);
+  // Keep keystrokes made while the request was in flight: only adopt the response if nothing changed.
+  if ($working.get() === working) {
+    $working.set(clone(context));
+    if ($view.get() === 'yaml') $yamlDraft.set(serializeContext(context));
+  }
+  dropDraft(context.name);
+  syncDraft(); // keystrokes made while saving stay in a draft, now based on the saved file
+  $saveStatus.set({ kind: 'saved', at: Date.now() });
+  invalidateEntries('context');
 }
 
 export async function deleteContext(): Promise<void> {
   const baseline = $baseline.get();
   if (baseline === null) return;
-  try {
-    const res = await fetch(`/api/context/${encodeURIComponent(baseline.name)}`, {
-      method: 'DELETE',
-      headers: { accept: 'application/json' },
-    });
-    if (res.status !== 204 && !res.ok) {
-      $saveStatus.set({ kind: 'error', message: (await messageOf(res)).message });
-      return;
-    }
-    dropDraft(baseline.name);
-    clearContext();
-    invalidateEntries('context');
-    history.replaceState(history.state, '', hrefWith({ context: null }));
-    $forgeUrl.setKey('context', null);
-    $saveStatus.set({ kind: 'deleted', message: `Deleted ${baseline.name}` });
-  } catch (error) {
-    $saveStatus.set({ kind: 'error', message: errorText(error) });
+  const res = await sendJson<null>('DELETE', `/api/context/${encodeURIComponent(baseline.name)}`);
+  if (!res.ok) {
+    $saveStatus.set({ kind: 'error', message: res.message });
+    return;
   }
+  dropDraft(baseline.name);
+  clearContext();
+  invalidateEntries('context');
+  history.replaceState(history.state, '', hrefWith({ context: null }));
+  $forgeUrl.setKey('context', null);
+  $saveStatus.set({ kind: 'deleted', message: `Deleted ${baseline.name}` });
 }
 
 export async function createContext(input: {
   name: string;
   description: string;
 }): Promise<{ ok: true } | { ok: false; field?: 'name'; message: string }> {
-  try {
-    const res = await fetch('/api/context', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        name: input.name,
-        description: input.description,
-        tags: [],
-        links: [],
-      }),
-    });
-    if (res.status === 409) {
-      await res.body?.cancel();
-      return { ok: false, field: 'name', message: 'A context with this name already exists.' };
-    }
-    if (!res.ok) return { ok: false, message: (await messageOf(res)).message };
-    const body = (await res.json()) as { context: ContextDoc; lastModified?: string };
-    loadSeq++;
-    adopt(body.context, body.lastModified ?? null, false);
-    $contextLoad.set({ status: 'ready' });
-    $saveStatus.set({ kind: 'idle' });
-    $newContextPrefill.set('');
-    invalidateEntries('context');
-    history.replaceState(null, '', hrefWith({ context: body.context.name }));
-    $forgeUrl.setKey('context', body.context.name);
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, message: errorText(error) };
+  const res = await sendJson<{ context: ContextDoc; lastModified?: string }>(
+    'POST',
+    '/api/context',
+    { name: input.name, description: input.description, tags: [], links: [] },
+  );
+  if (!res.ok) {
+    return res.status === 409
+      ? { ok: false, field: 'name', message: 'A context with this name already exists.' }
+      : { ok: false, message: res.message };
   }
+  const { context, lastModified } = res.body;
+  loadSeq++;
+  adopt(context, lastModified ?? null, false);
+  $contextLoad.set({ status: 'ready' });
+  $saveStatus.set({ kind: 'idle' });
+  $newContextPrefill.set('');
+  invalidateEntries('context');
+  history.replaceState(null, '', hrefWith({ context: context.name }));
+  $forgeUrl.setKey('context', context.name);
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- browser listeners (registered on mount)

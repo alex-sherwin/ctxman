@@ -3,6 +3,8 @@ import { isLinkableDatasetId } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { BackRef } from '../lib/entries.ts';
 import { withParams } from '../lib/url-state.ts';
+import EmptyState from './EmptyState.astro';
+import Panel from './Panel.astro';
 
 // "Linked from contexts": every context whose links point at this entry (all datasets except context).
 interface Props {
@@ -20,16 +22,13 @@ const preview = (notes: string): string => {
 };
 ---
 
-<section class="cx-panel" aria-labelledby="h-backrefs" data-testid="detail-backrefs">
-  <h2 class="cx-panel__title" id="h-backrefs">
-    Linked from contexts <span class="cx-panel__count">{refs.length}</span>
-  </h2>
+<Panel title="Linked from contexts" id="h-backrefs" testid="detail-backrefs" count={refs.length}>
   {
     refs.length > 0 ? (
       <ul class="cx-minilist">
         {refs.map((ref) => (
           <li class="cx-minilist__row cx-backref cx-rowlink">
-            <a class="cx-minilist__title cx-rowlink__main cx-backref__title" href={`/context/${ref.context}`}>
+            <a class="ck-entryline__title cx-rowlink__main cx-backref__title" href={`/context/${ref.context}`}>
               {ref.context}
             </a>
             <a
@@ -44,12 +43,11 @@ const preview = (notes: string): string => {
         ))}
       </ul>
     ) : (
-      <p class="cx-backref__empty cx-subtle">
-        Not linked from any context.
+      <EmptyState compact title="Not linked from any context">
         {isLinkableDatasetId(dataset) && (
           <a href={withParams('/forge', { dataset, q: slug })}>Find in Forge</a>
         )}
-      </p>
+      </EmptyState>
     )
   }
-</section>
+</Panel>

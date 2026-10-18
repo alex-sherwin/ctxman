@@ -7,9 +7,9 @@ import type { FormEvent } from 'react';
 import { Form } from 'react-aria-components';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { nameProblem } from '../../lib/names.ts';
-import { Button } from '../kit/Button.tsx';
-import { Dialog, Modal } from '../kit/Dialog.tsx';
+import { Dialog, FormDialogFooter, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { createConcept } from './entry-api.ts';
 import {
   conceptBody,
@@ -77,21 +77,15 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
       <Dialog
         title="New concept"
         footer={
-          <>
-            <Button variant="secondary" onPress={onClose} data-testid="new-concept-cancel">
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              form={FORM_ID}
-              isDisabled={!valid}
-              isPending={pending}
-              data-testid="new-concept-submit"
-            >
-              Create concept
-            </Button>
-          </>
+          <FormDialogFooter
+            formId={FORM_ID}
+            submitLabel="Create concept"
+            onCancel={onClose}
+            isDisabled={!valid}
+            isPending={pending}
+            cancelTestId="new-concept-cancel"
+            submitTestId="new-concept-submit"
+          />
         }
       >
         <Form
@@ -143,11 +137,7 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
             description="One line; also shown next to the link in index.md."
             inputTestId="new-concept-description"
           />
-          {error !== null && (
-            <p className="cx-entrydlg__error" role="alert" data-testid="new-concept-error">
-              {error}
-            </p>
-          )}
+          {error !== null && <ErrorText testId="new-concept-error">{error}</ErrorText>}
         </Form>
       </Dialog>
     </Modal>

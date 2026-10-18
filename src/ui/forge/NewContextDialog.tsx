@@ -11,8 +11,8 @@ import {
   cancelNewContext,
   createContext,
 } from '../../stores/forge.ts';
-import { Button, Dialog, Modal, TextField } from '../kit/index.ts';
-import { nameProblem } from './validate-name.ts';
+import { nameProblem } from '../../lib/names.ts';
+import { Dialog, ErrorText, FormDialogFooter, Modal, TextField } from '../kit/index.ts';
 
 const FORM_ID = 'forge-new-form';
 
@@ -45,21 +45,15 @@ function NewContextForm({ onCancel }: { onCancel: () => void }) {
     <Dialog
       title="New context"
       footer={
-        <>
-          <Button variant="secondary" onPress={onCancel} data-testid="forge-new-cancel">
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form={FORM_ID}
-            isDisabled={!valid}
-            isPending={pending}
-            data-testid="forge-new-create"
-          >
-            Create
-          </Button>
-        </>
+        <FormDialogFooter
+          formId={FORM_ID}
+          submitLabel="Create"
+          onCancel={onCancel}
+          isDisabled={!valid}
+          isPending={pending}
+          cancelTestId="forge-new-cancel"
+          submitTestId="forge-new-create"
+        />
       }
     >
       <Form
@@ -93,11 +87,7 @@ function NewContextForm({ onCancel }: { onCancel: () => void }) {
           description="One line: what this context is for."
           inputTestId="forge-new-description"
         />
-        {serverError !== null && (
-          <p className="cx-newctx__error" role="alert">
-            {serverError}
-          </p>
-        )}
+        {serverError !== null && <ErrorText>{serverError}</ErrorText>}
       </Form>
     </Dialog>
   );

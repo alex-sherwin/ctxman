@@ -4,6 +4,7 @@ import { noteTargetId } from '../ui/markdown/targets.ts';
 import DatasetBadge from './DatasetBadge.astro';
 import EmptyState from './EmptyState.astro';
 import MdEditButton from './MdEditButton.astro';
+import Panel from './Panel.astro';
 import StateBadge from './StateBadge.astro';
 
 // The links of a context in their stored order (no grouping): one row per link with the dataset badge before
@@ -18,11 +19,10 @@ interface Props {
 const { slug, links } = Astro.props;
 ---
 
-<section class="cx-ctxlinks" aria-labelledby="h-links" data-testid="context-links">
-  <h2 id="h-links">Links <span class="cx-subtle">({links.length})</span></h2>
+<Panel title="Links" id="h-links" testid="context-links" count={links.length} class="cx-ctxlinks">
   {
     links.length === 0 ? (
-      <EmptyState title="No links yet.">
+      <EmptyState compact title="No links yet">
         <a
           slot="action"
           class="ck-button ck-button--primary ck-button--sm"
@@ -46,14 +46,14 @@ const { slug, links } = Astro.props;
               <span class="cx-ctxlink__num">{i + 1}</span>
               <DatasetBadge dataset={l.dataset} />
               {l.missing ? (
-                <span class="cx-ctxlink__title cx-ctxlink__title--missing">{l.slug}</span>
+                <span class="ck-entryline__title ck-entryline__title--missing">{l.slug}</span>
               ) : (
-                <a class="cx-ctxlink__title cx-rowlink__main cx-truncate" href={l.url}>
+                <a class="ck-entryline__title cx-rowlink__main cx-truncate" href={l.url}>
                   {l.title ?? l.slug}
                 </a>
               )}
               {l.title !== undefined && l.title !== l.slug && (
-                <code class="cx-ctxlink__slug">{l.slug}</code>
+                <code class="ck-entryline__slug">{l.slug}</code>
               )}
               {l.state && <StateBadge dataset={l.dataset} state={l.state} />}
               {l.missing && <span class="ck-badge ck-badge--danger">missing</span>}
@@ -77,4 +77,4 @@ const { slug, links } = Astro.props;
       </ol>
     )
   }
-</section>
+</Panel>

@@ -110,7 +110,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   {
     params.project !== null && (
       <fieldset class="cx-filters__facet">
-        <legend class="cx-filters__legend">Project</legend>
+        <legend class="cx-filters__legend ck-label">Project</legend>
         <div class="ck-chip-group">
           <ChipCheckbox
             name="project"
@@ -127,7 +127,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   {
     def.states && (
       <fieldset class="cx-filters__facet">
-        <legend class="cx-filters__legend">State</legend>
+        <legend class="cx-filters__legend ck-label">State</legend>
         <div class="ck-chip-group">
           {def.states.map((s) => (
             <ChipCheckbox
@@ -147,7 +147,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   {
     def.id === 'reference' && (
       <fieldset class="cx-filters__facet">
-        <legend class="cx-filters__legend">Type</legend>
+        <legend class="cx-filters__legend ck-label">Type</legend>
         <div class="ck-chip-group">
           <ChipCheckbox
             type="radio"
@@ -177,7 +177,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   {
     visible.length + rest.length > 0 && (
       <fieldset class="cx-filters__facet">
-        <legend class="cx-filters__legend">Tags</legend>
+        <legend class="cx-filters__legend ck-label">Tags</legend>
         <div class="ck-chip-group">
           {visible.map((t) => (
             <ChipCheckbox

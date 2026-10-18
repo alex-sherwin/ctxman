@@ -7,7 +7,7 @@
 // Unsaved text is kept in localStorage by the store, so there is no native `beforeunload` prompt (ROUND3_SPEC §G);
 // the in-app discard dialog stays. "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
 import { useStore } from '@nanostores/react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   $docConflict,
   $docDirty,
@@ -34,15 +34,19 @@ import {
 import type { DocDataset } from '../../stores/doc-editor.ts';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
+import { DiscardDialog } from '../edit/DiscardDialog.tsx';
+import { DraftNotice } from '../edit/DraftNotice.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import { statusText } from '../edit/status.ts';
-import { Button, Spinner } from '../kit/Button.tsx';
-import { Chip, ChipGroup } from '../kit/Chip.tsx';
-import { ConfirmDialog } from '../kit/Dialog.tsx';
+import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
+import { Button } from '../kit/Button.tsx';
+import { ChipToggle } from '../kit/Chip.tsx';
+import { Loading } from '../kit/Loading.tsx';
+import { Notice } from '../kit/Notice.tsx';
+import { ErrorText, Status } from '../kit/Status.tsx';
 import { Toolbar } from '../kit/Toolbar.tsx';
 import { EntryPicker } from '../pickers/EntryPicker.tsx';
 import { useInsertLink } from '../pickers/useInsertLink.ts';
-import { DraftNotice } from './DraftNotice.tsx';
 
 export interface DocEditorProps {
   dataset: DocDataset;
@@ -88,17 +92,10 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   }, [previewId, stale]);
 
   // Cmd/Ctrl+S outside Monaco (which has its own action) would otherwise open the browser's "save page" dialog.
-  useEffect(() => {
-    if (!edit) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-      if (event.key.toLowerCase() !== 's') return;
-      event.preventDefault();
-      void saveDoc();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [edit]);
+  const saveDocStable = useCallback(() => {
+    void saveDoc();
+  }, []);
+  useSaveShortcut(saveDocStable, edit);
 
   function leaveEdit() {
     if (dirty) setConfirmDiscard(true);
@@ -108,25 +105,16 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   return (
     <>
       <Toolbar className="cx-doctools" aria-label="Document" data-testid="doc-tools">
-        <ChipGroup
+        <ChipToggle
           label="View"
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[edit ? 'edit' : 'preview']}
-          onSelectionChange={(keys) => {
-            const key = [...keys][0];
-            if (key === 'edit') enterEdit();
-            else if (key === 'preview') leaveEdit();
-          }}
-          data-testid="doc-view-toggle"
-        >
-          <Chip id="preview" data-testid="doc-view-preview">
-            Preview
-          </Chip>
-          <Chip id="edit" data-testid="doc-view-edit">
-            Edit
-          </Chip>
-        </ChipGroup>
+          value={edit ? 'edit' : 'preview'}
+          onChange={(key) => (key === 'edit' ? enterEdit() : leaveEdit())}
+          testId="doc-view-toggle"
+          options={[
+            { id: 'preview', label: 'Preview', testId: 'doc-view-preview' },
+            { id: 'edit', label: 'Edit', testId: 'doc-view-edit' },
+          ]}
+        />
         <code className="cx-doctools__path">{path}</code>
         <span className="cx-doctools__spacer" />
         {edit && (
@@ -149,55 +137,62 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
             testIdPrefix="doc"
           />
         ) : (
-          <span
-            className="cx-savebar__status"
-            role="status"
-            data-kind={status.kind}
-            data-testid="doc-status"
-          >
+          <Status kind={status.kind} testId="doc-status">
             {statusText(status)}
-          </span>
+          </Status>
         )}
       </Toolbar>
 
       {!edit && draftAvailable && (
-        <p className="cx-doc__restored" role="status" data-testid="doc-draft-available">
-          Unsaved changes to this file ·{' '}
-          <Button variant="ghost" size="sm" onPress={enterEdit} data-testid="doc-draft-resume">
-            Resume editing
-          </Button>
-        </p>
+        <Notice
+          tone="info"
+          layout="row"
+          className="cx-doc__notice"
+          testId="doc-draft-available"
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onPress={enterEdit}
+              data-testid="doc-draft-resume"
+            >
+              Resume editing
+            </Button>
+          }
+        >
+          Unsaved changes to this file
+        </Notice>
       )}
 
       {!edit && warnings.length > 0 && (
-        <ul
-          className="cx-doc__warnings"
-          aria-label="Validation warnings"
-          data-testid="doc-warnings"
-        >
-          {warnings.map((w, i) => (
-            <li key={`${i}:${w.rule}:${w.message}`}>
-              {w.rule !== '' && <code>{w.rule}</code>}
-              {w.line !== undefined && <span className="cx-doc__warnline">line {w.line}</span>}
-              <span>{w.message}</span>
-            </li>
-          ))}
-        </ul>
+        <Notice tone="warn" role="none" className="cx-doc__warnings">
+          <ul aria-label="Validation warnings" data-testid="doc-warnings">
+            {warnings.map((w, i) => (
+              <li key={`${i}:${w.rule}:${w.message}`}>
+                {w.rule !== '' && <code>{w.rule}</code>}
+                {w.line !== undefined && <span className="cx-doc__warnline">line {w.line}</span>}
+                <span>{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        </Notice>
       )}
 
       {edit && (
         <>
           {restored && load.status === 'ready' && (
-            <DraftNotice testIdPrefix="doc" stale={draftStale} onDiscard={discardDraft} />
+            <div className="cx-doc__notice">
+              <DraftNotice testIdPrefix="doc" stale={draftStale} onDiscard={discardDraft} />
+            </div>
           )}
           <div className="cx-doc__editor" data-testid="doc-editor-wrap">
             {load.status === 'error' ? (
-              <p className="cx-doc__loaderror" role="alert" data-testid="doc-load-error">
+              <ErrorText testId="doc-load-error">
                 {load.message ?? 'Could not load the file'}{' '}
                 <Button size="sm" onPress={() => void loadDoc()}>
                   Retry
                 </Button>
-              </p>
+              </ErrorText>
             ) : load.status === 'ready' ? (
               <LazyCodeEditor
                 language="markdown"
@@ -212,9 +207,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
                 testId="doc-editor"
               />
             ) : (
-              <div className="cx-doc__loading" data-testid="doc-loading">
-                <Spinner label="Loading document" />
-              </div>
+              <Loading testId="doc-loading" label="Loading document…" />
             )}
           </div>
         </>
@@ -229,20 +222,16 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
         onOverwrite={() => void saveDoc({ force: true })}
         testIdPrefix="doc"
       />
-      <ConfirmDialog
+      <DiscardDialog
         isOpen={confirmDiscard}
-        title="Discard unsaved changes?"
-        confirmLabel="Discard"
-        tone="danger"
+        message="Leaving edit mode drops the changes you have not saved."
         onConfirm={() => {
           setConfirmDiscard(false);
           discardEdit();
         }}
         onCancel={() => setConfirmDiscard(false)}
         testId="doc-discard-dialog"
-      >
-        Leaving edit mode drops the changes you have not saved.
-      </ConfirmDialog>
+      />
     </>
   );
 }

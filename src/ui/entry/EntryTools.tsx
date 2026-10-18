@@ -10,6 +10,7 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { $docEditing } from '../../stores/doc-editor.ts';
+import { Status } from '../kit/Status.tsx';
 import { AddToContextDialog } from './AddToContextDialog.tsx';
 import { afterWrite, STATUS_KEY } from './after-write.ts';
 import { BuildContextDialog } from './BuildContextDialog.tsx';
@@ -92,9 +93,9 @@ export default function EntryTools({
 
   return (
     <>
-      <p className="cx-entry__status" role="status" data-testid="entry-status">
+      <Status kind="saved" testId="entry-status" className="cx-entry__status">
         {status}
-      </p>
+      </Status>
       {dialog?.type === 'frontmatter' && kind !== 'reference' && (
         <FrontmatterDialog
           dataset={dataset}

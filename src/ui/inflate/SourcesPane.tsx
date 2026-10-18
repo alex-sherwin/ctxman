@@ -26,10 +26,14 @@ import {
 import {
   Badge,
   Button,
+  ButtonLink,
   Checkbox,
   CodeEditor,
   Disclosure,
+  EmptyState,
+  Icon,
   ListBoxItem,
+  Loading,
   Select,
   TextField,
 } from '../kit/index.ts';
@@ -51,15 +55,13 @@ function ContextsSection({ selected }: { selected: readonly string[] }) {
         Contexts <span className="cx-subtle">({selected.length})</span>
       </h3>
       {contexts.length === 0 && missing.length === 0 ? (
-        <p className="cx-sources__hint">
-          {state?.status === 'ready' ? (
-            <>
-              No contexts yet. Build one in the <a href="/forge">Forge</a>.
-            </>
-          ) : (
-            'Loading…'
-          )}
-        </p>
+        state?.status === 'ready' ? (
+          <EmptyState compact title="No contexts yet">
+            Build one in the <a href="/forge">Forge</a>.
+          </EmptyState>
+        ) : (
+          <Loading label="Loading…" />
+        )
       ) : (
         <ul className="cx-ctxlist" data-testid="inflate-contexts">
           {contexts.map((c) => (
@@ -73,15 +75,18 @@ function ContextsSection({ selected }: { selected: readonly string[] }) {
                 <span className="cx-ctxlist__name">{c.name}</span>
                 <span className="cx-subtle cx-ctxlist__links">{c.linkCount ?? 0} links</span>
               </Checkbox>
-              <a
-                className="ck-iconbtn cx-ctxlist__open"
+              <ButtonLink
+                variant="ghost"
+                size="sm"
+                iconOnly
+                className="cx-ctxlist__open"
                 href={`/context/${c.slug}`}
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`Open context ${c.slug} in a new tab`}
               >
-                ↗
-              </a>
+                <Icon name="external" size={13} />
+              </ButtonLink>
             </li>
           ))}
           {missing.map((slug) => (
@@ -184,7 +189,7 @@ export function SourcesPane() {
       data-testid="inflate-sources"
     >
       <header className="cx-forge__pane-header">
-        <h2 id="inflate-sources-h" className="cx-forge__pane-title">
+        <h2 id="inflate-sources-h" className="cx-forge__pane-title ck-label">
           Sources
         </h2>
       </header>

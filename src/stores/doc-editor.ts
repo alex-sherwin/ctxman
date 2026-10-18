@@ -17,6 +17,7 @@
 // that a draft exists ("Resume editing").
 import { atom, computed, onMount } from 'nanostores';
 import type { OkfDatasetId } from '../datasets/registry.ts';
+import { plural } from '../lib/text.ts';
 import { parseEditUrl, withParams } from '../lib/url-state.ts';
 import { getJson, sendJson } from '../ui/edit/api.ts';
 import { clearDraft, hasDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
@@ -106,10 +107,6 @@ export function docUrl(t: DocTarget): string {
 
 const sameTarget = (a: DocTarget, b: DocTarget): boolean =>
   a.dataset === b.dataset && a.slug === b.slug && a.path === b.path;
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
-}
 
 /** Re-reads whether a draft of the current file is stored. */
 function syncDraftAvailable(): void {

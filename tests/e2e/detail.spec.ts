@@ -166,7 +166,7 @@ test.describe('context pages', () => {
     const first = rows.first();
     await expect(first.locator('.cx-ctxlink__line > :nth-child(2)')).toHaveClass(/ck-badge/);
     await expect(first.locator('.cx-ctxlink__line > :nth-child(3)')).toHaveClass(
-      /cx-ctxlink__title/,
+      /ck-entryline__title/,
     );
     await expect(first.locator('.ck-badge').first()).toHaveText('kb');
 

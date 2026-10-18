@@ -36,7 +36,7 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
         DATASETS.map((d) => (
           <li>
             <a
-              class="cx-nav__link"
+              class="cx-nav__link ck-label"
               data-ds={d.id}
               href={`/${d.id}`}
               aria-current={current(d.id, `/${d.id}`)}
@@ -51,7 +51,7 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
       <li class="cx-nav__sep" aria-hidden="true"></li>
       <li>
         <a
-          class="cx-nav__link cx-nav__link--tool"
+          class="cx-nav__link cx-nav__link--tool ck-label"
           href="/forge"
           aria-current={current('forge', '/forge')}
           data-testid="nav-forge">Forge</a
@@ -59,7 +59,7 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
       </li>
       <li>
         <a
-          class="cx-nav__link cx-nav__link--tool"
+          class="cx-nav__link cx-nav__link--tool ck-label"
           href="/inflate"
           aria-current={current('inflate', '/inflate')}
           data-testid="nav-inflate">Inflate</a
@@ -67,7 +67,7 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
       </li>
       <li>
         <a
-          class="cx-nav__link cx-nav__link--tool"
+          class="cx-nav__link cx-nav__link--tool ck-label"
           href="/tools"
           aria-current={current('tools', '/tools')}
           data-testid="nav-tools">Tools</a

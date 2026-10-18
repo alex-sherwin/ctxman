@@ -5,7 +5,6 @@
 // `setMode` / `setOption` / `setMaterial` / `setMaterialOption`, which drop overrides that equal what the
 // plan would pick anyway.
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
 import {
   CLONE_DIR_MESSAGE,
   GIT_REF_MESSAGE,
@@ -37,6 +36,7 @@ import {
   setPrimary,
 } from '../../stores/inflate.ts';
 import { $effectiveDir } from '../../stores/inflate-run.ts';
+import { useDraftField } from '../edit/useDraftField.ts';
 import { Checkbox, ListBoxItem, Select, TextField } from '../kit/index.ts';
 
 type TextDef = Extract<OptionDef, { control: 'text' }>;
@@ -45,8 +45,7 @@ function TextOption({ seg, def }: { seg: ItemSegment; def: TextDef }) {
   const resolved = seg.options[def.id] ?? def.default;
   // The text being typed; kept while the field has focus so a `{name}` template is not rewritten under
   // the cursor. Only valid values are committed to the recipe.
-  const [draft, setDraft] = useState<string | null>(null);
-  const invalid = draft !== null && !isSafeRelativeDir(draft);
+  const f = useDraftField(resolved, (v) => setOption(seg.key, def.id, v), isSafeRelativeDir);
   return (
     <span className="cx-seg__opt">
       <span className="cx-seg__optlabel" title={def.help}>
@@ -56,13 +55,10 @@ function TextOption({ seg, def }: { seg: ItemSegment; def: TextDef }) {
         size="sm"
         mono
         aria-label={`${def.label} for ${seg.title}`}
-        value={draft ?? resolved}
-        onChange={(v) => {
-          setDraft(v);
-          if (isSafeRelativeDir(v)) setOption(seg.key, def.id, v);
-        }}
-        onBlur={() => setDraft(null)}
-        isInvalid={invalid}
+        value={f.shown}
+        onChange={f.onChange}
+        onBlur={f.onBlur}
+        isInvalid={f.invalid}
         errorMessage={CLONE_DIR_MESSAGE}
         inputTestId={`inflate-opt-${def.id}`}
         className="cx-seg__textopt"
@@ -125,8 +121,7 @@ type MaterialTextDef = Extract<MaterialOptionDef, { control: 'text' }>;
 function BranchOption({ seg, def }: { seg: ItemSegment; def: MaterialTextDef }) {
   const resolved = seg.materialOptions.branch ?? def.default;
   // Like TextOption: only valid refs are committed, the draft stays while the field has focus.
-  const [draft, setDraft] = useState<string | null>(null);
-  const invalid = draft !== null && !isSafeGitRef(draft);
+  const f = useDraftField(resolved, (v) => setMaterialOption(seg.key, def.id, v), isSafeGitRef);
   return (
     <span className="cx-seg__opt">
       <span className="cx-seg__optlabel" title={def.help}>
@@ -136,14 +131,11 @@ function BranchOption({ seg, def }: { seg: ItemSegment; def: MaterialTextDef }) 
         size="sm"
         mono
         aria-label={`${def.label} for ${seg.title}`}
-        value={draft ?? resolved}
-        onChange={(v) => {
-          setDraft(v);
-          if (isSafeGitRef(v)) setMaterialOption(seg.key, def.id, v);
-        }}
-        onBlur={() => setDraft(null)}
+        value={f.shown}
+        onChange={f.onChange}
+        onBlur={f.onBlur}
         placeholder="default branch"
-        isInvalid={invalid}
+        isInvalid={f.invalid}
         errorMessage={GIT_REF_MESSAGE}
         inputTestId="inflate-mopt-branch"
         className="cx-seg__branchopt"

@@ -11,7 +11,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-5);
-    min-height: 36px;
+    min-height: var(--bar-h);
     margin-bottom: var(--sp-3);
     padding: var(--sp-1) 0;
     background: var(--bg);
@@ -19,7 +19,7 @@
   }
   /* the SSR placeholder that holds the toolbar's height until the island mounts (no layout shift) */
   .cx-doctools--fallback {
-    height: 36px;
+    height: var(--bar-h);
   }
   .cx-doctools__path {
     font-family: var(--font-mono);
@@ -36,45 +36,15 @@
     height: calc(100dvh - var(--header-h) - 140px);
     min-height: 360px;
   }
-  .cx-doc__loading {
-    display: grid;
-    place-items: center;
-    flex: 1;
-  }
-  .cx-doc__loaderror {
-    margin: 0;
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
-  }
-  /* "Restored unsaved changes" (DraftNotice) and "Unsaved changes to this file · Resume editing" (ROUND3_SPEC §G);
-     data-stale = the file changed on disk since the draft was started */
-  .cx-doc__restored {
-    display: flex;
+  /* "Restored unsaved changes" (DraftNotice) and "Unsaved changes to this file" notices above the editor */
+  .cx-doc__notice {
     flex: none;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-3);
     margin: 0 0 var(--sp-2);
-    padding: var(--sp-1) var(--sp-4);
-    font-size: var(--fs-sm);
-    color: var(--info-fg);
-    background: var(--info-bg);
-    border-left: 2px solid var(--accent);
-  }
-  .cx-doc__restored[data-stale] {
-    color: var(--warn-fg);
-    background: var(--warn-bg);
-    border-left-color: var(--warn-fg);
   }
   /* findings the validators reported for the file that was just saved (the save never blocks; link findings
      arrive as severity "error" but are listed as plain warnings) */
   .cx-doc__warnings {
     margin: 0 0 var(--sp-4);
-    padding: var(--sp-2) var(--sp-4);
-    font-size: var(--fs-sm);
-    background: var(--warn-bg);
-    border: 1px solid color-mix(in srgb, var(--warn-fg) 40%, transparent);
-    border-radius: var(--r-sm);
   }
   .cx-doc__warnings li {
     display: flex;
@@ -99,31 +69,8 @@
   }
 
   /* ---------- MarkdownModal ---------- */
-  /* status on the left of the footer, Save / Cancel on the right */
-  .cx-mdmodal .cx-savebar {
-    flex: 1;
-  }
-  .cx-mdmodal .cx-savebar__status {
-    order: -1;
-    margin-right: auto;
-  }
-  .cx-mdmodal__loading {
-    display: grid;
-    place-items: center;
-    min-height: 200px;
-  }
-  .cx-mdmodal__error {
-    margin: 0;
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
-  }
   /* the Insert link row above the popup's editor */
   .cx-mdmodal__tools {
     flex: none;
-  }
-  .cx-mdmodal__hint {
-    margin: 0;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
   }
 }

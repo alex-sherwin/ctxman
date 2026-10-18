@@ -2,7 +2,6 @@
 // (directory, context file, primary repository, material per item). Nothing here edits the recipe until
 // "Save to recipe"; the dry run on the right always plans the recipe plus these overrides.
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
 import {
   CONTEXT_FILE_MESSAGE,
   CONTEXT_FILE_PATTERN,
@@ -31,12 +30,16 @@ import {
   setRunMaterial,
   setRunPrimary,
 } from '../../stores/inflate-run.ts';
+import { useDraftField } from '../edit/useDraftField.ts';
 import {
   Badge,
   Button,
   Checkbox,
   DatasetBadge,
+  EmptyState,
+  Icon,
   ListBoxItem,
+  Notice,
   Select,
   TextField,
 } from '../kit/index.ts';
@@ -54,23 +57,18 @@ function OverrideBadge() {
 
 function DirField({ recipeDir, name }: { recipeDir: string; name: string }) {
   const overrides = useStore($runOverrides);
-  const [draft, setDraft] = useState<string | null>(null);
-  const value = overrides.dir ?? recipeDir;
-  const shown = draft ?? value;
+  const f = useDraftField(overrides.dir ?? recipeDir, setRunDir);
   return (
     <div className="cx-run__field">
       <TextField
         label="Directory"
         size="sm"
         mono
-        value={shown}
-        onChange={(v) => {
-          setDraft(v);
-          setRunDir(v);
-        }}
-        onBlur={() => setDraft(null)}
+        value={f.shown}
+        onChange={f.onChange}
+        onBlur={f.onBlur}
         placeholder={defaultDirFor(name)}
-        isInvalid={shown.trim() !== '' && !isPortableAbsoluteDir(shown)}
+        isInvalid={f.shown.trim() !== '' && !isPortableAbsoluteDir(f.shown)}
         errorMessage="must be absolute or start with ~/"
         inputTestId="inflate-run-dir"
       />
@@ -81,21 +79,19 @@ function DirField({ recipeDir, name }: { recipeDir: string; name: string }) {
 
 function ContextFileField({ recipeFile }: { recipeFile: string }) {
   const overrides = useStore($runOverrides);
-  const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? overrides.contextFile ?? recipeFile;
+  const f = useDraftField(overrides.contextFile ?? recipeFile, setRunContextFile, (v) =>
+    CONTEXT_FILE_PATTERN.test(v),
+  );
   return (
     <div className="cx-run__field">
       <TextField
         label="Context file"
         size="sm"
         mono
-        value={shown}
-        onChange={(v) => {
-          setDraft(v);
-          if (CONTEXT_FILE_PATTERN.test(v)) setRunContextFile(v);
-        }}
-        onBlur={() => setDraft(null)}
-        isInvalid={draft !== null && !CONTEXT_FILE_PATTERN.test(draft)}
+        value={f.shown}
+        onChange={f.onChange}
+        onBlur={f.onBlur}
+        isInvalid={f.invalid}
         errorMessage={CONTEXT_FILE_MESSAGE}
         inputTestId="inflate-run-contextfile"
       />
@@ -160,7 +156,7 @@ function RunItem({ seg }: { seg: ItemSegment }) {
     >
       <div className="cx-run__itemhead">
         <DatasetBadge dataset={seg.dataset} />
-        <span className="cx-run__itemtitle cx-truncate">{seg.title}</span>
+        <span className="ck-entryline__title cx-truncate">{seg.title}</span>
         {dest !== undefined && <code className="cx-seg__dest cx-truncate">{dest}</code>}
       </div>
       <div className="cx-run__itemctl">
@@ -190,7 +186,7 @@ function RunItem({ seg }: { seg: ItemSegment }) {
             onPress={() => resetRunItem(seg.key)}
             data-testid="inflate-run-item-reset"
           >
-            ×
+            <Icon name="close" size={12} />
           </Button>
         )}
       </div>
@@ -223,32 +219,43 @@ export function RunSettings() {
       data-testid="inflate-run-settings"
     >
       <header className="cx-forge__pane-header">
-        <h2 id="inflate-run-settings-h" className="cx-forge__pane-title">
+        <h2 id="inflate-run-settings-h" className="cx-forge__pane-title ck-label">
           Run settings
         </h2>
       </header>
       <div className="cx-forge__pane-body cx-sources">
         {count > 0 && (
-          <div className="cx-run__overrides" data-testid="inflate-run-overrides">
-            <span>{plural(count, 'run override')} (not saved)</span>
-            <span className="cx-inflate__spacer" />
-            <Button size="sm" onPress={saveRunOverrides} data-testid="inflate-run-overrides-save">
-              Save to recipe
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onPress={clearRunOverrides}
-              data-testid="inflate-run-overrides-clear"
-            >
-              Clear
-            </Button>
-          </div>
+          <Notice
+            tone="warn"
+            layout="row"
+            testId="inflate-run-overrides"
+            actions={
+              <>
+                <Button
+                  size="sm"
+                  onPress={saveRunOverrides}
+                  data-testid="inflate-run-overrides-save"
+                >
+                  Save to recipe
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={clearRunOverrides}
+                  data-testid="inflate-run-overrides-clear"
+                >
+                  Clear
+                </Button>
+              </>
+            }
+          >
+            {plural(count, 'run override')} (not saved)
+          </Notice>
         )}
         {dirty && (
-          <p className="cx-sources__hint" data-testid="inflate-run-dirty">
+          <Notice tone="info" testId="inflate-run-dirty">
             Unsaved recipe edits are included in this run.
-          </p>
+          </Notice>
         )}
         <DirField recipeDir={working.output?.dir ?? ''} name={working.name} />
         <ContextFileField recipeFile={working.output?.contextFile ?? DEFAULT_CONTEXT_FILE} />
@@ -270,7 +277,7 @@ export function RunSettings() {
             Items <span className="cx-subtle">({items.length})</span>
           </h3>
           {items.length === 0 ? (
-            <p className="cx-sources__hint">Nothing included yet.</p>
+            <EmptyState compact title="Nothing included yet" />
           ) : (
             <ul className="cx-run__items" data-testid="inflate-run-items">
               {items.map((seg) => (

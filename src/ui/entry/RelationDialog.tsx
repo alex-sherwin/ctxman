@@ -2,13 +2,14 @@
 // EntryPicker and adds it to this entry's frontmatter `links` (PATCH addLinks) as Related / Depends on / Child
 // ('child' mode: the project's Children panel, rel fixed); `RemoveRelationDialog` confirms and removes one
 // (PATCH removeLinks). Both stay open on an error and show it. Browser-only; kit parts by file.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ENTRY_REL_LABELS, isLinkableDatasetId } from '../../datasets/registry.ts';
 import type { EntryRel, LinkableDatasetId } from '../../datasets/registry.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { ConfirmDialog } from '../kit/Dialog.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
+import { ErrorText, Status } from '../kit/Status.tsx';
 import { EntryPicker } from '../pickers/EntryPicker.tsx';
 import { patchEntry } from './entry-api.ts';
 import { splitKey } from './entry-helpers.ts';
@@ -28,18 +29,6 @@ export interface RelationDialogProps {
   onClose: () => void;
   /** The PATCH answered 200; the parent closes and reloads. */
   onDone: (message: string) => void;
-}
-
-/**
- * Puts `data-mode` on the picker's modal (`relation-picker`): EntryPicker does not forward attributes, so the
- * marker, which renders inside that modal through the picker's `extra` slot, sets it on its ancestor.
- */
-function ModeMarker({ mode }: { mode: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    ref.current?.closest('[data-testid="relation-picker"]')?.setAttribute('data-mode', mode);
-  }, [mode]);
-  return <span ref={ref} hidden data-testid="relation-mode" data-mode={mode} />;
 }
 
 export function RelationDialog({
@@ -84,11 +73,11 @@ export function RelationDialog({
       exclude={exclude}
       actionLabel={mode === 'child' ? 'Add' : 'Link'}
       testId="relation-picker"
+      modalAttrs={{ 'data-mode': mode }}
       onPick={(entry) => void pick(entry)}
       onClose={onClose}
       extra={
         <div className="cx-relpick">
-          <ModeMarker mode={mode} />
           {mode === 'relation' ? (
             <Select
               label="Relation"
@@ -111,15 +100,11 @@ export function RelationDialog({
             <p className="cx-subtle">The picked entry is added to this project as a child.</p>
           )}
           {busy && (
-            <p className="cx-subtle" role="status" data-testid="relation-busy">
+            <Status kind="busy" testId="relation-busy" className="cx-subtle">
               Saving…
-            </p>
+            </Status>
           )}
-          {error !== null && (
-            <p className="cx-relpick__error" role="alert" data-testid="relation-error">
-              {error}
-            </p>
-          )}
+          {error !== null && <ErrorText testId="relation-error">{error}</ErrorText>}
         </div>
       }
     />
@@ -178,11 +163,7 @@ export function RemoveRelationDialog({
         {relLabel === undefined ? '' : `${relLabel} · `}
         <code>{target.key}</code>. The entry itself is not deleted.
       </p>
-      {error !== null && (
-        <p className="cx-relpick__error" role="alert" data-testid="relation-remove-error">
-          {error}
-        </p>
-      )}
+      {error !== null && <ErrorText testId="relation-remove-error">{error}</ErrorText>}
     </ConfirmDialog>
   );
 }

@@ -3,19 +3,23 @@
 // (GET /api/entry), saves ONLY the changed keys with an explicit Save (PATCH, `ifUnmodifiedSince` = the loaded
 // mtime). 400 `invalid` puts the server's issues on their fields; 409 shows "Changed on disk" with a Reload
 // button that re-reads the file (my edits in the dialog are dropped). Browser-only; kit parts by file.
-import { useEffect, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Form } from 'react-aria-components';
 import { datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
+import { DiscardDialog } from '../edit/DiscardDialog.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
 import { TagEditor } from '../edit/TagEditor.tsx';
-import { Button, Spinner } from '../kit/Button.tsx';
-import { ConfirmDialog, Dialog, Modal } from '../kit/Dialog.tsx';
+import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
+import { Button } from '../kit/Button.tsx';
+import { Dialog, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
+import { Loading } from '../kit/Loading.tsx';
+import { Notice } from '../kit/Notice.tsx';
 import { Select } from '../kit/Select.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { getEntry, patchEntry } from './entry-api.ts';
 import {
   daysFromToday,
@@ -179,12 +183,13 @@ export function FrontmatterDialog({
         ? { kind: 'dirty' }
         : ready.save;
 
-  function onSaveShortcut(e: KeyboardEvent<HTMLDivElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      void save();
-    }
-  }
+  // Cmd/Ctrl+S saves (the SaveBar tooltip promises it). `save` is a render closure: keep the latest in a ref.
+  const saveRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    saveRef.current = () => void save();
+  });
+  const onSaveShortcut = useCallback(() => saveRef.current(), []);
+  useSaveShortcut(onSaveShortcut, ready !== null);
 
   const shown = (field: FrontmatterField): string | undefined =>
     problems[field] ?? ready?.serverErrors[field];
@@ -210,25 +215,21 @@ export function FrontmatterDialog({
               onSave={() => void save()}
               onCancel={cancel}
               testIdPrefix="fm"
+              statusFirst
             />
           }
         >
-          {view.status === 'loading' && (
-            <div className="cx-fm__loading" data-testid="fm-loading">
-              <Spinner label="Loading" />
-            </div>
-          )}
+          {view.status === 'loading' && <Loading testId="fm-loading" />}
           {view.status === 'error' && (
-            <p className="cx-fm__loaderror" role="alert" data-testid="fm-load-error">
+            <ErrorText testId="fm-load-error">
               {view.message}{' '}
               <Button size="sm" onPress={reload}>
                 Retry
               </Button>
-            </p>
+            </ErrorText>
           )}
           {ready !== null && (
-            // Cmd/Ctrl+S saves (the SaveBar tooltip promises it); the wrapper only listens, it has no box
-            <div className="cx-fm__keys" onKeyDown={onSaveShortcut}>
+            <>
               <Form
                 className="cx-fm__form"
                 validationBehavior="aria"
@@ -365,44 +366,45 @@ export function FrontmatterDialog({
                   </Select>
                 )}
                 {ready.conflict && (
-                  <div className="cx-fm__conflict" role="alert" data-testid="fm-conflict">
-                    <span>
-                      Changed on disk: this entry's file was modified after you opened the dialog.
-                      Reload shows the current values and drops your edits here.
-                    </span>
-                    <Button size="sm" onPress={reload} data-testid="fm-reload">
-                      Reload
-                    </Button>
-                  </div>
+                  <Notice
+                    tone="danger"
+                    layout="row"
+                    role="alert"
+                    testId="fm-conflict"
+                    actions={
+                      <Button size="sm" onPress={reload} data-testid="fm-reload">
+                        Reload
+                      </Button>
+                    }
+                  >
+                    Changed on disk: this entry's file was modified after you opened the dialog.
+                    Reload shows the current values and drops your edits here.
+                  </Notice>
                 )}
                 {ready.other.length > 0 && (
-                  <ul className="cx-fm__problems" role="alert" data-testid="fm-error">
+                  <ErrorText as="ul" testId="fm-error">
                     {ready.other.map((message) => (
                       <li key={message}>{message}</li>
                     ))}
-                  </ul>
+                  </ErrorText>
                 )}
                 {/* Enter in a text field submits (RAC Form); a hidden submit button makes that explicit. */}
                 <button type="submit" hidden tabIndex={-1} aria-hidden="true" />
               </Form>
-            </div>
+            </>
           )}
         </Dialog>
       </Modal>
-      <ConfirmDialog
+      <DiscardDialog
         isOpen={confirmDiscard}
-        title="Discard unsaved changes?"
-        confirmLabel="Discard"
-        tone="danger"
+        message="Closing the dialog drops the changes you have not saved."
         onConfirm={() => {
           setConfirmDiscard(false);
           onClose();
         }}
         onCancel={() => setConfirmDiscard(false)}
         testId="fm-discard-dialog"
-      >
-        Closing the dialog drops the changes you have not saved.
-      </ConfirmDialog>
+      />
     </>
   );
 }

@@ -13,7 +13,15 @@ import {
   cancelNewRecipe,
   createRecipe,
 } from '../../stores/inflate.ts';
-import { Button, Dialog, ListBoxItem, Modal, Select, TextField } from '../kit/index.ts';
+import {
+  Dialog,
+  ErrorText,
+  FormDialogFooter,
+  ListBoxItem,
+  Modal,
+  Select,
+  TextField,
+} from '../kit/index.ts';
 import { recipeNameProblem } from './format.ts';
 
 const FORM_ID = 'inflate-new-form';
@@ -48,21 +56,15 @@ function NewRecipeForm({ onCancel }: { onCancel: () => void }) {
     <Dialog
       title="New recipe"
       footer={
-        <>
-          <Button variant="secondary" onPress={onCancel} data-testid="inflate-new-cancel">
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form={FORM_ID}
-            isDisabled={!valid}
-            isPending={pending}
-            data-testid="inflate-new-create"
-          >
-            Create
-          </Button>
-        </>
+        <FormDialogFooter
+          formId={FORM_ID}
+          submitLabel="Create"
+          onCancel={onCancel}
+          isDisabled={!valid}
+          isPending={pending}
+          cancelTestId="inflate-new-cancel"
+          submitTestId="inflate-new-create"
+        />
       }
     >
       <Form
@@ -111,11 +113,7 @@ function NewRecipeForm({ onCancel }: { onCancel: () => void }) {
             </ListBoxItem>
           ))}
         </Select>
-        {serverError !== null && (
-          <p className="cx-newctx__error" role="alert">
-            {serverError}
-          </p>
-        )}
+        {serverError !== null && <ErrorText>{serverError}</ErrorText>}
       </Form>
     </Dialog>
   );

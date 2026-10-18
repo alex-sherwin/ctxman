@@ -15,7 +15,7 @@ export function AddEntryForm() {
 
   return (
     <section id="add-entry" className="cx-panel" aria-labelledby="h-add" data-testid="tools-add">
-      <h2 className="cx-panel__title" id="h-add">
+      <h2 className="cx-panel__title ck-label" id="h-add">
         New entry
       </h2>
       <div className="cx-addform">

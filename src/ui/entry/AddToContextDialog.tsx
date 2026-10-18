@@ -10,11 +10,11 @@ import { Form } from 'react-aria-components';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { nameProblem } from '../../lib/names.ts';
 import { $entries, ensureEntries } from '../../stores/entries.ts';
-import { Button } from '../kit/Button.tsx';
-import { Dialog, Modal } from '../kit/Dialog.tsx';
+import { Dialog, FormDialogFooter, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { appendContextLinks, createContextWithLinks } from './entry-api.ts';
 import type { ContextLinkBody } from './entry-api.ts';
 
@@ -102,27 +102,20 @@ export function AddToContextDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      className="cx-a2c"
       testId="add-to-context-dialog"
     >
       <Dialog
         title="Add to context"
         footer={
-          <>
-            <Button variant="secondary" onPress={onClose} data-testid="add-to-context-cancel">
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              form={FORM_ID}
-              isDisabled={!valid}
-              isPending={pending}
-              data-testid="add-to-context-submit"
-            >
-              Add
-            </Button>
-          </>
+          <FormDialogFooter
+            formId={FORM_ID}
+            submitLabel="Add"
+            onCancel={onClose}
+            isDisabled={!valid}
+            isPending={pending}
+            cancelTestId="add-to-context-cancel"
+            submitTestId="add-to-context-submit"
+          />
         }
       >
         <Form
@@ -185,11 +178,7 @@ export function AddToContextDialog({
             description="One line of guidance for the agent about this link. Longer notes: edit the context in the Forge."
             inputTestId="add-to-context-notes"
           />
-          {error !== null && (
-            <p className="cx-entrydlg__error" role="alert" data-testid="add-to-context-error">
-              {error}
-            </p>
-          )}
+          {error !== null && <ErrorText testId="add-to-context-error">{error}</ErrorText>}
         </Form>
       </Dialog>
     </Modal>

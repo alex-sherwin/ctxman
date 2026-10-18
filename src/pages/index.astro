@@ -60,7 +60,7 @@ const recipeMeta = (r: EntrySummary): string =>
         recent.length > 0 ? (
           <EntryMiniList entries={recent} />
         ) : (
-          <EmptyState title="Nothing here yet." />
+          <EmptyState title="Nothing here yet" />
         )
       }
     </Panel>
@@ -82,7 +82,7 @@ const recipeMeta = (r: EntrySummary): string =>
           staleEntries.length > 0 ? (
             <EntryMiniList entries={staleEntries} showStaleAfter />
           ) : (
-            <EmptyState title="Nothing stale." />
+            <EmptyState title="Nothing stale" />
           )
         }
       </Panel>
@@ -95,7 +95,7 @@ const recipeMeta = (r: EntrySummary): string =>
             <ul class="cx-minilist">
               {contexts.map((c) => (
                 <li class="cx-minilist__row cx-rowlink">
-                  <a class="cx-minilist__title cx-rowlink__main" href={c.url}>
+                  <a class="ck-entryline__title cx-rowlink__main" href={c.url}>
                     {c.slug}
                   </a>
                   <span class="cx-subtle cx-truncate" title={c.description}>
@@ -112,7 +112,7 @@ const recipeMeta = (r: EntrySummary): string =>
               ))}
             </ul>
           ) : (
-            <EmptyState title="No contexts yet.">
+            <EmptyState title="No contexts yet">
               <a
                 slot="action"
                 class="ck-button ck-button--primary ck-button--sm"
@@ -138,7 +138,7 @@ const recipeMeta = (r: EntrySummary): string =>
             <ul class="cx-minilist">
               {recipes.map((r) => (
                 <li class="cx-minilist__row cx-rowlink" data-testid="dashboard-recipe" data-slug={r.slug}>
-                  <a class="cx-minilist__title cx-rowlink__main" href={r.url}>
+                  <a class="ck-entryline__title cx-rowlink__main" href={r.url}>
                     {r.slug}
                   </a>
                   <span class="cx-subtle cx-truncate" title={r.description}>
@@ -155,7 +155,7 @@ const recipeMeta = (r: EntrySummary): string =>
               ))}
             </ul>
           ) : (
-            <EmptyState title="No recipes yet.">
+            <EmptyState title="No recipes yet">
               <a
                 slot="action"
                 class="ck-button ck-button--primary ck-button--sm"

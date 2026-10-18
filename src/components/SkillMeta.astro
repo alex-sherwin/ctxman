@@ -34,7 +34,7 @@ const metadata = Object.entries(data.metadata ?? {});
       <dl class="cx-meta__sub">
         {metadata.map(([key, value]) => (
           <>
-            <dt>{key}</dt>
+            <dt class="ck-label">{key}</dt>
             <dd class="cx-mono">{value}</dd>
           </>
         ))}

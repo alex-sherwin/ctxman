@@ -13,6 +13,7 @@ import {
 import { INFLATE_LAYOUTS, INFLATE_TARGETS, LAYOUT_LABELS, TARGETS } from '../inflate/catalog.ts';
 import { describeIssue } from '../findings.ts';
 import { nameProblem } from '../names.ts';
+import { plural } from '../text.ts';
 
 export const YAML_DATASETS = ['reference', 'context', 'recipe'] as const;
 export type YamlDatasetId = (typeof YAML_DATASETS)[number];
@@ -282,8 +283,6 @@ export function validateDoc(
  */
 export function readonlySummary(ds: YamlDatasetId, doc: FormDoc): string | null {
   const count = (key: string): number => (Array.isArray(doc[key]) ? doc[key].length : 0);
-  const plural = (n: number, one: string, many = `${one}s`): string =>
-    `${n} ${n === 1 ? one : many}`;
   if (ds === 'context') return `${plural(count('links'), 'link')} — edit in Forge`;
   if (ds === 'recipe') {
     return `${plural(count('contexts'), 'context')} · ${plural(count('items'), 'item')} · ${plural(count('markdown'), 'block')} — edit in Inflate`;

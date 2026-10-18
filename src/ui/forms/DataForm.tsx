@@ -3,7 +3,7 @@
 // document, two-way. Save / Create / Delete go through the CRUD APIs; the store (src/stores/data-form.ts) owns
 // the state. Browser-only (client:only="react"); kit parts by file, Monaco only through LazyCodeEditor.
 import { useStore } from '@nanostores/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Form } from 'react-aria-components';
 import { visibleFields, readonlySummary, LINKED_EDITOR } from '../../lib/forms/fields.ts';
 import type { YamlDatasetId } from '../../lib/forms/fields.ts';
@@ -32,15 +32,19 @@ import {
   submitForm,
 } from '../../stores/data-form.ts';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
+import { DiscardDialog } from '../edit/DiscardDialog.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
+import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
 import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { YamlIssues } from '../edit/YamlIssues.tsx';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import type { CodeEditorApi } from '../editor/LazyCodeEditor.tsx';
 import { Button, ButtonLink } from '../kit/Button.tsx';
-import { Chip, ChipGroup } from '../kit/Chip.tsx';
+import { ChipToggle } from '../kit/Chip.tsx';
 import { ConfirmDialog } from '../kit/Dialog.tsx';
+import { Loading } from '../kit/Loading.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { isMac } from '../../stores/platform.ts';
 import { FieldControl } from './FieldControl.tsx';
 
@@ -69,24 +73,21 @@ function ViewToggle() {
   const yamlInvalid = useStore($formYamlInvalid);
   return (
     <>
-      <ChipGroup
+      <ChipToggle
         label="Editor view"
-        selectionMode="single"
-        disallowEmptySelection
-        selectedKeys={[view]}
-        onSelectionChange={(keys) => {
-          const next = [...keys][0];
-          if (next === 'form' || next === 'yaml') setFormView(next);
-        }}
-        data-testid="dform-view-toggle"
-      >
-        <Chip id="form" isDisabled={view === 'yaml' && yamlInvalid} data-testid="dform-view-form">
-          Form
-        </Chip>
-        <Chip id="yaml" data-testid="dform-view-yaml">
-          YAML
-        </Chip>
-      </ChipGroup>
+        value={view}
+        onChange={setFormView}
+        testId="dform-view-toggle"
+        options={[
+          {
+            id: 'form',
+            label: 'Form',
+            testId: 'dform-view-form',
+            isDisabled: view === 'yaml' && yamlInvalid,
+          },
+          { id: 'yaml', label: 'YAML', testId: 'dform-view-yaml' },
+        ]}
+      />
       {view === 'yaml' && yamlInvalid && (
         <span className="cx-subtle">Fix the YAML problems to return to the form</span>
       )}
@@ -133,11 +134,11 @@ function FormFields({ dataset, mode }: Pick<DataFormProps, 'dataset' | 'mode'>) 
         </p>
       )}
       {unplaced.length > 0 && (
-        <ul className="cx-dform__problems" role="alert" data-testid="dform-problems">
+        <ErrorText as="ul" testId="dform-problems">
           {unplaced.map(([id, message]) => (
             <li key={id}>{id === '_' ? message : `${id}: ${message}`}</li>
           ))}
-        </ul>
+        </ErrorText>
       )}
       {/* Enter in a text field submits (RAC Form); a hidden submit button makes that explicit for every browser. */}
       <button type="submit" hidden tabIndex={-1} aria-hidden="true" />
@@ -200,17 +201,10 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
   useUnsavedGuard(dirty);
 
   // Cmd/Ctrl+S in any field (Monaco handles its own and prevents the key first).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        void submit();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+  const submitStable = useCallback(() => {
+    void submit();
   }, []);
+  useSaveShortcut(submitStable);
 
   const create = mode === 'create';
   const linked = !create && slug !== undefined ? LINKED_EDITOR[dataset] : null;
@@ -218,23 +212,17 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
 
   return (
     <section className="cx-dform" data-testid="dform" data-dataset={dataset} data-mode={mode}>
-      {load.status === 'loading' && (
-        <p className="cx-subtle" data-testid="dform-loading">
-          Loading…
-        </p>
-      )}
+      {load.status === 'loading' && <Loading testId="dform-loading" />}
       {load.status === 'not-found' && (
-        <p className="cx-dform__fatal" role="alert" data-testid="dform-not-found">
-          {load.message}
-        </p>
+        <ErrorText testId="dform-not-found">{load.message}</ErrorText>
       )}
       {load.status === 'error' && (
-        <div className="cx-dform__fatal" role="alert" data-testid="dform-load-error">
+        <ErrorText as="div" testId="dform-load-error">
           <p>{load.message}</p>
           <Button size="sm" onPress={retryLoad}>
             Retry
           </Button>
-        </div>
+        </ErrorText>
       )}
       {load.status === 'ready' && (
         <>
@@ -267,8 +255,9 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
             />
             {!create && (
               <Button
-                variant="danger"
+                variant="ghost"
                 size="sm"
+                className="cx-dform__delete"
                 onPress={() => setDeleteOpen(true)}
                 data-testid="dform-delete"
               >
@@ -295,11 +284,9 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
           This removes <code>{`${dataset}/${slug ?? ''}.yaml`}</code>. It can&apos;t be undone.
         </p>
       </ConfirmDialog>
-      <ConfirmDialog
+      <DiscardDialog
         isOpen={discardOpen}
-        tone="danger"
-        title="Discard changes?"
-        confirmLabel="Discard"
+        message="Your unsaved changes will be lost."
         cancelLabel="Keep editing"
         onConfirm={() => {
           setDiscardOpen(false);
@@ -307,9 +294,7 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
         }}
         onCancel={() => setDiscardOpen(false)}
         testId="dform-discard-dialog"
-      >
-        <p>Your unsaved changes will be lost.</p>
-      </ConfirmDialog>
+      />
       <ConflictDialog
         isOpen={conflict}
         what={`${dataset}/${slug ?? ''}`}

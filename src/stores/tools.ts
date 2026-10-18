@@ -5,6 +5,7 @@
 import { atom, map, onMount } from 'nanostores';
 import type { DatasetId } from '../datasets/registry.ts';
 import { parseToolsUrl, withParams } from '../lib/url-state.ts';
+import { failureText, sendJson } from '../ui/edit/api.ts';
 
 export interface RunState {
   status: 'idle' | 'running' | 'done' | 'error';
@@ -87,21 +88,6 @@ export function setAddDataset(dataset: DatasetId): void {
 
 // ---------------------------------------------------------------- runs
 
-async function errorMessage(res: Response): Promise<string> {
-  try {
-    const body = (await res.json()) as { message?: unknown; issues?: unknown };
-    const issues = Array.isArray(body.issues)
-      ? (body.issues as { path?: string; message?: string }[])
-          .map((i) => (i.path ? `${i.path}: ${i.message ?? ''}` : (i.message ?? '')))
-          .filter(Boolean)
-      : [];
-    const message = typeof body.message === 'string' ? body.message : `HTTP ${res.status}`;
-    return issues.length > 0 ? `${message} (${issues.join('; ')})` : message;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-}
-
 /**
  * POST /api/scripts/<name> with an empty JSON body (the check scripts take no input). `status: 'error'` means the
  * request itself failed (HTTP / network); a script that exits non-zero is still `done`.
@@ -109,40 +95,28 @@ async function errorMessage(res: Response): Promise<string> {
 export async function runScript(name: string): Promise<void> {
   if ($run.get().status === 'running') return;
   $run.set({ status: 'running', script: name });
-  try {
-    const res = await fetch(`/api/scripts/${encodeURIComponent(name)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: '{}',
-    });
-    if (!res.ok) {
-      $run.set({ status: 'error', script: name, error: await errorMessage(res) });
-      return;
-    }
-    const result = (await res.json()) as {
-      code: number;
-      stdout: string;
-      stderr: string;
-      durationMs: number;
-    };
-    const done: RunState = {
-      status: 'done',
-      script: name,
-      code: result.code,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      durationMs: result.durationMs,
-    };
-    $run.set(done);
-    $exitCodes.setKey(name, result.code);
-    saveRun(done);
-  } catch (error) {
-    $run.set({
-      status: 'error',
-      script: name,
-      error: error instanceof Error ? error.message : String(error),
-    });
+  const res = await sendJson<{
+    code: number;
+    stdout: string;
+    stderr: string;
+    durationMs: number;
+  }>('POST', `/api/scripts/${encodeURIComponent(name)}`, {});
+  if (!res.ok) {
+    $run.set({ status: 'error', script: name, error: failureText(res) });
+    return;
   }
+  const result = res.body;
+  const done: RunState = {
+    status: 'done',
+    script: name,
+    code: result.code,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    durationMs: result.durationMs,
+  };
+  $run.set(done);
+  $exitCodes.setKey(name, result.code);
+  saveRun(done);
 }
 
 export function clearRun(): void {

@@ -12,12 +12,12 @@ export type EntriesMap = Partial<Record<DatasetId, EntriesState>>;
 const LOADING: EntriesState = { status: 'loading', entries: [] };
 
 /** The datasets behind a tab: itself, or every linkable one for `all`. */
-export function datasetsOf(dataset: DiscoverDataset): readonly DatasetId[] {
+function datasetsOf(dataset: DiscoverDataset): readonly DatasetId[] {
   return dataset === 'all' ? LINKABLE_DATASETS : [dataset];
 }
 
 /** The datasets of the tab whose last load failed. */
-export function failedDatasets(map: EntriesMap, dataset: DiscoverDataset): DatasetId[] {
+function failedDatasets(map: EntriesMap, dataset: DiscoverDataset): DatasetId[] {
   return datasetsOf(dataset).filter((ds) => map[ds]?.status === 'error');
 }
 

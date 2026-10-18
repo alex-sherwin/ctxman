@@ -18,6 +18,7 @@ import { stringifyYaml } from '../lib/yaml.ts';
 import CopyButton from './CopyButton.astro';
 import Freshness from './Freshness.astro';
 import MetaRow from './MetaRow.astro';
+import Panel from './Panel.astro';
 import OkfStatusBadge from './OkfStatusBadge.astro';
 import SkillMeta from './SkillMeta.astro';
 import StaleBadge from './StaleBadge.astro';
@@ -123,25 +124,21 @@ const isUrl = (s: string): boolean => /^https?:\/\//i.test(s);
 const filePath = `data/${file}`;
 ---
 
-<section class="cx-panel cx-meta" aria-labelledby="h-meta" data-testid="detail-meta">
-  <h2 class="cx-panel__title" id="h-meta">
-    Details
-    {
-      editable && (
-        <span class="cx-panel__actions">
-          <button
-            type="button"
-            class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-            disabled
-            data-entry-action="frontmatter"
-            data-testid="meta-edit"
-          >
-            <span class="ck-button__label">Edit</span>
-          </button>
-        </span>
-      )
-    }
-  </h2>
+<Panel title="Details" id="h-meta" testid="detail-meta" class="cx-meta">
+  {
+    editable && (
+      <button
+        slot="actions"
+        type="button"
+        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+        disabled
+        data-entry-action="frontmatter"
+        data-testid="meta-edit"
+      >
+        <span class="ck-button__label">Edit</span>
+      </button>
+    )
+  }
   <dl class="cx-meta__list">
     {
       bundle && (
@@ -318,4 +315,4 @@ const filePath = `data/${file}`;
       <CopyButton text={filePath} ariaLabel="Copy file path" />
     </MetaRow>
   </dl>
-</section>
+</Panel>

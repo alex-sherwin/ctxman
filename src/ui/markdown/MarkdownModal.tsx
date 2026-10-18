@@ -7,18 +7,22 @@
 // prompt (ROUND3_SPEC §G), the in-app discard dialog stays. A toolbar button (and Mod+Alt+K in the editor)
 // inserts a link to an entry through the shared EntryPicker.
 // Browser-only; kit parts and src/ui/edit helpers are imported by file, Monaco only through LazyCodeEditor.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
 import { clearDraft, loadDraft, saveDraft } from '../edit/draft-backup.ts';
+import { DiscardDialog } from '../edit/DiscardDialog.tsx';
+import { DraftNotice } from '../edit/DraftNotice.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
-import { Button, Spinner } from '../kit/Button.tsx';
-import { ConfirmDialog, Dialog, Modal } from '../kit/Dialog.tsx';
+import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
+import { Button } from '../kit/Button.tsx';
+import { Dialog, Modal } from '../kit/Dialog.tsx';
+import { Loading } from '../kit/Loading.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { Toolbar } from '../kit/Toolbar.tsx';
 import { EntryPicker } from '../pickers/EntryPicker.tsx';
 import { useInsertLink } from '../pickers/useInsertLink.ts';
-import { DraftNotice } from './DraftNotice.tsx';
 import { mdDraftKey, planRestore } from './draft-restore.ts';
 import { loadTarget, saveTarget } from './targets.ts';
 import type { LoadedTarget, MdTarget } from './targets.ts';
@@ -83,11 +87,6 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
   const ready = view.status === 'ready' ? view : null;
   const dirty = ready !== null && ready.draft !== ready.loaded.text;
   const saving = ready?.save.kind === 'saving';
-  const saved = ready?.save.kind === 'saved';
-
-  useEffect(() => {
-    if (saved) location.reload();
-  }, [saved]);
 
   function update(
     patch: (v: Extract<View, { status: 'ready' }>) => Extract<View, { status: 'ready' }>,
@@ -108,6 +107,8 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
         draftStale: false,
         save: { kind: 'saved' },
       }));
+      // context / recipe yaml is not watched by the dev server: no reload comes by itself
+      location.reload();
     } else if (result.kind === 'conflict') {
       update((v) => ({
         ...v,
@@ -149,6 +150,14 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
     update((v) => ({ ...v, draft: v.loaded.text, restored: false, draftStale: false }));
   }
 
+  // Cmd/Ctrl+S anywhere in the popup (outside Monaco it would open the browser's "save page" dialog).
+  const saveRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    saveRef.current = () => void save();
+  });
+  const saveStable = useCallback(() => saveRef.current(), []);
+  useSaveShortcut(saveStable, ready !== null && !saving);
+
   const status: SaveStatus =
     ready === null
       ? { kind: 'idle' }
@@ -177,16 +186,13 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
               onSave={() => void save()}
               onCancel={cancel}
               testIdPrefix="md"
+              statusFirst
             />
           }
         >
-          {view.status === 'loading' && (
-            <div className="cx-mdmodal__loading" data-testid="md-loading">
-              <Spinner label="Loading" />
-            </div>
-          )}
+          {view.status === 'loading' && <Loading testId="md-loading" />}
           {view.status === 'error' && (
-            <p className="cx-mdmodal__error" role="alert" data-testid="md-load-error">
+            <ErrorText testId="md-load-error">
               {view.message}{' '}
               <Button
                 size="sm"
@@ -197,7 +203,7 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
               >
                 Retry
               </Button>
-            </p>
+            </ErrorText>
           )}
           {ready !== null && (
             <>
@@ -252,11 +258,9 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
         onOverwrite={() => void save(true)}
         testIdPrefix="md"
       />
-      <ConfirmDialog
+      <DiscardDialog
         isOpen={confirmDiscard}
-        title="Discard unsaved changes?"
-        confirmLabel="Discard"
-        tone="danger"
+        message="Closing the editor drops the changes you have not saved."
         onConfirm={() => {
           setConfirmDiscard(false);
           clearDraft(draftKey);
@@ -264,9 +268,7 @@ export function MarkdownModal({ target, onClose }: MarkdownModalProps) {
         }}
         onCancel={() => setConfirmDiscard(false)}
         testId="md-discard-dialog"
-      >
-        Closing the editor drops the changes you have not saved.
-      </ConfirmDialog>
+      />
     </>
   );
 }

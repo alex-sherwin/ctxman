@@ -12,7 +12,7 @@ export function ScriptList({ scripts }: { scripts: readonly ScriptInfo[] }) {
   const checks = scripts.filter((s) => s.kind === 'check');
   return (
     <section className="cx-panel" aria-labelledby="h-scripts" data-testid="tools-scripts">
-      <h2 className="cx-panel__title" id="h-scripts">
+      <h2 className="cx-panel__title ck-label" id="h-scripts">
         Checks
       </h2>
       <ul className="cx-scripts">

@@ -16,7 +16,7 @@ import {
   reorderSegments,
   resetOrder,
 } from '../../stores/inflate.ts';
-import { Button, EmptyState, OrderedList } from '../kit/index.ts';
+import { Button, EmptyState, Notice, OrderedList } from '../kit/index.ts';
 import { labelOf, plural } from './format.ts';
 import { SegmentRow } from './SegmentRow.tsx';
 
@@ -75,7 +75,7 @@ export function CompositionPane() {
       <header className="cx-forge__pane-header">
         <h2
           id="inflate-composition-h"
-          className="cx-forge__pane-title"
+          className="cx-forge__pane-title ck-label"
           ref={headingRef}
           tabIndex={-1}
         >
@@ -100,7 +100,7 @@ export function CompositionPane() {
       </header>
       <div className="cx-forge__pane-body">
         {(plan.warnings.length > 0 || canPrune) && (
-          <div className="cx-comp__warnings">
+          <Notice tone="warn" role="none" className="cx-comp__warnings">
             {plan.warnings.length > 0 && (
               <ul data-testid="inflate-plan-warnings">
                 {plan.warnings.map((w) => (
@@ -113,7 +113,7 @@ export function CompositionPane() {
                 Prune stale
               </Button>
             )}
-          </div>
+          </Notice>
         )}
         {segments.length === 0 ? (
           <EmptyState title="Nothing to include yet">

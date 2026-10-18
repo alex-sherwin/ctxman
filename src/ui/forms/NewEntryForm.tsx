@@ -25,7 +25,10 @@ import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { Button, ButtonLink } from '../kit/Button.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
+import { Loading } from '../kit/Loading.tsx';
+import { Notice } from '../kit/Notice.tsx';
 import { Select } from '../kit/Select.tsx';
+import { ErrorText, Status } from '../kit/Status.tsx';
 
 export interface NewEntryFormProps {
   dataset: NewEntryDataset;
@@ -108,11 +111,7 @@ export default function NewEntryForm({ dataset, parent }: NewEntryFormProps) {
   useUnsavedGuard(dirty);
 
   if (draft === null) {
-    return (
-      <p className="cx-subtle" data-testid="new-entry-loading">
-        Loading…
-      </p>
-    );
+    return <Loading testId="new-entry-loading" />;
   }
 
   const def = datasetDef(dataset);
@@ -199,12 +198,19 @@ export default function NewEntryForm({ dataset, parent }: NewEntryFormProps) {
         </div>
       )}
       {partial !== null && (
-        <p className="cx-nform__problem" role="alert" data-testid="new-partial">
-          {partial.message}{' '}
-          <ButtonLink size="sm" href={partial.url} data-testid="new-open-created">
-            Open {def.singular}
-          </ButtonLink>
-        </p>
+        <Notice
+          tone="danger"
+          layout="row"
+          role="alert"
+          testId="new-partial"
+          actions={
+            <ButtonLink size="sm" href={partial.url} data-testid="new-open-created">
+              Open {def.singular}
+            </ButtonLink>
+          }
+        >
+          {partial.message}
+        </Notice>
       )}
       <footer className="cx-dform__footer">
         <Button
@@ -220,13 +226,13 @@ export default function NewEntryForm({ dataset, parent }: NewEntryFormProps) {
           Cancel
         </ButtonLink>
         {save.kind === 'error' ? (
-          <span className="cx-nform__problem" role="alert" data-testid="new-error">
+          <ErrorText as="div" testId="new-error">
             {save.message}
-          </span>
+          </ErrorText>
         ) : (
-          <span className="cx-savebar__status" role="status" data-testid="new-status">
+          <Status kind={save.kind} testId="new-status">
             {save.kind === 'idle' ? '' : (save.message ?? '')}
-          </span>
+          </Status>
         )}
       </footer>
     </Form>

@@ -15,7 +15,9 @@ import { expandRecipe } from '../lib/inflate/expand.ts';
 import type { ExpandedPlan } from '../lib/inflate/expand.ts';
 import type { DirPlanResponse, InflateJob } from '../lib/inflate/material-plan.ts';
 import { applyRunOverrides, runOverrideCount } from '../lib/inflate/recipe.ts';
+import { omit } from '../lib/object.ts';
 import { parseInflateUrl } from '../lib/url-state.ts';
+import { failureText, getJson, sendJson } from '../ui/edit/api.ts';
 import { $entries } from './entries.ts';
 import {
   $baseline,
@@ -25,7 +27,6 @@ import {
   $working,
   browserLookup,
   commitWorking,
-  describeFailure,
   onSourcesReload,
   patchInflateUrl,
 } from './inflate.ts';
@@ -105,11 +106,6 @@ export const $ide = atom<IdeState>({ available: null, status: 'idle' });
 function setRun(next: InflateRunOverrides): void {
   $runOverrides.set(next);
 }
-
-const omit = <T extends object, K extends keyof T>(o: T, key: K): Omit<T, K> => {
-  const { [key]: _removed, ...rest } = o;
-  return rest;
-};
 
 /** An override that equals what the recipe says anyway is not an override. */
 export function setRunDir(value: string): void {
@@ -219,33 +215,16 @@ export async function planNow(): Promise<void> {
     return;
   }
   $dirPlan.set({ status: 'loading', result: $dirPlan.get().result });
-  try {
-    const res = await fetch('/api/inflate/plan', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ recipe: working, overrides: $runOverrides.get() }),
-    });
-    if (seq !== planSeq) {
-      await res.body?.cancel();
-      return;
-    }
-    if (!res.ok) {
-      const message = await describeFailure(res);
-      if (seq === planSeq)
-        $dirPlan.set({ status: 'error', result: $dirPlan.get().result, message });
-      return;
-    }
-    const result = (await res.json()) as DirPlanResponse;
-    if (seq === planSeq) $dirPlan.set({ status: 'ready', result });
-  } catch (error) {
-    if (seq === planSeq) {
-      $dirPlan.set({
-        status: 'error',
-        result: $dirPlan.get().result,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+  const res = await sendJson<DirPlanResponse>('POST', '/api/inflate/plan', {
+    recipe: working,
+    overrides: $runOverrides.get(),
+  });
+  if (seq !== planSeq) return;
+  if (!res.ok) {
+    $dirPlan.set({ status: 'error', result: $dirPlan.get().result, message: failureText(res) });
+    return;
   }
+  $dirPlan.set({ status: 'ready', result: res.body });
 }
 
 /** Plan again now (after a run, after "Reload sources"). */
@@ -288,38 +267,26 @@ async function pollOnce(id: string, token: number): Promise<void> {
   const again = (delay: number): void => {
     if (token === pollToken) pollTimer = setTimeout(() => void pollOnce(id, token), delay);
   };
-  try {
-    const res = await fetch(`/api/inflate/jobs/${id}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (token !== pollToken) {
-      await res.body?.cancel();
-      return;
-    }
-    if (res.status === 404) {
-      await res.body?.cancel();
-      $job.set({ status: 'lost', job: $job.get().job });
-      return;
-    }
-    if (res.status === 400) {
-      $job.set({ status: 'error', job: null, message: await describeFailure(res) });
-      return;
-    }
-    if (!res.ok) {
-      await res.body?.cancel();
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const job = (await res.json()) as InflateJob;
-    if (token !== pollToken) return;
+  const res = await getJson<InflateJob>(`/api/inflate/jobs/${id}`);
+  if (token !== pollToken) return;
+  if (res.ok) {
     pollFailures = 0;
-    $job.set({ status: 'ready', job });
-    if (isActive(job)) again(JOB_POLL_MS);
+    $job.set({ status: 'ready', job: res.body });
+    if (isActive(res.body)) again(JOB_POLL_MS);
     else onJobFinished();
-  } catch {
-    // Server unreachable (restart, dev reload): keep trying, slowly.
-    pollFailures++;
-    again(Math.min(JOB_POLL_MAX_BACKOFF_MS, JOB_POLL_MS * 2 ** pollFailures));
+    return;
   }
+  if (res.status === 404) {
+    $job.set({ status: 'lost', job: $job.get().job });
+    return;
+  }
+  if (res.status === 400) {
+    $job.set({ status: 'error', job: null, message: failureText(res) });
+    return;
+  }
+  // Server unreachable (restart, dev reload) or another failure: keep trying, slowly.
+  pollFailures++;
+  again(Math.min(JOB_POLL_MAX_BACKOFF_MS, JOB_POLL_MS * 2 ** pollFailures));
 }
 
 function startPolling(id: string): void {
@@ -385,22 +352,10 @@ export async function startRun(): Promise<void> {
 export async function cancelRun(): Promise<void> {
   const job = $job.get().job;
   if (job === null) return;
-  try {
-    const res = await fetch(`/api/inflate/jobs/${job.id}/cancel`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: '{}',
-    });
-    if (!res.ok) {
-      await res.body?.cancel(); // 409 not-running: the poll shows the final state
-      return;
-    }
-    const body = (await res.json()) as { job: InflateJob };
-    const cur = $job.get();
-    if (cur.job?.id === body.job.id) $job.set({ ...cur, status: 'ready', job: body.job });
-  } catch {
-    // The poll keeps going; nothing more to say.
-  }
+  const res = await sendJson<{ job: InflateJob }>('POST', `/api/inflate/jobs/${job.id}/cancel`, {});
+  if (!res.ok) return; // 409 not-running: the poll shows the final state; anything else: the poll keeps going
+  const cur = $job.get();
+  if (cur.job?.id === res.body.job.id) $job.set({ ...cur, status: 'ready', job: res.body.job });
 }
 
 /** Watch a job that is already running (the `busy` answer of /run names it). */
@@ -420,43 +375,20 @@ export function closeJob(): void {
 // ---------------------------------------------------------------- open in the IDE
 
 async function fetchIdeAvailability(): Promise<void> {
-  try {
-    const res = await fetch('/api/ide/open', { headers: { accept: 'application/json' } });
-    if (!res.ok) {
-      await res.body?.cancel();
-      $ide.set({ ...$ide.get(), available: false });
-      return;
-    }
-    const body = (await res.json()) as { available?: unknown };
-    $ide.set({ ...$ide.get(), available: body.available === true });
-  } catch {
-    $ide.set({ ...$ide.get(), available: false });
-  }
+  const res = await getJson<{ available?: unknown }>('/api/ide/open');
+  $ide.set({ ...$ide.get(), available: res.ok && res.body?.available === true });
 }
 
 /** `POST /api/ide/open { dir }`: opens the inflated directory as a workspace. */
 export async function openInIde(dir: string): Promise<void> {
   if ($ide.get().status === 'opening') return;
   $ide.set({ ...$ide.get(), status: 'opening' });
-  try {
-    const res = await fetch('/api/ide/open', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ dir }),
-    });
-    if (!res.ok) {
-      $ide.set({ ...$ide.get(), status: 'error', message: await describeFailure(res) });
-      return;
-    }
-    await res.body?.cancel();
-    $ide.set({ ...$ide.get(), status: 'ok', message: 'Opened in the IDE' });
-  } catch (error) {
-    $ide.set({
-      ...$ide.get(),
-      status: 'error',
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const res = await sendJson<unknown>('POST', '/api/ide/open', { dir });
+  $ide.set(
+    res.ok
+      ? { ...$ide.get(), status: 'ok', message: 'Opened in the IDE' }
+      : { ...$ide.get(), status: 'error', message: failureText(res) },
+  );
 }
 
 // ---------------------------------------------------------------- recipe changes and mount

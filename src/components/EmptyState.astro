@@ -2,19 +2,17 @@
 // HTML twin of the kit's EmptyState (src/ui/kit/EmptyState.tsx). Default slot = body, `action` slot = button.
 interface Props {
   title: string;
+  /** Panel-body variant: left aligned, tighter padding. */
+  compact?: boolean;
 }
 
-const { title } = Astro.props;
+const { title, compact = false } = Astro.props;
+// A body slot that renders to nothing (`{cond && <a/>}` that is false) must not leave an empty block.
+const body = Astro.slots.has('default') ? (await Astro.slots.render('default')).trim() : '';
 ---
 
-<div class="ck-empty">
+<div class:list={['ck-empty', { 'ck-empty--compact': compact }]}>
   <div class="ck-empty__title">{title}</div>
-  {
-    Astro.slots.has('default') && (
-      <div>
-        <slot />
-      </div>
-    )
-  }
+  {body !== '' && <div set:html={body} />}
   <slot name="action" />
 </div>

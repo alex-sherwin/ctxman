@@ -103,10 +103,6 @@
     gap: var(--sp-2);
     height: var(--header-h);
     padding: 0 var(--sp-3);
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
     border-bottom: 2px solid transparent;
   }
@@ -183,6 +179,11 @@
     gap: var(--sp-4);
     justify-content: space-between;
   }
+  .cx-pagehead__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
   .cx-pagehead__title {
     font-size: var(--fs-2xl);
     font-weight: var(--fw-semibold);
@@ -216,10 +217,6 @@
     gap: var(--sp-2);
     height: var(--row-h);
     padding: 0 var(--sp-4);
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-muted);
     background: var(--bg-deep);
     border-bottom: 1px solid var(--border);
@@ -280,10 +277,6 @@
     filter: drop-shadow(0 0 2px var(--ds-c)) drop-shadow(0 0 6px var(--ds-c));
   }
   .cx-tile__label {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--ds-fg);
   }
   .cx-tile__count {
@@ -330,14 +323,7 @@
     border-bottom: 0;
   }
   .cx-minilist__row:hover {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
-  }
-  .cx-minilist__title {
-    color: var(--fg);
-    font-weight: var(--fw-medium);
-  }
-  .cx-minilist__title:hover {
-    color: var(--accent-text);
+    background: var(--row-hover-bg);
   }
 
   /* ---------- E list page: filters ---------- */
@@ -349,7 +335,7 @@
     margin-bottom: var(--sp-3);
     background: var(--bg-subtle);
     border: 1px solid var(--border);
-    border-left: 2px solid var(--accent-line);
+    border-left: var(--bar-w) solid var(--accent-line);
   }
   .cx-filters__row {
     display: flex;
@@ -381,14 +367,10 @@
     gap: var(--sp-2);
     align-items: start;
   }
-  /* legend uses the .cx-label look */
+  /* legend: `ck-label` in markup gives the label typography */
   .cx-filters__legend {
     float: left;
     padding-top: 3px;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
   }
   .cx-filters[data-enhanced] .cx-filters__submit {
@@ -412,17 +394,8 @@
     top: var(--header-h);
     z-index: 2;
   }
-  .cx-table__title {
-    font-weight: var(--fw-medium);
-    color: var(--fg);
-  }
-  .cx-table__title:hover {
-    color: var(--accent-text);
-  }
   .cx-table__slug {
     display: block;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
   }
   .cx-table__desc {
     font-size: var(--fs-sm);
@@ -514,13 +487,6 @@
   }
   .cx-detail__idestatus {
     font-size: var(--fs-xs);
-    color: var(--fg-muted);
-  }
-  .cx-detail__idestatus[data-kind='error'] {
-    color: var(--danger-fg);
-  }
-  .cx-detail__idestatus[data-kind='ok'] {
-    color: var(--success-fg);
   }
   .cx-detail__slug {
     font-family: var(--font-mono);
@@ -549,13 +515,9 @@
   .cx-meta__row {
     display: contents;
   }
-  /* dt uses the .cx-label look */
+  /* dt: `ck-label` in markup gives the label typography */
   .cx-meta__row dt {
     padding-top: 2px;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
   }
   .cx-meta__row dd {
@@ -585,10 +547,6 @@
     margin: 0 0 var(--sp-5);
   }
   .cx-fields dt {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
     padding-top: 2px;
   }
@@ -599,17 +557,17 @@
   }
 
   /* F.3 context links: one row per link in the context's stored order (ContextLinkList.astro) */
+  /* the list sits inside a Panel (ContextLinkList.astro): the panel supplies the frame */
   .cx-ctxlinks__list {
     list-style: none;
-    margin: var(--sp-2) 0 0;
+    margin: 0;
     padding: 0;
-    border: 1px solid var(--border);
   }
   .cx-ctxlink {
     padding: var(--sp-1) var(--sp-3);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--ds-c);
+    border-left: var(--bar-w) solid var(--ds-c);
   }
   .cx-ctxlink:last-child {
     border-bottom: 0;
@@ -629,22 +587,6 @@
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
     font-variant-numeric: tabular-nums;
-  }
-  .cx-ctxlink__title {
-    min-width: 0;
-    font-weight: var(--fw-medium);
-    color: var(--fg);
-  }
-  .cx-ctxlink__title:hover {
-    color: var(--accent-text);
-  }
-  .cx-ctxlink__title--missing {
-    color: var(--fg-subtle);
-    text-decoration: line-through;
-  }
-  .cx-ctxlink__slug {
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
   }
   .cx-ctxlink__actions {
     margin-left: auto;
@@ -735,13 +677,6 @@
     grid-column: 1 / -1;
     font-size: var(--fs-sm);
   }
-  .cx-backref__empty {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-3);
-    padding: var(--sp-3) var(--sp-4);
-    font-size: var(--fs-sm);
-  }
 
   /* ---------- Q2 additions: recipes (list columns, dashboard tiles, detail composition) ---------- */
   /* 11 datasets: one row of tiles from 1440px up (same tile width as the former 10 at 1280px), else 6 + 5 */
@@ -765,15 +700,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-4);
-  }
-  .cx-recipe__none {
-    padding: var(--sp-3) var(--sp-4);
-    font-size: var(--fs-sm);
-    color: var(--fg-subtle);
-  }
-  .cx-recipe__name--missing {
-    color: var(--fg-subtle);
-    text-decoration: line-through;
   }
   .cx-recipe__body {
     padding: var(--sp-3) var(--sp-4);
@@ -849,7 +775,7 @@
     cursor: pointer;
   }
   li.cx-rowlink:hover {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    background: var(--row-hover-bg);
   }
   .cx-rowlink__main:focus-visible {
     outline: none;
@@ -921,14 +847,10 @@
   }
   .cx-statesel__status {
     font-size: var(--fs-xs);
-    color: var(--success-fg);
     white-space: nowrap;
   }
   .cx-statesel__status:empty {
     display: none;
-  }
-  .cx-statesel__status[data-kind='error'] {
-    color: var(--danger-fg);
   }
   /* in a list row the message floats under the select instead of widening the column */
   .cx-table .cx-statesel__status {
@@ -981,19 +903,8 @@
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
   }
-  .cx-relrow__rel {
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
-  }
   .cx-relrow__in code {
     color: var(--fg-muted);
-  }
-  .cx-relrow__empty {
-    margin: 0;
-    padding: var(--sp-3) var(--sp-4);
-    font-size: var(--fs-sm);
-    color: var(--fg-subtle);
   }
   /* a dangling target has no page to open: no pointer, no hover tint, struck-through title */
   .cx-relrow[data-missing],
@@ -1005,8 +916,8 @@
     cursor: default;
     background: none;
   }
-  .cx-relrow[data-missing] .cx-minilist__title,
-  .cx-children__row[data-missing] .cx-minilist__title {
+  .cx-relrow[data-missing] .ck-entryline__title,
+  .cx-children__row[data-missing] .ck-entryline__title {
     color: var(--fg-subtle);
     text-decoration: line-through;
   }
@@ -1045,13 +956,9 @@
   }
 
   /* ---------- Round 3: invalid file banner (InvalidBanner.astro) ---------- */
+  /* the banner look comes from `.ck-notice[data-tone='danger']` */
   .cx-invalid {
     margin-bottom: var(--sp-4);
-    padding: var(--sp-3) var(--sp-4);
-    background: var(--danger-bg);
-    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-    border-left: 3px solid var(--danger);
-    border-radius: var(--r-sm);
   }
   .cx-invalid__title {
     display: flex;

@@ -15,7 +15,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    min-height: 40px;
+    min-height: var(--toolbar-h);
     padding: 0 var(--sp-4);
     border-bottom: 1px solid var(--accent-line);
     background: var(--bg-deep);
@@ -67,10 +67,6 @@
     flex-direction: column;
     gap: var(--sp-2);
   }
-  .cx-sources__hint {
-    font-size: var(--fs-sm);
-    color: var(--fg-subtle);
-  }
   .cx-ctxlist {
     display: flex;
     flex-direction: column;
@@ -84,7 +80,7 @@
     min-height: var(--row-h);
     padding: 0 var(--sp-3);
     border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--ds-context);
+    border-left: var(--bar-w) solid var(--ds-context);
   }
   .cx-ctxlist__item:last-child {
     border-bottom: 0;
@@ -134,7 +130,7 @@
     flex-direction: column;
     gap: var(--sp-4);
     padding: var(--sp-2) var(--sp-3) var(--sp-3);
-    border-left: 2px solid var(--accent-line);
+    border-left: var(--bar-w) solid var(--accent-line);
   }
   .cx-output__stubs {
     display: flex;
@@ -145,16 +141,12 @@
     padding: 0;
     border: 0;
   }
-  .cx-output__primary,
-  .cx-output__overrides {
+  .cx-output__primary {
     font-size: var(--fs-sm);
     color: var(--fg-muted);
     overflow-wrap: anywhere;
   }
   .cx-output__invalid {
-    color: var(--warn-fg);
-  }
-  .cx-output__overrides {
     color: var(--warn-fg);
   }
   .cx-adhoc {
@@ -180,20 +172,13 @@
   }
 
   /* ---------- composition ---------- */
+  /* the Notice of the Composition / Plan / Run panes: pane margin, the Prune button under the list */
   .cx-comp__warnings {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--sp-2);
     margin: var(--sp-3) var(--sp-4) 0;
-    padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-sm);
-    color: var(--warn-fg);
-    background: var(--warn-bg);
-    border-left: 2px solid var(--warn-fg);
-  }
-  .cx-comp__warnings li + li {
-    margin-top: var(--sp-1);
   }
   /* the kit OrderedList (`ck-olist`): the row (grip column, border, background) comes from the kit, the
      type / status colours below are ours; the row body is `.cx-seg__body` */
@@ -235,13 +220,6 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 32ch;
-    font-weight: var(--fw-medium);
-    color: var(--fg);
-  }
-  .cx-seg__slug {
-    flex: none;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
   }
   .cx-seg__size {
     flex: none;
@@ -251,7 +229,6 @@
   .cx-seg__desc {
     flex: 1 1 0;
     min-width: 0;
-    font-size: var(--fs-sm);
   }
   .cx-seg__also {
     font-size: var(--fs-xs);
@@ -377,29 +354,10 @@
     color: var(--fg-muted);
     overflow-wrap: anywhere;
   }
-  .cx-preview__writestatus[data-kind='ok'] {
-    color: var(--success-fg);
-  }
-  .cx-preview__writestatus[data-kind='error'] {
-    color: var(--danger-fg);
-  }
-  .cx-preview__warnings {
-    padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-sm);
-    color: var(--warn-fg);
-    background: var(--warn-bg);
-    border-left: 2px solid var(--warn-fg);
-  }
-  .cx-preview__warnings li + li {
-    margin-top: var(--sp-1);
-  }
   .cx-manifest {
     display: flex;
     flex-direction: column;
     gap: var(--sp-2);
-  }
-  .cx-manifest__title {
-    font-weight: var(--fw-medium);
   }
   .cx-manifest .ck-table__td.cx-manifest__nowrap {
     white-space: nowrap;
@@ -436,16 +394,6 @@
     top: 0;
     right: 0;
   }
-  .cx-run__overrides {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-sm);
-    color: var(--warn-fg);
-    background: var(--warn-bg);
-    border-left: 2px solid var(--warn-fg);
-  }
   .cx-run__items {
     display: flex;
     flex-direction: column;
@@ -463,17 +411,13 @@
     border-bottom: 0;
   }
   .cx-run__item[data-overridden='true'] {
-    border-left: 2px solid var(--warn-fg);
+    border-left: var(--bar-w) solid var(--warn-fg);
   }
   .cx-run__itemhead,
   .cx-run__itemctl {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    min-width: 0;
-  }
-  .cx-run__itemtitle {
-    font-weight: var(--fw-medium);
     min-width: 0;
   }
   .cx-run__itemmaterial {
@@ -488,25 +432,6 @@
     flex-direction: column;
     gap: var(--sp-4);
     padding: var(--sp-4);
-  }
-  .cx-dirplan__status[data-kind='blocked'] {
-    color: var(--warn-fg);
-  }
-  .cx-dirplan__status[data-kind='error'],
-  .cx-job__status[data-status='failed'],
-  .cx-job__status[data-status='error'],
-  .cx-job__status[data-status='lost'] {
-    color: var(--danger-fg);
-  }
-  .cx-job__status[data-status='done'] {
-    color: var(--success-fg);
-  }
-  .cx-dirplan__blocking {
-    padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
-    background: var(--danger-bg);
-    border-left: 2px solid var(--danger);
   }
   .cx-dirplan__steps,
   .cx-job__steps {
@@ -625,14 +550,6 @@
   }
   .cx-job__idestatus {
     min-height: 1em;
-    font-size: var(--fs-sm);
-    color: var(--fg-muted);
-  }
-  .cx-job__idestatus[data-kind='error'] {
-    color: var(--danger-fg);
-  }
-  .cx-job__idestatus[data-kind='ok'] {
-    color: var(--success-fg);
   }
 
   @media (max-width: 899px) {

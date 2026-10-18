@@ -18,6 +18,7 @@ import {
   Button,
   DatasetBadge,
   Disclosure,
+  Icon,
   Spinner,
   Toolbar,
   Tooltip,
@@ -75,7 +76,7 @@ function RowActions({ segment, index, count, onMove, onRemove }: SegmentRowProps
           onPress={() => onMove(segment.key, -1)}
           data-testid="inflate-segment-up"
         >
-          ↑
+          <Icon name="arrow-up" size={14} />
         </Button>
       </Tooltip>
       <Tooltip content="Move down">
@@ -88,7 +89,7 @@ function RowActions({ segment, index, count, onMove, onRemove }: SegmentRowProps
           onPress={() => onMove(segment.key, 1)}
           data-testid="inflate-segment-down"
         >
-          ↓
+          <Icon name="arrow-down" size={14} />
         </Button>
       </Tooltip>
       {removable && (
@@ -101,7 +102,7 @@ function RowActions({ segment, index, count, onMove, onRemove }: SegmentRowProps
             onPress={() => onRemove(segment)}
             data-testid="inflate-segment-remove"
           >
-            ×
+            <Icon name="close" size={14} />
           </Button>
         </Tooltip>
       )}
@@ -137,14 +138,14 @@ function ItemRow(props: SegmentRowProps & { segment: Extract<Segment, { type: 'i
       <div className="cx-seg__head">
         <DatasetBadge dataset={seg.dataset} />
         <a
-          className="cx-seg__title cx-truncate"
+          className="ck-entryline__title cx-seg__title cx-truncate"
           href={`/${seg.dataset}/${seg.slug}`}
           target="_blank"
           rel="noreferrer"
         >
           {seg.title}
         </a>
-        <code className="cx-seg__slug">{seg.slug}</code>
+        <code className="ck-entryline__slug">{seg.slug}</code>
         {dir !== null && dest !== undefined && seg.status === 'included' && (
           <code
             className="cx-seg__dest"
@@ -245,14 +246,16 @@ export function SegmentRow(props: SegmentRowProps) {
               <>
                 <span className="cx-label">Context</span>
                 <a
-                  className="cx-seg__title cx-truncate"
+                  className="ck-entryline__title cx-seg__title cx-truncate"
                   href={`/context/${seg.slug}`}
                   target="_blank"
                   rel="noreferrer"
                 >
                   {seg.title}
                 </a>
-                <span className="cx-subtle cx-truncate cx-seg__desc">{seg.description}</span>
+                <span className="ck-entryline__desc cx-truncate cx-seg__desc">
+                  {seg.description}
+                </span>
                 {seg.crossRefs.length > 0 && (
                   <span className="cx-subtle cx-seg__also">also: {seg.crossRefs.join(', ')}</span>
                 )}

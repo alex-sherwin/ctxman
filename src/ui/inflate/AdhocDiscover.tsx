@@ -5,7 +5,6 @@ import { useStore } from '@nanostores/react';
 import type { Key } from 'react-aria-components';
 import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { isDiscoverDataset } from '../../lib/url-state.ts';
 import type { DiscoverDataset } from '../../lib/url-state.ts';
 import { discoverTabCount } from '../../stores/discover.ts';
@@ -20,89 +19,20 @@ import {
   setQuery,
 } from '../../stores/inflate.ts';
 import {
-  Badge,
   Button,
   ButtonLink,
-  DatasetBadge,
+  ErrorText,
   GridList,
-  GridListItem,
+  Icon,
   SearchField,
-  StateBadge,
   Tab,
   TabList,
   TabPanel,
   Tabs,
 } from '../kit/index.ts';
-import { invalidTitle } from '../forge/link-label.ts';
+import { EntryRow } from '../pickers/EntryRow.tsx';
 
 const keyOf = (e: { dataset: string; slug: string }): string => `${e.dataset}/${e.slug}`;
-
-interface RowProps {
-  /** RAC infers the item id from this prop (the entries have no `id`/`key`): see useCachedChildren. */
-  id: string;
-  entry: EntrySummary;
-  added: boolean;
-  /** The "All" tab: the dataset is not implied by the tab, so the row says it. */
-  showDataset: boolean;
-}
-
-function ResultRow({ id, entry, added, showDataset }: RowProps) {
-  const title = entry.title ?? entry.name;
-  return (
-    <GridListItem
-      id={id}
-      textValue={title}
-      className="cx-discover__item"
-      data-testid="inflate-result"
-      data-slug={entry.slug}
-      data-dataset={entry.dataset}
-      data-added={added || undefined}
-      data-invalid={entry.invalid ? '' : undefined}
-    >
-      <div className="cx-discover__main">
-        <div className="cx-row cx-discover__line">
-          <span className="cx-discover__title cx-truncate">{title}</span>
-          <code className="cx-discover__slug">{entry.slug}</code>
-          {showDataset && <DatasetBadge dataset={entry.dataset} />}
-          {entry.refType && <Badge tone="muted">{entry.refType}</Badge>}
-          {entry.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
-          {entry.invalid && (
-            <span data-testid="inflate-invalid">
-              <Badge tone="danger" title={invalidTitle(entry)}>
-                invalid
-              </Badge>
-            </span>
-          )}
-          {entry.stale && <Badge tone="warn">stale</Badge>}
-        </div>
-        <p className="cx-discover__desc cx-truncate">{entry.description}</p>
-      </div>
-      <div className="cx-discover__actions">
-        <ButtonLink
-          href={entry.url}
-          target="_blank"
-          rel="noreferrer"
-          variant="ghost"
-          size="sm"
-          iconOnly
-          aria-label={`Open ${title} in a new tab`}
-        >
-          ↗
-        </ButtonLink>
-        <Button
-          size="sm"
-          variant={added ? 'ghost' : 'secondary'}
-          isDisabled={added}
-          onPress={() => addItem(entry.dataset as LinkableDatasetId, entry.slug)}
-          aria-label={added ? `${title} already added` : `Add ${title} to the recipe`}
-          data-testid="inflate-add"
-        >
-          {added ? '✓ Added' : '+ Add'}
-        </Button>
-      </div>
-    </GridListItem>
-  );
-}
 
 function ResultsPanel({ dataset }: { dataset: DiscoverDataset }) {
   const url = useStore($inflateUrl);
@@ -146,12 +76,12 @@ function ResultsPanel({ dataset }: { dataset: DiscoverDataset }) {
         </div>
       </div>
       {isAll && view.status === 'error' && view.items.length > 0 && (
-        <div className="cx-discover__error cx-discover__notice" role="alert">
+        <ErrorText as="div" className="ck-error--row">
           <span>{view.error ?? "Couldn't load some entries"}.</span>
           <Button size="sm" onPress={() => ensureAllEntries()}>
             Retry
           </Button>
-        </div>
+        </ErrorText>
       )}
       <GridList
         aria-label={`${def?.label ?? 'All'} results`}
@@ -162,7 +92,7 @@ function ResultsPanel({ dataset }: { dataset: DiscoverDataset }) {
         renderEmptyState={
           view.status === 'error'
             ? () => (
-                <div className="ck-gridlist__empty cx-discover__error" role="alert">
+                <ErrorText as="div" className="ck-error--row ck-gridlist__empty">
                   <span>Couldn't load entries.</span>
                   <Button
                     size="sm"
@@ -170,21 +100,59 @@ function ResultsPanel({ dataset }: { dataset: DiscoverDataset }) {
                   >
                     Retry
                   </Button>
-                </div>
+                </ErrorText>
               )
             : undefined
         }
         data-testid="inflate-results"
         className="cx-discover cx-adhoc__results"
       >
-        {(entry) => (
-          <ResultRow
-            id={keyOf(entry)}
-            entry={entry}
-            added={added.has(keyOf(entry))}
-            showDataset={isAll}
-          />
-        )}
+        {(entry) => {
+          const isAdded = added.has(keyOf(entry));
+          const title = entry.title ?? entry.name;
+          return (
+            <EntryRow
+              id={keyOf(entry)}
+              entry={entry}
+              testId="inflate-result"
+              showDataset={isAll}
+              showRefType
+              showInvalid
+              invalidTestId="inflate-invalid"
+              attrs={{
+                'data-slug': entry.slug,
+                'data-dataset': entry.dataset,
+                'data-added': isAdded ? 'true' : undefined,
+                'data-invalid': entry.invalid ? '' : undefined,
+              }}
+              actions={
+                <>
+                  <ButtonLink
+                    href={entry.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    aria-label={`Open ${title} in a new tab`}
+                  >
+                    <Icon name="external" size={13} />
+                  </ButtonLink>
+                  <Button
+                    size="sm"
+                    variant={isAdded ? 'ghost' : 'secondary'}
+                    isDisabled={isAdded}
+                    onPress={() => addItem(entry.dataset as LinkableDatasetId, entry.slug)}
+                    aria-label={isAdded ? `${title} already added` : `Add ${title} to the recipe`}
+                    data-testid="inflate-add"
+                  >
+                    {isAdded ? '✓ Added' : '+ Add'}
+                  </Button>
+                </>
+              }
+            />
+          );
+        }}
       </GridList>
     </>
   );

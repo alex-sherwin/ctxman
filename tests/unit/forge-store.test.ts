@@ -20,12 +20,10 @@ import {
   $yamlMarkers,
   addLink,
   addLinks,
-  addTag,
   addableChildren,
   moveLink,
   parseLinkKey,
   removeLink,
-  removeTag,
   reorderLinks,
   revert,
   setContextTags,
@@ -34,8 +32,7 @@ import {
   setView,
   setYamlDraft,
 } from '../../src/stores/forge.ts';
-import { firstLine, lineCount, plural } from '../../src/ui/forge/notes.ts';
-import { nameProblem } from '../../src/ui/forge/validate-name.ts';
+import { nameProblem } from '../../src/lib/names.ts';
 
 const base: ContextDoc = {
   name: 'demo',
@@ -144,7 +141,7 @@ describe('editing actions', () => {
     const snapshot = JSON.stringify(before);
     addLink('bug', 'x');
     setLinkNotes('kb:one', 'other');
-    addTag('b');
+    setContextTags(['b']);
     expect(JSON.stringify(before)).toBe(snapshot);
   });
 
@@ -154,15 +151,6 @@ describe('editing actions', () => {
     setLinkNotes('task:two', '');
     expect(Object.hasOwn($working.get()?.links[1] ?? {}, 'notes')).toBe(false);
     expect($dirty.get()).toBe(false);
-  });
-
-  it('addTag ignores blanks and duplicates; removeTag removes', () => {
-    addTag('');
-    addTag('a');
-    addTag('b');
-    expect($working.get()?.tags).toEqual(['a', 'b']);
-    removeTag('a');
-    expect($working.get()?.tags).toEqual(['b']);
   });
 
   it('an edit clears a stale "saved" status', () => {
@@ -257,25 +245,6 @@ describe('YAML view', () => {
     setView('yaml');
     addLink('bug', 'fresh');
     expect($yamlDraft.get()).toContain('slug: fresh');
-  });
-});
-
-describe('notes helpers', () => {
-  it('lineCount ignores trailing newlines', () => {
-    expect(lineCount('a\nb\n\n')).toBe(2);
-    expect(lineCount('\n\n')).toBe(0);
-    expect(lineCount('one')).toBe(1);
-  });
-
-  it('firstLine picks the first non-blank line and truncates', () => {
-    expect(firstLine('\n  hello world  \nsecond', 60)).toBe('hello world');
-    expect(firstLine('abcdefghij', 5)).toBe('abcd…');
-    expect(firstLine('', 10)).toBe('');
-  });
-
-  it('plural', () => {
-    expect(plural(1, 'line')).toBe('1 line');
-    expect(plural(2, 'line')).toBe('2 lines');
   });
 });
 

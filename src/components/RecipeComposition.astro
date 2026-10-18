@@ -13,6 +13,7 @@ import {
 import type { RecipeContextRef, RecipeItemRef } from '../lib/entries.ts';
 import { PREAMBLE_TARGET_ID, blockTargetId } from '../ui/markdown/targets.ts';
 import DatasetBadge from './DatasetBadge.astro';
+import EmptyState from './EmptyState.astro';
 import MdEditButton from './MdEditButton.astro';
 import Panel from './Panel.astro';
 
@@ -81,9 +82,9 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
               data-missing={c.missing ? 'true' : undefined}
             >
               {c.missing ? (
-                <span class="cx-recipe__name cx-recipe__name--missing">{c.slug}</span>
+                <span class="ck-entryline__title ck-entryline__title--missing">{c.slug}</span>
               ) : (
-                <a class="cx-minilist__title cx-rowlink__main" href={c.url}>
+                <a class="ck-entryline__title cx-rowlink__main" href={c.url}>
                   {c.slug}
                 </a>
               )}
@@ -98,7 +99,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
           ))}
         </ul>
       ) : (
-        <p class="cx-recipe__none">None</p>
+        <EmptyState compact title="None" />
       )
     }
   </Panel>
@@ -116,9 +117,9 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
             >
               <DatasetBadge dataset={i.dataset} />
               {i.missing ? (
-                <span class="cx-recipe__name cx-recipe__name--missing">{i.title ?? i.slug}</span>
+                <span class="ck-entryline__title ck-entryline__title--missing">{i.title ?? i.slug}</span>
               ) : (
-                <a class="cx-minilist__title cx-rowlink__main cx-truncate" href={i.url}>
+                <a class="ck-entryline__title cx-rowlink__main cx-truncate" href={i.url}>
                   {i.title ?? i.slug}
                 </a>
               )}
@@ -132,7 +133,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
           ))}
         </ul>
       ) : (
-        <p class="cx-recipe__none">None</p>
+        <EmptyState compact title="None" />
       )
     }
   </Panel>
@@ -202,7 +203,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
       preambleHtml !== undefined ? (
         <div class="cx-recipe__body cx-prose cx-prose--compact" set:html={preambleHtml} />
       ) : (
-        <p class="cx-recipe__none">None</p>
+        <EmptyState compact title="None" />
       )
     }
   </Panel>
@@ -227,7 +228,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
           </div>
         ))
       ) : (
-        <p class="cx-recipe__none">None</p>
+        <EmptyState compact title="None" />
       )
     }
   </Panel>
@@ -282,7 +283,7 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
           </tbody>
         </table>
       ) : (
-        <p class="cx-recipe__none">None</p>
+        <EmptyState compact title="None" />
       )
     }
   </Panel>

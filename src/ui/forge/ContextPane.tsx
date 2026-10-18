@@ -3,7 +3,6 @@
 import { useStore } from '@nanostores/react';
 import { useCallback, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { formatRelative } from '../../lib/time.ts';
 import { $entries } from '../../stores/entries.ts';
 import {
   $baseline,
@@ -36,25 +35,26 @@ import {
 } from '../../stores/forge.ts';
 import { $now } from '../../stores/now.ts';
 import { isMac, modKeyLabel } from '../../stores/platform.ts';
+import { DraftNotice } from '../edit/DraftNotice.tsx';
+import { saveStatusView } from '../edit/status.ts';
 import { TagEditor } from '../edit/TagEditor.tsx';
 import { YamlIssues } from '../edit/YamlIssues.tsx';
 import {
   Button,
   ButtonLink,
-  Chip,
-  ChipGroup,
+  ChipToggle,
   CodeEditor,
   ConfirmDialog,
   EmptyState,
   Kbd,
   ListBoxItem,
+  Loading,
   OrderedList,
   Select,
-  Spinner,
+  Status,
   TextField,
 } from '../kit/index.ts';
 import type { CodeEditorApi } from '../kit/index.ts';
-import { DraftBanner } from './DraftBanner.tsx';
 import { LinkRow } from './LinkRow.tsx';
 import { isMissing, labelOf } from './link-label.ts';
 
@@ -106,24 +106,21 @@ function ViewToggle() {
   const check = useStore($yamlCheck);
   return (
     <>
-      <ChipGroup
+      <ChipToggle
         label="Editor view"
-        selectionMode="single"
-        disallowEmptySelection
-        selectedKeys={[view]}
-        onSelectionChange={(keys) => {
-          const next = [...keys][0];
-          if (next === 'form' || next === 'yaml') setView(next);
-        }}
-        data-testid="forge-view-toggle"
-      >
-        <Chip id="form" isDisabled={view === 'yaml' && !check.ok} data-testid="forge-view-form">
-          Form
-        </Chip>
-        <Chip id="yaml" data-testid="forge-view-yaml">
-          YAML
-        </Chip>
-      </ChipGroup>
+        value={view}
+        onChange={setView}
+        testId="forge-view-toggle"
+        options={[
+          {
+            id: 'form',
+            label: 'Form',
+            testId: 'forge-view-form',
+            isDisabled: view === 'yaml' && !check.ok,
+          },
+          { id: 'yaml', label: 'YAML', testId: 'forge-view-yaml' },
+        ]}
+      />
       {view === 'yaml' && !check.ok && (
         <span className="cx-subtle cx-forge__hint">
           Fix YAML errors to return to the form (or Revert)
@@ -284,32 +281,11 @@ function StatusLine() {
   const status = useStore($saveStatus);
   const now = useStore($now);
 
-  let kind: 'idle' | 'dirty' | 'error' | 'saved' = 'idle';
-  let text = 'No changes';
-  if (!check.ok) {
-    kind = 'error';
-    text = `Invalid YAML — ${check.issues.length} problem${check.issues.length === 1 ? '' : 's'}`;
-  } else if (status.kind === 'saving') {
-    text = 'Saving…';
-  } else if (status.kind === 'error') {
-    kind = 'error';
-    const detail = (status.issues ?? []).map((i) =>
-      i.path ? `${i.path}: ${i.message}` : i.message,
-    );
-    text = `Save failed: ${[status.message ?? 'unknown error', ...detail].join('; ')}`;
-  } else if (dirty) {
-    kind = 'dirty';
-    text = 'Unsaved changes';
-  } else if (status.kind === 'saved' && status.at !== undefined) {
-    kind = 'saved';
-    text = `Saved ${formatRelative(new Date(status.at).toISOString(), now)}`;
-  } else if (status.kind === 'deleted') {
-    text = status.message ?? 'Deleted';
-  }
+  const view = saveStatusView(status, dirty, now, check.ok ? 0 : check.issues.length);
   return (
-    <span className="cx-forge__status" role="status" data-kind={kind} data-testid="forge-status">
-      {text}
-    </span>
+    <Status kind={view.kind} testId="forge-status" className="cx-forge__status">
+      {view.text}
+    </Status>
   );
 }
 
@@ -364,11 +340,11 @@ function ContextFooter({ name }: { name: string }) {
 // ---------------------------------------------------------------- pane
 
 /** The working copy came back from a saved draft (a reload, a dev reload): say so, offer Discard. */
-function DraftNotice() {
+function RestoredDraft() {
   const restored = useStore($draftRestored);
   const dirty = useStore($dirty);
   if (restored === null || !dirty) return null;
-  return <DraftBanner testIdPrefix="forge" stale={restored.stale} onDiscard={revert} />;
+  return <DraftNotice testIdPrefix="forge" stale={restored.stale} onDiscard={revert} />;
 }
 
 function Body() {
@@ -381,11 +357,7 @@ function Body() {
   if (working !== null) return view === 'yaml' ? <YamlView name={working.name} /> : <FormView />;
 
   if (load.status === 'loading') {
-    return (
-      <div className="cx-forge__loading">
-        <Spinner label="Loading context" /> Loading context…
-      </div>
-    );
+    return <Loading label="Loading context…" />;
   }
   if (load.status === 'not-found' && url.context !== null && url.context !== 'new') {
     const slug = url.context;
@@ -429,14 +401,9 @@ function Body() {
             New context
           </Button>
           {status.kind === 'deleted' && (
-            <span
-              className="cx-forge__status"
-              role="status"
-              data-kind="saved"
-              data-testid="forge-status"
-            >
+            <Status kind="saved" testId="forge-status" className="cx-forge__status">
               {status.message}
-            </span>
+            </Status>
           )}
         </>
       }
@@ -458,7 +425,7 @@ export function ContextPane() {
       data-testid="forge-context"
     >
       <header className="cx-forge__pane-header">
-        <h2 id="forge-context-h" className="cx-forge__pane-title">
+        <h2 id="forge-context-h" className="cx-forge__pane-title ck-label">
           Context
         </h2>
         <ContextSelect />
@@ -474,7 +441,7 @@ export function ContextPane() {
           </ButtonLink>
         )}
       </header>
-      <DraftNotice />
+      <RestoredDraft />
       <div className="cx-forge__pane-body" data-view={working ? view : 'form'}>
         <Body />
       </div>

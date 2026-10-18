@@ -9,7 +9,7 @@ import {
   $ranOnce,
   startRun,
 } from '../../stores/inflate-run.ts';
-import { Badge, Button, EmptyState } from '../kit/index.ts';
+import { Badge, Button, EmptyState, Notice, Status } from '../kit/index.ts';
 import { plural } from './format.ts';
 
 const EXPECT_TONES: Record<StepExpect, 'success' | 'muted' | 'warn' | 'info' | 'danger'> = {
@@ -60,17 +60,12 @@ export function DirPlan() {
       data-testid="inflate-dirplan"
     >
       <header className="cx-forge__pane-header">
-        <h2 id="inflate-dirplan-h" className="cx-forge__pane-title">
+        <h2 id="inflate-dirplan-h" className="cx-forge__pane-title ck-label">
           Plan
         </h2>
-        <span
-          className="cx-forge__status cx-dirplan__status"
-          role="status"
-          data-kind={kind}
-          data-testid="inflate-dirplan-status"
-        >
+        <Status kind={kind} testId="inflate-dirplan-status" className="cx-forge__status">
           {text}
-        </span>
+        </Status>
         <span className="cx-inflate__spacer" />
         <Button
           variant="primary"
@@ -89,20 +84,29 @@ export function DirPlan() {
           </EmptyState>
         )}
         {blocking.length > 0 && (
-          <ul className="cx-dirplan__blocking" data-testid="inflate-dirplan-blocking">
-            {blocking.map((b) => (
-              <li key={`${b.code}:${b.message}`} data-code={b.code}>
-                {b.message}
-              </li>
-            ))}
-          </ul>
+          <Notice tone="danger" role="alert" testId="inflate-dirplan-blocking">
+            <ul>
+              {blocking.map((b) => (
+                <li key={`${b.code}:${b.message}`} data-code={b.code}>
+                  {b.message}
+                </li>
+              ))}
+            </ul>
+          </Notice>
         )}
         {warnings.length > 0 && (
-          <ul className="cx-comp__warnings" data-testid="inflate-dirplan-warnings">
-            {warnings.map((w) => (
-              <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
-            ))}
-          </ul>
+          <Notice
+            tone="warn"
+            role="none"
+            testId="inflate-dirplan-warnings"
+            className="cx-comp__warnings"
+          >
+            <ul>
+              {warnings.map((w) => (
+                <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
+              ))}
+            </ul>
+          </Notice>
         )}
         {steps.length > 0 && (
           <ol

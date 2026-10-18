@@ -2,6 +2,7 @@
 import { entryUrl } from '../datasets/registry.ts';
 import type { RelationRow } from '../lib/entries.ts';
 import DatasetBadge from './DatasetBadge.astro';
+import Icon from './Icon.astro';
 import StateBadge from './StateBadge.astro';
 
 // One line of the "Links to" / "Linked from" panels (RelationPanels.astro): the other entry (badge, title link,
@@ -32,12 +33,12 @@ const title = row.title;
     <DatasetBadge dataset={row.dataset} />
     {
       row.missing ? (
-        <span class="cx-minilist__title cx-relrow__title" title={row.key}>
+        <span class="ck-entryline__title cx-relrow__title" title={row.key}>
           {title}
         </span>
       ) : (
         <a
-          class="cx-minilist__title cx-rowlink__main cx-relrow__title"
+          class="ck-entryline__title cx-rowlink__main cx-relrow__title"
           href={entryUrl(row.dataset, row.slug)}
         >
           {title}
@@ -61,13 +62,13 @@ const title = row.title;
           aria-label={`Remove link to ${title}`}
           data-testid="relation-remove"
         >
-          <span class="ck-button__label" aria-hidden="true">×</span>
+          <span class="ck-button__label"><Icon name="close" size={12} /></span>
         </button>
       )
     }
   </span>
   <span class="cx-relrow__note">
-    <span class="cx-relrow__rel" data-testid="relation-label">{row.label}</span>
+    <span class="ck-label" data-testid="relation-label">{row.label}</span>
     {
       inFiles.length > 0 && (
         <span class="cx-relrow__in">

@@ -25,16 +25,12 @@
     align-items: center;
     gap: var(--sp-3);
     flex: none;
-    height: 36px;
+    height: var(--bar-h);
     padding: 0 var(--sp-4);
     border-bottom: 1px solid var(--border);
     background: var(--bg-deep);
   }
   .cx-forge__pane-title {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--accent-text);
   }
   .cx-forge__pane-body {
@@ -65,35 +61,16 @@
     align-items: center;
     gap: var(--sp-2);
     flex: none;
-    height: 40px;
+    height: var(--toolbar-h);
     padding: 0 var(--sp-4);
     border-top: 1px solid var(--accent-line);
     background: var(--bg-deep);
   }
   .cx-forge__status {
     margin-left: var(--sp-2);
-    font-size: var(--fs-sm);
-    color: var(--fg-muted);
-  }
-  .cx-forge__status[data-kind='dirty'] {
-    color: var(--warn-fg);
-  }
-  .cx-forge__status[data-kind='error'] {
-    color: var(--danger-fg);
-  }
-  .cx-forge__status[data-kind='saved'] {
-    color: var(--success-fg);
   }
   .cx-forge__hint {
     font-size: var(--fs-xs);
-  }
-  .cx-forge__loading {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-6) var(--sp-4);
-    color: var(--fg-subtle);
-    font-size: var(--fs-sm);
   }
   @media (max-width: 899px) {
     .cx-forge {
@@ -128,65 +105,10 @@
     min-height: 0;
     overflow: auto;
   }
-  .cx-discover__item {
-    display: flex;
-    flex: none; /* the list is a scrolling flex column: a long list (the All tab) must scroll, not squash its rows */
-    align-items: center;
-    gap: var(--sp-3);
-  }
-  .cx-discover__main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .cx-discover__line {
-    flex-wrap: nowrap;
-    gap: var(--sp-2);
-    min-width: 0;
-  }
-  .cx-discover__title {
-    font-weight: var(--fw-medium);
-    flex: 0 1 auto;
-  }
-  .cx-discover__slug {
-    flex: none;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
-  }
-  .cx-discover__desc {
-    font-size: var(--fs-sm);
-    color: var(--fg-muted);
-  }
-  .cx-discover__actions {
-    display: flex;
-    gap: var(--sp-2);
-    flex: none;
-  }
-  .cx-discover__item[data-added] .cx-discover__title {
-    color: var(--fg-muted);
-  }
-  /* an entry whose file fails its schema: dimmed text, the "invalid" badge stays at full strength */
-  .cx-discover__item[data-invalid] .cx-discover__title,
-  .cx-discover__item[data-invalid] .cx-discover__slug,
-  .cx-discover__item[data-invalid] .cx-discover__desc {
-    opacity: 0.6;
-  }
+  /* placement of the add-hint notice (look: kit Notice) */
   .cx-discover__hint {
     flex: none;
     margin: var(--sp-2) var(--sp-4) 0;
-    padding: var(--sp-1) var(--sp-3);
-    font-size: var(--fs-sm);
-    color: var(--info-fg);
-    background: var(--info-bg);
-    border-left: 2px solid var(--accent);
-  }
-  .cx-discover__error {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    color: var(--danger-fg);
   }
   /* the "All" tab lists the rows that did load and says what did not */
   .cx-discover__notice {
@@ -194,29 +116,6 @@
     padding: var(--sp-1) var(--sp-4);
     font-size: var(--fs-sm);
     border-bottom: 1px solid var(--border);
-  }
-
-  /* ---------- restored draft (ROUND3_SPEC §G), shared with the Inflate island ---------- */
-  .cx-draftbanner {
-    display: flex;
-    align-items: center;
-    flex: none;
-    gap: var(--sp-3);
-    padding: var(--sp-1) var(--sp-4);
-    font-size: var(--fs-sm);
-    color: var(--info-fg);
-    background: var(--info-bg);
-    border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--accent);
-  }
-  .cx-draftbanner[data-stale] {
-    color: var(--warn-fg);
-    background: var(--warn-bg);
-    border-left-color: var(--warn-fg);
-  }
-  .cx-draftbanner__text {
-    flex: 1;
-    min-width: 0;
   }
 
   /* ---------- H.5 context pane ---------- */
@@ -271,16 +170,6 @@
     min-width: 0;
     min-height: var(--row-h);
   }
-  .cx-link__title {
-    font-weight: var(--fw-medium);
-    color: var(--fg);
-    min-width: 0;
-  }
-  .cx-link__slug {
-    flex: none;
-    font-size: var(--fs-xs);
-    color: var(--fg-subtle);
-  }
   .cx-link__actions {
     margin-left: auto;
     flex: none;
@@ -300,10 +189,6 @@
     flex-direction: column;
     gap: var(--sp-3);
     min-width: min(420px, 80vw);
-  }
-  .cx-newctx__error {
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
   }
 
   /* ---------- H.7 YAML view ---------- */

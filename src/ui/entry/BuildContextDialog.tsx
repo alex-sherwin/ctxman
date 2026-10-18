@@ -9,12 +9,12 @@ import { Form } from 'react-aria-components';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { nameProblem } from '../../lib/names.ts';
 import { $entries, ensureEntries } from '../../stores/entries.ts';
-import { Button } from '../kit/Button.tsx';
 import { Checkbox } from '../kit/Checkbox.tsx';
-import { Dialog, Modal } from '../kit/Dialog.tsx';
+import { Dialog, FormDialogFooter, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ListBoxItem } from '../kit/ListBox.tsx';
 import { Select } from '../kit/Select.tsx';
+import { ErrorText } from '../kit/Status.tsx';
 import { appendContextLinks, createContextWithLinks } from './entry-api.ts';
 import { buildContextLinks } from './entry-helpers.ts';
 
@@ -106,7 +106,7 @@ export function BuildContextDialog({
   const rows = (heading: string, items: readonly KeyedEntry[]) =>
     items.length === 0 ? null : (
       <fieldset className="cx-bctx__group">
-        <legend className="cx-bctx__legend">{heading}</legend>
+        <legend className="cx-label cx-bctx__legend">{heading}</legend>
         {items.map((item) => (
           <Checkbox
             key={item.key}
@@ -115,8 +115,8 @@ export function BuildContextDialog({
             data-testid="build-context-item"
             data-key={item.key}
           >
-            <span className="cx-bctx__title">{item.title}</span>
-            <code className="cx-bctx__key">{item.key}</code>
+            <span className="ck-entryline__title cx-truncate">{item.title}</span>
+            <code className="ck-entryline__slug cx-bctx__key">{item.key}</code>
           </Checkbox>
         ))}
       </fieldset>
@@ -136,21 +136,15 @@ export function BuildContextDialog({
       <Dialog
         title="Build context from this project"
         footer={
-          <>
-            <Button variant="secondary" onPress={onClose} data-testid="build-context-cancel">
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              form={FORM_ID}
-              isDisabled={!valid}
-              isPending={pending}
-              data-testid="build-context-submit"
-            >
-              {creating ? 'Create context' : 'Add to context'}
-            </Button>
-          </>
+          <FormDialogFooter
+            formId={FORM_ID}
+            submitLabel={creating ? 'Create context' : 'Add to context'}
+            onCancel={onClose}
+            isDisabled={!valid}
+            isPending={pending}
+            cancelTestId="build-context-cancel"
+            submitTestId="build-context-submit"
+          />
         }
       >
         <Form
@@ -160,10 +154,10 @@ export function BuildContextDialog({
           onSubmit={(e) => void onSubmit(e)}
         >
           <fieldset className="cx-bctx__group">
-            <legend className="cx-bctx__legend">The project</legend>
+            <legend className="cx-label cx-bctx__legend">The project</legend>
             <Checkbox isSelected isDisabled data-testid="build-context-item" data-key={selfKey}>
-              <span className="cx-bctx__title">{title}</span>
-              <code className="cx-bctx__key">{selfKey}</code>
+              <span className="ck-entryline__title cx-truncate">{title}</span>
+              <code className="ck-entryline__slug cx-bctx__key">{selfKey}</code>
             </Checkbox>
           </fieldset>
           {rows('Children', childEntries)}
@@ -208,11 +202,7 @@ export function BuildContextDialog({
               inputTestId="build-context-name"
             />
           )}
-          {error !== null && (
-            <p className="cx-entrydlg__error" role="alert" data-testid="build-context-error">
-              {error}
-            </p>
-          )}
+          {error !== null && <ErrorText testId="build-context-error">{error}</ErrorText>}
         </Form>
       </Dialog>
     </Modal>

@@ -27,15 +27,6 @@
   .cx-dform__summary {
     font-size: var(--fs-sm);
   }
-  .cx-dform__problems {
-    margin: 0;
-    padding-left: var(--sp-4);
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
-  }
-  .cx-dform__fatal {
-    color: var(--danger-fg);
-  }
   .cx-dform__body[data-view='yaml'] {
     height: calc(100dvh - var(--header-h) - 260px);
     min-height: 360px;
@@ -58,11 +49,11 @@
     padding-top: var(--sp-2);
     border-top: 1px solid var(--border);
   }
-  .cx-dform__footer .ck-button--danger {
+  .cx-dform__delete {
     margin-left: auto;
   }
 
-  /* NewEntryForm (round 3): state + project side by side, tags and problem text. */
+  /* NewEntryForm (round 3): state + project side by side, tags. */
   .cx-nform__row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -71,10 +62,5 @@
   }
   .cx-nform__tags {
     min-width: 0;
-  }
-  .cx-nform__problem {
-    margin: 0;
-    font-size: var(--fs-sm);
-    color: var(--danger-fg);
   }
 }

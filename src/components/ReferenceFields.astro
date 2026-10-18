@@ -19,7 +19,7 @@ const isUrl = /^https?:\/\//i.test(where.value);
 ---
 
 <dl class="cx-fields" data-testid="reference-fields">
-  <dt>Type</dt>
+  <dt class="ck-label">Type</dt>
   <dd>
     <span class="ck-badge ck-badge--muted ck-badge--mono">{data.type}</span>
     {" "}
@@ -33,7 +33,7 @@ const isUrl = /^https?:\/\//i.test(where.value);
     }
     <span class="cx-subtle">{REFERENCE_TYPE_LABELS[data.type]}</span>
   </dd>
-  <dt>{where.label}</dt>
+  <dt class="ck-label">{where.label}</dt>
   <dd>
     {
       isUrl ? (
@@ -47,8 +47,8 @@ const isUrl = /^https?:\/\//i.test(where.value);
     {" "}
     <CopyButton text={where.value} ariaLabel={`Copy ${where.label.toLowerCase()}`} />
   </dd>
-  <dt>Subpath</dt>
+  <dt class="ck-label">Subpath</dt>
   <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{uriKind === 'archive' ? 'archive root' : 'repo root'}</span>}</dd>
-  <dt>Owner</dt>
+  <dt class="ck-label">Owner</dt>
   <dd>{OWNER_LABELS[data.owner]}</dd>
 </dl>

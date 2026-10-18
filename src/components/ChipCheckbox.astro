@@ -19,7 +19,7 @@ const { name, value, label, id, testid, type = 'checkbox', count, checked = fals
   Astro.props;
 ---
 
-<label class="ck-chip ck-chip--sm" data-ds={dataset}>
+<label class="ck-chip" data-ds={dataset}>
   <input class="ck-sr-only" type={type} name={name} value={value} id={id} checked={checked} data-testid={testid} />
   {dataset && <span class="ck-chip__dot" aria-hidden="true" />}
   <span class="ck-chip__label">{label}</span>

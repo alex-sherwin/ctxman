@@ -73,10 +73,10 @@ const newHref =
       <EmptyState
         title={
           all.length > 0
-            ? 'No entries match these filters.'
+            ? 'No entries match these filters'
             : params.project !== null
-              ? `No ${def.plural} in this project yet.`
-              : `No ${def.plural} yet.`
+              ? `No ${def.plural} in this project yet`
+              : `No ${def.plural} yet`
         }
       >
         {all.length > 0 ? <a href={`/${def.id}`}>Clear filters</a> : <a href={newHref}>Add the first one</a>}

@@ -19,12 +19,14 @@ import { $dirPlan, $effectiveDir, selectView } from '../../stores/inflate-run.ts
 import {
   Button,
   Cell,
-  Chip,
-  ChipGroup,
+  ChipToggle,
   CodeEditor,
   Column,
   CopyButton,
+  ErrorText,
+  Notice,
   Row,
+  Status,
   Table,
   TableBody,
   TableHeader,
@@ -57,14 +59,13 @@ function RenderStatus({ shown }: { shown: Shown }) {
     text = `${formatBytes(bytes)} · ${counts.included} items`;
   }
   return (
-    <span
+    <Status
+      kind={kind}
+      testId="inflate-render-status"
       className="cx-forge__status cx-preview__status"
-      role="status"
-      data-kind={kind}
-      data-testid="inflate-render-status"
     >
       {text}
-    </span>
+    </Status>
   );
 }
 
@@ -82,12 +83,7 @@ function download(name: string, text: string): void {
 function PreviewActions({ name, markdown }: { name: string; markdown: string | null }) {
   return (
     <>
-      <CopyButton
-        size="sm"
-        text={markdown ?? ''}
-        isDisabled={markdown === null}
-        data-testid="inflate-copy"
-      />
+      <CopyButton text={markdown ?? ''} isDisabled={markdown === null} data-testid="inflate-copy" />
       <Button
         size="sm"
         onPress={() => {
@@ -200,14 +196,9 @@ function WriteBox({ name, outDir }: { name: string; outDir: string }) {
           Write file
         </Button>
       </div>
-      <p
-        className="cx-preview__writestatus"
-        role="status"
-        data-kind={kind}
-        data-testid="inflate-write-status"
-      >
+      <Status kind={kind} testId="inflate-write-status" className="cx-preview__writestatus">
         {text}
-      </p>
+      </Status>
     </div>
   );
 }
@@ -215,24 +206,20 @@ function WriteBox({ name, outDir }: { name: string; outDir: string }) {
 /** Relative / Absolute toggle of the document shown (only with a working directory). */
 function PathsToggle({ paths }: { paths: 'relative' | 'absolute' }) {
   return (
-    <ChipGroup
+    <ChipToggle
       label="Paths"
-      selectionMode="single"
-      disallowEmptySelection
-      selectedKeys={[paths]}
-      onSelectionChange={(keys) => {
-        const next = [...keys][0];
-        if (next === 'relative' || next === 'absolute') setPaths(next);
-      }}
-      data-testid="inflate-preview-paths"
-    >
-      <Chip id="relative" data-testid="inflate-preview-paths-relative">
-        Relative to directory
-      </Chip>
-      <Chip id="absolute" data-testid="inflate-preview-paths-absolute">
-        Absolute
-      </Chip>
-    </ChipGroup>
+      value={paths}
+      onChange={setPaths}
+      testId="inflate-preview-paths"
+      options={[
+        {
+          id: 'relative',
+          label: 'Relative to directory',
+          testId: 'inflate-preview-paths-relative',
+        },
+        { id: 'absolute', label: 'Absolute', testId: 'inflate-preview-paths-absolute' },
+      ]}
+    />
   );
 }
 
@@ -250,14 +237,9 @@ function RunHint() {
         .
       </p>
       {(result?.blocking ?? []).map((b) => (
-        <p
-          key={`${b.code}:${b.message}`}
-          className="cx-preview__writestatus"
-          data-kind="error"
-          data-testid="inflate-preview-blocking"
-        >
+        <ErrorText key={`${b.code}:${b.message}`} testId="inflate-preview-blocking">
           {b.message}
-        </p>
+        </ErrorText>
       ))}
       <div className="cx-row">
         <Button size="sm" onPress={() => selectView('run')} data-testid="inflate-preview-run">
@@ -290,7 +272,7 @@ export function PreviewPane({ outDir }: { outDir: string }) {
     >
       <div className="cx-preview__main">
         <header className="cx-forge__pane-header">
-          <h2 id="inflate-preview-h" className="cx-forge__pane-title">
+          <h2 id="inflate-preview-h" className="cx-forge__pane-title ck-label">
             Preview
           </h2>
           <RenderStatus shown={shown} />
@@ -312,11 +294,13 @@ export function PreviewPane({ outDir }: { outDir: string }) {
       <aside className="cx-preview__side" aria-label="Output">
         {relative ? <RunHint /> : <WriteBox name={working.name} outDir={outDir} />}
         {warnings.length > 0 && (
-          <ul className="cx-preview__warnings" data-testid="inflate-manifest-warnings">
-            {warnings.map((w) => (
-              <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
-            ))}
-          </ul>
+          <Notice tone="warn" role="none" testId="inflate-manifest-warnings">
+            <ul>
+              {warnings.map((w) => (
+                <li key={`${w.code}:${w.key ?? ''}:${w.message}`}>{w.message}</li>
+              ))}
+            </ul>
+          </Notice>
         )}
         {result !== null && <ManifestTable manifest={result.manifest} />}
       </aside>
