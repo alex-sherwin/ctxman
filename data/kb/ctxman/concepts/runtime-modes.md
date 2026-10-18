@@ -26,7 +26,8 @@ Consequences:
 * Saving a markdown file from the browser (`PUT /api/doc/...`) is a write under a watched folder, so it triggers the reload too; the editor returns to the preview, keeps "Saved" across the reload and reloads once more if the content layer had not caught up (see [Editing](/concepts/editing.md)). Writing a reference through the API behaves the same, and server-rendered pages see it about 0.6 s later.
 * Writing a `kb/*/main.md` triggers one reload; the add scripts for bundles, skills and references do the same, so the tools page stores its last run in `sessionStorage` and restores it.
 * Contexts are written by the forge at runtime, and recipes by the [Inflate](/concepts/context-inflate.md) tool. Using a watching loader for them would reload the page after every save, so `context` and `recipe` share one custom YAML loader (`yamlDirLoader`) with no file watcher.
-* Generated documents written to `out/` do not reload the browser; that folder is outside the watched data folders and is gitignored.
+* Generated documents written to `out/` do not reload the browser; that folder is outside the watched data folders and is gitignored. A working directory of an Inflate run must be outside the repository and the data directory, so a run (symlinks, clones, copies) never reaches the watcher either.
+* The Inflate job store lives in server memory (on `globalThis`, so Vite module reloads keep it). A restart of the dev or built server forgets every job; the Run view then says the run is no longer known, while the files the run wrote stay on disk.
 
 ## Built server (`pnpm run build`, then `pnpm run start`)
 

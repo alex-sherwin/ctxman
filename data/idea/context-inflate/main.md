@@ -12,7 +12,7 @@ generated:
 
 # Context inflate
 
-**Status: built.** Context Inflate shipped after v1 as the `recipe` dataset plus the tool at `/inflate`: a recipe selects contexts and extra items, sets an include mode per item and an order, injects markdown and a preamble, and generates one markdown document and a manifest for Claude Code, Codex or a generic agent. How it works is documented in the concept `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman). The rest of this entry is the original proposal, kept for history, followed by how each open question was settled.
+**Status: built.** Context Inflate shipped after v1 as the `recipe` dataset plus the tool at `/inflate`: a recipe selects contexts and extra items, sets an include mode per item and an order, injects markdown and a preamble, and generates one markdown document and a manifest for Claude Code, Codex or a generic agent. Inflate v2 (2026-10-18) added working directories: a recipe can name an output directory and a run then places symlinks to knowledge bundles, copied skills, cloned or symlinked repositories and installed remote skills there, writes an `LLM_CONTEXT.md` with paths relative to the directory (plus `CLAUDE.md` / `AGENTS.md` / `.gitignore` stubs) and records what it owns in `.ctxman-inflate.json`; see [inflate-working-dir](ctxman:feature/inflate-working-dir). How it works is documented in the concept `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman). The rest of this entry is the original proposal, kept for history, followed by how each open question was settled.
 
 ## Problem
 
@@ -37,7 +37,7 @@ and prepares everything the linked items point to in a form that harness can con
 ## How the open questions were settled
 
 * **Which files does each harness read?** Per target the document header names the skills directory (`.claude/skills` for Claude Code, `.agents/skills` for Codex and the generic target) and the instructions file (`CLAUDE.md`, `AGENTS.md`, none). The tool writes one markdown document rather than harness-native files, and skills are installed by commands the document lists.
-* **Write into a project or review first?** Review first: the preview shows the document and its manifest, then you copy it, download it, or write it to an absolute `.md` path (default `out/<recipe>.md`, gitignored). The write endpoint refuses paths inside `data/`, `node_modules` or `.git`.
+* **Write into a project or review first?** Review first: the preview shows the document and its manifest, then you copy it, download it, or write it to an absolute `.md` path (default `out/<recipe>.md`, gitignored). The write endpoint refuses paths inside `data/`, `node_modules` or `.git`. Since v2 there is a second path: inflate into a working directory outside the repository, after a dry run that lists every step and flags anything unsafe; later runs update that directory and remove only what ctxman recorded.
 * **Very large bundles?** Each item has an include mode, from a one-line pointer to the whole bundle, and the manifest warns when the document passes 512 KB.
 * **Conflicting instructions between contexts?** Not resolved automatically. Contexts keep their own sections and notes, labelled by context, in the order you choose, and you can add your own markdown to settle a conflict.
 * **Page, script or both?** A page (`/inflate`) backed by JSON endpoints. There is no CLI script.

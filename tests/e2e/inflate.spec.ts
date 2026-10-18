@@ -8,6 +8,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Locator, Page, Response } from '@playwright/test';
 import {
+  API,
   SEED_RECIPE,
   createRecipeCopy,
   dataExists,
@@ -661,6 +662,42 @@ test.describe('output directory', () => {
     const reset = readRecipeYaml(name).output as Record<string, unknown>;
     expect(reset).not.toHaveProperty('contextFile');
     expect(reset).not.toHaveProperty('stubs');
+  });
+
+  test('Subpath only is offered only for a reference that has a subpath', async ({
+    page,
+    request,
+  }) => {
+    // reference/blasto (seed) is a remote-repo without a subpath; reference/astro-docs has one.
+    const name = uniqueName('e2e-rcp');
+    created.add(name);
+    const response = await request.post(`${API}/recipe`, {
+      data: {
+        name,
+        description: 'subpath only visibility',
+        target: 'claude-code',
+        layout: 'grouped',
+        contexts: [],
+        items: [
+          { dataset: 'reference', slug: 'blasto' },
+          { dataset: 'reference', slug: 'astro-docs' },
+        ],
+        overrides: [
+          { key: 'reference/blasto', material: 'clone' },
+          { key: 'reference/astro-docs', material: 'clone' },
+        ],
+        output: { dir: `~/ctxman-inflate/${name}` },
+      },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    await openInflate(page, name);
+    const plain = segmentRow(page, 'reference/blasto');
+    await expect(plain.getByTestId('inflate-mopt-cloneDepth')).toBeVisible();
+    await expect(plain.getByTestId('inflate-mopt-branch')).toBeVisible();
+    await expect(plain.getByTestId('inflate-mopt-subpathOnly')).toHaveCount(0);
+    await expect(
+      segmentRow(page, 'reference/astro-docs').getByTestId('inflate-mopt-subpathOnly'),
+    ).toBeVisible();
   });
 
   test('a repository row offers its material, clone options and Primary; they are saved', async ({

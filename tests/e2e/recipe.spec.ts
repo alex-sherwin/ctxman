@@ -62,6 +62,28 @@ test.describe('recipe detail', () => {
     await expect(output).toContainText('~/ctxman-inflate/ctxman-dev-brief');
     await expect(output).toContainText('LLM_CONTEXT.md');
     await expect(output.getByTestId('recipe-output-primary')).toContainText('reference/astro-docs');
+    // The Overrides table has a Material column: the clone override with its options and the primary marker.
+    const astroOverride = composition.locator(
+      '[data-testid="recipe-override"][data-key="reference/astro-docs"]',
+    );
+    await expect(astroOverride.getByTestId('recipe-override-material')).toContainText('clone');
+    await expect(astroOverride.getByTestId('recipe-override-material')).toContainText(
+      'subpathOnly=true',
+    );
+    await expect(astroOverride.getByTestId('recipe-override-primary')).toHaveText('primary');
+    await expect(
+      composition
+        .locator('[data-testid="recipe-override"][data-key="kb/ctxman"]')
+        .getByTestId('recipe-override-primary'),
+    ).toHaveCount(0);
+    // The Details panel states the output facts too.
+    const meta = page.getByTestId('detail-meta');
+    await expect(meta.getByTestId('meta-output-dir')).toHaveText(
+      '~/ctxman-inflate/ctxman-dev-brief',
+    );
+    await expect(meta.getByTestId('meta-output-primary')).toContainText('reference/astro-docs');
+    await expect(meta.getByTestId('meta-output-stubs')).toHaveText('CLAUDE.md stub, .gitignore');
+    await expect(meta.getByTestId('meta-output-contextfile')).toHaveCount(0);
     await expect(composition.getByTestId('recipe-order')).toBeVisible();
     // The preamble and every markdown block have a pencil that the MarkdownTargets island enables.
     await expect(composition.getByTestId('recipe-edit-preamble')).toBeEnabled();

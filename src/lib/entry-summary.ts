@@ -35,6 +35,8 @@ export interface EntrySummary {
   uriKind?: RemoteUriKind;
   /** reference only: `me` | `not-me` (omitted when absent or not a valid owner). */
   owner?: Owner;
+  /** reference only: the `subpath`, trimmed and without leading / trailing slashes (omitted when empty). */
+  subpath?: string;
   /** context only. */
   linkCount?: number;
   /** recipe only (from `data.target`). */
@@ -128,6 +130,10 @@ export function summarize(
     const owner = data.owner;
     if (typeof owner === 'string' && (OWNERS as readonly string[]).includes(owner)) {
       summary.owner = owner as Owner;
+    }
+    if (typeof data.subpath === 'string') {
+      const subpath = data.subpath.trim().replace(/^\/+|\/+$/g, '');
+      if (subpath !== '') summary.subpath = subpath;
     }
   }
   if (dataset === 'reference' && isReferenceType(data.type)) {

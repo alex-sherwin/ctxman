@@ -2,7 +2,16 @@
 import { getDataset } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { SkillData } from '../datasets/schemas.ts';
-import { INFLATE_LAYOUTS, LAYOUT_LABELS, TARGETS, isInflateTarget } from '../lib/inflate/catalog.ts';
+import {
+  DEFAULT_CONTEXT_FILE,
+  INFLATE_LAYOUTS,
+  LAYOUT_LABELS,
+  STUB_IDS,
+  STUB_LABELS,
+  TARGETS,
+  isInflateTarget,
+  stubDefaults,
+} from '../lib/inflate/catalog.ts';
 import type { InflateLayout } from '../lib/inflate/catalog.ts';
 import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
 import { stringifyYaml } from '../lib/yaml.ts';
@@ -54,6 +63,20 @@ const recipeLayout =
   kind === 'recipe' && (INFLATE_LAYOUTS as readonly unknown[]).includes(data.layout)
     ? LAYOUT_LABELS[data.layout as InflateLayout]
     : undefined;
+
+// Recipe output (Inflate into a working directory): where a run writes, and what it writes besides the document.
+const recipeOutput = kind === 'recipe' && isRecord(data.output) ? data.output : undefined;
+const outputDir = str(recipeOutput?.dir);
+const outputContextFile = str(recipeOutput?.contextFile);
+const outputPrimary = str(recipeOutput?.primary);
+const outputStubs = (() => {
+  if (outputDir === undefined || !isInflateTarget(data.target)) return [];
+  const given = isRecord(recipeOutput?.stubs) ? recipeOutput.stubs : {};
+  const defaults = stubDefaults(data.target);
+  return STUB_IDS.filter((id) => (typeof given[id] === 'boolean' ? given[id] : defaults[id])).map(
+    (id) => STUB_LABELS[id],
+  );
+})();
 
 const generated = isRecord(data.generated) ? data.generated : undefined;
 const generatedBy = str(generated?.by);
@@ -229,6 +252,46 @@ const filePath = `data/${file}`;
       )
     }
     {recipeLayout && <MetaRow label="Layout">{recipeLayout}</MetaRow>}
+    {
+      kind === 'recipe' && (
+        <MetaRow label="Directory">
+          {outputDir !== undefined ? (
+            <code class="cx-mono" data-testid="meta-output-dir">
+              {outputDir}
+            </code>
+          ) : (
+            <span class="cx-subtle" data-testid="meta-output-dir">
+              document only
+            </span>
+          )}
+        </MetaRow>
+      )
+    }
+    {
+      outputContextFile !== undefined && outputContextFile !== DEFAULT_CONTEXT_FILE && (
+        <MetaRow label="Context file">
+          <code class="cx-mono" data-testid="meta-output-contextfile">
+            {outputContextFile}
+          </code>
+        </MetaRow>
+      )
+    }
+    {
+      outputPrimary !== undefined && (
+        <MetaRow label="Primary">
+          <a href={`/${outputPrimary}`} data-testid="meta-output-primary">
+            <code class="cx-mono">{outputPrimary}</code>
+          </a>
+        </MetaRow>
+      )
+    }
+    {
+      outputStubs.length > 0 && (
+        <MetaRow label="Generated files">
+          <span data-testid="meta-output-stubs">{outputStubs.join(', ')}</span>
+        </MetaRow>
+      )
+    }
     <MetaRow label="File">
       <code class="cx-mono">{filePath}</code>
       {" "}

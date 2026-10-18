@@ -165,6 +165,25 @@ describe('summarize', () => {
       expect('owner' in summarize('reference', 'x', {}, MODIFIED, NOW)).toBe(false);
     });
 
+    it('sets subpath trimmed without outer slashes and omits it when empty or not a string', () => {
+      const subpath = (data: Record<string, unknown>) =>
+        summarize('reference', 'x', { type: 'remote-repo', ...data }, MODIFIED, NOW).subpath;
+      expect(subpath({ subpath: 'docs/en' })).toBe('docs/en');
+      expect(subpath({ subpath: ' /docs/en/ ' })).toBe('docs/en');
+      expect(subpath({ subpath: '' })).toBeUndefined();
+      expect(subpath({ subpath: '  / ' })).toBeUndefined();
+      expect(subpath({ subpath: null })).toBeUndefined();
+      expect(subpath({ subpath: 3 })).toBeUndefined();
+      expect(subpath({})).toBeUndefined();
+      expect('subpath' in summarize('reference', 'x', { subpath: '' }, MODIFIED, NOW)).toBe(false);
+    });
+
+    it('subpath is reference-only', () => {
+      for (const dataset of ['kb', 'skill', 'context', 'recipe'] as const) {
+        expect(summarize(dataset, 'x', { subpath: 'a' }, MODIFIED, NOW).subpath).toBeUndefined();
+      }
+    });
+
     it('owner is reference-only', () => {
       for (const dataset of ['kb', 'skill', 'context', 'recipe'] as const) {
         expect(summarize(dataset, 'x', { owner: 'me' }, MODIFIED, NOW).owner).toBeUndefined();

@@ -169,6 +169,31 @@ describe('itemMetaFromSummary (spec 5.4)', () => {
     );
     expect(itemMetaFromSummary(s)).toMatchObject({ refType: 'remote-skill', uriKind: 'archive' });
   });
+
+  it('carries the cleaned subpath of a reference and omits it otherwise', () => {
+    const withSub = summarize(
+      'reference',
+      'rr',
+      {
+        name: 'rr',
+        description: 'd',
+        type: 'remote-repo',
+        uri: 'https://h.test/o/r.git',
+        subpath: '/docs/en/',
+      },
+      new Date(0),
+      NOW,
+    );
+    expect(itemMetaFromSummary(withSub).subpath).toBe('docs/en');
+    const without = summarize(
+      'reference',
+      'rr',
+      { name: 'rr', description: 'd', type: 'remote-repo', uri: 'https://h.test/o/r.git' },
+      new Date(0),
+      NOW,
+    );
+    expect('subpath' in itemMetaFromSummary(without)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------- expandRecipe

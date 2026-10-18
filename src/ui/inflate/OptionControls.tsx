@@ -186,7 +186,9 @@ function MaterialOption({ seg, id }: { seg: ItemSegment; id: MaterialOptionId })
     case 'text':
       return <BranchOption seg={seg} def={def} />;
     case 'checkbox':
-      // The browser does not know the reference's subpath; the planner ignores the flag without one.
+      // Sparse checkout needs a subpath to check out: offered only when the reference has one (the entry
+      // summary carries it; the planner ignores the flag without one).
+      if (seg.meta?.subpath === undefined) return null;
       return (
         <span className="cx-seg__opt" title={def.help}>
           <Checkbox

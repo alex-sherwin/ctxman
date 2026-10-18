@@ -17,7 +17,7 @@ okf_version: "0.2"
 ## Features
 
 * [Context forge](/concepts/context-forge.md) - How contexts work and how to build one in the forge UI.
-* [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document for Claude Code, Codex or a generic agent: modes, targets, output format, API and write-path safety.
+* [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document, or into a working directory (symlinks, copies, clones, installed skills, an LLM_CONTEXT.md map) for Claude Code, Codex or a generic agent: modes, materials, targets, runs, safety rules and API.
 * [Search](/concepts/search.md) - The global fuzzy search: what is indexed, how it ranks, and its URL parameters.
 * [Routes and API](/concepts/routes-and-api.md) - Every page route, URL parameter and JSON endpoint.
 

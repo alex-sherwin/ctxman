@@ -24,7 +24,7 @@ All routes are server-rendered. Any UI state that selects data lives in the URL,
 | `/new/<dataset>` | Create form for `reference`, `context` or `recipe`; any other dataset is a 404 (use the Tools page) |
 | `/recipe`, `/recipe/<slug>` | The list and detail page of recipes (the generic dataset routes). The detail page shows the composition read-only with an "Open in Inflate" button. |
 | `/forge` | The [context forge](/concepts/context-forge.md) |
-| `/inflate` | [Context inflate](/concepts/context-inflate.md): compose a recipe and generate the markdown document |
+| `/inflate` | [Context inflate](/concepts/context-inflate.md): compose a recipe, generate the markdown document, or run it into a working directory (`view=run`) |
 | `/tools` | Run allowlisted check scripts and the add-entry script; a successfully created entry is opened automatically |
 | `/search` | Redirects to `/?search=1&sq=...&in=...` |
 
@@ -40,7 +40,7 @@ For example, `/kb/ctxman/doc/concepts/search` renders the [search concept](/conc
 | `sort` | `modified` (default), `name` or `state` |
 | `type` | References only: `local-repo`, `remote-repo` or `remote-skill` |
 
-The global search uses a different set (`search`, `sq`, `in`); see [Search](/concepts/search.md). The forge uses `context`, `dataset`, `q`, `state` and `tag`. Inflate uses `recipe` (a name, or `new`), `view` (`compose` or `preview`), `dataset` (the ad hoc item tab) and `q`. The tools page uses `add` to preselect a dataset.
+The global search uses a different set (`search`, `sq`, `in`); see [Search](/concepts/search.md). The forge uses `context`, `dataset`, `q`, `state` and `tag`. Inflate uses `recipe` (a name, or `new`), `view` (`compose`, `preview` or `run`), `dataset` (the ad hoc item tab), `q`, `job` (the run being watched; only with `view=run`) and `paths` (`absolute` shows the single-document preview; relative is the default and omitted). The tools page uses `add` to preselect a dataset.
 
 ## Edit parameters
 
@@ -70,18 +70,22 @@ The global search uses a different set (`search`, `sq`, `in`); see [Search](/con
 | `GET /api/doc/<dataset>/<slug>/<path>` | Read one existing `.md` file of an okf bundle or skill: `{ path, markdown, lastModified, bytes, warnings }` |
 | `PUT /api/doc/<dataset>/<slug>/<path>` | Save it: body `{ markdown, ifUnmodifiedSince? }`, answer `{ path, bytes, lastModified, warnings }` |
 | `GET /api/ide/open` | Is an IDE command available: `{ available, command }`; never starts anything |
-| `POST /api/ide/open` | Open `{ dataset, slug, path? }` in the IDE: `{ ok, command }` |
+| `POST /api/ide/open` | Open `{ dataset, slug, path? }` in the IDE, or `{ dir }` (a directory ctxman inflated, opened as a workspace on its own): `{ ok, command }` |
 | `GET /api/schemas/<dataset>` | The committed JSON Schema of `reference`, `context` or `recipe` (`application/schema+json`) |
 | `POST /api/inflate/render` | Render a recipe (saved or not) to `{ markdown, manifest }`; writes nothing |
 | `POST /api/inflate/write` | Render `{ recipe, path }` and write the markdown to an absolute `.md` path |
+| `POST /api/inflate/plan` | Dry run of a working-directory run: `{ recipe, overrides? }` to the blocking problems, warnings, steps and the relative document; writes nothing |
+| `POST /api/inflate/run` | Start the run in the background: 202 `{ jobId, job }`; one run at a time |
+| `GET /api/inflate/jobs/<id>` | The job: status, steps with their output tails, summary |
+| `POST /api/inflate/jobs/<id>/cancel` | Cancel a queued or running job |
 | `POST /api/scripts/<name>` | Run an allowlisted script and return its exit code, stdout and stderr |
 
-Every response is JSON with `cache-control: no-store`. Context reads and writes return `{ context, lastModified }`, recipe ones `{ recipe, lastModified }` and reference ones `{ reference, lastModified }`; delete returns 204 with no body, and creating a recipe or reference also sets `Location: /<dataset>/<name>`. Mutating endpoints accept JSON only (415 otherwise) and reject requests whose `Origin` differs from the server's (403). Errors use a body of `{ error, message, issues? }`: 400 for a bad body, slug or dataset parameter, 404 for a missing context or recipe, 409 when one exists, and 422 when a context or recipe file on disk fails its schema. The inflate endpoints add 400 `invalid` (the recipe fails its schema; for `write` the issue paths are prefixed `recipe.`), 400 `bad-path` and 400 `write-failed`; the path rules are in [Context inflate](/concepts/context-inflate.md). `POST /api/scripts/<name>` answers 200 even when the script exits non-zero (the exit code is in the body) and 404 for a name outside the allowlist; a successful add run also reports `created: { dataset, slug, path, url }`, which the Tools page navigates to. Scripts are started with `process.execPath` and no shell, so they behave the same on macOS, Linux and Windows.
+Every response is JSON with `cache-control: no-store`. Context reads and writes return `{ context, lastModified }`, recipe ones `{ recipe, lastModified }` and reference ones `{ reference, lastModified }`; delete returns 204 with no body, and creating a recipe or reference also sets `Location: /<dataset>/<name>`. Mutating endpoints accept JSON only (415 otherwise) and reject requests whose `Origin` differs from the server's (403). Errors use a body of `{ error, message, issues? }`: 400 for a bad body, slug or dataset parameter, 404 for a missing context or recipe, 409 when one exists, and 422 when a context or recipe file on disk fails its schema. The inflate endpoints add 400 `invalid` (the recipe fails its schema; for `write` the issue paths are prefixed `recipe.`, for `plan` and `run` `recipe.` or `overrides.`), 400 `bad-path` and 400 `write-failed` for `write`; `run` answers 400 `no-dir`, `bad-dir` or `dir-not-directory` and 409 `dir-not-empty`, `manifest-invalid` or `busy`; the jobs routes answer 400 `bad-id`, 404 `not-found` (unknown, or lost in a server restart) and, for cancel, 409 `not-running`. `plan` reports a bad directory as a `blocking` entry of a 200 answer. The path and directory rules are in [Context inflate](/concepts/context-inflate.md). `POST /api/scripts/<name>` answers 200 even when the script exits non-zero (the exit code is in the body) and 404 for a name outside the allowlist; a successful add run also reports `created: { dataset, slug, path, url }`, which the Tools page navigates to. Scripts are started with `process.execPath` and no shell, so they behave the same on macOS, Linux and Windows.
 
 ### Doc, IDE and schema endpoints
 
 * `PUT /api/doc/...` always saves (a bad frontmatter is returned as `warnings`, not refused), writes atomically and never creates a file. `ifUnmodifiedSince` must equal the file's current mtime exactly; a difference is a 409 `conflict` whose body carries the current `lastModified`; omitting it overwrites. Other answers: 400 `bad-dataset`, `bad-slug`, `bad-path` (traversal, a non-`.md` file) or `invalid`, 404 `not-found`, 413 `too-large` (over 512 KB), 422 `not-text`. Only okf datasets and `skill` are served.
-* `POST /api/ide/open` answers 400 `invalid`, `bad-slug` or `bad-path`, 404 `not-found`, 501 `ide-not-found` (no command) and 500 `ide-spawn-failed`. The request never names the executable.
+* `POST /api/ide/open` answers 400 `invalid`, `bad-slug` or `bad-path`, 404 `not-found`, 501 `ide-not-found` (no command) and 500 `ide-spawn-failed`. The request never names the executable. The `{ dir }` variant (`dir` is the only key) runs the output-directory checks, requires a readable `.ctxman-inflate.json` there (404 `not-found` otherwise) and opens the folder alone: `<command> <dir>`.
 * `GET /api/schemas/<dataset>` answers 404 `unknown-dataset` for anything but the three yaml datasets and 500 `schema-missing` before `pnpm run gen:schemas` ran.
 * The reference endpoints follow the context ones (400 `bad-slug`, `invalid` or `name-mismatch`, 404, 409, 415, 403, 422 `invalid-file`), but references keep their watched collection, so server-rendered pages and `GET /api/entries?dataset=reference` see a write about 0.6 s later.
 

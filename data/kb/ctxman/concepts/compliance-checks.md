@@ -51,6 +51,14 @@ Four warning rules cover what a schema-valid recipe points at (`file` is `recipe
 
 The last two only run when every listed context exists and is schema-valid, because the set of reachable items is unknown otherwise. The Inflate page's "Prune stale" button removes the same leftovers.
 
+Three more warning rules cover the working-directory settings of a recipe (`output` and the material fields; see [Context inflate](/concepts/context-inflate.md)). The schema already rejects a material that does not fit a kind it can name (`defaults`, and an override of a knowledge or skill item); these rules cover what only the data directory can tell:
+
+| Rule id | Fires when |
+| --- | --- |
+| `collections/recipe-output-dir-relative` | `output.dir` is not absolute and does not start with `~/` (a run refuses it) |
+| `collections/recipe-material-invalid` | An override of `reference/<slug>` names a material that does not apply to that reference's type (`clone` needs a remote-repo, `symlink` a local-repo, `install` a remote-skill); only when the reference exists and is valid |
+| `collections/recipe-primary-invalid` | `output.primary` is not a remote-repo or local-repo reference (or is missing); or its effective material is not `clone` (remote-repo) / `symlink` (local-repo); or, when every listed context exists and is valid, it is not an item of the recipe |
+
 One more warning rule covers the first line of every reference, context and recipe file:
 
 | Rule id | Fires when |

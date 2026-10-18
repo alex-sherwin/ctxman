@@ -4,6 +4,7 @@ import {
   DEFAULT_CONTEXT_FILE,
   ITEM_KINDS,
   ITEM_KIND_LABELS,
+  MATERIAL_OPTION_IDS,
   OPTION_IDS,
   STUB_IDS,
   STUB_LABELS,
@@ -36,11 +37,27 @@ const optionText = (options: Record<string, unknown> | undefined): string =>
     .map((id) => `${id}=${String(options?.[id])}`)
     .join(', ');
 
+// Material options (clone depth, branch, subpath only) in catalog order, `k=v` joined by ', '.
+const materialOptionText = (options: Record<string, unknown> | undefined): string =>
+  MATERIAL_OPTION_IDS.filter((id) => options?.[id] !== undefined)
+    .map((id) => `${id}=${String(options?.[id])}`)
+    .join(', ');
+
 const defaults = ITEM_KINDS.flatMap((kind) => {
   const d = data.defaults[kind];
-  return d === undefined || (d.mode === undefined && optionText(d.options) === '')
+  const material = d?.material;
+  return d === undefined ||
+    (d.mode === undefined && optionText(d.options) === '' && material === undefined)
     ? []
-    : [{ kind, mode: d.mode, options: optionText(d.options) }];
+    : [
+        {
+          kind,
+          mode: d.mode,
+          options: optionText(d.options),
+          material,
+          materialOptions: materialOptionText(d.materialOptions),
+        },
+      ];
 });
 
 // The working directory a run writes to (`output`), with the generated files it will write.
@@ -231,6 +248,9 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 Options
               </th>
               <th class="ck-table__th" scope="col">
+                Material
+              </th>
+              <th class="ck-table__th" scope="col">
                 Excluded
               </th>
             </tr>
@@ -243,6 +263,17 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 </td>
                 <td class="ck-table__td cx-mono">{o.mode ?? ''}</td>
                 <td class="ck-table__td cx-mono">{optionText(o.options)}</td>
+                <td class="ck-table__td cx-mono" data-testid="recipe-override-material">
+                  {o.material ?? ''}
+                  {materialOptionText(o.materialOptions) !== '' && (
+                    <span class="cx-subtle"> {materialOptionText(o.materialOptions)}</span>
+                  )}
+                  {output?.primary === o.key && (
+                    <span class="ck-badge ck-badge--info" data-testid="recipe-override-primary">
+                      primary
+                    </span>
+                  )}
+                </td>
                 <td class="ck-table__td">
                   {o.exclude === true && <span class="ck-badge ck-badge--muted">excluded</span>}
                 </td>
@@ -271,6 +302,9 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
               <th class="ck-table__th" scope="col">
                 Options
               </th>
+              <th class="ck-table__th" scope="col">
+                Material
+              </th>
             </tr>
           </thead>
           <tbody class="ck-table__body">
@@ -279,6 +313,10 @@ const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]
                 <td class="ck-table__td">{ITEM_KIND_LABELS[d.kind]}</td>
                 <td class="ck-table__td cx-mono">{d.mode ?? ''}</td>
                 <td class="ck-table__td cx-mono">{d.options}</td>
+                <td class="ck-table__td cx-mono">
+                  {d.material ?? ''}
+                  {d.materialOptions !== '' && <span class="cx-subtle"> {d.materialOptions}</span>}
+                </td>
               </tr>
             ))}
           </tbody>

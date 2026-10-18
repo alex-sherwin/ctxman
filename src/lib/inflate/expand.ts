@@ -37,6 +37,8 @@ export interface ItemMeta {
   stale: boolean;
   refType?: ReferenceType;
   uriKind?: RemoteUriKind;
+  /** Reference `subpath` (cleaned, non-empty); the browser knows it from the entry summary, `ref` is server only. */
+  subpath?: string;
   /** Full reference data: server only (fs-sources); undefined in the browser. */
   ref?: ReferenceData;
 }
@@ -180,6 +182,7 @@ export function itemMetaFromSummary(s: EntrySummary): ItemMeta {
   if (s.staleAfter !== undefined) meta.staleAfter = s.staleAfter;
   if (s.refType !== undefined) meta.refType = s.refType;
   if (s.uriKind !== undefined) meta.uriKind = s.uriKind;
+  if (s.subpath !== undefined) meta.subpath = s.subpath;
   return meta;
 }
 
