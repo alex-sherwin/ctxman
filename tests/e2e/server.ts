@@ -39,8 +39,6 @@ export async function startWorkerServer(index: number): Promise<WorkerServer> {
       CTXMAN_IDE_COMMAND: p.ideCommand,
       CTXMAN_IDE_RECORD: p.ideRecord,
       CTXMAN_TEST_HOOKS: '1',
-      // Kept until the Wave 2 specs opt in per run through the step-delay header (B1 removes it).
-      CTXMAN_INFLATE_STEP_DELAY_MS: '300',
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: `url.${pathToFileURL(E2E_GIT_FIXTURE).href}.insteadOf`,
       GIT_CONFIG_VALUE_0: E2E_GIT_URI,

@@ -1,12 +1,13 @@
-// Open in IDE API (ROUND2_BACKEND_SPEC §B.3). CTXMAN_IDE_COMMAND points at a fake `code` (prepare-data.ts copies
-// tests/e2e/fixtures/fake-code.mjs) that records its argv as a JSON line, so no editor is ever started.
+// Open in IDE API (ROUND2_BACKEND_SPEC §B.3). CTXMAN_IDE_COMMAND points at a fake `code` (server.ts copies
+// tests/e2e/fixtures/fake-code.mjs per worker) that records its argv as a JSON line, so no editor is ever started.
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
-import { API, dataPath, E2E_DATA_DIR } from './helpers.ts';
+import { API, dataPath, E2E_DATA_DIR, pollUntil } from './helpers.ts';
 import { E2E_IDE_COMMAND, E2E_IDE_RECORD } from './paths.ts';
 
 test.skip(process.platform === 'win32', 'the fake IDE command is a posix script');
+// Serial: every test counts runs in the worker's one record file and the last ones rename the entry dir.
 test.describe.configure({ mode: 'serial' });
 
 interface ErrorBody {
@@ -40,7 +41,8 @@ async function openAndRecord(
   expect(response.status()).toBe(200);
   const body = (await response.json()) as { ok: boolean; command: string[] };
   expect(body.ok).toBe(true);
-  await expect.poll(() => recordedCalls().length, { timeout: 3000 }).toBe(before + 1);
+  // the detached fake command writes its record after the 200: no event, so poll the file
+  await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
   return { command: body.command, call: recordedCalls()[before] ?? [] };
 }
 

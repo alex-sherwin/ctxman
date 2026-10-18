@@ -5,8 +5,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
-import { settleAfter } from './dev-reload.ts';
-import { API, dataPath, readDataText, settleDevReload, uniqueName } from './helpers.ts';
+import { API, afterApi, dataPath, readDataText, uniqueName } from './helpers.ts';
 
 const kb = uniqueName('e2e-et-kb');
 const task = uniqueName('e2e-et-task');
@@ -14,59 +13,56 @@ const ctxOld = uniqueName('e2e-et-ctx-old');
 const ctxNew = uniqueName('e2e-et-ctx-new');
 const kbMain = `kb/${kb}/index.md`;
 
+// Serial: the tests share one kb entry and chain on what earlier ones wrote (renamed title, added links, concepts).
 test.describe.configure({ mode: 'serial' });
 
-test.beforeAll(async ({ browser, playwright, baseURL }) => {
-  await settleAfter(browser, baseURL, async () => {
-    const request = await playwright.request.newContext({ baseURL });
-    try {
-      const created = await request.post(`${API}/entry/kb`, {
-        data: { name: kb, title: 'E2E tools kb', description: 'Entry for the entry-tools spec.' },
-      });
-      expect(created.status()).toBe(201);
-      // An unknown frontmatter key and hand-written prose: the Details dialog must keep both.
-      const file = dataPath(kbMain);
-      const source = readFileSync(file, 'utf8');
-      const close = source.indexOf('\n---\n', 4);
-      writeFileSync(
-        file,
-        `${source.slice(0, close)}\ncustom_note: keep me${source.slice(close)}\nHand-written prose.\n`,
-      );
-      expect(
-        (
-          await request.post(`${API}/entry/task`, {
-            data: { name: task, title: 'E2E tools task', description: 'Task for the lock test.' },
-          })
-        ).status(),
-      ).toBe(201);
-      expect(
-        (
-          await request.post(`${API}/context`, {
-            data: {
-              name: ctxOld,
-              description: 'Existing context of the entry-tools spec.',
-              links: [{ dataset: 'kb', slug: 'ctxman' }],
-            },
-          })
-        ).status(),
-      ).toBe(201);
-    } finally {
-      await request.dispose();
-    }
-  });
+test.beforeAll(async ({ playwright, baseURL }) => {
+  const request = await playwright.request.newContext({ baseURL });
+  try {
+    const created = await request.post(`${API}/entry/kb`, {
+      data: { name: kb, title: 'E2E tools kb', description: 'Entry for the entry-tools spec.' },
+    });
+    expect(created.status()).toBe(201);
+    // An unknown frontmatter key and hand-written prose: the Details dialog must keep both.
+    const file = dataPath(kbMain);
+    const source = readFileSync(file, 'utf8');
+    const close = source.indexOf('\n---\n', 4);
+    writeFileSync(
+      file,
+      `${source.slice(0, close)}\ncustom_note: keep me${source.slice(close)}\nHand-written prose.\n`,
+    );
+    expect(
+      (
+        await request.post(`${API}/entry/task`, {
+          data: { name: task, title: 'E2E tools task', description: 'Task for the lock test.' },
+        })
+      ).status(),
+    ).toBe(201);
+    expect(
+      (
+        await request.post(`${API}/context`, {
+          data: {
+            name: ctxOld,
+            description: 'Existing context of the entry-tools spec.',
+            links: [{ dataset: 'kb', slug: 'ctxman' }],
+          },
+        })
+      ).status(),
+    ).toBe(201);
+  } finally {
+    await request.dispose();
+  }
 });
 
-test.afterAll(async ({ browser, playwright, baseURL }) => {
-  await settleAfter(browser, baseURL, async () => {
-    rmSync(dataPath(`kb/${kb}`), { recursive: true, force: true });
-    rmSync(dataPath(`task/${task}`), { recursive: true, force: true });
-    const request = await playwright.request.newContext({ baseURL });
-    try {
-      for (const name of [ctxOld, ctxNew]) await request.delete(`${API}/context/${name}`);
-    } finally {
-      await request.dispose();
-    }
-  });
+test.afterAll(async ({ playwright, baseURL }) => {
+  rmSync(dataPath(`kb/${kb}`), { recursive: true, force: true });
+  rmSync(dataPath(`task/${task}`), { recursive: true, force: true });
+  const request = await playwright.request.newContext({ baseURL });
+  try {
+    for (const name of [ctxOld, ctxNew]) await request.delete(`${API}/context/${name}`);
+  } finally {
+    await request.dispose();
+  }
 });
 
 /** Opens a page and waits until the EntryTools island has enabled the SSR action buttons. */
@@ -89,11 +85,14 @@ test('meta-edit opens the Details dialog; saving changes the header and keeps un
   await page.getByTestId('fm-stale-after').fill('2031-05-06');
   await page.getByTestId('fm-okf-status').click();
   await page.getByRole('option', { name: 'Stable' }).click();
-  await page.getByTestId('fm-save').click();
+  const patched = await afterApi(page, 'PATCH', `${API}/entry/kb/`, () =>
+    page.getByTestId('fm-save').click(),
+  );
+  expect(patched.status()).toBe(200);
   await expect(page.getByTestId('fm-dialog')).toBeHidden();
 
   // the page is server rendered: the header shows the new title once it has been loaded again
-  await expect(page.locator('h1').first()).toHaveText('E2E tools kb renamed', { timeout: 15_000 });
+  await expect(page.locator('h1').first()).toHaveText('E2E tools kb renamed');
   await expect(page.getByTestId('entry-status')).toHaveText('Saved details');
   await expect(page.getByTestId('detail-meta')).toContainText('2031-05-06');
 
@@ -104,7 +103,6 @@ test('meta-edit opens the Details dialog; saving changes the header and keeps un
   expect(saved).toContain('status: stable');
   expect(saved).toContain('custom_note: keep me');
   expect(saved).toContain('\nHand-written prose.\n');
-  await settleDevReload();
 });
 
 test('the header state select and the action buttons lock while the doc editor is open', async ({
@@ -149,9 +147,7 @@ test('entry-add-to-context adds the entry to an existing context; the back-refer
   await page.getByRole('option', { name: new RegExp(`^${ctxOld}`) }).click();
   await page.getByTestId('add-to-context-submit').click();
 
-  await expect(page.getByTestId('entry-status')).toHaveText(`Added to ${ctxOld}`, {
-    timeout: 15_000,
-  });
+  await expect(page.getByTestId('entry-status')).toHaveText(`Added to ${ctxOld}`);
   await expect(
     page.getByTestId('detail-backrefs').locator(`a[href="/context/${ctxOld}"]`),
   ).toBeVisible();
@@ -178,9 +174,7 @@ test('entry-add-to-context creates a new context with the entry as its first lin
   await page.getByTestId('add-to-context-name').fill(ctxNew);
   await page.getByTestId('add-to-context-submit').click();
 
-  await expect(page.getByTestId('entry-status')).toHaveText(`Added to ${ctxNew}`, {
-    timeout: 15_000,
-  });
+  await expect(page.getByTestId('entry-status')).toHaveText(`Added to ${ctxNew}`);
   const yaml = readDataText(`context/${ctxNew}.yaml`);
   expect(yaml).toContain(`dataset: kb`);
   expect(yaml).toContain(`slug: ${kb}`);
@@ -200,12 +194,9 @@ test('files-new-concept creates a concept, lists it in the bundle and opens it i
   await expect(page.getByTestId('new-concept-path')).toHaveText(`concepts/${concept}.md`);
   await page.getByTestId('new-concept-submit').click();
 
-  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`), {
-    timeout: 15_000,
-  });
+  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`));
   expect(existsSync(dataPath(`kb/${kb}/concepts/${concept}.md`))).toBe(true);
   expect(readDataText(`kb/${kb}/index.md`)).toContain(`](/concepts/${concept}.md)`);
-  await settleDevReload();
 
   await page.goto(`/kb/${kb}`);
   await expect(
@@ -235,12 +226,9 @@ test('a missing concept shows "Create this file"; creating it opens the new page
   await expect(page.getByTestId('new-concept-name')).toHaveCount(0);
   await page.getByTestId('new-concept-title').fill('E2E missing concept');
   await page.getByTestId('new-concept-submit').click();
-  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`), {
-    timeout: 15_000,
-  });
+  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`));
   const source = readDataText(`kb/${kb}/concepts/${concept}.md`);
   expect(source).toContain('title: E2E missing concept');
-  await settleDevReload();
 });
 
 test('only a concept path of an existing bundle offers to be created', async ({

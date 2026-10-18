@@ -1,12 +1,11 @@
 // Entry write APIs (ROUND3_SPEC §D.1 to §D.5) over Playwright's request context:
 //   GET|PATCH /api/entry/<ds>/<slug>, POST /api/entry/<ds>, POST /api/doc/<ds>/<slug>/<path> (create a concept)
 //   and POST /api/context/<slug>/links. Every spec uses its own e2e-* entries (created through the API, removed in
-//   afterAll); the seed entries are never written. The API reads and writes the files directly, so nothing waits for
-//   the content layer.
+//   afterAll); the seed entries are never written. The API reads and writes the files directly.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
-import { API, dataPath, readDataText, settleDevReload, uniqueName } from './helpers.ts';
+import { API, dataPath, readDataText, uniqueName } from './helpers.ts';
 
 interface ErrorBody {
   error: string;
@@ -34,6 +33,7 @@ const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/index.md`;
 const entryUrl = (ds: string, slug: string): string => `${API}/entry/${ds}/${slug}`;
 const jsonHeaders = { 'content-type': 'application/json' };
 
+// Serial: the tests chain on one project, task and child (each reads what the one before wrote).
 test.describe.configure({ mode: 'serial' });
 
 test.afterAll(async ({ playwright, baseURL }) => {
@@ -50,7 +50,6 @@ test.afterAll(async ({ playwright, baseURL }) => {
   } finally {
     await request.dispose();
   }
-  await settleDevReload();
 });
 
 test('POST /api/entry creates the project and the task; GET returns JSON-safe frontmatter', async ({

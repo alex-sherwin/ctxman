@@ -9,6 +9,8 @@ import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,
+  afterReload,
+  bumpMtime,
   createRecipeCopy,
   dataExists,
   deleteRecipeQuietly,
@@ -74,7 +76,7 @@ async function openPopup(page: Page, pencil: ReturnType<Page['getByTestId']>): P
   await pencil.click();
   await expect(page.getByTestId('md-modal')).toBeVisible();
   await expect(page.getByTestId('md-editor').locator('.monaco-editor')).toBeVisible({
-    timeout: 30_000,
+    timeout: 15_000,
   });
 }
 
@@ -99,9 +101,7 @@ test.describe('context notes', () => {
     await typeAtEnd(page, 'A **bold** note from the popup spec.');
     await expect(page.getByTestId('md-save')).toBeEnabled();
 
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
 
     // the yaml has the note on the first link; the second link kept its own
     const saved = savedContext(name);
@@ -131,9 +131,7 @@ test.describe('context notes', () => {
     await page.getByTestId('md-editor').locator('.monaco-editor textarea').focus();
     await page.keyboard.press('Control+a');
     await page.keyboard.press('Delete');
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
 
     expect(savedContext(name).links[1]).toEqual({ dataset: 'task', slug: 'write-agents-md' });
     await expect(
@@ -176,22 +174,20 @@ test.describe('context notes', () => {
     );
     await typeAtEnd(page, 'popup note');
 
-    // someone edits the description while the popup is open (a pause: the mtime must differ)
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // someone edits the description while the popup is open (the mtime is bumped below so it differs)
     const current = await request.get(`${API}/context/${name}`);
     const { context } = (await current.json()) as { context: Record<string, unknown> };
     const put = await request.put(`${API}/context/${name}`, {
       data: { ...context, description: 'Changed behind the popup' },
     });
     expect(put.status()).toBe(200);
+    bumpMtime(`context/${name}.yaml`);
 
     await page.getByTestId('md-save').click();
     await expect(page.getByTestId('md-conflict-dialog')).toBeVisible();
     expect(savedContext(name).links[0]?.notes).toBeUndefined();
 
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-conflict-overwrite').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-conflict-overwrite').click());
     const saved = savedContext(name);
     expect(saved.links[0]?.notes).toContain('popup note');
     expect(saved.description).toBe('Changed behind the popup');
@@ -210,6 +206,17 @@ async function openFirstNotes(page: Page, name: string): Promise<void> {
 /** localStorage key of the first link's notes popup (src/ui/markdown/draft-restore.ts `mdDraftKey` + the prefix). */
 const firstNotesDraftKey = (name: string): string =>
   `ctxman:draft:md:/api/context/${name}#notes:kb:ctxman`;
+
+/** Waits (inside the page, every animation frame) until the draft under `key` contains `text`. */
+async function draftHas(page: Page, key: string, text: string): Promise<void> {
+  await page.waitForFunction(
+    ([k, want]) => {
+      const raw = localStorage.getItem(k);
+      return raw !== null && (JSON.parse(raw) as { text: string }).text.includes(want);
+    },
+    [key, text] as const,
+  );
+}
 
 async function storedDraft(
   page: Page,
@@ -255,9 +262,7 @@ test.describe('insert link', () => {
     await expect(page.getByTestId('link-picker')).toHaveCount(0);
     await expect(page.getByTestId('md-modal')).toBeVisible();
 
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
     expect(savedContext(name).links[0]?.notes).toContain('See [OKF format](ctxman:kb/okf-format)');
     await expect(
       page.getByTestId('context-link').first().getByTestId('context-link-notes'),
@@ -281,9 +286,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await openFirstNotes(page, name);
     await expect(page.getByTestId('md-draft-restored')).toHaveCount(0);
     await typeAtEnd(page, 'DRAFT-NOTE-TEXT');
-    await expect
-      .poll(async () => (await storedDraft(page, key))?.text ?? '')
-      .toContain('DRAFT-NOTE-TEXT');
+    await draftHas(page, key, 'DRAFT-NOTE-TEXT');
 
     await page.reload();
     expect(dialogs).toEqual([]);
@@ -316,18 +319,16 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     const name = await createContext(request, TWO_LINKS);
     await openFirstNotes(page, name);
     await typeAtEnd(page, 'STALE-NOTE-TEXT');
-    await expect
-      .poll(async () => (await storedDraft(page, firstNotesDraftKey(name)))?.text ?? '')
-      .toContain('STALE-NOTE-TEXT');
+    await draftHas(page, firstNotesDraftKey(name), 'STALE-NOTE-TEXT');
 
-    // someone edits the description meanwhile (a pause: the mtime must differ)
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // someone edits the description meanwhile (the mtime is bumped below so it differs)
     const current = await request.get(`${API}/context/${name}`);
     const { context } = (await current.json()) as { context: Record<string, unknown> };
     const put = await request.put(`${API}/context/${name}`, {
       data: { ...context, description: 'Changed while the draft sat in storage' },
     });
     expect(put.status()).toBe(200);
+    bumpMtime(`context/${name}.yaml`);
 
     await page.reload();
     await openPopup(
@@ -341,9 +342,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
       'STALE-NOTE-TEXT',
     );
     // saving keeps the disk version's other fields (read-modify-write) and writes the restored note
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
     const saved = savedContext(name);
     expect(saved.links[0]?.notes).toContain('STALE-NOTE-TEXT');
     expect(saved.description).toBe('Changed while the draft sat in storage');
@@ -360,9 +359,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     const name = await createContext(request, TWO_LINKS);
     await openFirstNotes(page, name);
     await typeAtEnd(page, 'never kept');
-    await expect
-      .poll(async () => (await storedDraft(page, firstNotesDraftKey(name)))?.text ?? '')
-      .toContain('never kept');
+    await draftHas(page, firstNotesDraftKey(name), 'never kept');
     await page.getByTestId('md-cancel').click();
     await page.getByTestId('md-discard-dialog').getByRole('button', { name: 'Discard' }).click();
     await expect(page.getByTestId('md-modal')).toHaveCount(0);
@@ -393,9 +390,7 @@ test.describe('recipe preamble and blocks', () => {
     );
     await typeAtEnd(page, '\n\nAlways run the popup spec first.');
 
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
 
     const saved = readRecipeYaml(name);
     expect(saved.preamble).toContain('You are working on ctxman');
@@ -416,9 +411,7 @@ test.describe('recipe preamble and blocks', () => {
     await expect(block).toHaveAttribute('data-id', blocks[0]?.id ?? '');
     await openPopup(page, block.getByTestId('recipe-block-edit'));
     await typeAtEnd(page, '\n\nBlock line from the popup spec.');
-    const reloaded = page.waitForEvent('load', { timeout: 10_000 });
-    await page.getByTestId('md-save').click();
-    await reloaded;
+    await afterReload(page, () => page.getByTestId('md-save').click());
 
     const after = readRecipeYaml(name);
     const afterBlocks = after.markdown as { id: string; body: string }[];

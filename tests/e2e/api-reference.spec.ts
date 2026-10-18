@@ -2,7 +2,7 @@
 // GET|PUT|DELETE /api/reference/:slug, the same conventions as /api/context. Files are checked in the e2e data copy.
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
-import { API, dataExists, readDataText, readYaml, settleDevReload, uniqueName } from './helpers.ts';
+import { API, dataExists, readDataText, readYaml, uniqueName } from './helpers.ts';
 import { E2E_SERVER_ORIGIN } from './paths.ts';
 
 interface ErrorBody {
@@ -16,7 +16,7 @@ interface ReferenceBody {
   lastModified: string;
 }
 
-// The writer points the modeline at the running server (CTXMAN_SERVER_ORIGIN, set by playwright.config.ts).
+// The writer points the modeline at the e2e server origin (CTXMAN_SERVER_ORIGIN, set by server.ts).
 const MAGIC_COMMENT = `# yaml-language-server: $schema=${E2E_SERVER_ORIGIN}/api/schemas/reference`;
 
 const errorOf = async (response: APIResponse): Promise<ErrorBody> =>
@@ -36,7 +36,6 @@ test.afterAll(async ({ playwright, baseURL }) => {
   } finally {
     await request.dispose();
   }
-  await settleDevReload();
 });
 
 const body = (name: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -258,7 +257,7 @@ test.describe('read, update, delete', () => {
   });
 });
 
-test('a created reference shows up in /api/entries?dataset=reference within 5 s, and leaves it when deleted', async ({
+test('a created reference shows up in /api/entries?dataset=reference at once, and leaves it when deleted', async ({
   request,
 }) => {
   const name = newName();
@@ -267,8 +266,8 @@ test('a created reference shows up in /api/entries?dataset=reference within 5 s,
     return ((await response.json()) as { entries: { slug: string }[] }).entries.map((e) => e.slug);
   };
   expect((await request.post(`${API}/reference`, { data: body(name) })).status()).toBe(201);
-  await expect.poll(slugs, { timeout: 5000, intervals: [100, 200, 300] }).toContain(name);
+  expect(await slugs()).toContain(name);
 
   expect((await request.delete(`${API}/reference/${name}`)).status()).toBe(204);
-  await expect.poll(slugs, { timeout: 5000, intervals: [100, 200, 300] }).not.toContain(name);
+  expect(await slugs()).not.toContain(name);
 });

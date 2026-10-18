@@ -2,7 +2,7 @@
 // detail pages: scalar edits through PUT, Cancel, Delete, the YAML tab), plus the NewEntryForm of the okf and skill
 // datasets (/new/task, /new/skill, ... ROUND3_SPEC §E.7). Names are `e2e-*`; every created entry is removed again
 // (the okf / skill ones by deleting their folder, there is no delete API for them).
-// Writes are visible on the next request (the entry index reads the disk) and the form navigates to the new entry
+// Writes are visible on the next request (everything reads the disk) and the form navigates to the new entry
 // itself (src/stores/data-form.ts); these tests assert the end state.
 import { rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
@@ -15,7 +15,6 @@ import {
   deleteRecipeQuietly,
   readDataText,
   readYaml,
-  settleDevReload,
   uniqueName,
 } from './helpers.ts';
 
@@ -23,9 +22,7 @@ type Ds = 'reference' | 'context' | 'recipe';
 const created: { ds: Ds; name: string }[] = [];
 
 test.afterEach(async ({ request }) => {
-  const list = created.splice(0);
-  for (const { ds, name } of list) await request.delete(`/api/${ds}/${name}`);
-  if (list.some((c) => c.ds === 'reference')) await settleDevReload();
+  for (const { ds, name } of created.splice(0)) await request.delete(`/api/${ds}/${name}`);
 });
 
 async function openNew(page: Page, ds: Ds, search = ''): Promise<void> {
@@ -49,7 +46,7 @@ async function pick(page: Page, field: string, option: string): Promise<void> {
  */
 async function replaceYaml(page: Page, text: string): Promise<void> {
   const editor = page.getByTestId('dform-yaml-editor');
-  await expect(editor.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 });
+  await expect(editor.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
   await editor.locator('.monaco-editor textarea').focus();
   await page.keyboard.press('Control+a');
   // insertText, not type: a typed Enter accepts monaco-yaml's open completion item when the worker answers in time
@@ -131,7 +128,7 @@ test.describe('/new/reference', () => {
     await expect(page.getByTestId('dform-save')).toHaveText('Create');
     await page.getByTestId('dform-save').click();
 
-    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
     expect(readYaml(`reference/${name}.yaml`)).toEqual({
       name,
       description: 'Created by the forms spec',
@@ -141,7 +138,6 @@ test.describe('/new/reference', () => {
       owner: 'not-me',
       tags: ['forms', 'e2e'],
     });
-    await settleDevReload();
   });
 });
 
@@ -160,7 +156,7 @@ test.describe('/new/context', () => {
     await page.getByTestId('dform-field-description').fill('Created by the forms spec');
     await page.getByTestId('dform-field-description').press('Enter');
 
-    await expect(page).toHaveURL(new RegExp(`/context/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/context/${name}$`));
     expect(readYaml(`context/${name}.yaml`)).toEqual({
       name,
       description: 'Created by the forms spec',
@@ -214,12 +210,12 @@ test.describe('/new/recipe', () => {
     await pick(page, 'target', 'Codex');
     await pick(page, 'layout', 'Flat');
     const preamble = page.getByTestId('dform-field-preamble');
-    await expect(preamble.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 });
+    await expect(preamble.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
     await preamble.locator('.monaco-editor textarea').focus();
     await page.keyboard.type('Read the docs first.');
     await page.getByTestId('dform-save').click();
 
-    await expect(page).toHaveURL(new RegExp(`/recipe/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/recipe/${name}$`));
     expect(readYaml(`recipe/${name}.yaml`)).toMatchObject({
       name,
       description: 'Created by the forms spec',
@@ -241,7 +237,7 @@ test.describe('YAML tab', () => {
     await page.getByTestId('dform-view-yaml').click();
     await expect(page).toHaveURL(/[?&]view=yaml/);
     const editor = page.getByTestId('dform-yaml-editor');
-    await expect(editor.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 });
+    await expect(editor.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
     await expect(editor.locator('.view-lines')).toContainText('name: e2e-ctx-yaml');
     await expect(editor.locator('.view-lines')).toContainText('description: From the form');
     await expect(page.getByTestId('dform-yaml-issues')).toContainText('Valid');
@@ -308,7 +304,7 @@ test.describe('YAML tab', () => {
     );
     await expect(page.getByTestId('dform-yaml-issues')).toContainText('Valid');
     await page.getByTestId('dform-save').click();
-    await expect(page).toHaveURL(new RegExp(`/context/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/context/${name}$`));
     expect(readYaml(`context/${name}.yaml`)).toEqual({
       name,
       description: 'yaml create',
@@ -343,14 +339,12 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     } finally {
       await request.dispose();
     }
-    await settleDevReload();
   });
 
   test.afterAll(async () => {
     rmSync(dataPath(`project/${nProject}`), { recursive: true, force: true });
     rmSync(dataPath(`task/${nTask}`), { recursive: true, force: true });
     rmSync(dataPath(`skill/${nSkill}`), { recursive: true, force: true });
-    await settleDevReload();
   });
 
   test('?parent= prefills the project; Create writes the entry, links the project and opens it', async ({
@@ -377,7 +371,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await expect(page.getByTestId('new-tags')).toContainText('beta');
     await page.getByTestId('new-submit').click();
 
-    await expect(page).toHaveURL(new RegExp(`/task/${nTask}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/task/${nTask}$`));
     await expect(page.getByTestId('detail-slug')).toHaveText(nTask);
     await expect(page.getByTestId('detail-meta')).toContainText('In progress');
     await expect(page.getByTestId('detail-meta')).toContainText('alpha');
@@ -394,7 +388,6 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
       frontmatter: { links?: { dataset: string; slug: string; rel: string }[] };
     };
     expect(frontmatter.links).toContainEqual({ dataset: 'task', slug: nTask, rel: 'child' });
-    await settleDevReload();
   });
 
   test('an empty form shows what is missing, sends nothing and focuses the name', async ({
@@ -465,10 +458,9 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await page.getByTestId('new-description').fill('A skill from the form. Use when testing it.');
     await page.getByTestId('new-description').press('Enter');
 
-    await expect(page).toHaveURL(new RegExp(`/skill/${nSkill}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/skill/${nSkill}$`));
     await expect(page.getByTestId('detail-slug')).toHaveText(nSkill);
     expect(readDataText(`skill/${nSkill}/SKILL.md`)).toContain(`name: ${nSkill}`);
-    await settleDevReload();
   });
 
   test('/new/kb has title and tags but no state', async ({ page }) => {
@@ -485,9 +477,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await expect(page).toHaveURL(/\/bug$/);
   });
 
-  test('a fresh parked navigation (a dev reload landed first) resumes; a stale one does not', async ({
-    page,
-  }) => {
+  test('a fresh parked navigation resumes; a stale one does not', async ({ page }) => {
     await openNewEntry(page, 'task');
     await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
       NAV_KEY,
@@ -495,7 +485,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     ] as const);
     await page.reload();
     await expect(page.getByTestId('new-name')).toBeVisible();
-    await page.waitForTimeout(800);
+    // The resume decision is synchronous at mount (initNewEntry): a stale park leaves the URL alone.
     await expect(page).toHaveURL(/\/new\/task$/);
 
     await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [
@@ -503,7 +493,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
       `${Date.now()}|/kb/ctxman`,
     ] as const);
     await page.reload();
-    await expect(page).toHaveURL(/\/kb\/ctxman$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/kb\/ctxman$/);
   });
 
   test('the list page "New" button of an okf dataset opens its form', async ({ page }) => {
@@ -517,7 +507,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
 
 // ---------------------------------------------------------------- edit mode (/<ds>/<slug>?edit=1)
 
-/** A reference through the API; it is glob-loaded, so wait until the list sees it and the dev reload has passed. */
+/** A reference through the API (it is on disk once the 201 arrives). */
 async function createReference(request: APIRequestContext, name: string): Promise<void> {
   const response = await request.post(`${API}/reference`, {
     data: {
@@ -531,14 +521,9 @@ async function createReference(request: APIRequestContext, name: string): Promis
   });
   expect(response.status()).toBe(201);
   created.push({ ds: 'reference', name });
-  await expect
-    .poll(async () => {
-      const list = await request.get(`${API}/entries?dataset=reference`);
-      const { entries } = (await list.json()) as { entries: { slug: string }[] };
-      return entries.some((e) => e.slug === name);
-    })
-    .toBe(true);
-  await settleDevReload();
+  const list = await request.get(`${API}/entries?dataset=reference`);
+  const { entries } = (await list.json()) as { entries: { slug: string }[] };
+  expect(entries.map((e) => e.slug)).toContain(name);
 }
 
 async function createContext(request: APIRequestContext, name: string): Promise<void> {
@@ -595,7 +580,7 @@ test.describe('edit: reference', () => {
     await page.getByTestId('dform-save').click();
     await put;
 
-    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
     await expect(page.getByTestId('detail-content')).toContainText('Edited by the forms spec');
     await expect(page.getByTestId('reference-fields')).toContainText('not me');
     expect(readYaml(`reference/${name}.yaml`)).toEqual({
@@ -606,7 +591,6 @@ test.describe('edit: reference', () => {
       owner: 'not-me',
       tags: ['e2e', 'edited'],
     });
-    await settleDevReload();
   });
 
   test('Cancel goes back to the detail page, and asks first when something changed', async ({
@@ -648,10 +632,9 @@ test.describe('edit: reference', () => {
 
     await page.getByTestId('dform-delete').click();
     await page.getByTestId('dform-delete-dialog').getByRole('button', { name: 'Delete' }).click();
-    await expect(page).toHaveURL(/\/reference$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/reference$/);
     expect(dataExists(`reference/${name}.yaml`)).toBe(false);
     await expect(page.locator(`[data-testid="list-row"][data-slug="${name}"]`)).toHaveCount(0);
-    await settleDevReload();
   });
 
   test('the YAML tab edits the same document', async ({ page, request }) => {
@@ -667,10 +650,9 @@ test.describe('edit: reference', () => {
     );
     await expect(page.getByTestId('dform-yaml-issues')).toContainText('Valid');
     await page.getByTestId('dform-save').click();
-    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
     await expect(page.getByTestId('detail-content')).toContainText('From the yaml tab');
     expect(readYaml(`reference/${name}.yaml`)).toMatchObject({ description: 'From the yaml tab' });
-    await settleDevReload();
   });
 });
 
@@ -689,7 +671,7 @@ test.describe('edit: context', () => {
     await page.getByTestId('dform-field-tags-add-tag').press('Enter');
     await page.getByTestId('dform-save').click();
 
-    await expect(page).toHaveURL(new RegExp(`/context/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/context/${name}$`));
     await expect(page.getByTestId('detail-content')).toContainText('Edited context description');
     await expect(page.getByTestId('context-link')).toHaveCount(2);
     expect(readYaml(`context/${name}.yaml`)).toEqual({
@@ -709,7 +691,7 @@ test.describe('edit: context', () => {
     await openEdit(page, 'context', name);
     await page.getByTestId('dform-delete').click();
     await page.getByTestId('dform-delete-dialog').getByRole('button', { name: 'Delete' }).click();
-    await expect(page).toHaveURL(/\/context$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/context$/);
     expect(dataExists(`context/${name}.yaml`)).toBe(false);
   });
 });
@@ -726,7 +708,7 @@ test.describe('edit: recipe', () => {
     await pick(page, 'layout', 'Flat');
     await page.getByTestId('dform-save').click();
 
-    await expect(page).toHaveURL(new RegExp(`/recipe/${name}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/recipe/${name}$`));
     expect(readYaml(`recipe/${name}.yaml`)).toMatchObject({
       name,
       target: 'codex',

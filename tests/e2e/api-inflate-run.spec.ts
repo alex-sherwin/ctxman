@@ -1,7 +1,8 @@
 // Inflate into a working directory (plans/INFLATE_V2_SPEC.md §10, §14.2) over Playwright's request context:
 // POST /api/inflate/plan, POST /api/inflate/run, GET /api/inflate/jobs/:id, POST /api/inflate/jobs/:id/cancel.
-// No browser. The web server reaches a local git repository (.tmp/e2e-git) through git's insteadOf env and sleeps
-// CTXMAN_INFLATE_STEP_DELAY_MS before every step. Working directories are OS temp dirs, removed afterwards.
+// No browser. The web server reaches a local git repository (.tmp/e2e-git) through git's insteadOf env. Runs use no
+// step delay; only the busy/cancel test slows its run through the x-ctxman-step-delay-ms header.
+// Working directories are OS temp dirs, removed afterwards.
 import {
   existsSync,
   lstatSync,
@@ -16,9 +17,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
-import { API, E2E_DATA_DIR, settleDevReload } from './helpers.ts';
-import { E2E_GIT_FIXTURE, E2E_GIT_URI, E2E_LOCAL_FIXTURE } from './paths.ts';
+import { API, E2E_DATA_DIR, pollUntil } from './helpers.ts';
+import { E2E_GIT_FIXTURE, E2E_GIT_URI, E2E_LOCAL_FIXTURE, STEP_DELAY_HEADER } from './paths.ts';
 
+// Serial: the server runs ONE Inflate job at a time (409 busy) and the tests share the base dir and two references.
 test.describe.configure({ mode: 'serial' });
 
 interface ErrorBody {
@@ -109,7 +111,6 @@ test.afterAll(async ({ request }) => {
   await request.delete(`${API}/reference/${REPO_REF}`);
   await request.delete(`${API}/reference/${LOCAL_REF}`);
   rmSync(base, { recursive: true, force: true });
-  await settleDevReload();
 });
 
 /** The recipe the run specs inflate: one bundle, one skill, a cloned repo (primary) and a linked folder. */
@@ -140,8 +141,11 @@ const errorOf = async (response: APIResponse): Promise<ErrorBody> =>
 
 const plan = (request: APIRequestContext, body: unknown): Promise<APIResponse> =>
   request.post(`${API}/inflate/plan`, { data: body });
-const run = (request: APIRequestContext, body: unknown): Promise<APIResponse> =>
-  request.post(`${API}/inflate/run`, { data: body });
+const run = (
+  request: APIRequestContext,
+  body: unknown,
+  headers?: Record<string, string>,
+): Promise<APIResponse> => request.post(`${API}/inflate/run`, { data: body, headers });
 
 async function getJob(request: APIRequestContext, id: string): Promise<Job> {
   const response = await request.get(`${API}/inflate/jobs/${id}`);
@@ -149,24 +153,12 @@ async function getJob(request: APIRequestContext, id: string): Promise<Job> {
   return (await response.json()) as Job;
 }
 
-/** Polls the job until `done(job)`; fails the test after `timeoutMs`. */
-async function waitFor(
+/** Polls the job (no event exists for it) until `done(job)`. */
+const waitFor = (
   request: APIRequestContext,
   id: string,
   done: (job: Job) => boolean,
-  timeoutMs = 45_000,
-): Promise<Job> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const job = await getJob(request, id);
-    if (done(job)) return job;
-    if (Date.now() > deadline)
-      throw new Error(
-        `job ${id} did not settle: ${JSON.stringify(job.steps.map((s) => [s.id, s.status]))}`,
-      );
-    await new Promise((resolve) => setTimeout(resolve, 120));
-  }
-}
+): Promise<Job> => pollUntil(() => getJob(request, id), done);
 
 /** Starts a run and waits for it to finish. */
 async function runToEnd(request: APIRequestContext, body: unknown): Promise<Job> {
@@ -315,7 +307,6 @@ test.describe('run', () => {
   test('places every material, writes the relative context, stubs and manifest', async ({
     request,
   }) => {
-    test.setTimeout(90_000);
     const dir = workDir();
     const response = await run(request, { recipe: recipe(dir) });
     expect(response.status(), await response.text()).toBe(202);
@@ -389,7 +380,6 @@ test.describe('run', () => {
   test('a second identical run is idempotent: links kept, clone pulled, context and stubs unchanged', async ({
     request,
   }) => {
-    test.setTimeout(90_000);
     const dir = workDir();
     const before = readManifest(dir);
     const job = await runToEnd(request, { recipe: recipe(dir) });
@@ -414,7 +404,6 @@ test.describe('run', () => {
   test('removing an item removes only its symlink; the data entry and everything else stay', async ({
     request,
   }) => {
-    test.setTimeout(90_000);
     const dir = workDir();
     const body = {
       recipe: recipe(dir),
@@ -447,7 +436,6 @@ test.describe('run', () => {
     request,
   }) => {
     test.skip(!HAS_GIT, 'git is not available');
-    test.setTimeout(90_000);
     const dir = workDir();
     writeFileSync(path.join(dir, 'repos', REPO_REF, 'my-notes.txt'), 'local work');
     const job = await runToEnd(request, {
@@ -469,11 +457,14 @@ test.describe('busy and cancel', () => {
   test('a second run while one is in progress is 409 busy; cancelling ends the job cancelled with a valid manifest', async ({
     request,
   }) => {
-    test.setTimeout(90_000);
     const dir = path.join(base, 'cancel');
-    const started = await run(request, { recipe: recipe(dir) });
+    // a 250 ms delay per step (this run only) keeps it in progress; cancel aborts the sleeping step
+    const started = await run(request, { recipe: recipe(dir) }, { [STEP_DELAY_HEADER]: '250' });
     expect(started.status(), await started.text()).toBe(202);
     const { jobId } = (await started.json()) as { jobId: string };
+    await waitFor(request, jobId, (j) =>
+      j.steps.some((s) => s.status === 'running' && s.id !== 'dir'),
+    );
 
     const busy = await run(request, { recipe: recipe(path.join(base, 'cancel-other')) });
     expect(busy.status()).toBe(409);
@@ -486,8 +477,7 @@ test.describe('busy and cancel', () => {
     // the same directory is busy too (not dir-not-empty from the half-written run)
     expect((await errorOf(await run(request, { recipe: recipe(dir) }))).error).toBe('busy');
 
-    // wait until the run is past its first steps, then cancel
-    await waitFor(request, jobId, (j) => j.steps.filter((s) => s.status === 'ok').length >= 2);
+    // a step past `dir` is running (waited for above): cancel
     const cancel = await request.post(`${API}/inflate/jobs/${jobId}/cancel`, { data: {} });
     expect(cancel.status()).toBe(200);
     const cancelled = ((await cancel.json()) as { job: Job }).job;
@@ -548,7 +538,6 @@ test.describe('safety', () => {
   test('allowNonEmpty uses the occupied directory and never touches the foreign files', async ({
     request,
   }) => {
-    test.setTimeout(90_000);
     const occupied = path.join(base, 'occupied-allowed');
     mkdirSync(path.join(occupied, 'kb'), { recursive: true });
     writeFileSync(path.join(occupied, 'precious.txt'), 'keep me');
@@ -569,7 +558,6 @@ test.describe('safety', () => {
   });
 
   test('a path that already exists and is not ours fails that step only', async ({ request }) => {
-    test.setTimeout(90_000);
     const occupied = path.join(base, 'occupied-conflict');
     mkdirSync(path.join(occupied, 'kb', 'okf-format'), { recursive: true });
     writeFileSync(path.join(occupied, 'kb', 'okf-format', 'mine.md'), 'mine');

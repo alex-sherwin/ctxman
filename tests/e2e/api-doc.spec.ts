@@ -1,12 +1,12 @@
 // Doc API (ROUND2_BACKEND_SPEC §A.4, ROUND3_SPEC §D.3/§D.4) over Playwright's request context: GET|PUT|POST
 // /api/doc/<dataset>/<slug>/<path> (POST creates a concept; PUT/GET return link problems as warnings).
-// The entry is created through the add script; the API reads and writes the files directly, so no spec waits for
-// the content layer. The entry is removed afterwards (the e2e data copy is shared by the whole run).
+// The entry is created through the add script; the API reads and writes the files directly. The entry is removed
+// afterwards (a worker's data copy is shared by every test that worker runs).
 import { readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
-import { API, dataPath, settleDevReload, uniqueName } from './helpers.ts';
+import { API, dataPath, uniqueName } from './helpers.ts';
 
 interface ErrorBody {
   error: string;
@@ -52,9 +52,8 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   );
 });
 
-test.afterAll(async () => {
+test.afterAll(() => {
   rmSync(entryDir, { recursive: true, force: true });
-  await settleDevReload();
 });
 
 test('GET index.md returns path, markdown, lastModified, bytes and no warnings', async ({

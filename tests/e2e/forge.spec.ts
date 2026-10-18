@@ -2,20 +2,24 @@
 // tab counts, the All tab and "Add with children", invalid entries, the links list (kit OrderedList: drag and drop
 // by mouse and keyboard, up / down fallback), notes in Monaco, save / reorder / reload, the context Select, YAML
 // view validation, delete, and the draft that survives a reload (no native beforeunload prompt). Contexts are
-// created per test through the API so tests stay independent;
-// every assertion on persisted data reads the YAML file or the API, not the rendered page alone.
+// created per test through the API so tests stay independent; every assertion on persisted data reads the YAML
+// file or the API, not the rendered page alone. The server writes before it answers, so a UI save is awaited
+// through its API response (`saveForge`, `afterApi`) and the file is read once.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,
+  afterApi,
   dataExists,
   dataPath,
+  expectOrder,
+  gate,
   modKey,
   pasteIntoMonaco,
   readYaml,
-  settleDevReload,
   typeIntoMonaco,
+  waitForApi,
 } from './helpers.ts';
 
 interface SavedLink {
@@ -61,7 +65,7 @@ async function openFourLinks(page: Page, request: APIRequestContext): Promise<st
   await createContextViaApi(request, name, FOUR_LINKS);
   await page.goto(`/forge?context=${name}`);
   await expect(page.getByTestId('forge-link')).toHaveCount(4);
-  expect(await linkKeys(page)).toEqual(FOUR_KEYS);
+  await expectLinkKeys(page, FOUR_KEYS);
   // The entries cache fills in after mount (row titles, tab counts) and re-renders the rows: let it settle
   // before a test starts dragging.
   await expect(page.getByTestId('forge-tab-reference')).toContainText(/\d+$/);
@@ -69,9 +73,8 @@ async function openFourLinks(page: Page, request: APIRequestContext): Promise<st
   return name;
 }
 
-/** The accessible name of the focused element (during a keyboard drag: "Insert between X and Y"). */
-const focusedLabel = (page: Page) =>
-  page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '');
+/** The focused element (during a keyboard drag its aria-label is "Insert between X and Y"). */
+const focused = (page: Page) => page.locator(':focus');
 
 /**
  * Keyboard drag of the row at `from`: Enter on its handle, `downs` x ArrowDown over the drop targets. Waits for
@@ -81,11 +84,11 @@ const focusedLabel = (page: Page) =>
 async function keyboardDrag(page: Page, from: number, downs: number): Promise<void> {
   await page.getByTestId('forge-link-handle').nth(from).focus();
   await page.keyboard.press('Enter');
-  await expect.poll(() => focusedLabel(page)).toMatch(/^Insert /);
+  await expect(focused(page)).toHaveAttribute('aria-label', /^Insert /);
   for (let i = 0; i < downs; i++) {
-    const previous = await focusedLabel(page);
+    const previous = (await focused(page).getAttribute('aria-label')) ?? '';
     await page.keyboard.press('ArrowDown');
-    await expect.poll(() => focusedLabel(page)).not.toBe(previous);
+    await expect(focused(page)).not.toHaveAttribute('aria-label', previous);
   }
 }
 
@@ -98,11 +101,17 @@ function savedContext(name: string): SavedContext {
   return readYaml(`context/${name}.yaml`) as SavedContext;
 }
 
-/** The rendered link rows, by dataset:slug key, in display order. */
-async function linkKeys(page: Page): Promise<string[]> {
-  return page
-    .getByTestId('forge-link')
-    .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key ?? ''));
+/** Waits (per animation frame) until the link rows are exactly `keys`, in order. */
+const expectLinkKeys = (page: Page, keys: string[]) =>
+  expectOrder(page, '[data-testid="forge-link"]', 'data-key', keys);
+
+/** Clicks Save and waits for the PUT: once it answers 200 the file is on disk. */
+async function saveForge(page: Page): Promise<void> {
+  const response = await afterApi(page, 'PUT', '/api/context/', () =>
+    page.getByTestId('forge-save').click(),
+  );
+  expect(response.status()).toBe(200);
+  await expect(page.getByTestId('forge-status')).toContainText('Saved');
 }
 
 async function addFromDiscover(page: Page, dataset: string, slug: string): Promise<void> {
@@ -134,12 +143,13 @@ test.describe('New context dialog', () => {
     await expect(create).toBeDisabled(); // description is still empty
     await page.getByTestId('forge-new-description').fill('Created by the e2e suite');
     await expect(create).toBeEnabled();
-    await create.click();
+    const created = await afterApi(page, 'POST', '/api/context', () => create.click());
+    expect(created.status()).toBe(201);
 
     await expect(page).toHaveURL(new RegExp(`[?&]context=${name}(&|$)`));
     await expect(dialog).toHaveCount(0);
     await expect(page.getByTestId('forge-context-name')).toHaveValue(name);
-    await expect.poll(() => dataExists(`context/${name}.yaml`)).toBe(true);
+    expect(dataExists(`context/${name}.yaml`)).toBe(true);
     expect(savedContext(name).description).toBe('Created by the e2e suite');
     const api = await request.get(`${API}/context/${name}`);
     expect(((await api.json()) as { context: SavedContext }).context.description).toBe(
@@ -193,7 +203,7 @@ test('add, annotate, save, reorder and reload a context', async ({ page, request
   await addFromDiscover(page, 'kb', 'ctxman');
   await addFromDiscover(page, 'task', 'write-agents-md');
   await expect(page.locator('[data-testid="forge-link"]')).toHaveCount(2);
-  expect(await linkKeys(page)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+  await expectLinkKeys(page, ['kb:ctxman', 'task:write-agents-md']);
 
   // Notes live in a Monaco editor that mounts when the disclosure opens.
   await page
@@ -203,10 +213,9 @@ test('add, annotate, save, reorder and reload a context', async ({ page, request
   await expect(page.getByTestId('forge-link-notes').locator('.monaco-editor')).toBeVisible();
   await typeIntoMonaco(page, 'forge-link-notes', 'e2e notes for ctxman');
 
-  await page.getByTestId('forge-save').click();
-  await expect(page.getByTestId('forge-status')).toContainText('Saved');
+  await saveForge(page);
   // Notes are stored as a literal block with one trailing newline (context-io normalisation).
-  await expect.poll(() => savedContext(name).links[0]?.notes?.trim()).toBe('e2e notes for ctxman');
+  expect(savedContext(name).links[0]?.notes?.trim()).toBe('e2e notes for ctxman');
   const api = await request.get(`${API}/context/${name}`);
   const fromApi = (await api.json()) as { context: SavedContext };
   expect(fromApi.context.links[0]?.notes?.trim()).toBe('e2e notes for ctxman');
@@ -220,17 +229,14 @@ test('add, annotate, save, reorder and reload a context', async ({ page, request
     .locator('[data-testid="forge-link"][data-key="kb:ctxman"]')
     .getByTestId('forge-link-down')
     .click();
-  expect(await linkKeys(page)).toEqual(['task:write-agents-md', 'kb:ctxman']);
-  await page.getByTestId('forge-save').click();
-  await expect(page.getByTestId('forge-status')).toContainText('Saved');
-  await expect
-    .poll(() => savedContext(name).links.map((l) => l.slug))
-    .toEqual(['write-agents-md', 'ctxman']);
+  await expectLinkKeys(page, ['task:write-agents-md', 'kb:ctxman']);
+  await saveForge(page);
+  expect(savedContext(name).links.map((l) => l.slug)).toEqual(['write-agents-md', 'ctxman']);
 
   // The saved order and notes survive a reload.
   await page.reload();
   await expect(page.getByTestId('forge-link')).toHaveCount(2);
-  expect(await linkKeys(page)).toEqual(['task:write-agents-md', 'kb:ctxman']);
+  await expectLinkKeys(page, ['task:write-agents-md', 'kb:ctxman']);
 });
 
 test('the context page lists the links in the order the Forge saved', async ({ page, request }) => {
@@ -242,10 +248,9 @@ test('the context page lists the links in the order the Forge saved', async ({ p
   await page.goto(`/forge?context=${name}`);
   await expect(page.getByTestId('forge-link')).toHaveCount(2);
   await page.getByTestId('forge-link-down').first().click();
-  await page.getByTestId('forge-save').click();
-  await expect(page.getByTestId('forge-status')).toContainText('Saved');
+  await saveForge(page);
   // task before kb: the saved order, not the registry's dataset order (kb first)
-  await expect.poll(() => savedKeys(name)).toEqual(['task:write-agents-md', 'kb:ctxman']);
+  expect(savedKeys(name)).toEqual(['task:write-agents-md', 'kb:ctxman']);
 
   await page.goto(`/context/${name}`);
   const links = page.getByTestId('context-link');
@@ -281,14 +286,17 @@ test.describe('Discover tab counts', () => {
   });
 
   test('a tab shows an ellipsis while its entries load', async ({ page }) => {
+    // Hold every entries request until the in-between state has been seen.
+    const entriesGate = gate();
     await page.route('**/api/entries**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await entriesGate.wait;
       await route.continue();
     });
     await page.goto('/forge');
     await expect(page.getByTestId('forge-tab-kb')).toBeVisible();
     // every dataset tab plus the All tab
     await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(DATASETS.length + 1);
+    entriesGate.open();
     await expect(page.getByTestId('forge-tab-kb')).toContainText(/\d+$/);
     await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(0);
   });
@@ -305,13 +313,12 @@ test.describe('Links list (drag and drop)', () => {
     // Focus the handle of row 1, lift it with Enter, ArrowDown over the drop targets, drop with Enter.
     await keyboardDrag(page, 0, 2);
     await page.keyboard.press('Enter');
-    await expect.poll(() => linkKeys(page)).toEqual([b, c, a, d]);
+    await expectLinkKeys(page, [b, c, a, d]);
     await expect(page.getByTestId('forge-status')).toHaveText('Unsaved changes');
     expect(savedKeys(name)).toEqual(FOUR_KEYS); // nothing written before Save
 
-    await page.getByTestId('forge-save').click();
-    await expect(page.getByTestId('forge-status')).toContainText('Saved');
-    await expect.poll(() => savedKeys(name)).toEqual([b, c, a, d]);
+    await saveForge(page);
+    expect(savedKeys(name)).toEqual([b, c, a, d]);
     const api = await request.get(`${API}/context/${name}`);
     const body = (await api.json()) as { context: SavedContext };
     expect(body.context.links.map((l) => `${l.dataset}:${l.slug}`)).toEqual([b, c, a, d]);
@@ -321,8 +328,8 @@ test.describe('Links list (drag and drop)', () => {
     await openFourLinks(page, request);
     await keyboardDrag(page, 0, 1);
     await page.keyboard.press('Escape');
-    await expect.poll(() => focusedLabel(page)).not.toMatch(/^Insert /);
-    expect(await linkKeys(page)).toEqual(FOUR_KEYS);
+    await expect(focused(page)).not.toHaveAttribute('aria-label', /^Insert /);
+    await expectLinkKeys(page, FOUR_KEYS);
     await expect(page.getByTestId('forge-status')).toHaveText('No changes');
   });
 
@@ -343,11 +350,10 @@ test.describe('Links list (drag and drop)', () => {
     await page.mouse.move(handle.x + 10, handle.y + 30, { steps: 5 });
     await page.mouse.move(third.x + 100, third.y + third.height - 4, { steps: 15 });
     await page.mouse.up();
-    await expect.poll(() => linkKeys(page)).toEqual([b, c, a, d]);
+    await expectLinkKeys(page, [b, c, a, d]);
 
-    await page.getByTestId('forge-save').click();
-    await expect(page.getByTestId('forge-status')).toContainText('Saved');
-    await expect.poll(() => savedKeys(name)).toEqual([b, c, a, d]);
+    await saveForge(page);
+    expect(savedKeys(name)).toEqual([b, c, a, d]);
   });
 
   test('a mouse drag that starts outside the grip does not move a row', async ({
@@ -365,7 +371,7 @@ test.describe('Links list (drag and drop)', () => {
     await page.mouse.move(badge.x + 10, badge.y + 30, { steps: 5 });
     await page.mouse.move(third.x + 100, third.y + third.height - 4, { steps: 15 });
     await page.mouse.up();
-    expect(await linkKeys(page)).toEqual(FOUR_KEYS);
+    await expectLinkKeys(page, FOUR_KEYS);
     await expect(page.getByTestId('forge-status')).toHaveText('No changes');
   });
 
@@ -376,12 +382,12 @@ test.describe('Links list (drag and drop)', () => {
 
     await row(a).getByTestId('forge-link-down').focus();
     await page.keyboard.press('Enter');
-    await expect.poll(() => linkKeys(page)).toEqual([b, a, ...FOUR_KEYS.slice(2)]);
+    await expectLinkKeys(page, [b, a, ...FOUR_KEYS.slice(2)]);
     await expect(row(a).getByTestId('forge-link-down')).toBeFocused();
 
     await row(a).getByTestId('forge-link-up').focus();
     await page.keyboard.press('Enter');
-    await expect.poll(() => linkKeys(page)).toEqual(FOUR_KEYS);
+    await expectLinkKeys(page, FOUR_KEYS);
     await expect(row(a).getByTestId('forge-link-up')).toBeDisabled(); // first row: no "up"
     await expect(row(a).getByTestId('forge-link-down')).toBeFocused(); // falls back to the other button
   });
@@ -404,9 +410,7 @@ test.describe('Links list (drag and drop)', () => {
     await expect(page.getByTestId('forge-status')).toHaveText('Unsaved changes');
 
     // Rows stop their key events from bubbling; the shortcut must still reach the store.
-    const put = page.waitForResponse(
-      (res) => res.request().method() === 'PUT' && res.url().includes(`/api/context/${name}`),
-    );
+    const put = waitForApi(page, 'PUT', `/api/context/${name}`);
     await page.keyboard.press(`${modKey}+s`);
     expect((await put).status()).toBe(200);
     await expect(page.getByTestId('forge-status')).toContainText('Saved');
@@ -460,8 +464,7 @@ test('the YAML view blocks saving invalid YAML and saves once it is valid', asyn
   await typeIntoMonaco(page, 'forge-yaml-editor', 'broken: [');
   await expect(page.getByTestId('forge-yaml-issues')).toContainText('invalid');
   await expect(page.getByTestId('forge-yaml-issue').first()).toBeVisible();
-  // A syntax error is marked by monaco-yaml (error squiggle); its worker starts with the first YAML editor,
-  // so give a cold dev server time.
+  // A syntax error is marked by monaco-yaml (error squiggle); its worker starts with the first YAML editor.
   await expect(
     page.getByTestId('forge-yaml-editor').locator('.squiggly-error').first(),
   ).toBeAttached({ timeout: 15_000 });
@@ -475,9 +478,8 @@ test('the YAML view blocks saving invalid YAML and saves once it is valid', asyn
 
   await pasteIntoMonaco(page, 'forge-yaml-editor', 'tags:\n  - yaml\n');
   await expect(page.getByTestId('forge-save')).toBeEnabled();
-  await page.getByTestId('forge-save').click();
-  await expect(page.getByTestId('forge-status')).toContainText('Saved');
-  await expect.poll(() => savedContext(name).tags).toEqual(['yaml']);
+  await saveForge(page);
+  expect(savedContext(name).tags).toEqual(['yaml']);
 
   await page.getByTestId('forge-view-form').click();
   await expect(page).not.toHaveURL(/view=yaml/);
@@ -543,12 +545,15 @@ test('deleting a context asks first, then removes it', async ({ page, request })
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
-  await expect.poll(() => dataExists(`context/${name}.yaml`)).toBe(true);
+  expect(dataExists(`context/${name}.yaml`)).toBe(true);
 
   await page.getByTestId('forge-delete').click();
-  await page.getByTestId('forge-delete-dialog').getByRole('button', { name: 'Delete' }).click();
+  const deleted = await afterApi(page, 'DELETE', '/api/context/', () =>
+    page.getByTestId('forge-delete-dialog').getByRole('button', { name: 'Delete' }).click(),
+  );
+  expect(deleted.status()).toBe(204);
   await expect(page.getByTestId('forge-delete-dialog')).toHaveCount(0);
-  await expect.poll(() => dataExists(`context/${name}.yaml`)).toBe(false);
+  expect(dataExists(`context/${name}.yaml`)).toBe(false);
   const gone = await request.get(`${API}/context/${name}`);
   expect(gone.status()).toBe(404);
 });
@@ -593,8 +598,11 @@ test.describe('All tab', () => {
           .getByTestId('forge-result')
           .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.dataset)),
       );
-    await expect.poll(async () => (await datasets()).size).toBeGreaterThan(4);
-    for (const ds of ['kb', 'task', 'skill']) expect(await datasets()).toContain(ds);
+    const results = page.getByTestId('forge-result');
+    for (const ds of ['kb', 'task', 'skill']) {
+      await expect(results.and(page.locator(`[data-dataset="${ds}"]`)).first()).toBeVisible();
+    }
+    expect((await datasets()).size).toBeGreaterThan(4);
     await expect(page.locator('[data-testid="forge-result"] .ck-badge--ds').first()).toBeVisible();
     await expect(page.getByTestId('forge-state-chips')).toHaveCount(0);
     await expect(page.getByTestId('forge-tag-chips')).toBeVisible();
@@ -602,9 +610,8 @@ test.describe('All tab', () => {
     // the filter spans datasets: "agents" matches a task and a kb / idea entry
     await page.getByTestId('forge-filter-q').fill('agents');
     await expect(page).toHaveURL(/[?&]q=agents(&|$)/);
-    await expect
-      .poll(async () => (await datasets()).has('task') && (await datasets()).size >= 2)
-      .toBe(true);
+    await expect(results.and(page.locator('[data-dataset="task"]')).first()).toBeVisible();
+    await expect(results.and(page.locator(':not([data-dataset="task"])')).first()).toBeVisible();
 
     // add from the merged list
     const row = page.locator(
@@ -615,16 +622,15 @@ test.describe('All tab', () => {
       page.locator('[data-testid="forge-link"][data-key="task:write-agents-md"]'),
     ).toBeVisible();
     await expect(row).toHaveAttribute('data-added', 'true');
-    await page.getByTestId('forge-save').click();
-    await expect(page.getByTestId('forge-status')).toContainText('Saved');
-    await expect.poll(() => savedKeys(name)).toEqual(['task:write-agents-md']);
+    await saveForge(page);
+    expect(savedKeys(name)).toEqual(['task:write-agents-md']);
   });
 
   test('the All tab is URL state: it survives a reload and the back button', async ({ page }) => {
     await page.goto('/forge?dataset=all&q=forge');
     await expect(page.getByTestId('forge-filter-q')).toHaveValue('forge');
     await expect(page.getByTestId('forge-tab-all')).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(() => page.getByTestId('forge-result').count()).toBeGreaterThan(1);
+    await expect(page.getByTestId('forge-result').nth(1)).toBeVisible(); // more than one match
     await page.getByTestId('forge-tab-task').click();
     await expect(page).toHaveURL(/[?&]dataset=task(&|$)/);
     await page.goBack();
@@ -652,14 +658,13 @@ test.describe('Add with children', () => {
     );
     await row.getByTestId('forge-add-children').click();
     await expect(page.getByTestId('forge-link')).toHaveCount(children.length + 1);
-    expect(await linkKeys(page)).toEqual(['project:ctxman-v1', ...children]);
+    await expectLinkKeys(page, ['project:ctxman-v1', ...children]);
     // everything is linked: no children button left, the row is marked added
     await expect(row.getByTestId('forge-add-children')).toHaveCount(0);
     await expect(row).toHaveAttribute('data-added', 'true');
 
-    await page.getByTestId('forge-save').click();
-    await expect(page.getByTestId('forge-status')).toContainText('Saved');
-    await expect.poll(() => savedKeys(name)).toEqual(['project:ctxman-v1', ...children]);
+    await saveForge(page);
+    expect(savedKeys(name)).toEqual(['project:ctxman-v1', ...children]);
   });
 
   test('children that are already linked are skipped and not counted', async ({
@@ -681,7 +686,7 @@ test.describe('Add with children', () => {
     // the pre-linked child keeps its place, the project and the other children follow
     const expected = [linked, 'project:ctxman-v1', ...children.filter((k) => k !== linked)];
     await expect(page.getByTestId('forge-link')).toHaveCount(expected.length);
-    expect(await linkKeys(page)).toEqual(expected);
+    await expectLinkKeys(page, expected);
   });
 
   test('an already added project offers only its missing children', async ({ page, request }) => {
@@ -696,7 +701,7 @@ test.describe('Add with children', () => {
     );
     await row.getByTestId('forge-add-children').click();
     await expect(page.getByTestId('forge-link')).toHaveCount(children.length + 1);
-    expect(await linkKeys(page)).toEqual(['project:ctxman-v1', ...children]);
+    await expectLinkKeys(page, ['project:ctxman-v1', ...children]);
   });
 
   test('an entry without children has no such button', async ({ page, request }) => {
@@ -721,7 +726,6 @@ test.describe('Invalid entries', () => {
       `---\ntype: Idea\nname: ${slug}\ndescription: An idea with a state that does not exist\nstate: done\n---\n\n# Bad\n`,
     );
     try {
-      await settleDevReload();
       const name = uniqueName('e2e-ctx');
       await createContextViaApi(request, name);
       await openContext(page, name, `&dataset=all&q=${slug}`);
@@ -740,7 +744,6 @@ test.describe('Invalid entries', () => {
       await expect(link).toContainText('invalid');
     } finally {
       rmSync(dir, { recursive: true, force: true });
-      await settleDevReload();
     }
   });
 });
@@ -784,7 +787,7 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
     );
     await expect(page.getByTestId('forge-draft-restored')).not.toHaveAttribute('data-stale', /.*/);
     expect(dialogs.count()).toBe(0);
-    expect(await linkKeys(page)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    await expectLinkKeys(page, ['kb:ctxman', 'task:write-agents-md']);
     await expect(page.getByTestId('forge-context-description')).toHaveValue('Edited but not saved');
     await expect(page.getByTestId('forge-status')).toContainText('Unsaved');
 
@@ -797,13 +800,13 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
 
     await page.getByTestId('forge-draft-discard').click();
     await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
-    expect(await linkKeys(page)).toEqual(['kb:ctxman']);
+    await expectLinkKeys(page, ['kb:ctxman']);
     await expect(page.getByTestId('forge-context-description')).toHaveValue(`E2E context ${name}`);
     await expect(page.getByTestId('forge-status')).toHaveText('No changes');
     await page.reload();
     await expect(page.getByTestId('forge-context-name')).toHaveValue(name);
     await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
-    expect(await linkKeys(page)).toEqual(['kb:ctxman']);
+    await expectLinkKeys(page, ['kb:ctxman']);
     expect(dialogs.count()).toBe(0);
   });
 
@@ -831,16 +834,15 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
     const banner = page.getByTestId('forge-draft-restored');
     await expect(banner).toHaveAttribute('data-stale', 'true');
     await expect(banner).toContainText('the file changed on disk since');
-    expect(await linkKeys(page)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    await expectLinkKeys(page, ['kb:ctxman', 'task:write-agents-md']);
     // still stale after another reload: the warning is about the draft's base, not about this visit
     await page.reload();
     await expect(page.getByTestId('forge-draft-restored')).toHaveAttribute('data-stale', 'true');
 
     // saving overwrites the file, clears the draft and the banner
-    await page.getByTestId('forge-save').click();
-    await expect(page.getByTestId('forge-status')).toContainText('Saved');
+    await saveForge(page);
     await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);
-    await expect.poll(() => savedKeys(name)).toEqual(['kb:ctxman', 'task:write-agents-md']);
+    expect(savedKeys(name)).toEqual(['kb:ctxman', 'task:write-agents-md']);
     await page.reload();
     await expect(page.getByTestId('forge-link')).toHaveCount(2);
     await expect(page.getByTestId('forge-draft-restored')).toHaveCount(0);

@@ -10,13 +10,14 @@ import type { APIRequestContext, Locator, Page, Response } from '@playwright/tes
 import {
   API,
   SEED_RECIPE,
+  afterApi,
   createRecipeCopy,
   dataExists,
   dataPath,
   deleteRecipeQuietly,
+  expectOrder,
   modKey,
   readRecipeYaml,
-  settleDevReload,
   typeIntoMonaco,
   uniqueName,
 } from './helpers.ts';
@@ -68,14 +69,21 @@ async function newCopy(request: APIRequestContext): Promise<string> {
 /** Opens /inflate on `name` (optionally with extra query text) and waits until its recipe is in place. */
 async function openInflate(page: Page, name: string, query = ''): Promise<void> {
   await page.goto(`/inflate?recipe=${name}${query}`);
-  await expect(page.getByTestId('inflate-view-recipe')).toHaveAttribute('href', `/recipe/${name}`, {
-    timeout: 15_000,
-  });
+  await expect(page.getByTestId('inflate-view-recipe')).toHaveAttribute('href', `/recipe/${name}`);
 }
 
 /** The composition row of a plan key (`kb/ctxman`, `ctx:ctxman-dev`, `md:b1`, `sec:extra`, ...). */
 function segmentRow(page: Page, key: string): Locator {
   return page.locator(`[data-testid="inflate-segment"][data-key="${key}"]`);
+}
+
+/**
+ * The entries cache fills in after mount (row titles, tab counts) and re-renders the composition rows: wait for
+ * it before a test types into a row or drags one.
+ */
+async function entriesLoaded(page: Page): Promise<void> {
+  await expect(page.locator('.ck-tabs__count[data-loading]')).toHaveCount(0);
+  await expect(page.getByTestId('inflate-tab-all')).toContainText(/\d+$/);
 }
 
 /** The manifest row of a plan key in the preview view. */
@@ -89,6 +97,10 @@ async function segmentKeys(page: Page): Promise<string[]> {
     .getByTestId('inflate-segment')
     .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key ?? ''));
 }
+
+/** Waits (per animation frame) until the composition rows are exactly `keys`, in order. */
+const expectSegmentKeys = (page: Page, keys: string[]) =>
+  expectOrder(page, '[data-testid="inflate-segment"]', 'data-key', keys);
 
 function overrideIn(recipe: RecipeBody, key: string): OverrideRow | undefined {
   return ((recipe.overrides ?? []) as OverrideRow[]).find((o) => o.key === key);
@@ -169,8 +181,8 @@ async function pickRecipe(page: Page, name: string): Promise<void> {
 test.describe('seed recipe', () => {
   test('loads the seed in the §10 order, with the excluded item marked', async ({ page }) => {
     await openInflate(page, SEED_RECIPE);
-    await expect(segmentRow(page, 'kb/ctxman')).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => segmentKeys(page)).toEqual(SEED_ORDER);
+    await expect(segmentRow(page, 'kb/ctxman')).toBeVisible();
+    await expectSegmentKeys(page, SEED_ORDER);
     await expect(page.getByTestId('inflate-segment-count')).toHaveText('14 segments');
     await expect(segmentRow(page, 'bug/stale-badge-timezone')).toHaveAttribute(
       'data-status',
@@ -221,9 +233,9 @@ test.describe('composition edits', () => {
     expect((await rendered).ok()).toBe(true);
 
     await saveRecipe(page);
-    await expect
-      .poll(() => overrideIn(readRecipeYaml(name), 'kb/ctxman')?.options)
-      .toEqual({ includeFrontmatter: true });
+    expect(overrideIn(readRecipeYaml(name), 'kb/ctxman')?.options).toEqual({
+      includeFrontmatter: true,
+    });
 
     await page.getByTestId('inflate-view-preview').click();
     await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready');
@@ -303,14 +315,14 @@ test.describe('composition edits', () => {
     const task = segmentRow(page, 'task/write-agents-md');
     await task.getByTestId('inflate-segment-up').click();
     const up = swapKeys(SEED_ORDER, 'task/write-agents-md', -1);
-    await expect.poll(() => segmentKeys(page)).toEqual(up);
+    await expectSegmentKeys(page, up);
     // The focus follows the moved row: same-direction button of that row.
     await expect(task.getByTestId('inflate-segment-up')).toBeFocused();
     await saveRecipe(page);
     expect(readRecipeYaml(name).order).toEqual(up);
 
     await task.getByTestId('inflate-segment-down').click();
-    await expect.poll(() => segmentKeys(page)).toEqual(SEED_ORDER);
+    await expectSegmentKeys(page, SEED_ORDER);
     await saveRecipe(page);
     expect(readRecipeYaml(name).order).toEqual(SEED_ORDER);
   });
@@ -322,22 +334,24 @@ test.describe('composition edits', () => {
     const name = await newCopy(request);
     await openInflate(page, name);
     await expect(segmentRow(page, 'task/write-agents-md')).toBeVisible();
-    await expect.poll(() => segmentKeys(page)).toEqual(SEED_ORDER);
+    await expectSegmentKeys(page, SEED_ORDER);
+    await entriesLoaded(page);
 
-    const handle = await segmentRow(page, 'task/write-agents-md')
-      .getByTestId('inflate-segment-handle')
-      .boundingBox();
+    // hover() waits until the grip has stopped moving (a layout shift between measuring and pressing would
+    // grab the neighbouring row), so the press lands on the intended row.
+    const grip = segmentRow(page, 'task/write-agents-md').locator('[data-drag-zone]'); // wraps the handle
+    await grip.hover();
+    const handle = await grip.boundingBox();
     const over = await segmentRow(page, 'kb/astro-content-layer').boundingBox();
     if (handle === null || over === null) throw new Error('rows are not laid out');
     // Native HTML5 drag: press on the handle, leave the row, hover the upper half of the target row, release.
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x + handle.width / 2, handle.y - 20, { steps: 4 });
     await page.mouse.move(handle.x + 40, over.y + 4, { steps: 12 });
     await page.mouse.up();
 
     const expected = moveBefore(SEED_ORDER, 'task/write-agents-md', 'kb/astro-content-layer');
-    await expect.poll(() => segmentKeys(page)).toEqual(expected);
+    await expectSegmentKeys(page, expected);
     await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
     await saveRecipe(page);
     expect(readRecipeYaml(name).order).toEqual(expected);
@@ -347,6 +361,7 @@ test.describe('composition edits', () => {
     const name = await newCopy(request);
     await openInflate(page, name);
     await expect(segmentRow(page, 'task/write-agents-md')).toBeVisible();
+    await entriesLoaded(page);
 
     // Escape: the drag ends, nothing moved, the recipe is not dirty.
     await segmentRow(page, 'task/write-agents-md').focus();
@@ -356,7 +371,7 @@ test.describe('composition edits', () => {
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Escape');
     await expect(segmentRow(page, 'task/write-agents-md')).not.toHaveAttribute('data-dragging');
-    expect(await segmentKeys(page)).toEqual(SEED_ORDER);
+    await expectSegmentKeys(page, SEED_ORDER);
     await expect(page.getByTestId('inflate-status')).toHaveText('No changes');
 
     // Drop between "ctxman" and "Astro content layer": the task lands right after kb/ctxman.
@@ -366,7 +381,7 @@ test.describe('composition edits', () => {
       'Insert between ctxman and Astro content layer',
     );
     const expected = moveBefore(SEED_ORDER, 'task/write-agents-md', 'kb/astro-content-layer');
-    await expect.poll(() => segmentKeys(page)).toEqual(expected);
+    await expectSegmentKeys(page, expected);
     await expect(page.getByTestId('inflate-status')).toHaveText('Unsaved changes');
     await saveRecipe(page);
     expect(readRecipeYaml(name).order).toEqual(expected);
@@ -380,16 +395,24 @@ test.describe('composition edits', () => {
     await openInflate(page, name);
     const clone = segmentRow(page, 'reference/astro-docs').getByTestId('inflate-opt-cloneDir');
     await expect(clone).toBeVisible();
+    await entriesLoaded(page);
     const original = await clone.inputValue();
 
     await clone.click();
-    await page.keyboard.press('End');
+    await expect(clone).toBeFocused();
+    // The click puts the caret mid-text; an End pressed while the row is still settling is lost, so retry it.
+    await expect(async () => {
+      await clone.press('End');
+      expect(await clone.evaluate((el: HTMLInputElement) => el.selectionStart)).toBe(
+        original.length,
+      );
+    }).toPass();
     await page.keyboard.type('-x y'); // letters and Space stay in the input (no row navigation or type-ahead)
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.type('Q');
     await expect(clone).toHaveValue(`${original}-xQ y`);
-    expect(await segmentKeys(page)).toEqual(SEED_ORDER);
+    await expectSegmentKeys(page, SEED_ORDER);
 
     // A mouse drag inside the input selects text instead of dragging the row.
     const box = await clone.boundingBox();
@@ -403,7 +426,7 @@ test.describe('composition edits', () => {
         (el: HTMLInputElement) => (el.selectionEnd ?? 0) - (el.selectionStart ?? 0),
       ),
     ).toBeGreaterThan(3);
-    expect(await segmentKeys(page)).toEqual(SEED_ORDER);
+    await expectSegmentKeys(page, SEED_ORDER);
   });
 
   test('Cmd/Ctrl+S saves while the focus is inside a row control', async ({ page, request }) => {
@@ -438,9 +461,9 @@ test.describe('composition edits', () => {
     const context = page.locator('[data-testid="inflate-context"][data-slug="ctxman-dev"]');
     await context.click();
     await expect(context.getByRole('checkbox')).not.toBeChecked();
-    await expect.poll(() => segmentKeys(page)).not.toContain('ctx:ctxman-dev');
-    await expect.poll(() => segmentKeys(page)).not.toContain('kb/ctxman');
-    await expect.poll(() => segmentKeys(page)).toContain('skill/ctxman-add-entry');
+    await expect(segmentRow(page, 'ctx:ctxman-dev')).toHaveCount(0);
+    await expect(segmentRow(page, 'kb/ctxman')).toHaveCount(0);
+    await expect(segmentRow(page, 'skill/ctxman-add-entry')).toBeVisible();
     await saveRecipe(page);
     expect(readRecipeYaml(name).contexts).toEqual([]);
 
@@ -764,9 +787,7 @@ test.describe('preview paths', () => {
     page,
   }) => {
     await openInflate(page, SEED_RECIPE, '&view=preview');
-    await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready', {
-      timeout: 20_000,
-    });
+    await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready');
     await expect(page.getByTestId('inflate-preview-paths-relative')).toBeChecked();
     const lines = page.getByTestId('inflate-preview-editor').locator('.view-lines');
     await expect(lines).toContainText('# ctxman-dev-brief');
@@ -805,9 +826,7 @@ test.describe('preview paths', () => {
     const { output: _removed, ...documentOnly } = recipe.recipe;
     expect((await request.put(`/api/recipe/${name}`, { data: documentOnly })).status()).toBe(200);
     await openInflate(page, name, '&view=preview');
-    await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready', {
-      timeout: 20_000,
-    });
+    await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready');
     await expect(page.getByTestId('inflate-preview-paths')).toHaveCount(0);
     await expect(page.getByTestId('inflate-write-path')).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Material' })).toHaveCount(0);
@@ -830,9 +849,7 @@ test.describe('preview paths', () => {
     const dir = path.join(os.tmpdir(), uniqueName('ctxman-e2e-plan'));
     await page.getByTestId('inflate-run-dir').fill(dir);
     await expect(page.getByTestId('inflate-run-overrides')).toContainText('1 run override');
-    await expect(page.getByTestId('inflate-dirplan-status')).toHaveAttribute('data-kind', 'ready', {
-      timeout: 20_000,
-    });
+    await expect(page.getByTestId('inflate-dirplan-status')).toHaveAttribute('data-kind', 'ready');
     await expect(page.getByTestId('inflate-dirplan-step')).toHaveCount(15);
     expect(
       await page
@@ -915,7 +932,8 @@ test.describe('New recipe dialog', () => {
     await expect(create).toBeDisabled(); // description still empty
     await page.getByTestId('inflate-new-description').fill('Created by the e2e suite');
     await expect(create).toBeEnabled();
-    await create.click();
+    const createdRecipe = await afterApi(page, 'POST', '/api/recipe', () => create.click());
+    expect(createdRecipe.status()).toBe(201);
 
     await expect(page).toHaveURL(new RegExp(`[?&]recipe=${name}(&|$)`));
     await expect(dialog).toHaveCount(0);
@@ -923,7 +941,7 @@ test.describe('New recipe dialog', () => {
       'href',
       `/recipe/${name}`,
     );
-    await expect.poll(() => dataExists(`recipe/${name}.yaml`)).toBe(true);
+    expect(dataExists(`recipe/${name}.yaml`)).toBe(true);
     expect(readRecipeYaml(name)).toMatchObject({
       name,
       description: 'Created by the e2e suite',
@@ -1028,7 +1046,7 @@ test.describe('switching, deleting and history', () => {
     expect((await deleted).status()).toBe(204);
     await expect(page.getByTestId('inflate-status')).toHaveText(`Deleted ${name}`);
     created.delete(name);
-    await expect.poll(() => dataExists(`recipe/${name}.yaml`)).toBe(false);
+    expect(dataExists(`recipe/${name}.yaml`)).toBe(false);
 
     await page.goto('/recipe');
     await expect(page.getByTestId('list-results')).toBeVisible();
@@ -1101,7 +1119,11 @@ test.describe('All tab', () => {
           .getByTestId('inflate-result')
           .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.dataset)),
       );
-    await expect.poll(async () => (await datasets()).size).toBeGreaterThan(4);
+    const results = page.getByTestId('inflate-result');
+    for (const ds of ['kb', 'task', 'skill', 'bug', 'idea']) {
+      await expect(results.and(page.locator(`[data-dataset="${ds}"]`)).first()).toBeVisible();
+    }
+    expect((await datasets()).size).toBeGreaterThan(4);
     await expect(
       page.locator('[data-testid="inflate-result"] .ck-badge--ds').first(),
     ).toBeVisible();
@@ -1125,7 +1147,6 @@ test.describe('All tab', () => {
       `---\ntype: Idea\nname: ${slug}\ndescription: An idea with a state that does not exist\nstate: done\n---\n\n# Bad\n`,
     );
     try {
-      await settleDevReload();
       const name = await newCopy(request);
       await openInflate(page, name, `&dataset=all&q=${slug}`);
       const row = page.locator(`[data-testid="inflate-result"][data-slug="${slug}"]`);
@@ -1134,7 +1155,6 @@ test.describe('All tab', () => {
       await expect(row.getByTestId('inflate-invalid')).toContainText('invalid');
     } finally {
       rmSync(dir, { recursive: true, force: true });
-      await settleDevReload();
     }
   });
 });
@@ -1179,7 +1199,7 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
 
     await page.reload();
     const banner = page.getByTestId('inflate-draft-restored');
-    await expect(banner).toBeVisible({ timeout: 15_000 });
+    await expect(banner).toBeVisible();
     await expect(banner).toContainText('Restored unsaved changes from earlier.');
     await expect(banner).not.toHaveAttribute('data-stale', /.*/);
     expect(dialogs.count()).toBe(0);
@@ -1189,7 +1209,7 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
     // nothing was written; the draft outlives another reload
     expect(readRecipeYaml(name).description).toBe(saved.description);
     await page.reload();
-    await expect(page.getByTestId('inflate-draft-restored')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('inflate-draft-restored')).toBeVisible();
 
     await page.getByTestId('inflate-draft-discard').click();
     await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
@@ -1223,7 +1243,7 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
 
     await page.reload();
     const banner = page.getByTestId('inflate-draft-restored');
-    await expect(banner).toHaveAttribute('data-stale', 'true', { timeout: 15_000 });
+    await expect(banner).toHaveAttribute('data-stale', 'true');
     await expect(banner).toContainText('the file changed on disk since');
     await expect(page.getByTestId('inflate-description')).toHaveValue('Draft text');
 

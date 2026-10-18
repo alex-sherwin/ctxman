@@ -82,16 +82,15 @@ test.describe('Select v2', () => {
 
   test('the chevron rotates while the popover is open and rests when closed', async ({ page }) => {
     const chevron = page.locator('.ck-select__chevron').first();
-    const transform = () => chevron.evaluate((el) => getComputedStyle(el).transform);
-    await expect.poll(transform).toBe('none');
+    await expect(chevron).toHaveCSS('transform', 'none');
     await openSelect(page);
     await expect(page.locator('.ck-select[data-open] .ck-select__chevron')).toHaveCount(1);
     // rotate(180deg) settles as matrix(-1, 0, 0, -1, 0, 0) once the transition ends.
-    await expect.poll(transform).toBe('matrix(-1, 0, 0, -1, 0, 0)');
+    await expect(chevron).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await expect(popover(page)).toHaveCount(0);
-    await expect.poll(transform).toBe('none');
+    await expect(chevron).toHaveCSS('transform', 'none');
   });
 });
 

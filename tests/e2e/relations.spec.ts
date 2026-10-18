@@ -1,11 +1,10 @@
 // Relations in the UI (ROUND3_SPEC §E.2, §E.4, §J): the Children panel of a project, the parent chip and the
 // "Linked from" / "Links to" panels of its children, adding and removing links through the EntryTools dialogs, the
 // `?project=` list filter and "Build context". Everything runs on an e2e-* project with its own tasks (never the seed
-// project, so `/task?project=ctxman-v1` stays the 4 seed tasks); each write is followed by a page load (dev reload).
+// project, so `/task?project=ctxman-v1` stays the 4 seed tasks); each write is followed by a page load (the page reloads itself).
 import { readFileSync, rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
-import { settleAfter } from './dev-reload.ts';
 import { API, dataPath, readDataText, readYaml, uniqueName } from './helpers.ts';
 
 const project = uniqueName('e2e-rel-proj');
@@ -13,60 +12,57 @@ const taskA = uniqueName('e2e-rel-a'); // created with `parent`
 const taskB = uniqueName('e2e-rel-b'); // added through the "Add existing" picker
 const mainOf = (ds: string, slug: string): string => `${ds}/${slug}/index.md`;
 
+// Serial: the tests chain on one project and its two tasks (links added by one test are removed by a later one).
 test.describe.configure({ mode: 'serial' });
 
-test.beforeAll(async ({ browser, playwright, baseURL }) => {
-  await settleAfter(browser, baseURL, async () => {
-    const request = await playwright.request.newContext({ baseURL });
-    try {
-      const projectResponse = await request.post(`${API}/entry/project`, {
-        data: {
-          name: project,
-          title: 'E2E relations project',
-          description: 'Project for the relations spec.',
-        },
-      });
-      expect(projectResponse.status()).toBe(201);
-      const a = await request.post(`${API}/entry/task`, {
-        data: {
-          name: taskA,
-          title: 'E2E relations task A',
-          description: 'Created as a child.',
-          parent: project,
-        },
-      });
-      expect(a.status()).toBe(201);
-      const b = await request.post(`${API}/entry/task`, {
-        data: {
-          name: taskB,
-          title: 'E2E relations task B',
-          description: 'Added later.',
-          state: 'complete',
-        },
-      });
-      expect(b.status()).toBe(201);
-    } finally {
-      await request.dispose();
-    }
-  });
+test.beforeAll(async ({ playwright, baseURL }) => {
+  const request = await playwright.request.newContext({ baseURL });
+  try {
+    const projectResponse = await request.post(`${API}/entry/project`, {
+      data: {
+        name: project,
+        title: 'E2E relations project',
+        description: 'Project for the relations spec.',
+      },
+    });
+    expect(projectResponse.status()).toBe(201);
+    const a = await request.post(`${API}/entry/task`, {
+      data: {
+        name: taskA,
+        title: 'E2E relations task A',
+        description: 'Created as a child.',
+        parent: project,
+      },
+    });
+    expect(a.status()).toBe(201);
+    const b = await request.post(`${API}/entry/task`, {
+      data: {
+        name: taskB,
+        title: 'E2E relations task B',
+        description: 'Added later.',
+        state: 'complete',
+      },
+    });
+    expect(b.status()).toBe(201);
+  } finally {
+    await request.dispose();
+  }
 });
 
-test.afterAll(async ({ browser, playwright, baseURL }) => {
-  await settleAfter(browser, baseURL, async () => {
-    for (const [ds, slug] of [
-      ['task', taskA],
-      ['task', taskB],
-      ['project', project],
-    ] as const) {
-      rmSync(dataPath(`${ds}/${slug}`), { recursive: true, force: true });
-    }
-    const request = await playwright.request.newContext({ baseURL });
-    try {
-      await request.delete(`${API}/context/${project}`);
-    } finally {
-      await request.dispose();
-    }
-  });
+test.afterAll(async ({ playwright, baseURL }) => {
+  for (const [ds, slug] of [
+    ['task', taskA],
+    ['task', taskB],
+    ['project', project],
+  ] as const) {
+    rmSync(dataPath(`${ds}/${slug}`), { recursive: true, force: true });
+  }
+  const request = await playwright.request.newContext({ baseURL });
+  try {
+    await request.delete(`${API}/context/${project}`);
+  } finally {
+    await request.dispose();
+  }
 });
 
 /** Opens a detail page and waits for the island to enable a button that is on it. */
@@ -127,7 +123,7 @@ test('"Add existing" links a task as a child; the child page shows the parent', 
   await pick(page, `task/${taskB}`);
 
   const panel = page.getByTestId('children-panel');
-  await expect(panel.getByTestId('children-row')).toHaveCount(2, { timeout: 15_000 });
+  await expect(panel.getByTestId('children-row')).toHaveCount(2);
   await expect(page.getByTestId('entry-status')).toHaveText(/^Linked /);
   // B is complete, A pending
   await expect(panel.getByTestId('children-progress')).toHaveText('1 of 2 done');
@@ -161,7 +157,7 @@ test('relation-add with "Depends on" shows on both pages; relation-remove takes 
 
   const links = page.getByTestId('detail-links-to');
   const out = rowOf(links, 'relation-row', `task/${taskB}`);
-  await expect(out).toBeVisible({ timeout: 15_000 });
+  await expect(out).toBeVisible();
   await expect(out).toHaveAttribute('data-rel', 'depends-on');
   await expect(out).toContainText('Depends on');
   await expect(out).toHaveAttribute('data-source', 'frontmatter');
@@ -181,9 +177,7 @@ test('relation-add with "Depends on" shows on both pages; relation-remove takes 
   await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
   await expect(
     rowOf(page.getByTestId('detail-links-to'), 'relation-row', `task/${taskB}`),
-  ).toHaveCount(0, {
-    timeout: 15_000,
-  });
+  ).toHaveCount(0);
   // the last link is gone: the key leaves the frontmatter
   expect(readFileSync(dataPath(mainOf('task', taskA)), 'utf8')).not.toContain('links:');
 });
@@ -233,7 +227,7 @@ test('entry-build-context creates a context from the project and opens it in the
   await expect(page.getByTestId('build-context-name')).toHaveValue(project);
   await page.getByTestId('build-context-submit').click();
 
-  await expect(page).toHaveURL(new RegExp(`/forge\\?context=${project}$`), { timeout: 15_000 });
+  await expect(page).toHaveURL(new RegExp(`/forge\\?context=${project}$`));
   const saved = readYaml(`context/${project}.yaml`) as {
     links: { dataset: string; slug: string }[];
   };
@@ -255,7 +249,7 @@ test('children-remove drops a child; with the last one the project has no links 
       .getByTestId('relation-remove-dialog')
       .getByRole('button', { name: 'Remove', exact: true })
       .click();
-    await expect(rowOf(panel, 'children-row', `task/${slug}`)).toHaveCount(0, { timeout: 15_000 });
+    await expect(rowOf(panel, 'children-row', `task/${slug}`)).toHaveCount(0);
     await expect(page.getByTestId('children-add')).toBeEnabled();
   }
   await expect(panel.getByTestId('children-row')).toHaveCount(0);

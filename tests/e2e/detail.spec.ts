@@ -2,7 +2,6 @@
 // file tree, back-references, context pages (links in context order) and clickable list rows.
 import { appendFileSync, rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
-import { settleAfter } from './dev-reload.ts';
 import { API, dataPath, uniqueName } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
@@ -392,28 +391,24 @@ test.describe('relation panels, header state and tool buttons (ROUND3_SPEC §E)'
 test.describe('broken links', () => {
   const name = uniqueName('e2e-detail-broken');
 
-  test.beforeAll(async ({ browser, playwright, baseURL }) => {
-    await settleAfter(browser, baseURL, async () => {
-      const request = await playwright.request.newContext({ baseURL });
-      try {
-        const created = await request.post(`${API}/entry/kb`, {
-          data: { name, title: 'E2E broken links', description: 'Links that do not resolve.' },
-        });
-        expect(created.status()).toBe(201);
-      } finally {
-        await request.dispose();
-      }
-      appendFileSync(
-        dataPath(`kb/${name}/index.md`),
-        '\nSee [ghost](ctxman:task/e2e-no-such-task), [file](./concepts/e2e-nope.md) and [fine](ctxman:kb/ctxman).\n',
-      );
-    });
+  test.beforeAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      const created = await request.post(`${API}/entry/kb`, {
+        data: { name, title: 'E2E broken links', description: 'Links that do not resolve.' },
+      });
+      expect(created.status()).toBe(201);
+    } finally {
+      await request.dispose();
+    }
+    appendFileSync(
+      dataPath(`kb/${name}/index.md`),
+      '\nSee [ghost](ctxman:task/e2e-no-such-task), [file](./concepts/e2e-nope.md) and [fine](ctxman:kb/ctxman).\n',
+    );
   });
 
-  test.afterAll(async ({ browser, baseURL }) => {
-    await settleAfter(browser, baseURL, async () => {
-      rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
-    });
+  test.afterAll(() => {
+    rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
   });
 
   test('links to missing entries and files render dashed with a reason; valid ones do not', async ({

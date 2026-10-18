@@ -3,8 +3,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
-import { settleAfter } from './dev-reload.ts';
-import { API, chipOf, dataPath, settleDevReload, uniqueName } from './helpers.ts';
+import { API, afterReload, chipOf, dataPath, uniqueName } from './helpers.ts';
 
 /** `data-slug` of every rendered row, in display order. */
 async function rowSlugs(page: Page): Promise<string[]> {
@@ -122,58 +121,41 @@ test('the reference list marks remote-skill entries with a git / archive badge',
   await expect(badge('anthropic-skills')).toHaveText('git');
 });
 
-/**
- * Resolves once the state select under `scope` shows "Saved". The status only lives until the page reloads (the dev
- * server does it about 0.7 s after the write), so it is polled on every animation frame.
- */
-async function savedStatus(page: Page, scope: string): Promise<void> {
-  await page.waitForFunction(
-    (selector) =>
-      document.querySelector(`${selector} [data-testid="state-select-status"]`)?.textContent ===
-      'Saved',
-    scope,
-    { polling: 'raf', timeout: 10_000 },
-  );
-}
-
 test.describe('state select and invalid files (own e2e tasks)', () => {
+  // Serial: the tests chain on one e2e task (pending -> in-progress -> complete) and a broken one repaired in the last test.
   test.describe.configure({ mode: 'serial' });
   const pending = uniqueName('e2e-lf-pending');
   const broken = uniqueName('e2e-lf-broken');
 
-  test.beforeAll(async ({ browser, playwright, baseURL }) => {
-    await settleAfter(browser, baseURL, async () => {
-      const request = await playwright.request.newContext({ baseURL });
-      try {
-        for (const [name, title] of [
-          [pending, 'E2E list filter pending'],
-          [broken, 'E2E list filter broken'],
-        ] as const) {
-          const created = await request.post(`${API}/entry/task`, {
-            data: {
-              name,
-              title,
-              description: 'Created by the list-filters spec.',
-              state: 'pending',
-            },
-          });
-          expect(created.status()).toBe(201);
-        }
-      } finally {
-        await request.dispose();
+  test.beforeAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      for (const [name, title] of [
+        [pending, 'E2E list filter pending'],
+        [broken, 'E2E list filter broken'],
+      ] as const) {
+        const created = await request.post(`${API}/entry/task`, {
+          data: {
+            name,
+            title,
+            description: 'Created by the list-filters spec.',
+            state: 'pending',
+          },
+        });
+        expect(created.status()).toBe(201);
       }
-      // an invalid file: `done` is not a task state (written by hand, like a mistake in an editor)
-      const file = dataPath(`task/${broken}/index.md`);
-      writeFileSync(file, readFileSync(file, 'utf8').replace('state: pending', 'state: done'));
-    });
+    } finally {
+      await request.dispose();
+    }
+    // an invalid file: `done` is not a task state (written by hand, like a mistake in an editor)
+    const file = dataPath(`task/${broken}/index.md`);
+    writeFileSync(file, readFileSync(file, 'utf8').replace('state: pending', 'state: done'));
   });
 
-  test.afterAll(async ({ browser, baseURL }) => {
-    await settleAfter(browser, baseURL, async () => {
-      for (const name of [pending, broken]) {
-        rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
-      }
-    });
+  test.afterAll(() => {
+    for (const name of [pending, broken]) {
+      rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
+    }
   });
 
   test('a list row state select PATCHes the state and keeps ?state= and ?sort=', async ({
@@ -183,11 +165,9 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     const row = page.locator(`[data-testid="list-row"][data-slug="${pending}"]`);
     const select = row.getByTestId('state-select');
     await expect(select).toHaveValue('pending');
-    await select.selectOption('in-progress');
-    await savedStatus(page, `[data-testid="list-row"][data-slug="${pending}"]`);
-
-    // the page loads again (dev reload or the script's fallback): the filter no longer matches the task
-    await expect(row).toHaveCount(0, { timeout: 15_000 });
+    // the page reloads itself after the saved state: the filter no longer matches the task
+    await afterReload(page, () => select.selectOption('in-progress'));
+    await expect(row).toHaveCount(0);
     await expect(page).toHaveURL(/\/task\?state=pending&sort=name$/);
     await expect(page.getByTestId('list-chip-state-pending')).toBeChecked();
     expect(readFileSync(dataPath(`task/${pending}/index.md`), 'utf8')).toContain(
@@ -198,7 +178,6 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     await expect(
       page.locator(`[data-testid="list-row"][data-slug="${pending}"]`).getByTestId('state-select'),
     ).toHaveValue('in-progress');
-    await settleDevReload();
   });
 
   test('the detail header select changes the state; the Details panel follows after the reload', async ({
@@ -208,13 +187,9 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     await expect(page.getByTestId('state-select')).toHaveValue('in-progress');
     // the island shows the saved message when it mounts: change the state after that, like a user would
     await expect(page.getByTestId('meta-edit')).toBeEnabled();
-    await page.getByTestId('state-select').selectOption('complete');
-    await savedStatus(page, '.cx-statesel');
+    await afterReload(page, () => page.getByTestId('state-select').selectOption('complete'));
     await expect(page.getByTestId('detail-meta').locator('.ck-badge--state')).toHaveText(
       'Complete',
-      {
-        timeout: 15_000,
-      },
     );
     await expect(page.getByTestId('state-select')).toHaveValue('complete');
     await expect(page.getByTestId('entry-status')).toHaveText('State set to Complete');
@@ -269,9 +244,8 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     );
 
     // choosing a real state repairs the file
-    await page.getByTestId('state-select').selectOption('pending');
-    await savedStatus(page, '.cx-statesel');
-    await expect(page.getByTestId('invalid-banner')).toHaveCount(0, { timeout: 15_000 });
+    await afterReload(page, () => page.getByTestId('state-select').selectOption('pending'));
+    await expect(page.getByTestId('invalid-banner')).toHaveCount(0);
     await expect(page.getByTestId('state-select')).toHaveValue('pending');
     expect(readFileSync(dataPath(`task/${broken}/index.md`), 'utf8')).toContain('state: pending');
   });

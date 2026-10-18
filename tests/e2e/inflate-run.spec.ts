@@ -1,9 +1,9 @@
 // Inflate into a working directory from the UI (plans/INFLATE_V2_SPEC.md §11, §14.2): the Run view with its dry
 // run, the job progress, re-runs, cancel and the safety rules, plus the compose-side controls that feed it
 // (single-select Primary, run-time overrides saved to the recipe) and "Open in IDE" for an inflated directory.
-// The web server reaches a local git repository (.tmp/e2e-git) through git's insteadOf env, sleeps
-// CTXMAN_INFLATE_STEP_DELAY_MS before every step, and runs a fake `code` that records its argv. Every working
-// directory is an OS temp dir; nothing here ever runs into the recipe's default `~/ctxman-inflate/...`.
+// The web server reaches a local git repository (.tmp/e2e-git) through git's insteadOf env and runs a fake `code`
+// that records its argv. Runs use no step delay; the Cancel and live-progress tests slow their own runs through
+// `slowInflateSteps`. Every working directory is an OS temp dir; nothing here ever runs into the recipe's default `~/ctxman-inflate/...`.
 import {
   existsSync,
   lstatSync,
@@ -22,12 +22,14 @@ import {
   API,
   E2E_DATA_DIR,
   modKey,
+  pollUntil,
   readRecipeYaml,
-  settleDevReload,
+  slowInflateSteps,
   uniqueName,
 } from './helpers.ts';
 import { E2E_GIT_FIXTURE, E2E_GIT_URI, E2E_IDE_RECORD, E2E_LOCAL_FIXTURE } from './paths.ts';
 
+// Serial: the server runs ONE Inflate job at a time (409 busy), and later tests re-run what the first one placed.
 test.describe.configure({ mode: 'serial' });
 test.skip(!existsSync(path.join(E2E_GIT_FIXTURE, '.git')), 'git is not available');
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
@@ -86,8 +88,6 @@ test.beforeAll(async ({ request }) => {
     },
   });
   expect(recipe.status(), await recipe.text()).toBe(201);
-  // The reference writes make the dev server reload open pages about 0.7 s later: let that pass.
-  await settleDevReload();
 });
 
 test.afterAll(async ({ request }) => {
@@ -95,7 +95,6 @@ test.afterAll(async ({ request }) => {
   await request.delete(`${API}/reference/${REPO_REF}`);
   await request.delete(`${API}/reference/${LOCAL_REF}`);
   rmSync(base, { recursive: true, force: true });
-  await settleDevReload();
 });
 
 // ---------------------------------------------------------------- helpers
@@ -106,7 +105,6 @@ async function openInflate(page: Page, query = ''): Promise<void> {
   await expect(page.getByTestId('inflate-view-recipe')).toHaveAttribute(
     'href',
     `/recipe/${recipeName}`,
-    { timeout: 20_000 },
   );
 }
 
@@ -119,7 +117,7 @@ async function openRun(page: Page): Promise<void> {
 const planStatus = (page: Page): Locator => page.getByTestId('inflate-dirplan-status');
 
 async function waitPlanReady(page: Page): Promise<void> {
-  await expect(planStatus(page)).toHaveAttribute('data-kind', 'ready', { timeout: 20_000 });
+  await expect(planStatus(page)).toHaveAttribute('data-kind', 'ready');
 }
 
 const planStepIds = (page: Page): Promise<string[]> =>
@@ -136,7 +134,7 @@ async function jobEnds(
   status: 'done' | 'cancelled' | 'failed' = 'done',
 ): Promise<void> {
   await expect(page.getByTestId('inflate-job')).toHaveAttribute('data-status', status, {
-    timeout: 60_000,
+    timeout: 15_000,
   });
 }
 
@@ -206,6 +204,7 @@ test.describe('Run view', () => {
   });
 
   test('Run places the material with live progress, then offers the summary', async ({ page }) => {
+    await slowInflateSteps(page, 300); // a running step stays on screen for a while
     await openRun(page);
     await page.getByTestId('inflate-run-start').click();
 
@@ -214,13 +213,9 @@ test.describe('Run view', () => {
     await expect(page).toHaveURL(/[?&]job=/); // the job id reaches the URL a moment after the job panel shows
     firstJobId = jobIdOf(page);
     expect(firstJobId).toMatch(/^[0-9a-f-]{36}$/);
-    // The server sleeps before each step: a running step is on screen for a while (poll fast).
-    await expect
-      .poll(() => page.locator('[data-testid="inflate-job-step"][data-status="running"]').count(), {
-        intervals: [50],
-        timeout: 15_000,
-      })
-      .toBeGreaterThan(0);
+    await expect(
+      page.locator('[data-testid="inflate-job-step"][data-status="running"]').first(),
+    ).toBeVisible();
     await expect(page.getByTestId('inflate-job-cancel')).toBeVisible();
     await expect(page.getByTestId('inflate-job-status')).toHaveText(
       /^(Queued|Running step \d+ of 9)/,
@@ -277,7 +272,7 @@ test.describe('Run view', () => {
     const before = recordedCalls().length;
     await page.getByTestId('inflate-job-open-ide').click();
     await expect(page.getByTestId('inflate-job-ide-status')).toHaveText('Opened in the IDE');
-    await expect.poll(() => recordedCalls().length, { timeout: 5000 }).toBe(before + 1);
+    await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
     expect(recordedCalls()[before]).toEqual([workDir()]);
 
     // Chromium rejects clipboard writes from an unfocused page, which the app swallows: bring it to front.
@@ -302,9 +297,7 @@ test.describe('Run view', () => {
     await page.goto(
       `/inflate?recipe=${recipeName}&view=run&job=11111111-1111-4111-8111-111111111111`,
     );
-    await expect(page.getByTestId('inflate-job')).toHaveAttribute('data-status', 'lost', {
-      timeout: 20_000,
-    });
+    await expect(page.getByTestId('inflate-job')).toHaveAttribute('data-status', 'lost');
     await expect(page.getByTestId('inflate-job-status')).toHaveText(
       'This run is no longer known to the server (it restarted).',
     );
@@ -366,6 +359,7 @@ test.describe('Run view', () => {
 
   test('Cancel stops the run; the directory keeps a valid manifest', async ({ page }) => {
     const dir = path.join(base, 'cancelled');
+    await slowInflateSteps(page, 600); // longer than the 500 ms UI poll: every step is seen running; Cancel aborts the sleep
     await openRun(page);
     await page.getByTestId('inflate-run-dir').fill(dir);
     await expect(page.getByTestId('inflate-run-overrides')).toContainText('1 run override');
@@ -373,17 +367,13 @@ test.describe('Run view', () => {
 
     await page.getByTestId('inflate-run-start').click();
     // past the first step (it creates the directory), so the manifest step has something to write into
-    await expect
-      .poll(
-        () =>
-          page
-            .locator(
-              '[data-testid="inflate-job-step"][data-status="running"]:not([data-step-id="dir"])',
-            )
-            .count(),
-        { intervals: [50], timeout: 15_000 },
-      )
-      .toBeGreaterThan(0);
+    await expect(
+      page
+        .locator(
+          '[data-testid="inflate-job-step"][data-status="running"]:not([data-step-id="dir"])',
+        )
+        .first(),
+    ).toBeVisible();
     await page.getByTestId('inflate-job-cancel').click();
     await jobEnds(page, 'cancelled');
     await expect(page.getByTestId('inflate-job-status')).toHaveText('Cancelled');
@@ -392,7 +382,8 @@ test.describe('Run view', () => {
     ).toBeGreaterThan(0);
     expect(readManifest(dir).format).toBe('ctxman-inflate');
 
-    // the slot is free again: back to the plan and run once more to the end
+    // the slot is free again: back to the plan and run once more to the end, at full speed
+    await page.unroute('**/api/inflate/run');
     await page.getByTestId('inflate-job-back').click();
     await waitPlanReady(page);
     await page.getByTestId('inflate-run-start').click();
@@ -407,13 +398,13 @@ test.describe('Run view', () => {
     await openRun(page);
     await page.getByTestId('inflate-run-dir').fill(occupied);
 
-    await expect(planStatus(page)).toHaveAttribute('data-kind', 'blocked', { timeout: 20_000 });
+    await expect(planStatus(page)).toHaveAttribute('data-kind', 'blocked');
     await expect(planStatus(page)).toContainText('is not empty');
     await expect(page.getByTestId('inflate-dirplan-blocking')).toContainText('is not empty');
     await expect(page.getByTestId('inflate-run-start')).toBeDisabled();
 
     await page.getByTestId('inflate-run-allownonempty').click();
-    await expect(planStatus(page)).toHaveAttribute('data-kind', 'ready', { timeout: 20_000 });
+    await expect(planStatus(page)).toHaveAttribute('data-kind', 'ready');
     await expect(page.getByTestId('inflate-dirplan-blocking')).toHaveCount(0);
     await expect(page.getByTestId('inflate-run-start')).toBeEnabled();
     await expect(page.getByTestId('inflate-run-overrides')).toContainText('2 run overrides');
@@ -514,7 +505,7 @@ test.describe('Open in IDE for an inflated directory (API)', () => {
     const body = (await response.json()) as { ok: boolean; command: string[] };
     expect(body.ok).toBe(true);
     expect(body.command.slice(1)).toEqual([workDir()]);
-    await expect.poll(() => recordedCalls().length, { timeout: 5000 }).toBe(before + 1);
+    await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
     expect(recordedCalls()[before]).toEqual([workDir()]);
   });
 
