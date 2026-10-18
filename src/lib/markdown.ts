@@ -1,12 +1,23 @@
 // NODE (no fs): runtime markdown -> HTML for every body ctxman shows (entry and doc bodies, context link notes).
-// Uses Sätteri, the processor Astro 7 uses for .md content, with the shared Shiki config. Results are memoized by
-// the SHA-1 of the source (small FIFO cap) so a re-render of unchanged text is free.
+// Sätteri, the processor Astro 7 uses for .md content, with Astro's own highlight and heading-id plugins and the
+// shared Shiki config, but WITHOUT Astro's image plugins: those swap a relative `<img src>` for an `__ASTRO_IMAGE_`
+// placeholder that only Astro's build-time asset pipeline resolves, and ctxman renders at request time. Image
+// sources stay as written; rewriteRenderedHtml (links.ts) points them at the bundle file route. Results are
+// memoized by the SHA-1 of the source (small FIFO cap) so a re-render of unchanged text is free.
 import { createHash } from 'node:crypto';
-import { createSatteriMarkdownProcessor } from '@astrojs/markdown-satteri';
+import {
+  satteriCreateHighlightFn,
+  satteriHeadingIdsPlugin,
+  satteriHighlightPlugin,
+} from '@astrojs/markdown-satteri';
+import { markdownToHtml } from 'satteri';
 import { SHIKI_CONFIG } from './markdown-config.ts';
 
-type Renderer = Awaited<ReturnType<typeof createSatteriMarkdownProcessor>>;
-let renderer: Promise<Renderer> | undefined;
+type HighlightFn = NonNullable<Awaited<ReturnType<typeof satteriCreateHighlightFn>>>;
+let highlighter: Promise<HighlightFn | undefined> | undefined;
+
+/** Code fence languages left unhighlighted (Astro's default `syntaxHighlight.excludeLangs`). */
+const EXCLUDE_LANGS = ['math'];
 
 /** Maximum number of memoized renderings; the oldest key is dropped when the cap is reached. */
 const CACHE_MAX = 256;
@@ -23,12 +34,20 @@ export async function renderMarkdown(markdown: string): Promise<string> {
   const key = createHash('sha1').update(markdown).digest('hex');
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  renderer ??= createSatteriMarkdownProcessor({ shikiConfig: SHIKI_CONFIG });
-  const result = await (await renderer).render(markdown);
+  highlighter ??= satteriCreateHighlightFn('shiki', SHIKI_CONFIG);
+  const highlight = await highlighter;
+  const { html } = await markdownToHtml(markdown, {
+    hastPlugins: [
+      ...(highlight ? [satteriHighlightPlugin(highlight, EXCLUDE_LANGS)] : []),
+      satteriHeadingIdsPlugin(),
+    ],
+    // Astro's defaults (`markdown.gfm`, `markdown.smartypants`).
+    features: { gfm: true, smartPunctuation: true },
+  });
   if (cache.size >= CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(key, result.code);
-  return result.code;
+  cache.set(key, html);
+  return html;
 }

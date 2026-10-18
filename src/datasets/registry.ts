@@ -322,3 +322,8 @@ export function entryUrl(dataset: DatasetId, slug: string): string {
 export function docUrl(dataset: DatasetId, slug: string, docPath: string): string {
   return `/${dataset}/${slug}/doc/${docPath.replace(/\.md$/, '')}`;
 }
+
+/** URL of the raw bytes of a bundle file (images…); `relPath` is bundle-relative and NOT encoded ('img/a b.png' → '/kb/foo/file/img/a%20b.png'). */
+export function fileUrl(dataset: DatasetId, slug: string, relPath: string): string {
+  return `/${dataset}/${slug}/file/${relPath.split('/').map(encodeURIComponent).join('/')}`;
+}

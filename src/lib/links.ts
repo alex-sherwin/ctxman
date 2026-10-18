@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   docUrl,
   entryUrl,
+  fileUrl,
   isDatasetId,
   isValidName,
   OKF_DATASET_IDS,
@@ -467,12 +468,14 @@ function markBroken(tag: string, title: string): string {
 }
 
 /**
- * Rewrites `href` attributes of `<a>` tags in rendered HTML. Bundle `.md` targets become site routes
- * (the root index.md -> the entry page, others -> the sub-doc page; fragment kept), `ctxman:<ds>/<slug>` becomes
- * `/<ds>/<slug>`, http(s) links open in a new tab. Anchors, non-.md bundle targets and links in skill
- * entries (no doc route) are left unchanged.
+ * Rewrites `href` attributes of `<a>` tags and `src` attributes of `<img>` tags in rendered HTML (the browser
+ * view only: Inflate resolves links in the markdown itself). Bundle `.md` link targets become site routes
+ * (the root index.md -> the entry page, others -> the sub-doc page; fragment kept), every other bundle target
+ * (images, `.md` files of skills excepted) becomes the raw file route `/<ds>/<slug>/file/<path>`,
+ * `ctxman:<ds>/<slug>` becomes `/<ds>/<slug>`, http(s) links open in a new tab. Anchors and `.md` links in skill
+ * entries (no doc route) are left unchanged, as are bundle targets of datasets without a bundle directory.
  *
- * With `ctx.dataDir` the targets are also checked on disk, and a link whose target is missing gets
+ * With `ctx.dataDir` the targets are also checked on disk, and a link or image whose target is missing gets
  * `class="cx-link--broken"` (merged into an existing class) plus a `title`: `Missing: <ds>/<slug>` for a `ctxman:`
  * entry that does not exist, `Invalid ctxman: link` for a malformed `ctxman:` href, `Missing file: <path>` for a
  * bundle target that does not exist, `Points outside the bundle` for one that leaves it. Bundle targets are only
@@ -483,12 +486,42 @@ export function rewriteRenderedHtml(
   ctx: { dataset: DatasetId; slug: string; fromRelPath: string; dataDir?: string },
 ): string {
   const routable = (OKF_DATASET_IDS as readonly string[]).includes(ctx.dataset);
+  const hasBundle = routable || ctx.dataset === 'skill';
   const dataDir = ctx.dataDir;
   const bundleRoot =
-    dataDir !== undefined && (routable || ctx.dataset === 'skill')
+    dataDir !== undefined && hasBundle
       ? path.join(datasetDir(ctx.dataset, dataDir), ctx.slug)
       : null;
-  return html.replace(/<a\s[^>]*>/gi, (tag) => {
+  /** `Missing file: …` / `Points outside the bundle`, or null when fine or not checkable. */
+  const bundleProblem = (resolved: { path: string } | { escapes: true }): string | null => {
+    if (bundleRoot === null) return null;
+    if ('escapes' in resolved) return 'Points outside the bundle';
+    return existsSync(path.join(bundleRoot, ...resolved.path.split('/')))
+      ? null
+      : `Missing file: ${resolved.path}`;
+  };
+  const replaceAttr = (tag: string, attr: string, value: string): string => {
+    const replacement = `${attr.slice(0, attr.indexOf('=') + 1)}"${encodeAttr(value)}"`;
+    return tag.replace(attr, () => replacement);
+  };
+
+  const withImages = html.replace(/<img\s[^>]*>/gi, (tag) => {
+    const m = /\ssrc=(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    if (!m || !hasBundle) return tag;
+    const src = decodeAttr(m[1] ?? m[2] ?? '').trim();
+    if (src === '' || classifyHref(src) !== 'bundle') return tag;
+    const resolved = resolveBundleHref(src, ctx.fromRelPath);
+    let out = tag;
+    if ('path' in resolved) {
+      const base = fileUrl(ctx.dataset, ctx.slug, resolved.path);
+      const fragment = stripQueryAndFragment(src).fragment;
+      out = replaceAttr(tag, m[0], fragment === '' ? base : `${base}#${fragment}`);
+    }
+    const broken = bundleProblem(resolved);
+    return broken === null ? out : markBroken(out, broken);
+  });
+
+  return withImages.replace(/<a\s[^>]*>/gi, (tag) => {
     const m = /\shref=(?:"([^"]*)"|'([^']*)')/i.exec(tag);
     if (!m) return tag;
     const original = m[1] ?? m[2] ?? '';
@@ -521,28 +554,26 @@ export function rewriteRenderedHtml(
       }
     } else if (kind === 'bundle') {
       const resolved = resolveBundleHref(href, ctx.fromRelPath);
-      if (routable && 'path' in resolved && resolved.path.endsWith('.md')) {
-        const fragment = stripQueryAndFragment(href).fragment;
-        const base =
-          resolved.path === OKF_ENTRY_FILE
-            ? entryUrl(ctx.dataset, ctx.slug)
-            : docUrl(ctx.dataset, ctx.slug, encodeURI(resolved.path));
-        next = fragment === '' ? base : `${base}#${fragment}`;
-      }
-      if (bundleRoot !== null) {
-        if ('escapes' in resolved) {
-          broken = 'Points outside the bundle';
-        } else if (!existsSync(path.join(bundleRoot, ...resolved.path.split('/')))) {
-          broken = `Missing file: ${resolved.path}`;
+      if (hasBundle && 'path' in resolved) {
+        const markdown = resolved.path.endsWith('.md');
+        let base: string | null = null;
+        if (markdown && routable) {
+          base =
+            resolved.path === OKF_ENTRY_FILE
+              ? entryUrl(ctx.dataset, ctx.slug)
+              : docUrl(ctx.dataset, ctx.slug, encodeURI(resolved.path));
+        } else if (!markdown) {
+          base = fileUrl(ctx.dataset, ctx.slug, resolved.path);
+        }
+        if (base !== null) {
+          const fragment = stripQueryAndFragment(href).fragment;
+          next = fragment === '' ? base : `${base}#${fragment}`;
         }
       }
+      broken = bundleProblem(resolved);
     }
 
-    let out = tag;
-    if (next !== null) {
-      const replacement = `${m[0].slice(0, m[0].indexOf('=') + 1)}"${encodeAttr(next)}"`;
-      out = out.replace(m[0], () => replacement);
-    }
+    const out = next === null ? tag : replaceAttr(tag, m[0], next);
     return broken === null ? out : markBroken(out, broken);
   });
 }

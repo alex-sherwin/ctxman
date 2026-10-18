@@ -84,6 +84,22 @@ const BINARY_EXTENSIONS = new Set([
   '.wasm',
 ]);
 
+const MAX_PATH_LENGTH = 512;
+
+/**
+ * Canonical bundle-relative posix path of a request, or null: non-empty, no '\\', no NUL, no leading '/', no
+ * empty / '.' / '..' segment, no segment starting with '.' (walkFiles never lists those), length <= 512.
+ */
+export function normalizeBundlePath(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '' || raw.length > MAX_PATH_LENGTH) return null;
+  if (raw.includes('\\') || raw.includes('\0') || raw.startsWith('/')) return null;
+  const segments = raw.split('/');
+  for (const segment of segments) {
+    if (segment === '' || segment.startsWith('.')) return null;
+  }
+  return segments.join('/');
+}
+
 /** Absolute path of `relPath` inside `rootAbs`, or null when it is absolute, contains NUL, or escapes the root. */
 export function safeJoin(rootAbs: string, relPath: string): string | null {
   if (relPath.includes('\0')) return null;
@@ -140,7 +156,8 @@ export async function walkFiles(rootAbs: string): Promise<string[]> {
   return out.sort();
 }
 
-async function classify(abs: string, rel: string): Promise<BundleFile['kind']> {
+/** markdown by extension, text / binary by extension, else by a NUL in the first 512 bytes (unreadable = binary). */
+export async function classifyBundleFile(abs: string, rel: string): Promise<BundleFile['kind']> {
   const ext = path.posix.extname(rel).toLowerCase();
   if (ext === '.md' || ext === '.markdown') return 'markdown';
   if (TEXT_EXTENSIONS.has(ext)) return 'text';
@@ -214,7 +231,7 @@ export async function listBundleFiles(
       path: rel,
       size: st.size,
       mtime: st.mtime.toISOString(),
-      kind: await classify(abs, rel),
+      kind: await classifyBundleFile(abs, rel),
     };
     const role = roleOf(dataset, rel);
     if (role) file.role = role;

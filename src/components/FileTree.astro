@@ -1,5 +1,5 @@
 ---
-import { docUrl, entryUrl, OKF_ENTRY_FILE } from '../datasets/registry.ts';
+import { docUrl, entryUrl, fileUrl, OKF_ENTRY_FILE } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import type { BundleFile } from '../lib/bundles.ts';
 import Panel from './Panel.astro';
@@ -22,10 +22,11 @@ const HINTS: Record<NonNullable<BundleFile['role']>, string> = {
   log: 'log',
 };
 
-// okf markdown files link to their route (the root index.md = the entry page). Skill files and non-markdown
-// files have no route, so they are listed as plain text.
+// okf markdown files link to their route (the root index.md = the entry page), every non-markdown file to its raw
+// bytes (`/<ds>/<slug>/file/<path>`, opened in a new tab). Skill markdown files have no route: plain text.
 function hrefOf(file: BundleFile): string | undefined {
-  if (dataset === 'skill' || file.kind !== 'markdown') return undefined;
+  if (file.kind !== 'markdown') return fileUrl(dataset, slug, file.path);
+  if (dataset === 'skill') return undefined;
   return file.path === OKF_ENTRY_FILE ? entryUrl(dataset, slug) : docUrl(dataset, slug, file.path);
 }
 
@@ -34,6 +35,7 @@ const items = files.map((file) => {
   return {
     file,
     href: hrefOf(file),
+    raw: file.kind !== 'markdown',
     dir: cut === -1 ? '' : file.path.slice(0, cut + 1),
     base: cut === -1 ? file.path : file.path.slice(cut + 1),
     hint: file.role ? HINTS[file.role] : undefined,
@@ -65,6 +67,8 @@ const items = files.map((file) => {
             <a
               class="cx-files__item"
               href={item.href}
+              target={item.raw ? '_blank' : undefined}
+              rel={item.raw ? 'noreferrer' : undefined}
               aria-current={item.current ? 'page' : undefined}
             >
               {item.dir && <span class="cx-files__dir">{item.dir}</span>}

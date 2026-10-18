@@ -456,7 +456,7 @@ describe('rewriteRenderedHtml', () => {
     expect(rewriteRenderedHtml(html('ctxman:bogus/x'), ctx)).toBe(html('ctxman:bogus/x'));
   });
 
-  it('opens external links in a new tab and leaves anchors and non-md targets alone', () => {
+  it('opens external links in a new tab and leaves anchors alone', () => {
     expect(rewriteRenderedHtml(html('https://example.com/a?b=1&amp;c=2'), ctx)).toBe(
       '<p><a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noreferrer">x</a></p>',
     );
@@ -466,18 +466,32 @@ describe('rewriteRenderedHtml', () => {
     expect(rewriteRenderedHtml(html('//cdn.example.com/x'), ctx)).toContain('target="_blank"');
     expect(rewriteRenderedHtml(html('mailto:a@b.c'), ctx)).toBe(html('mailto:a@b.c'));
     expect(rewriteRenderedHtml(html('#top'), ctx)).toBe(html('#top'));
-    expect(rewriteRenderedHtml(html('/assets/pic.png'), ctx)).toBe(html('/assets/pic.png'));
     expect(rewriteRenderedHtml(html('../../escape.md'), ctx)).toBe(html('../../escape.md'));
   });
 
-  it('only touches <a href>, not other markup', () => {
-    const src = '<img src="/x.md"><code>href="/y.md"</code><link href="/z.md">';
+  it('points non-markdown bundle targets at the raw file route (fragment kept, path encoded once)', () => {
+    expect(rewriteRenderedHtml(html('/assets/pic.png'), ctx)).toBe(
+      html('/kb/ctxman/file/assets/pic.png'),
+    );
+    expect(rewriteRenderedHtml(html('spec.pdf#page=2'), ctx)).toBe(
+      html('/kb/ctxman/file/spec.pdf#page=2'),
+    );
+    expect(rewriteRenderedHtml(html('my%20notes.txt'), ctx)).toBe(
+      html('/kb/ctxman/file/my%20notes.txt'),
+    );
+  });
+
+  it('only touches <a href> and <img src>, not other markup', () => {
+    const src = '<code>href="/y.md"</code><link href="/z.md"><source src="/v.mp4">';
     expect(rewriteRenderedHtml(src, ctx)).toBe(src);
   });
 
-  it('leaves bundle links unchanged for skill entries but still rewrites ctxman: and external', () => {
+  it('leaves .md links unchanged for skill entries but still rewrites files, ctxman: and external', () => {
     const skill = { dataset: 'skill', slug: 's', fromRelPath: 'SKILL.md' } as const;
     expect(rewriteRenderedHtml(html('references/a.md'), skill)).toBe(html('references/a.md'));
+    expect(rewriteRenderedHtml(html('scripts/run.py'), skill)).toBe(
+      html('/skill/s/file/scripts/run.py'),
+    );
     expect(rewriteRenderedHtml(html('ctxman:kb/x'), skill)).toBe(html('/kb/x'));
     expect(rewriteRenderedHtml(html('https://e.com'), skill)).toContain('target="_blank"');
   });
@@ -545,7 +559,7 @@ describe('rewriteRenderedHtml: broken target marking (with dataDir)', () => {
     expect(rewriteRenderedHtml(tag('href="../index.md"'), sub)).toBe(tag('href="/kb/demo"'));
     expect(rewriteRenderedHtml(tag('href="missing.json"'), sub)).toBe(
       tag(
-        'href="missing.json" class="cx-link--broken" title="Missing file: concepts/missing.json"',
+        'href="/kb/demo/file/concepts/missing.json" class="cx-link--broken" title="Missing file: concepts/missing.json"',
       ),
     );
   });
@@ -604,5 +618,81 @@ describe('rewriteRenderedHtml: broken target marking (with dataDir)', () => {
       'cx-link--broken',
     );
     expect(rewriteRenderedHtml('<a name="x">x</a>', ctx)).toBe('<a name="x">x</a>');
+  });
+});
+
+describe('rewriteRenderedHtml: images', () => {
+  const kbCtx = { dataset: 'kb', slug: 'demo', fromRelPath: 'index.md' } as const;
+  const img = (attrs: string) => `<p><img ${attrs}></p>`;
+
+  it('points a bundle-relative <img src> at the raw file route and keeps the other attributes', () => {
+    expect(rewriteRenderedHtml(img('src="now.heic" alt="alt text"'), kbCtx)).toBe(
+      img('src="/kb/demo/file/now.heic" alt="alt text"'),
+    );
+    expect(rewriteRenderedHtml(img("alt='a' src='./img/a.png' title='t'"), kbCtx)).toBe(
+      img("alt='a' src=\"/kb/demo/file/img/a.png\" title='t'"),
+    );
+    // resolved against the file being rendered; `/x` is the bundle root; query dropped, fragment kept
+    const sub = { ...kbCtx, fromRelPath: 'concepts/one.md' };
+    expect(rewriteRenderedHtml(img('src="pic.png"'), sub)).toBe(
+      img('src="/kb/demo/file/concepts/pic.png"'),
+    );
+    expect(rewriteRenderedHtml(img('src="../pic.png?v=2"'), sub)).toBe(
+      img('src="/kb/demo/file/pic.png"'),
+    );
+    expect(rewriteRenderedHtml(img('src="/icons.svg#star"'), sub)).toBe(
+      img('src="/kb/demo/file/icons.svg#star"'),
+    );
+  });
+
+  it('encodes the file path exactly once', () => {
+    expect(rewriteRenderedHtml(img('src="my%20pic.png"'), kbCtx)).toBe(
+      img('src="/kb/demo/file/my%20pic.png"'),
+    );
+    expect(rewriteRenderedHtml(img('src="a&amp;b.png"'), kbCtx)).toBe(
+      img('src="/kb/demo/file/a%26b.png"'),
+    );
+  });
+
+  it('rewrites skill images too, and leaves external, data:, empty and ctxman: sources alone', () => {
+    const skill = { dataset: 'skill', slug: 's', fromRelPath: 'SKILL.md' } as const;
+    expect(rewriteRenderedHtml(img('src="assets/x.png"'), skill)).toBe(
+      img('src="/skill/s/file/assets/x.png"'),
+    );
+    for (const src of [
+      'https://example.com/x.png',
+      '//cdn.example.com/x.png',
+      'data:image/png;base64,AAAA',
+      '',
+      'ctxman:kb/demo',
+    ]) {
+      expect(rewriteRenderedHtml(img(`src="${src}"`), kbCtx), src).toBe(img(`src="${src}"`));
+    }
+    expect(rewriteRenderedHtml('<p><img alt="no src"></p>', kbCtx)).toBe(
+      '<p><img alt="no src"></p>',
+    );
+  });
+
+  it('leaves images of datasets without a bundle directory alone (context notes, recipes)', () => {
+    for (const dataset of ['context', 'recipe'] as const) {
+      const ctx = { dataset, slug: 'c', fromRelPath: '' };
+      expect(rewriteRenderedHtml(img('src="pic.png"'), ctx)).toBe(img('src="pic.png"'));
+    }
+  });
+
+  it('marks a missing or escaping image file with dataDir, not an existing one', () => {
+    const dataDir = tmp.make({ ...validKbBundle('demo'), 'kb/demo/now.heic': 'x' });
+    const ctx = { ...kbCtx, dataDir };
+    expect(rewriteRenderedHtml(img('src="now.heic" alt="a"'), ctx)).toBe(
+      img('src="/kb/demo/file/now.heic" alt="a"'),
+    );
+    expect(rewriteRenderedHtml(img('src="gone.png" alt="a"'), ctx)).toBe(
+      img(
+        'src="/kb/demo/file/gone.png" alt="a" class="cx-link--broken" title="Missing file: gone.png"',
+      ),
+    );
+    expect(rewriteRenderedHtml(img('src="../../x.png"'), ctx)).toBe(
+      img('src="../../x.png" class="cx-link--broken" title="Points outside the bundle"'),
+    );
   });
 });

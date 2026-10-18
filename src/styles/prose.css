@@ -197,6 +197,11 @@
     height: auto;
     border: 1px solid var(--border);
   }
+  /* an image whose bundle file is missing (rewriteRenderedHtml, like a broken link) */
+  .cx-prose img.cx-link--broken {
+    border: 1px dashed var(--danger);
+    cursor: help;
+  }
   .cx-prose details {
     padding: var(--sp-2) var(--sp-4);
     border: var(--border-w) solid var(--border);

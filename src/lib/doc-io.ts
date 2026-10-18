@@ -7,7 +7,7 @@ import path from 'node:path';
 import { docUrl, isOkfDatasetId, isValidName, OKF_DATASET_IDS } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { withFileLock, writeFileAtomic } from './atomic-write.ts';
-import { MAX_TEXT_BYTES, resolveBundleFile, safeJoin } from './bundles.ts';
+import { MAX_TEXT_BYTES, normalizeBundlePath, resolveBundleFile, safeJoin } from './bundles.ts';
 import type { Issue } from './context-io.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { invalidateEntryIndex } from './entry-index.ts';
@@ -27,21 +27,10 @@ export function isDocDatasetId(value: unknown): value is DocDatasetId {
   return value === 'skill' || isOkfDatasetId(value);
 }
 
-const MAX_PATH_LENGTH = 512;
-
-/**
- * Canonical bundle-relative posix path or null: non-empty, no '\\', no NUL, no leading '/', no empty / '.' /
- * '..' segment, no segment starting with '.', last segment ends with '.md' (case-sensitive), length <= 512.
- */
+/** normalizeBundlePath (bundles.ts) whose last segment also ends with '.md' (case-sensitive); else null. */
 export function normalizeDocPath(raw: string | undefined): string | null {
-  if (raw === undefined || raw === '' || raw.length > MAX_PATH_LENGTH) return null;
-  if (raw.includes('\\') || raw.includes('\0') || raw.startsWith('/')) return null;
-  const segments = raw.split('/');
-  for (const segment of segments) {
-    if (segment === '' || segment.startsWith('.')) return null;
-  }
-  if (!raw.endsWith('.md')) return null;
-  return segments.join('/');
+  const normalized = normalizeBundlePath(raw);
+  return normalized !== null && normalized.endsWith('.md') ? normalized : null;
 }
 
 export interface DocRecord {
