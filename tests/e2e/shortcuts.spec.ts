@@ -1,5 +1,5 @@
 // Keyboard shortcuts (Phase 8): `?` help dialog, `c` create for the page context, `l` add link, typing targets.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import { modKey, openSearch } from './helpers.ts';
 

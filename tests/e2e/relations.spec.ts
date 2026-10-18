@@ -3,7 +3,7 @@
 // `?project=` list filter and "Build context". Everything runs on an e2e-* project with its own tasks (never the seed
 // project, so `/task?project=ctxman-v1` stays the 4 seed tasks); each write is followed by a page load (dev reload).
 import { readFileSync, rmSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
 import { settleAfter } from './dev-reload.ts';
 import { API, dataPath, readDataText, readYaml, uniqueName } from './helpers.ts';

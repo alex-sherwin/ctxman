@@ -4,7 +4,7 @@
 // the content layer. The entry is removed afterwards (the e2e data copy is shared by the whole run).
 import { readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
 import { API, dataPath, settleDevReload, uniqueName } from './helpers.ts';
 

@@ -1,5 +1,5 @@
 // Every page renders with its main test ids; unknown routes are 404 (PLAN §J.2 smoke).
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { E2E_DATA_DIR } from './helpers.ts';
 
 const DATASETS = [

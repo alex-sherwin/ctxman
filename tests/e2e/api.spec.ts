@@ -1,7 +1,7 @@
 // API contracts (PLAN §G, UI_SPEC §0.5) over Playwright's request context: status codes and error codes of the
 // JSON routes. No browser: these tests exercise the same server as the UI, on the same e2e data copy.
 import { unlinkSync, writeFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
 import { API, dataExists, dataPath, readYaml } from './helpers.ts';
 

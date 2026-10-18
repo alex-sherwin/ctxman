@@ -1,9 +1,9 @@
 // Reference CRUD (ROUND2_BACKEND_SPEC §C.3) over Playwright's request context: POST /api/reference and
 // GET|PUT|DELETE /api/reference/:slug, the same conventions as /api/context. Files are checked in the e2e data copy.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
 import { API, dataExists, readDataText, readYaml, settleDevReload, uniqueName } from './helpers.ts';
-import { E2E_PORT } from './paths.ts';
+import { E2E_SERVER_ORIGIN } from './paths.ts';
 
 interface ErrorBody {
   error: string;
@@ -17,7 +17,7 @@ interface ReferenceBody {
 }
 
 // The writer points the modeline at the running server (CTXMAN_SERVER_ORIGIN, set by playwright.config.ts).
-const MAGIC_COMMENT = `# yaml-language-server: $schema=http://127.0.0.1:${E2E_PORT}/api/schemas/reference`;
+const MAGIC_COMMENT = `# yaml-language-server: $schema=${E2E_SERVER_ORIGIN}/api/schemas/reference`;
 
 const errorOf = async (response: APIResponse): Promise<ErrorBody> =>
   (await response.json()) as ErrorBody;

@@ -1,7 +1,7 @@
 // Dataset list filters: chips, text, sort and clear all live in the URL (UI_SPEC §E). The filter form is
 // a plain GET form enhanced by a script: every chip / sort change is a real navigation, so history works.
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import { settleAfter } from './dev-reload.ts';
 import { API, chipOf, dataPath, settleDevReload, uniqueName } from './helpers.ts';

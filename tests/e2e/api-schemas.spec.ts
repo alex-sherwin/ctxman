@@ -1,6 +1,6 @@
 // GET /api/schemas/:dataset (ROUND2 spec D13): the committed JSON Schemas of the YAML datasets, served as
 // application/schema+json. No browser: Playwright's request context against the e2e server.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { API } from './helpers.ts';
 
 for (const dataset of ['reference', 'context', 'recipe'] as const) {

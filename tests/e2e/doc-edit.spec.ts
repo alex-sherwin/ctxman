@@ -11,7 +11,7 @@
 // (`page.routeWebSocket`) so the dev reload that follows the on-disk edit cannot reset the page.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import {
   API,

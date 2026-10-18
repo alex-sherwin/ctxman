@@ -3,7 +3,7 @@
 // works on its own e2e-* kb entry / contexts (created through the API, removed in afterAll); the seed entries are
 // only read. The island enables the SSR buttons on mount, so each test waits for an enabled button first.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import { settleAfter } from './dev-reload.ts';
 import { API, dataPath, readDataText, settleDevReload, uniqueName } from './helpers.ts';

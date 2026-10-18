@@ -1,7 +1,7 @@
 // Open in IDE API (ROUND2_BACKEND_SPEC §B.3). CTXMAN_IDE_COMMAND points at a fake `code` (prepare-data.ts copies
 // tests/e2e/fixtures/fake-code.mjs) that records its argv as a JSON line, so no editor is ever started.
 import { existsSync, readFileSync, renameSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
 import { API, dataPath, E2E_DATA_DIR } from './helpers.ts';
 import { E2E_IDE_COMMAND, E2E_IDE_RECORD } from './paths.ts';

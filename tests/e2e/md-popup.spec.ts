@@ -5,7 +5,7 @@
 // popup restores it with a banner. Contexts and recipes are created per run through the API (the seed recipe is never
 // written) and removed afterwards; every assertion about what was saved reads the yaml file in the e2e data copy.
 // Monaco in Playwright's "Desktop Chrome" profile expects Control+a / Control+End (Windows user agent).
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,

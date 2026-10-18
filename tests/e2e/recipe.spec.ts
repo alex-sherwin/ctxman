@@ -1,6 +1,6 @@
 // Recipe pages (INFLATE_SPEC §8.2): the /recipe list, the /recipe/<slug> composition view, the dashboard panel and
 // the links into /inflate. Read-only: the seed recipe is never written here.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { SEED_RECIPE } from './helpers.ts';
 
 test.describe('recipe list', () => {

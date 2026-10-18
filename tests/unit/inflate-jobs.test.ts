@@ -3,6 +3,7 @@ import {
   JOB_ID_PATTERN,
   createJobStore,
   jobStore,
+  stepDelayFor,
   stepDelayFromEnv,
 } from '../../src/lib/inflate/jobs.ts';
 import type { JobStartInput } from '../../src/lib/inflate/jobs.ts';
@@ -354,5 +355,35 @@ describe('stepDelayFromEnv', () => {
     expect(delay('1.5')).toBe(0);
     expect(delay('abc')).toBe(0);
     expect(delay('')).toBe(0);
+  });
+});
+
+describe('stepDelayFor', () => {
+  const withHeader = (value: string | undefined): Headers =>
+    new Headers(value === undefined ? {} : { 'x-ctxman-step-delay-ms': value });
+  const hooks = { CTXMAN_TEST_HOOKS: '1', CTXMAN_INFLATE_STEP_DELAY_MS: '300' };
+
+  it('ignores the header unless CTXMAN_TEST_HOOKS=1', () => {
+    expect(stepDelayFor(withHeader('900'), {})).toBe(0);
+    expect(stepDelayFor(withHeader('900'), { CTXMAN_INFLATE_STEP_DELAY_MS: '300' })).toBe(300);
+    expect(stepDelayFor(withHeader('900'), { CTXMAN_TEST_HOOKS: '0' })).toBe(0);
+  });
+
+  it('honours the header when the hooks are on (0 and 5000 included)', () => {
+    expect(stepDelayFor(withHeader('900'), hooks)).toBe(900);
+    expect(stepDelayFor(withHeader(' 40 '), hooks)).toBe(40);
+    expect(stepDelayFor(withHeader('0'), hooks)).toBe(0);
+    expect(stepDelayFor(withHeader('5000'), hooks)).toBe(5000);
+  });
+
+  it('falls back to the env value for an invalid or too large header', () => {
+    for (const bad of ['5001', '-5', '1.5', 'abc', '', '12345']) {
+      expect(stepDelayFor(withHeader(bad), hooks)).toBe(300);
+    }
+  });
+
+  it('falls back to the env value without a header', () => {
+    expect(stepDelayFor(withHeader(undefined), hooks)).toBe(300);
+    expect(stepDelayFor(withHeader(undefined), { CTXMAN_TEST_HOOKS: '1' })).toBe(0);
   });
 });

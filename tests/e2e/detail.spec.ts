@@ -1,7 +1,7 @@
 // Detail pages (UI_SPEC §F, ROUND2_UI_SPEC §G): rendered markdown, rewritten links, the two-column okf layout,
 // file tree, back-references, context pages (links in context order) and clickable list rows.
 import { appendFileSync, rmSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { settleAfter } from './dev-reload.ts';
 import { API, dataPath, uniqueName } from './helpers.ts';
 

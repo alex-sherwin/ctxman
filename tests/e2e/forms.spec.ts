@@ -5,7 +5,7 @@
 // Writes are visible on the next request (the entry index reads the disk) and the form navigates to the new entry
 // itself (src/stores/data-form.ts); these tests assert the end state.
 import { rmSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,
@@ -52,7 +52,9 @@ async function replaceYaml(page: Page, text: string): Promise<void> {
   await expect(editor.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 });
   await editor.locator('.monaco-editor textarea').focus();
   await page.keyboard.press('Control+a');
-  await page.keyboard.type(text);
+  // insertText, not type: a typed Enter accepts monaco-yaml's open completion item when the worker answers in time
+  // (a flake that appears once the page is fast enough); the whole text goes in as one input event.
+  await page.keyboard.insertText(text);
 }
 
 test.describe('/new/reference', () => {

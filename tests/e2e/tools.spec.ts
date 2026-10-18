@@ -1,7 +1,7 @@
 // Tools page (UI_SPEC §I, ROUND3_SPEC §E.7): run the allowlisted check scripts, and the "New entry" panel that picks a
 // dataset and links to its create form at /new/<ds> (nothing is created on this page; the forms are covered by
 // forms.spec.ts). The `add` script stays allowlisted for the CLI and the API specs.
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 
 test.describe('checks', () => {
   test('the check scripts are listed with a Run button each', async ({ page }) => {

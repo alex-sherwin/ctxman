@@ -5,7 +5,7 @@
 // created per test through the API so tests stay independent;
 // every assertion on persisted data reads the YAML file or the API, not the rendered page alone.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,

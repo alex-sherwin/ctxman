@@ -4,7 +4,7 @@
 //   afterAll); the seed entries are never written. The API reads and writes the files directly, so nothing waits for
 //   the content layer.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
 import { API, dataPath, readDataText, settleDevReload, uniqueName } from './helpers.ts';
 

@@ -16,7 +16,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import {
   API,
@@ -211,6 +211,7 @@ test.describe('Run view', () => {
 
     await expect(page.getByTestId('inflate-job')).toBeVisible();
     await expect(page).toHaveURL(/[?&]view=run(&|$)/);
+    await expect(page).toHaveURL(/[?&]job=/); // the job id reaches the URL a moment after the job panel shows
     firstJobId = jobIdOf(page);
     expect(firstJobId).toMatch(/^[0-9a-f-]{36}$/);
     // The server sleeps before each step: a running step is on screen for a while (poll fast).

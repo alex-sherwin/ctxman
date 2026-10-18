@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { APIRoute } from 'astro';
 import { apiError, internalError, json, methodNotAllowed, readJson } from '../../../lib/http.ts';
 import { executeDirPlan, planInflateDir } from '../../../lib/inflate/dir-plan.ts';
-import { jobStore, stepDelayFromEnv } from '../../../lib/inflate/jobs.ts';
+import { jobStore, stepDelayFor } from '../../../lib/inflate/jobs.ts';
 import { parseRunRequest } from '../../../lib/inflate/recipe.ts';
 
 export const POST: APIRoute = async ({ request, url }) => {
@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ request, url }) => {
           jobId: info.jobId,
           signal,
           onProgress,
-          stepDelayMs: stepDelayFromEnv(),
+          stepDelayMs: stepDelayFor(request.headers),
         });
         return { results: outcome.results, warnings: outcome.warnings };
       },

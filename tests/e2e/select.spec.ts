@@ -1,6 +1,6 @@
 // Kit Select v2 (ROUND2_UI_SPEC §B.2/§B.3): searchable popover (Autocomplete + SearchField), keyboard behavior,
 // open-state chevron, and the SSR native sort select. Uses the Tools "Add entry" dataset select (no data written).
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
 
 const TRIGGER = 'tools-add-dataset';

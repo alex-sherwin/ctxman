@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
 import { API, E2E_DATA_DIR, settleDevReload } from './helpers.ts';
 import { E2E_GIT_FIXTURE, E2E_GIT_URI, E2E_LOCAL_FIXTURE } from './paths.ts';

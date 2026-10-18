@@ -60,6 +60,21 @@ export function stepDelayFromEnv(env: NodeJS.ProcessEnv = process.env): number {
   return value >= 0 && value <= STEP_DELAY_MAX_MS ? value : 0;
 }
 
+/** Request header: the step delay of ONE run (test hook). Honoured only when CTXMAN_TEST_HOOKS=1 (the e2e servers). */
+export const STEP_DELAY_HEADER = 'x-ctxman-step-delay-ms';
+export const TEST_HOOKS_ENV = 'CTXMAN_TEST_HOOKS';
+
+/** The step delay of a run: the header (test hooks on), else CTXMAN_INFLATE_STEP_DELAY_MS, else 0. Same 0..5000 rule. */
+export function stepDelayFor(headers: Headers, env: NodeJS.ProcessEnv = process.env): number {
+  if (env[TEST_HOOKS_ENV] === '1') {
+    const raw = headers.get(STEP_DELAY_HEADER)?.trim();
+    if (raw !== undefined && /^\d{1,4}$/.test(raw) && Number(raw) <= STEP_DELAY_MAX_MS) {
+      return Number(raw);
+    }
+  }
+  return stepDelayFromEnv(env);
+}
+
 export function createJobStore(
   opts: { cap?: number; now?: () => Date; newId?: () => string } = {},
 ): JobStore {

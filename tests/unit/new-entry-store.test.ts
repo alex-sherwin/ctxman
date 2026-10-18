@@ -282,6 +282,7 @@ describe('submitNewEntry', () => {
     initNewEntry({ dataset: 'task', parent: null });
     await loaded();
     fill();
+    env.listed.task.push('fresh'); // listed at once, so the post-create wait resolves without its timeout
     const first = submitNewEntry();
     expect(await submitNewEntry()).toBe('busy');
     await first;

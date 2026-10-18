@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
   existsSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -11,181 +10,45 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeSteps, probeTools, sha256Of } from '../../src/lib/inflate/material-exec.ts';
+import { probeTools, sha256Of } from '../../src/lib/inflate/material-exec.ts';
 import type { ExecuteContext } from '../../src/lib/inflate/material-exec.ts';
 import type {
-  InflateDirManifest,
   ManifestEntry,
   MaterialStep,
   MaterialView,
-  StepResult,
-  StepUpdate,
 } from '../../src/lib/inflate/material-plan.ts';
-import { parseDirManifest } from '../../src/lib/inflate/output-dir.ts';
-import { spawnCapture } from '../../src/lib/proc.ts';
 import type { ProcRunner } from '../../src/lib/proc.ts';
-import { trackTemp, writeTree } from './fixtures/data-fixtures.ts';
+import {
+  HAS_TAR,
+  HAS_ZIP,
+  HAS_GIT,
+  JOB_ID,
+  type Harness,
+  cloneStep,
+  commitFile,
+  copyStep,
+  dirStep,
+  find,
+  harness,
+  isLink,
+  listTree,
+  makeFixtureRepo,
+  manifestStep,
+  previousOf,
+  readManifest,
+  removeStep,
+  statusOf,
+  step,
+  symlinkStep,
+  tmp,
+  view,
+} from './fixtures/inflate-exec.ts';
 
-// Real git, tar and fs in OS temp dirs.
+// Real tar and fs in OS temp dirs (the git steps live in inflate-material-exec-git.test.ts).
 vi.setConfig({ testTimeout: 60_000 });
 
-const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
-
-const hasTool = (cmd: string, args: string[]): boolean => {
-  try {
-    return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0;
-  } catch {
-    return false;
-  }
-};
-const HAS_GIT = hasTool('git', ['--version']);
-const HAS_TAR = hasTool('tar', ['--version']);
-const HAS_ZIP = hasTool('zip', ['-v']);
-
-// ---------------------------------------------------------------- builders
-
-const JOB_ID = 'abcdef12-0000-4000-8000-000000000000';
-
-type StepFields = Record<string, unknown>;
-const step = (kind: MaterialStep['kind'], id: string, rel: string, fields: StepFields = {}) =>
-  ({
-    kind,
-    id,
-    path: rel,
-    label: id,
-    expect: 'create',
-    after: [],
-    ...fields,
-  }) as MaterialStep;
-
-const dirStep = (): MaterialStep => step('ensureDir', 'dir', '', { fatal: true });
-const manifestStep = (): MaterialStep =>
-  step('writeManifest', 'manifest', '.ctxman-inflate.json', { always: true });
-const symlinkStep = (key: string, rel: string, target: string): MaterialStep =>
-  step('symlink', `okf:${key}`, rel, { key, target });
-const copyStep = (key: string, rel: string, from: string): MaterialStep =>
-  step('copyDir', `okf:${key}`, rel, { key, from });
-const cloneStep = (key: string, rel: string, uri: string, fields: StepFields = {}): MaterialStep =>
-  step('gitClone', `clone:${key}`, rel, {
-    key,
-    uri,
-    depth: 1,
-    branch: null,
-    sparse: null,
-    stage: false,
-    ...fields,
-  });
-const updateStep = (key: string, rel: string, uri: string, fields: StepFields = {}): MaterialStep =>
-  step('gitUpdate', `clone:${key}`, rel, {
-    key,
-    uri,
-    depth: 1,
-    branch: null,
-    sparse: null,
-    expect: 'update',
-    ...fields,
-  });
-const removeStep = (entry: ManifestEntry): MaterialStep =>
-  step('remove', `rm:${entry.path}`, entry.path, { expect: 'remove', entry });
-
-function previousOf(entries: ManifestEntry[], over: Partial<InflateDirManifest> = {}) {
-  return {
-    format: 'ctxman-inflate',
-    version: 1,
-    recipe: 'demo',
-    target: 'claude-code',
-    contextFile: 'LLM_CONTEXT.md',
-    generatedAt: '2026-01-01T00:00:00.000Z',
-    jobId: 'old',
-    entries,
-    ...over,
-  } satisfies InflateDirManifest;
-}
-
-function view(key: string, dest: string | null, extra: Partial<MaterialView> = {}): MaterialView {
-  return {
-    key,
-    kind: 'kb',
-    material: dest === null ? 'none' : 'symlink',
-    title: key,
-    description: '',
-    dest,
-    sourceAbs: null,
-    uri: null,
-    subpath: null,
-    depth: null,
-    branch: null,
-    sparse: false,
-    owner: null,
-    state: 'planned',
-    ...extra,
-  };
-}
-
-interface Harness {
-  dir: string;
-  run(steps: MaterialStep[], over?: Partial<ExecuteContext>): ReturnType<typeof executeSteps>;
-  updates: StepUpdate[];
-}
-
-/** `dir` = a fresh temp working directory; `run` executes steps against it. */
-function harness(over: Partial<ExecuteContext> = {}, dir = path.join(tmp.make(), 'w')): Harness {
-  const updates: StepUpdate[] = [];
-  return {
-    dir,
-    updates,
-    run: (steps, more = {}) =>
-      executeSteps(steps, {
-        dir,
-        jobId: JOB_ID,
-        recipe: 'demo',
-        target: 'claude-code',
-        contextFile: 'LLM_CONTEXT.md',
-        previous: null,
-        materials: {},
-        signal: new AbortController().signal,
-        onProgress: (u) => updates.push(u),
-        proc: spawnCapture,
-        now: () => new Date('2026-10-17T12:00:00.000Z'),
-        renderContext: () => '# context\n',
-        ...over,
-        ...more,
-      }),
-  };
-}
-
-const find = (results: StepResult[], id: string): StepResult => {
-  const found = results.find((r) => r.id === id);
-  if (found === undefined) throw new Error(`no result for ${id}: ${results.map((r) => r.id)}`);
-  return found;
-};
-const statusOf = (results: StepResult[]): Record<string, string> =>
-  Object.fromEntries(results.map((r) => [r.id, r.status]));
-const readManifest = (dir: string): InflateDirManifest => {
-  const parsed = parseDirManifest(
-    readFileSync(path.join(dir, '.ctxman-inflate.json'), 'utf8'),
-    dir,
-  );
-  if (parsed.status !== 'ok') throw new Error(`manifest ${parsed.status}`);
-  return parsed.manifest;
-};
-const isLink = (p: string): boolean =>
-  lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink() === true;
-const listTree = (root: string): string[] => {
-  const out: string[] = [];
-  const walk = (abs: string, rel: string): void => {
-    for (const e of readdirSync(abs, { withFileTypes: true })) {
-      const r = rel === '' ? e.name : `${rel}/${e.name}`;
-      out.push(r);
-      if (e.isDirectory()) walk(path.join(abs, e.name), r);
-    }
-  };
-  walk(root, '');
-  return out.sort();
-};
 
 // ---------------------------------------------------------------- ensureDir, manifest, after, fatal
 
@@ -493,285 +356,6 @@ describe('copyDir step', () => {
     const missing = path.join(tmp.make(), 'nope');
     const { results } = await h.run([dirStep(), copyStep('kb/x', 'kb/x', missing)]);
     expect(find(results, 'okf:kb/x').status).toBe('failed');
-  });
-});
-
-// ---------------------------------------------------------------- git
-
-function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync(
-    'git',
-    ['-c', 'user.name=ctxman-test', '-c', 'user.email=test@example.invalid', ...args],
-    { cwd, encoding: 'utf8' },
-  );
-  if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
-  return r.stdout.trim();
-}
-
-/** A local repository with docs/ and src/; returns its path and its file:// URI. */
-function makeFixtureRepo(): { dir: string; uri: string } {
-  const dir = tmp.make({
-    'README.md': 'readme',
-    'docs/guide.md': 'guide',
-    'src/code.ts': 'code',
-  });
-  git(dir, 'init', '-q', '-b', 'trunk');
-  git(dir, 'add', '-A');
-  git(dir, 'commit', '-qm', 'one');
-  return { dir, uri: pathToFileURL(dir).href };
-}
-
-function commitFile(dir: string, rel: string, content: string): void {
-  writeTree(dir, { [rel]: content });
-  git(dir, 'add', '-A');
-  git(dir, 'commit', '-qm', `change ${rel}`);
-}
-
-describe.skipIf(!HAS_GIT)('git steps (real git, local file:// fixture)', () => {
-  it('probeTools sees git', async () => {
-    expect((await probeTools(spawnCapture)).git).toBe(true);
-  });
-
-  it('clones shallow (depth 1) and records the clone', async () => {
-    const repo = makeFixtureRepo();
-    commitFile(repo.dir, 'second.md', 'two');
-    const h = harness();
-    const { results, manifest } = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri),
-      manifestStep(),
-    ]);
-    expect(find(results, 'clone:reference/r')).toMatchObject({ status: 'ok', action: 'created' });
-    const dest = path.join(h.dir, 'repos', 'r');
-    expect(existsSync(path.join(dest, '.git'))).toBe(true);
-    expect(existsSync(path.join(dest, 'second.md'))).toBe(true);
-    expect(git(dest, 'rev-parse', '--is-shallow-repository')).toBe('true');
-    expect(git(dest, 'config', '--get', 'remote.origin.url')).toBe(repo.uri);
-    expect(manifest?.entries).toEqual([
-      {
-        path: 'repos/r',
-        type: 'clone',
-        key: 'reference/r',
-        uri: repo.uri,
-        branch: null,
-        depth: 1,
-        sparse: null,
-      },
-    ]);
-    expect(find(results, 'clone:reference/r').tail.length).toBeGreaterThan(0);
-  });
-
-  it('clones full history with depth 0 and a branch', async () => {
-    const repo = makeFixtureRepo();
-    git(repo.dir, 'checkout', '-q', '-b', 'dev');
-    commitFile(repo.dir, 'dev.md', 'dev');
-    git(repo.dir, 'checkout', '-q', 'trunk');
-    const h = harness();
-    const { results } = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri, { depth: 0, branch: 'dev' }),
-    ]);
-    expect(find(results, 'clone:reference/r').status).toBe('ok');
-    const dest = path.join(h.dir, 'repos', 'r');
-    expect(git(dest, 'rev-parse', '--is-shallow-repository')).toBe('false');
-    expect(git(dest, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('dev');
-    expect(existsSync(path.join(dest, 'dev.md'))).toBe(true);
-  });
-
-  it('sparse clone leaves only the subpath (and root files)', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    const { results } = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri, { sparse: 'docs' }),
-    ]);
-    expect(find(results, 'clone:reference/r').status).toBe('ok');
-    const dest = path.join(h.dir, 'repos', 'r');
-    expect(existsSync(path.join(dest, 'docs', 'guide.md'))).toBe(true);
-    expect(existsSync(path.join(dest, 'src'))).toBe(false);
-    expect(existsSync(path.join(dest, 'README.md'))).toBe(true);
-  });
-
-  it('a failing clone is a failed step and leaves nothing behind', async () => {
-    const h = harness();
-    const missing = pathToFileURL(path.join(tmp.make(), 'no-such-repo')).href;
-    const { results } = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', missing),
-      manifestStep(),
-    ]);
-    expect(find(results, 'clone:reference/r').status).toBe('failed');
-    expect(find(results, 'clone:reference/r').message).toMatch(/^git clone failed: /);
-    expect(existsSync(path.join(h.dir, 'repos', 'r'))).toBe(false);
-    expect(find(results, 'manifest').status).toBe('ok');
-  });
-
-  it('refuses a uri that looks like an option', async () => {
-    const h = harness();
-    const { results } = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', '--upload-pack=touch /tmp/x'),
-    ]);
-    expect(find(results, 'clone:reference/r')).toMatchObject({
-      status: 'failed',
-      message: 'invalid git URI',
-    });
-  });
-
-  it('clone into an existing clone of the same uri behaves as an update', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    await h.run([dirStep(), cloneStep('reference/r', 'repos/r', repo.uri)]);
-    commitFile(repo.dir, 'later.md', 'later');
-    const { results } = await h.run([dirStep(), cloneStep('reference/r', 'repos/r', repo.uri)]);
-    expect(find(results, 'clone:reference/r')).toMatchObject({ status: 'ok', action: 'updated' });
-    expect(existsSync(path.join(h.dir, 'repos', 'r', 'later.md'))).toBe(true);
-  });
-
-  it('refuses a clone onto a foreign directory or another clone', async () => {
-    const repo = makeFixtureRepo();
-    const other = makeFixtureRepo();
-    const h = harness();
-    await h.run([dirStep(), cloneStep('reference/o', 'repos/o', other.uri)]);
-    mkdirSync(path.join(h.dir, 'repos', 'foreign'), { recursive: true });
-    writeFileSync(path.join(h.dir, 'repos', 'foreign', 'mine.md'), 'mine');
-    const { results } = await h.run([
-      dirStep(),
-      cloneStep('reference/o', 'repos/o', repo.uri),
-      cloneStep('reference/f', 'repos/foreign', repo.uri),
-    ]);
-    expect(find(results, 'clone:reference/o')).toMatchObject({
-      status: 'failed',
-      message: `repos/o is a clone of ${other.uri}, not ${repo.uri}`,
-    });
-    expect(find(results, 'clone:reference/f').status).toBe('failed');
-    expect(readFileSync(path.join(h.dir, 'repos', 'foreign', 'mine.md'), 'utf8')).toBe('mine');
-  });
-
-  it('clones into an existing empty directory', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    mkdirSync(path.join(h.dir, 'repos', 'r'), { recursive: true });
-    const { results } = await h.run([dirStep(), cloneStep('reference/r', 'repos/r', repo.uri)]);
-    expect(find(results, 'clone:reference/r')).toMatchObject({ status: 'ok', action: 'created' });
-  });
-
-  it('gitUpdate fast-forwards (updated) and is a no-op afterwards (unchanged)', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    const first = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri),
-      manifestStep(),
-    ]);
-    commitFile(repo.dir, 'later.md', 'later');
-    const update = [dirStep(), updateStep('reference/r', 'repos/r', repo.uri), manifestStep()];
-    const second = await h.run(update, { previous: first.manifest });
-    expect(find(second.results, 'clone:reference/r')).toMatchObject({
-      status: 'ok',
-      action: 'updated',
-    });
-    expect(existsSync(path.join(h.dir, 'repos', 'r', 'later.md'))).toBe(true);
-    const third = await h.run(update, { previous: second.manifest });
-    expect(find(third.results, 'clone:reference/r')).toMatchObject({
-      status: 'unchanged',
-      action: 'unchanged',
-    });
-    expect(third.manifest?.entries.map((e) => e.path)).toEqual(['repos/r']);
-  });
-
-  it('gitUpdate clones when the destination is missing', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    const { results } = await h.run([dirStep(), updateStep('reference/r', 'repos/r', repo.uri)]);
-    expect(find(results, 'clone:reference/r')).toMatchObject({ status: 'ok', action: 'created' });
-  });
-
-  it('gitUpdate fails for another origin, keeps a clone on another branch, and fails a diverged pull', async () => {
-    const repo = makeFixtureRepo();
-    const other = makeFixtureRepo();
-    const h = harness();
-    await h.run([dirStep(), cloneStep('reference/r', 'repos/r', repo.uri, { depth: 0 })]);
-
-    const wrongOrigin = await h.run([dirStep(), updateStep('reference/r', 'repos/r', other.uri)]);
-    expect(find(wrongOrigin.results, 'clone:reference/r')).toMatchObject({
-      status: 'failed',
-      message: `repos/r is a clone of ${repo.uri}, not ${other.uri}`,
-    });
-
-    const branch = await h.run([
-      dirStep(),
-      updateStep('reference/r', 'repos/r', repo.uri, { branch: 'release' }),
-    ]);
-    expect(find(branch.results, 'clone:reference/r')).toMatchObject({
-      status: 'skipped',
-      action: 'kept',
-      message: 'on branch trunk, recipe wants release; left as is',
-    });
-
-    // a local commit in the clone and a different upstream commit: no fast-forward possible
-    const dest = path.join(h.dir, 'repos', 'r');
-    commitFile(dest, 'local.md', 'local');
-    commitFile(repo.dir, 'upstream.md', 'upstream');
-    const diverged = await h.run([dirStep(), updateStep('reference/r', 'repos/r', repo.uri)]);
-    expect(find(diverged.results, 'clone:reference/r').status).toBe('failed');
-    expect(find(diverged.results, 'clone:reference/r').message).toMatch(/^git pull failed/);
-    expect(existsSync(path.join(dest, 'local.md'))).toBe(true);
-  });
-
-  it('gitUpdate switches the sparse checkout when the recorded subpath differs', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    const first = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri, { sparse: 'docs' }),
-      manifestStep(),
-    ]);
-    const dest = path.join(h.dir, 'repos', 'r');
-    expect(existsSync(path.join(dest, 'src'))).toBe(false);
-    const full = await h.run([dirStep(), updateStep('reference/r', 'repos/r', repo.uri)], {
-      previous: first.manifest,
-    });
-    expect(find(full.results, 'clone:reference/r').status).not.toBe('failed');
-    expect(existsSync(path.join(dest, 'src', 'code.ts'))).toBe(true);
-  });
-
-  it('a symlink step never replaces a recorded clone that has local changes', async () => {
-    const repo = makeFixtureRepo();
-    const source = tmp.make();
-    const h = harness();
-    const first = await h.run([
-      dirStep(),
-      cloneStep('reference/r', 'repos/r', repo.uri),
-      manifestStep(),
-    ]);
-    writeFileSync(path.join(h.dir, 'repos', 'r', 'mine.txt'), 'untracked');
-    const { results } = await h.run([dirStep(), symlinkStep('reference/r', 'repos/r', source)], {
-      previous: first.manifest,
-    });
-    expect(find(results, 'okf:reference/r')).toMatchObject({
-      status: 'failed',
-      message: 'kept repos/r: it has local changes or unpushed commits',
-    });
-    expect(existsSync(path.join(h.dir, 'repos', 'r', 'mine.txt'))).toBe(true);
-  });
-
-  it('stage clone has no entry and is replaced on a re-run', async () => {
-    const repo = makeFixtureRepo();
-    const h = harness();
-    const stage = step('gitClone', 'stage:reference/s', '.ctxman-tmp/s', {
-      key: 'reference/s',
-      uri: repo.uri,
-      depth: 1,
-      branch: null,
-      sparse: 'docs',
-      stage: true,
-    });
-    const first = await h.run([dirStep(), stage]);
-    expect(find(first.results, 'stage:reference/s').entry).toBeUndefined();
-    expect(existsSync(path.join(h.dir, '.ctxman-tmp', 's', 'docs', 'guide.md'))).toBe(true);
-    const second = await h.run([dirStep(), stage]);
-    expect(find(second.results, 'stage:reference/s').status).toBe('ok');
   });
 });
 
