@@ -11,7 +11,7 @@
     outline: none;
   }
   .ck-gridlist__item[data-hovered] {
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    background: var(--row-hover-bg);
   }
   .ck-gridlist__item[data-focus-visible] {
     box-shadow:

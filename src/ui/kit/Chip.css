@@ -64,12 +64,6 @@
     color: inherit;
     opacity: 0.85;
   }
-  .ck-chip--md {
-    height: var(--control-h-md);
-    padding: 0 var(--sp-4);
-    font-size: var(--fs-md);
-  }
-
   .ck-chip[data-ds] .ck-chip__dot {
     background: var(--ds-c);
   }

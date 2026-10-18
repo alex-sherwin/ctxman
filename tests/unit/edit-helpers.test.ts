@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getJson, sendJson } from '../../src/ui/edit/api.ts';
+import { failureText, getJson, sendJson } from '../../src/ui/edit/api.ts';
+import type { ApiFailure } from '../../src/ui/edit/api.ts';
+import { formatRelative } from '../../src/lib/time.ts';
 import {
   DRAFT_TTL_MS,
   clearDraft,
@@ -8,7 +10,7 @@ import {
   saveDraft,
 } from '../../src/ui/edit/draft-backup.ts';
 import { rememberSave, takeSave } from '../../src/ui/edit/last-save.ts';
-import { statusText } from '../../src/ui/edit/status.ts';
+import { saveStatusView, statusText } from '../../src/ui/edit/status.ts';
 import { splitTagInput, tagInputProblem } from '../../src/ui/edit/tag-input.ts';
 
 /** A minimal in-memory Storage under `name`; `broken` makes every access throw (private window). */
@@ -43,6 +45,96 @@ describe('statusText', () => {
     expect(statusText({ kind: 'error', message: 'Save failed: disk full' })).toBe(
       'Save failed: disk full',
     );
+  });
+});
+
+describe('saveStatusView', () => {
+  const now = Date.UTC(2026, 0, 2, 12, 0, 0);
+
+  it('shows "No changes" for a clean idle editor', () => {
+    expect(saveStatusView({ kind: 'idle' }, false, now)).toEqual({
+      kind: 'idle',
+      text: 'No changes',
+    });
+  });
+
+  it('shows "Saving…" while saving', () => {
+    expect(saveStatusView({ kind: 'saving' }, true, now)).toEqual({
+      kind: 'idle',
+      text: 'Saving…',
+    });
+  });
+
+  it('joins the message and the issues of a failed save', () => {
+    const view = saveStatusView(
+      {
+        kind: 'error',
+        message: 'msg',
+        issues: [
+          { path: 'a.b', message: 'm1' },
+          { path: '', message: 'm2' },
+        ],
+      },
+      true,
+      now,
+    );
+    expect(view).toEqual({ kind: 'error', text: 'Save failed: msg; a.b: m1; m2' });
+    expect(saveStatusView({ kind: 'error' }, false, now).text).toBe('Save failed: unknown error');
+  });
+
+  it('shows "Unsaved changes" when dirty', () => {
+    expect(saveStatusView({ kind: 'idle' }, true, now)).toEqual({
+      kind: 'dirty',
+      text: 'Unsaved changes',
+    });
+  });
+
+  it('shows the relative time of the last save', () => {
+    const at = now - 5000;
+    expect(saveStatusView({ kind: 'saved', at }, false, now)).toEqual({
+      kind: 'saved',
+      text: `Saved ${formatRelative(new Date(at).toISOString(), now)}`,
+    });
+  });
+
+  it('shows the message of a deleted document', () => {
+    expect(saveStatusView({ kind: 'deleted', message: 'Deleted ctx' }, false, now)).toEqual({
+      kind: 'idle',
+      text: 'Deleted ctx',
+    });
+    expect(saveStatusView({ kind: 'deleted' }, false, now).text).toBe('Deleted');
+  });
+
+  it('reports invalid YAML before anything else', () => {
+    expect(saveStatusView({ kind: 'saved', at: now }, true, now, 2)).toEqual({
+      kind: 'error',
+      text: 'Invalid YAML — 2 problems',
+    });
+    expect(saveStatusView({ kind: 'idle' }, false, now, 1).text).toBe('Invalid YAML — 1 problem');
+  });
+});
+
+describe('failureText', () => {
+  const fail = (extra: Partial<ApiFailure> = {}): ApiFailure => ({
+    ok: false,
+    status: 400,
+    error: 'invalid',
+    message: 'Nope',
+    ...extra,
+  });
+
+  it('is the message alone without issues', () => {
+    expect(failureText(fail())).toBe('Nope');
+  });
+
+  it('appends the first three issues as path: message', () => {
+    const issues = [1, 2, 3, 4].map((n) => ({ path: `f${n}`, message: `m${n}` }));
+    expect(failureText(fail({ issues }))).toBe('Nope; f1: m1; f2: m2; f3: m3');
+    expect(failureText(fail({ issues }), 1)).toBe('Nope; f1: m1');
+  });
+
+  it('omits an empty path', () => {
+    expect(failureText(fail({ issues: [{ path: '', message: 'bare' }] }))).toBe('Nope; bare');
   });
 });
 

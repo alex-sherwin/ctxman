@@ -49,6 +49,9 @@
     --control-h-lg: 36px;
     --row-h: 28px; /* table rows, list rows, menu/listbox items */
     --header-h: 40px;
+    --bar-h: 36px; /* pane headers, the doc toolbar */
+    --toolbar-h: 40px; /* Forge footer, Inflate bar */
+    --bar-w: 2px; /* left accent bars (notices, ordered rows, dataset badges) */
     --gutter: 12px;
     --content-max: 1600px;
     --sidebar-w: 30rem;
@@ -82,6 +85,11 @@
     --surface: var(--cyber-void-400);
     --surface-raised: var(--cyber-void-200); /* #1f2230 popovers, dialogs */
     --bg-deep: var(--cyber-void-700); /* #07080c header bar, search overlay, editor gutter */
+    --bg-deepest: var(--cyber-void-800); /* tooltips */
+    --input-bg: var(--cyber-void-700); /* inputs, select triggers, kbd, code editor frame */
+    --row-hover-bg: color-mix(in srgb, var(--accent) 5%, transparent); /* hovered list/table row */
+    --code-fg: var(--cyber-cyan-400); /* inline code in prose */
+    --terminal-fg: var(--cyber-green-400); /* script output */
     --border: var(--cyber-void-100); /* #2a2d3a */
     --border-strong: var(--cyber-chrome-600); /* #5c647a (non-text, 3.3:1) */
     --fg: var(--cyber-chrome-100); /* #f0f1f5 — 17.1:1 on bg, 14.0:1 on surface-raised */

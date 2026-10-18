@@ -1,9 +1,4 @@
-import {
-  Checkbox as AriaCheckbox,
-  Switch as AriaSwitch,
-  type CheckboxProps,
-  type SwitchProps,
-} from 'react-aria-components';
+import { Checkbox as AriaCheckbox, type CheckboxProps } from 'react-aria-components';
 import { kitClass } from './utils.ts';
 
 /** Children are the label. */
@@ -25,21 +20,5 @@ export function Checkbox({ className, children, ...rest }: CheckboxProps) {
         </>
       )}
     </AriaCheckbox>
-  );
-}
-
-/** Children are the label. */
-export function Switch({ className, children, ...rest }: SwitchProps) {
-  return (
-    <AriaSwitch {...rest} className={kitClass(className, 'ck-switch')}>
-      {(rp) => (
-        <>
-          <span className="ck-switch__track" aria-hidden="true">
-            <span className="ck-switch__thumb" />
-          </span>
-          {typeof children === 'function' ? children(rp) : children}
-        </>
-      )}
-    </AriaSwitch>
   );
 }

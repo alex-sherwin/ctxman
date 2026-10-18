@@ -11,6 +11,8 @@ export type ApiResult<T> =
   | { ok: true; status: number; body: T }
   | { ok: false; status: number; error: string; message: string; issues?: ApiIssue[] };
 
+export type ApiFailure = Extract<ApiResult<unknown>, { ok: false }>;
+
 export type SendMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,4 +85,15 @@ export function sendJson<T>(
     headers,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+}
+
+/**
+ * One line for a failed call: `message` plus the first `maxIssues` issues as `path: message` (the path is
+ * omitted when empty), joined by '; '.
+ */
+export function failureText(res: ApiFailure, maxIssues = 3): string {
+  const issues = (res.issues ?? [])
+    .slice(0, maxIssues)
+    .map((i) => (i.path === '' ? i.message : `${i.path}: ${i.message}`));
+  return [res.message, ...issues].join('; ');
 }

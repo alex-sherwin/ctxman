@@ -42,7 +42,7 @@ export function Badge({
       data-state={state}
       title={title}
     >
-      {(dataset || stateGroup) && <span className="ck-badge__dot" aria-hidden="true" />}
+      {stateGroup && <span className="ck-badge__dot" aria-hidden="true" />}
       {children}
     </span>
   );

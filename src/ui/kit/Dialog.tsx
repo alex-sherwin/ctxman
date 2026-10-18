@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import {
   Dialog as AriaDialog,
-  DialogTrigger,
   Heading,
   Modal as AriaModal,
   ModalOverlay,
@@ -10,8 +9,6 @@ import {
 } from 'react-aria-components';
 import { Button } from './Button.tsx';
 import { cx } from './utils.ts';
-
-export { DialogTrigger };
 
 export interface ModalProps extends Omit<ModalOverlayProps, 'className'> {
   /** 'fullscreen' is the global search overlay. Default 'dialog'. */
@@ -27,6 +24,8 @@ export interface ModalProps extends Omit<ModalOverlayProps, 'className'> {
   className?: string;
   /** `data-testid` of the `.ck-modal` element. */
   testId?: string;
+  /** Spread on the `.ck-modal` element (`data-*` only). */
+  attrs?: Record<`data-${string}`, string | undefined>;
 }
 
 /** ModalOverlay + Modal with the kit classes. Focus trap, Esc, scroll lock and focus restore are RAC's. */
@@ -36,6 +35,7 @@ export function Modal({
   size = 'auto',
   className,
   testId,
+  attrs,
   children,
   ...rest
 }: ModalProps) {
@@ -54,6 +54,7 @@ export function Modal({
           className,
         )}
         data-testid={testId}
+        {...attrs}
       >
         {children}
       </AriaModal>
@@ -153,5 +154,48 @@ export function ConfirmDialog({
         {children}
       </Dialog>
     </Modal>
+  );
+}
+
+export interface FormDialogFooterProps {
+  /** `id` of the `<Form>` the submit button belongs to. */
+  formId: string;
+  submitLabel: string;
+  onCancel: () => void;
+  /** Default 'Cancel'. */
+  cancelLabel?: string;
+  isDisabled?: boolean;
+  isPending?: boolean;
+  cancelTestId: string;
+  submitTestId: string;
+}
+
+/** The Cancel + submit pair of a form dialog; the submit button is bound to the form by `formId`. */
+export function FormDialogFooter({
+  formId,
+  submitLabel,
+  onCancel,
+  cancelLabel = 'Cancel',
+  isDisabled,
+  isPending,
+  cancelTestId,
+  submitTestId,
+}: FormDialogFooterProps) {
+  return (
+    <>
+      <Button variant="secondary" onPress={onCancel} data-testid={cancelTestId}>
+        {cancelLabel}
+      </Button>
+      <Button
+        variant="primary"
+        type="submit"
+        form={formId}
+        isDisabled={isDisabled}
+        isPending={isPending}
+        data-testid={submitTestId}
+      >
+        {submitLabel}
+      </Button>
+    </>
   );
 }

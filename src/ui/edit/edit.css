@@ -5,19 +5,13 @@
     align-items: center;
     gap: var(--sp-2);
   }
-  .cx-savebar__status {
-    font-size: var(--fs-sm);
-    color: var(--fg-muted);
+  /* Footer variant: status first (left), buttons right (replaces the per-island overrides). */
+  .cx-savebar--status-first {
+    flex: 1;
   }
-  .cx-savebar__status[data-kind='dirty'] {
-    color: var(--warn-fg);
-  }
-  .cx-savebar__status[data-kind='error'],
-  .cx-savebar__status[data-kind='conflict'] {
-    color: var(--danger-fg);
-  }
-  .cx-savebar__status[data-kind='saved'] {
-    color: var(--success-fg);
+  .cx-savebar--status-first .ck-status {
+    order: -1;
+    margin-right: auto;
   }
 
   .cx-tagedit {

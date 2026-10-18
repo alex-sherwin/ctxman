@@ -16,7 +16,7 @@ import {
 import { SearchField } from './Field.tsx';
 import { Icon } from './Icon.tsx';
 import { ListBox } from './ListBox.tsx';
-import { Popover } from './Menu.tsx';
+import { Popover } from './Popover.tsx';
 import { kitClass } from './utils.ts';
 
 export interface SelectProps<T extends object> extends Omit<AriaSelectProps<T>, 'children'> {

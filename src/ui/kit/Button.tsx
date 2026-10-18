@@ -92,7 +92,14 @@ export function ButtonLink({
   );
 }
 
-/** Standalone busy indicator (a spinner inside a Button is handled by `isPending`). */
+/**
+ * Standalone busy indicator. Decorative unless given a `label`; never nest a labelled one in another
+ * `role="status"` element (a button's `isPending` spinner is handled by `Button`).
+ */
 export function Spinner({ label }: { label?: string }) {
-  return <span className="ck-spinner" role="status" aria-label={label ?? 'Loading'} />;
+  return label === undefined ? (
+    <span className="ck-spinner" aria-hidden="true" />
+  ) : (
+    <span className="ck-spinner" role="status" aria-label={label} />
+  );
 }

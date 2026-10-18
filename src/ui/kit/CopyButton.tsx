@@ -14,10 +14,18 @@ export interface CopyButtonProps extends Omit<ButtonProps, 'onPress' | 'children
 }
 
 /**
- * A Button that copies `text` and, for `COPIED_MS`, shows a centered check in place of its label (`data-copied`)
+ * A Button (default ghost, sm, glow: the look of the SSR twin) that copies `text` and, for `COPIED_MS`, shows a centered check in place of its label (`data-copied`)
  * without changing width; a visually hidden status says "Copied". SSR twin: src/components/CopyButton.astro.
  */
-export function CopyButton({ text, label = 'Copy', className, ...rest }: CopyButtonProps) {
+export function CopyButton({
+  text,
+  label = 'Copy',
+  variant = 'ghost',
+  size = 'sm',
+  glow = true,
+  className,
+  ...rest
+}: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -36,6 +44,9 @@ export function CopyButton({ text, label = 'Copy', className, ...rest }: CopyBut
     <>
       <Button
         {...rest}
+        variant={variant}
+        size={size}
+        glow={glow}
         className={kitClass(className, 'ck-copy')}
         data-copied={copied ? '' : undefined}
         onPress={() => void onCopy()}

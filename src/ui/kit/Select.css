@@ -17,7 +17,7 @@
     font-family: var(--font-body);
     font-size: var(--fs-md);
     color: var(--fg);
-    background: var(--cyber-void-700);
+    background: var(--input-bg);
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
     outline: none;

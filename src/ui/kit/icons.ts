@@ -1,6 +1,15 @@
 // PURE data: icon definitions shared by the React `Icon` (src/ui/kit/Icon.tsx) and the SSR twin
 // (src/components/Icon.astro). No imports; browser- and server-safe.
-export type IconName = 'check' | 'chevron' | 'grip' | 'pencil';
+export type IconName =
+  | 'check'
+  | 'chevron'
+  | 'grip'
+  | 'pencil'
+  | 'close'
+  | 'arrow-up'
+  | 'arrow-down'
+  | 'external'
+  | 'plus';
 
 export interface IconDef {
   viewBox: string;
@@ -28,4 +37,9 @@ export const ICONS: Record<IconName, IconDef> = {
     ],
   },
   pencil: { viewBox: '0 0 16 16', stroke: true, paths: ['M10.5 2.5l3 3-8 8H2.5v-3z', 'M9 4l3 3'] },
+  close: { viewBox: '0 0 16 16', stroke: true, paths: ['M4 4l8 8', 'M12 4l-8 8'] },
+  'arrow-up': { viewBox: '0 0 16 16', stroke: true, paths: ['M8 13V3', 'M3.5 7.5 8 3l4.5 4.5'] },
+  'arrow-down': { viewBox: '0 0 16 16', stroke: true, paths: ['M8 3v10', 'M3.5 8.5 8 13l4.5-4.5'] },
+  external: { viewBox: '0 0 16 16', stroke: true, paths: ['M6 3h7v7', 'M13 3 5 11', 'M3 6v7h7'] },
+  plus: { viewBox: '0 0 16 16', stroke: true, paths: ['M8 3v10', 'M3 8h10'] },
 };

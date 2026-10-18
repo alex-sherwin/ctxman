@@ -9,12 +9,13 @@ import { LINKABLE_DATASETS, datasetDef } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { $entries, ensureAllEntries } from '../../stores/entries.ts';
-import { Badge, DatasetBadge, StateBadge } from '../kit/Badge.tsx';
 import { Button } from '../kit/Button.tsx';
 import { Chip, ChipGroup } from '../kit/Chip.tsx';
 import { Dialog, Modal } from '../kit/Dialog.tsx';
 import { SearchField } from '../kit/Field.tsx';
-import { GridList, GridListItem } from '../kit/GridList.tsx';
+import { GridList } from '../kit/GridList.tsx';
+import { ErrorText } from '../kit/Status.tsx';
+import { EntryRow } from './EntryRow.tsx';
 import { pickerKey, pickerRows } from './picker-rows.ts';
 
 export interface EntryPickerProps {
@@ -34,13 +35,15 @@ export interface EntryPickerProps {
   onClose(): void;
   /** Prefix of every test id (`<id>-search`, `-ds-<id|all>`, `-row`, `-pick`, `-cancel`). Default 'link-picker'. */
   testId?: string;
+  /** `data-*` attributes for the `.ck-modal` element (e.g. the relation dialog's `data-mode`). */
+  modalAttrs?: Record<`data-${string}`, string | undefined>;
 }
 
 type PickerDataset = LinkableDatasetId | 'all';
 
 const NO_EXCLUDE: ReadonlySet<string> = new Set();
 
-interface BodyProps extends Omit<EntryPickerProps, 'isOpen' | 'testId'> {
+interface BodyProps extends Omit<EntryPickerProps, 'isOpen' | 'testId' | 'modalAttrs'> {
   testId: string;
 }
 
@@ -168,12 +171,12 @@ function PickerDialog({
         </div>
       </div>
       {failed.length > 0 && (
-        <div className="cx-picker__error" role="alert">
+        <ErrorText as="div" className="ck-error--row">
           <span>Couldn't load {failed.map((ds) => datasetDef(ds).plural).join(', ')}.</span>
           <Button size="sm" onPress={() => ensureAllEntries(failed)}>
             Retry
           </Button>
-        </div>
+        </ErrorText>
       )}
       <div className="cx-picker__list" ref={listRef}>
         <GridList
@@ -190,26 +193,15 @@ function PickerDialog({
             const label = entry.title ?? entry.name;
             const excluded = !pickable(entry);
             return (
-              <GridListItem
+              <EntryRow
                 key={key}
                 id={key}
-                textValue={label}
+                entry={entry}
+                showDataset
                 isDisabled={excluded}
-                className="cx-discover__item cx-picker__item"
-                data-testid={`${testId}-row`}
-                data-key={key}
-              >
-                <div className="cx-discover__main">
-                  <div className="cx-row cx-discover__line">
-                    <span className="cx-discover__title cx-truncate">{label}</span>
-                    <code className="cx-discover__slug">{entry.slug}</code>
-                    <DatasetBadge dataset={entry.dataset} />
-                    {entry.state && <StateBadge dataset={entry.dataset} state={entry.state} />}
-                    {entry.stale && <Badge tone="warn">stale</Badge>}
-                  </div>
-                  <p className="cx-discover__desc cx-truncate">{entry.description}</p>
-                </div>
-                <div className="cx-discover__actions">
+                testId={`${testId}-row`}
+                attrs={{ 'data-key': key }}
+                actions={
                   <Button
                     size="sm"
                     variant="secondary"
@@ -220,8 +212,8 @@ function PickerDialog({
                   >
                     {excluded ? 'added' : actionLabel}
                   </Button>
-                </div>
-              </GridListItem>
+                }
+              />
             );
           })}
         </GridList>
@@ -234,6 +226,7 @@ export function EntryPicker({
   isOpen,
   onClose,
   testId = 'link-picker',
+  modalAttrs,
   ...rest
 }: EntryPickerProps) {
   return (
@@ -246,6 +239,7 @@ export function EntryPicker({
       size="large"
       className="cx-picker"
       testId={testId}
+      attrs={modalAttrs}
     >
       <PickerDialog {...rest} onClose={onClose} testId={testId} />
     </Modal>

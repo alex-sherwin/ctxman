@@ -3,7 +3,7 @@
     position: relative;
     min-height: 0;
     width: 100%;
-    background: var(--cyber-void-700);
+    background: var(--input-bg);
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
     overflow: hidden;

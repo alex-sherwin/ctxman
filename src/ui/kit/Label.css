@@ -1,0 +1,19 @@
+/* The HUD label recipe (uppercase 11 px), defined once. Colour is NOT part of it: each owner sets its own. */
+@layer cx-kit {
+  :is(
+    .ck-label,
+    .cx-label,
+    .ck-field__label,
+    .ck-empty__title,
+    .ck-listbox__header,
+    .ck-table__th,
+    .ck-dialog__title,
+    .ck-disclosure__trigger,
+    .ck-tabs__tab
+  ) {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+}

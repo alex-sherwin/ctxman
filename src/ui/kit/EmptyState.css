@@ -9,12 +9,13 @@
     font-size: var(--fs-sm);
     color: var(--fg-subtle);
   }
-  /* same look as the .cx-label utility, kept local so the kit has no dependency on it */
   .ck-empty__title {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
+  }
+  .ck-empty--compact {
+    align-items: flex-start;
+    text-align: left;
+    padding: var(--sp-3) var(--sp-4);
+    gap: var(--sp-2);
   }
 }

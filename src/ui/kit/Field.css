@@ -6,10 +6,6 @@
     min-width: 0;
   }
   .ck-field__label {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--fg-subtle);
   }
   .ck-field__description {
@@ -28,7 +24,7 @@
     font-family: var(--font-body);
     font-size: var(--fs-md);
     color: var(--fg);
-    background: var(--cyber-void-700);
+    background: var(--input-bg);
     caret-color: var(--accent);
     border: var(--border-w) solid var(--border);
     border-radius: var(--r-sm);
@@ -63,13 +59,6 @@
     background: var(--bg-subtle);
     color: var(--fg-muted);
     border-style: dashed;
-  }
-  .ck-input--multiline {
-    height: auto;
-    min-height: calc(var(--control-h-md) * 2);
-    padding: var(--sp-2) var(--sp-3);
-    line-height: var(--lh);
-    resize: vertical;
   }
   .ck-field--mono .ck-input {
     font-family: var(--font-mono);

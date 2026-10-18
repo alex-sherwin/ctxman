@@ -27,7 +27,7 @@
     color: var(--ds-fg);
     background: var(--ds-bg);
     border-color: var(--ds-line);
-    border-left: 2px solid var(--ds-c);
+    border-left: var(--bar-w) solid var(--ds-c);
     font-family: var(--font-mono);
     font-weight: var(--fw-normal);
     text-transform: none;
@@ -46,9 +46,6 @@
     border-radius: 50%;
     flex: none;
   }
-  .ck-badge--ds .ck-badge__dot {
-    display: none;
-  } /* the left bar carries the color */
   /* state shape cue (not color-only): neutral=hollow ring, active=half + glow, done=filled, closed=dash */
   .ck-badge--state[data-state-group='neutral'] .ck-badge__dot {
     border: 1.5px solid currentColor;

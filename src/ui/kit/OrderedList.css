@@ -12,7 +12,7 @@
     align-items: start;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    border-left: 2px solid var(--ds-c, var(--border-strong));
+    border-left: var(--bar-w) solid var(--ds-c, var(--border-strong));
     outline: none;
   }
   .ck-olist__row:last-child {

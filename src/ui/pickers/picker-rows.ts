@@ -1,4 +1,4 @@
-// PURE (browser-safe): which rows the EntryPicker shows (ROUND3_SPEC §E.6). Text filter = the shared
+// PURE (browser-safe): which rows the EntryPicker shows (ROUND3_SPEC §E.6), plus `invalidTitle` for the entry rows. Text filter = the shared
 // `filterEntries` (every whitespace-separated term must appear in name + title + description + tags), order =
 // registry dataset order then title, capped so a big dataset never renders thousands of rows.
 import { filterEntries } from '../../lib/entry-filter.ts';
@@ -27,4 +27,13 @@ export function pickerRows(
 /** `ds/slug`, the key of a row and the format of the picker's `exclude` set. */
 export function pickerKey(e: Pick<EntrySummary, 'dataset' | 'slug'>): string {
   return `${e.dataset}/${e.slug}`;
+}
+
+/**
+ * Tooltip text of the "invalid" badge on an entry whose file fails its schema: the issues as `path: message`
+ * joined by `; `. Undefined for a valid entry.
+ */
+export function invalidTitle(entry: Pick<EntrySummary, 'invalid'>): string | undefined {
+  if (entry.invalid === undefined || entry.invalid.length === 0) return undefined;
+  return entry.invalid.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
 }

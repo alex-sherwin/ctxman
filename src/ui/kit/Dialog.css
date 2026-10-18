@@ -99,11 +99,7 @@
   }
   .ck-dialog__title {
     margin: 0;
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
     line-height: var(--lh-tight);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     color: var(--accent-text);
   }
   .ck-modal--danger .ck-dialog__title {

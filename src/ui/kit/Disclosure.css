@@ -16,10 +16,6 @@
     height: var(--control-h-sm);
     padding: 0 var(--sp-2);
     font-family: var(--font-body);
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
     text-align: left;
     color: var(--fg-subtle);
     background: none;

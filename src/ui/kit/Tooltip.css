@@ -5,7 +5,7 @@
     padding: var(--sp-1) var(--sp-3);
     font-size: var(--fs-xs);
     color: var(--fg);
-    background: var(--cyber-void-800);
+    background: var(--bg-deepest);
     border: 1px solid var(--accent-line);
     border-radius: var(--r-sm);
     box-shadow: var(--shadow-md);
@@ -18,7 +18,7 @@
   }
   .ck-tooltip__arrow svg {
     display: block;
-    fill: var(--cyber-void-800);
+    fill: var(--bg-deepest);
     stroke: var(--accent-line);
   }
   .ck-tooltip[data-placement='top'] .ck-tooltip__arrow svg {

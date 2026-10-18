@@ -1,0 +1,32 @@
+/* Colour by kind for every status line and the inline error text. Placement and size stay with the owner's CSS. */
+@layer cx-kit {
+  .ck-status {
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .ck-status:is([data-kind='dirty'], [data-kind='blocked']) {
+    color: var(--warn-fg);
+  }
+  .ck-status:is([data-kind='error'], [data-kind='conflict'], [data-kind='lost']) {
+    color: var(--danger-fg);
+  }
+  .ck-status:is([data-kind='saved'], [data-kind='ok'], [data-kind='done']) {
+    color: var(--success-fg);
+  }
+  .ck-error {
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--danger-fg);
+  }
+  ul.ck-error {
+    padding-left: var(--sp-4);
+  }
+  .ck-error--row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    flex: none;
+  }
+}

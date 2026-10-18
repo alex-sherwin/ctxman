@@ -1,6 +1,5 @@
 @layer cx-kit {
-  .ck-checkbox,
-  .ck-switch {
+  .ck-checkbox {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-3);
@@ -8,8 +7,7 @@
     color: var(--fg);
     -webkit-tap-highlight-color: transparent;
   }
-  .ck-checkbox[data-disabled],
-  .ck-switch[data-disabled] {
+  .ck-checkbox[data-disabled] {
     opacity: 0.4;
   }
 
@@ -39,51 +37,12 @@
   .ck-checkbox[data-invalid] .ck-checkbox__box {
     border-color: var(--danger);
   }
-  .ck-checkbox[data-focus-visible] .ck-checkbox__box,
-  .ck-switch[data-focus-visible] .ck-switch__track {
+  .ck-checkbox[data-focus-visible] .ck-checkbox__box {
     outline: var(--focus-w) solid var(--focus-ring);
     outline-offset: 1px;
   }
-
-  .ck-switch__track {
-    position: relative;
-    width: 26px;
-    height: 14px;
-    flex: none;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-pill);
-    transition:
-      background-color var(--dur-fast) var(--ease),
-      border-color var(--dur-fast) var(--ease),
-      box-shadow var(--dur-fast) var(--ease);
-  }
-  .ck-switch__thumb {
-    position: absolute;
-    top: 1px;
-    left: 1px;
-    width: 10px;
-    height: 10px;
-    background: var(--fg-muted);
-    border-radius: 50%;
-    transition:
-      transform var(--dur) var(--ease),
-      background-color var(--dur-fast) var(--ease);
-  }
-  .ck-switch[data-hovered] .ck-switch__track {
-    border-color: var(--accent);
-  }
-  .ck-switch[data-selected] .ck-switch__track {
-    border-color: var(--accent);
-    box-shadow: var(--glow-sm);
-  }
-  .ck-switch[data-selected] .ck-switch__thumb {
-    background: var(--accent);
-    transform: translateX(12px);
-  }
   @media (prefers-reduced-motion: reduce) {
-    .ck-checkbox__box,
-    .ck-switch__track,
-    .ck-switch__thumb {
+    .ck-checkbox__box {
       transition: none;
     }
   }

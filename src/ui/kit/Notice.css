@@ -1,0 +1,53 @@
+/* Info / warn / danger banner: tinted background and a left accent bar. */
+@layer cx-kit {
+  .ck-notice {
+    --_fg: var(--info-fg);
+    --_bg: var(--info-bg);
+    --_line: var(--accent);
+    margin: 0;
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--_fg);
+    background: var(--_bg);
+    border-left: var(--bar-w) solid var(--_line);
+    border-radius: var(--r-sm);
+  }
+  .ck-notice[data-tone='warn'] {
+    --_fg: var(--warn-fg);
+    --_bg: var(--warn-bg);
+    --_line: var(--warn-fg);
+  }
+  .ck-notice[data-tone='danger'] {
+    --_fg: var(--danger-fg);
+    --_bg: var(--danger-bg);
+    --_line: var(--danger);
+  }
+  .ck-notice--row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    padding-block: var(--sp-1);
+  }
+  .ck-notice__text {
+    flex: 1;
+    min-width: 0;
+  }
+  .ck-notice__actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--sp-2);
+    flex: none;
+  }
+  .ck-notice ul {
+    margin: 0;
+    padding: 0;
+  }
+  .ck-notice li + li {
+    margin-top: var(--sp-1);
+  }
+  .ck-notice code {
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+  }
+}

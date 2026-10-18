@@ -5,7 +5,6 @@ import {
   Button as AriaButton,
   SearchField as AriaSearchField,
   Text,
-  TextArea,
   TextField as AriaTextField,
   type SearchFieldProps as AriaSearchFieldProps,
   type TextFieldProps as AriaTextFieldProps,
@@ -20,17 +19,13 @@ interface FieldBase {
   size?: 'sm' | 'md' | 'lg';
   mono?: boolean;
   placeholder?: string;
-  /** `data-testid` of the `<input>` / `<textarea>` element (tests type into it). */
+  /** `data-testid` of the `<input>` element (tests type into it). */
   inputTestId?: string;
 }
 
 export interface TextFieldProps extends AriaTextFieldProps, FieldBase {}
 /** `label` is optional, so pass `aria-label` when there is none. */
 export interface SearchFieldProps extends AriaSearchFieldProps, FieldBase {}
-export interface TextAreaFieldProps extends AriaTextFieldProps, FieldBase {
-  /** Default 3. */
-  rows?: number;
-}
 
 function FieldMeta({ description, errorMessage }: Pick<FieldBase, 'description' | 'errorMessage'>) {
   return (
@@ -115,35 +110,5 @@ export function SearchField({
       </div>
       <FieldMeta description={description} errorMessage={errorMessage} />
     </AriaSearchField>
-  );
-}
-
-/** Plain multi-line prose. Markdown, JSON and YAML input uses `CodeEditor` instead. */
-export function TextAreaField({
-  label,
-  description,
-  errorMessage,
-  size = 'md',
-  mono,
-  placeholder,
-  inputTestId,
-  rows = 3,
-  className,
-  ...rest
-}: TextAreaFieldProps) {
-  return (
-    <AriaTextField
-      {...rest}
-      className={kitClass(className, 'ck-field', `ck-field--${size}`, mono && 'ck-field--mono')}
-    >
-      {label && <Label className="ck-field__label">{label}</Label>}
-      <TextArea
-        className="ck-input ck-input--multiline"
-        rows={rows}
-        placeholder={placeholder}
-        data-testid={inputTestId}
-      />
-      <FieldMeta description={description} errorMessage={errorMessage} />
-    </AriaTextField>
   );
 }

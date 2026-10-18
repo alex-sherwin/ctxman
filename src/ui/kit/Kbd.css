@@ -10,7 +10,7 @@
     font-size: 10px;
     line-height: 1;
     color: var(--fg-muted);
-    background: var(--cyber-void-700);
+    background: var(--input-bg);
     border: 1px solid var(--border);
     border-bottom-color: var(--border-strong);
     border-radius: var(--r-sm);

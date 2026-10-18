@@ -1,0 +1,17 @@
+/* Centered "Loading…" placeholder for a pane, dialog body or page section. */
+@layer cx-kit {
+  .ck-loading {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    min-height: 120px;
+    padding: var(--sp-6) var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--fg-subtle);
+  }
+  .ck-loading .ck-spinner {
+    color: var(--accent);
+  }
+}

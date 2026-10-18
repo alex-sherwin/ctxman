@@ -1,0 +1,56 @@
+/* The "title · slug · description" line and the Discover-style entry row. */
+@layer cx-kit {
+  .ck-entryline {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--sp-2);
+    min-width: 0;
+  }
+  .ck-entryline__title {
+    min-width: 0;
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+  }
+  a.ck-entryline__title:hover {
+    color: var(--accent-text);
+  }
+  .ck-entryline__slug {
+    flex: none;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  .ck-entryline__desc {
+    margin: 0;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  .ck-entryline__title--missing {
+    color: var(--fg-subtle);
+    text-decoration: line-through;
+  }
+  .ck-entryrow {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--sp-3);
+  }
+  .ck-entryrow__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .ck-entryrow__actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex: none;
+  }
+  .ck-entryrow[data-added] .ck-entryline__title {
+    color: var(--fg-muted);
+  }
+  .ck-entryrow[data-invalid] :is(.ck-entryline__title, .ck-entryline__slug, .ck-entryline__desc) {
+    opacity: 0.6;
+  }
+}
