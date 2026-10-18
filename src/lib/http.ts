@@ -48,17 +48,41 @@ export function internalError(error: unknown): Response {
   return apiError(500, 'internal', error instanceof Error ? error.message : String(error));
 }
 
+/** Hostnames that all mean "this machine" (WHATWG `URL.hostname` keeps the brackets of an IPv6 literal). */
+const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
 /**
  * 403 `forbidden-origin` when the request carries an `Origin` header that is not this server's origin
  * (a browser page on another site, or a sandboxed `null` origin). Requests without `Origin` (curl,
  * Playwright's request context, server-to-server) pass. Used by every mutating route, including DELETE.
+ *
+ * Passes when the Origin equals `url.origin`; or when both parse and have the same protocol and port and
+ * either the same hostname or both hostnames are loopback (127.0.0.1 / localhost / ::1 / [::1]): a built
+ * Astro node server rebuilds `Request.url` with `localhost` unless the Host is in `security.allowedDomains`,
+ * while the browser sends `Origin: http://127.0.0.1:<port>`; or when the `Host` request header (with the
+ * url's protocol) equals the Origin's host:port. Everything else, including an unparsable Origin, is 403.
  */
 export function checkOrigin(request: Request, url: URL): Response | null {
   const origin = request.headers.get('origin');
-  if (origin !== null && origin !== url.origin) {
+  if (origin === null || origin === url.origin) return null;
+  if (!originMatches(origin, request.headers.get('host'), url)) {
     return apiError(403, 'forbidden-origin', `cross-origin request from ${origin} is not allowed`);
   }
   return null;
+}
+
+function originMatches(origin: string, host: string | null, url: URL): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== url.protocol) return false;
+  if (host !== null && parsed.host === host.toLowerCase()) return true;
+  if (parsed.port !== url.port) return false;
+  if (parsed.hostname === url.hostname) return true;
+  return LOOPBACK_HOSTNAMES.has(parsed.hostname) && LOOPBACK_HOSTNAMES.has(url.hostname);
 }
 
 const JSON_CONTENT_TYPE = /^\s*application\/json\s*(?:;|$)/i;

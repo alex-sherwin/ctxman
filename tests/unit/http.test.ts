@@ -87,7 +87,7 @@ describe('checkOrigin', () => {
   });
 
   it('rejects any other Origin (including "null") with 403 forbidden-origin', async () => {
-    for (const origin of ['http://evil.example', 'http://localhost:4321', 'null']) {
+    for (const origin of ['http://evil.example', 'http://evil.example:4321', 'null']) {
       const res = checkOrigin(post('{}', { origin }), url);
       expect(res?.status).toBe(403);
       expect((await res?.json())?.error).toBe('forbidden-origin');
