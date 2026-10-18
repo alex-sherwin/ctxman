@@ -1,6 +1,6 @@
 // POST /api/recipe  body RecipeInput -> 201 { recipe, lastModified } + Location: /recipe/<name>
 // 400 invalid (issues) | bad-json, 409 exists, 415, 403. INFLATE_SPEC §7.3. Recipes are read/written with
-// recipe-io.ts (fs + zod), never through the content collection.
+// recipe-io.ts (fs + schema validation) at request time.
 import type { APIRoute } from 'astro';
 import { json, methodNotAllowed, readJson, recipeErrorResponse } from '../../../lib/http.ts';
 import { createRecipe } from '../../../lib/recipe-io.ts';

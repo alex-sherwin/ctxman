@@ -170,15 +170,14 @@ describe('create mode', () => {
     expect($formDirty.get()).toBe(false); // the guard stands down while navigating
   });
 
-  it('a reference waits until the entry is listed before navigating', async () => {
+  it('a reference navigates at once after the POST (the server reads from disk, no polling)', async () => {
     await createMode('reference');
-    let polls = 0;
     handlers.unshift((c) => {
       if (c.method === 'POST' && c.url === '/api/reference')
         return jsonResponse(201, { reference: {} });
+      // the entry list never contains the new entry: the form must not wait for it
       if (c.url === '/api/entries?dataset=reference' && c.method === 'GET') {
-        polls++;
-        return jsonResponse(200, { entries: polls < 2 ? [] : [{ slug: 'new-ref' }] });
+        return jsonResponse(200, { entries: [] });
       }
       return undefined;
     });
@@ -186,7 +185,6 @@ describe('create mode', () => {
     setField('description', 'd');
     setField('path', '~/x');
     await submitForm();
-    expect(polls).toBeGreaterThanOrEqual(2);
     expect(assign).toHaveBeenCalledWith('/reference/new-ref');
   });
 

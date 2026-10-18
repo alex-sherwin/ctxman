@@ -15,6 +15,8 @@ import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { SEED_RECIPE_YAML } from './fixtures/seed-recipe.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 const base = { name: 'r', description: 'd' };
 
 function parse(input: Record<string, unknown>): RecipeData {
@@ -933,6 +935,8 @@ describe('the seed recipe (plans/INFLATE_V2_SPEC.md §13)', () => {
       material: 'clone',
       materialOptions: { subpathOnly: true },
     });
-    expect(withSchemaComment('recipe', serializeRecipe(parsed.recipe))).toBe(SEED_RECIPE_YAML);
+    expect(withSchemaComment('recipe', serializeRecipe(parsed.recipe), ORIGIN)).toBe(
+      SEED_RECIPE_YAML,
+    );
   });
 });

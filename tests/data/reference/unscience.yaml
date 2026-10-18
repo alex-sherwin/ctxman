@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/reference.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference
 name: unscience
 description: ksa mod for a kitchen sink of various ways to hack the game
 type: remote-repo

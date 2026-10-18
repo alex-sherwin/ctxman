@@ -409,17 +409,16 @@ describe('saveDoc', () => {
     expect(JSON.parse(sessionData.get(`ctxman:saved:${KEY}`) ?? 'null')).toEqual({
       message: 'Saved',
       warnings: [],
-      reloads: 0,
     });
 
     expect(loc.reload).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(s.RELOAD_FALLBACK_MS - 1);
+    vi.advanceTimersByTime(s.RELOAD_AFTER_SAVE_MS - 1);
     expect(loc.reload).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(loc.reload).toHaveBeenCalledTimes(1);
   });
 
-  it('skips the fallback reload when the user is editing again', async () => {
+  it('skips the reload when the user is editing again', async () => {
     disk({ markdown: 'base', lastModified: 'T1' }, () => ({
       body: { lastModified: 'T2', warnings: [] },
     }));
@@ -429,11 +428,11 @@ describe('saveDoc', () => {
     s.setDocDraft('x');
     await s.saveDoc();
     s.enterEdit();
-    vi.advanceTimersByTime(s.RELOAD_FALLBACK_MS * 2);
+    vi.advanceTimersByTime(s.RELOAD_AFTER_SAVE_MS * 2);
     expect(loc.reload).not.toHaveBeenCalled();
     // leaving edit mode again re-arms it
     s.discardEdit();
-    vi.advanceTimersByTime(s.RELOAD_FALLBACK_MS);
+    vi.advanceTimersByTime(s.RELOAD_AFTER_SAVE_MS);
     expect(loc.reload).toHaveBeenCalledTimes(1);
   });
 
@@ -663,97 +662,50 @@ async function saveThenFreshPage(warnings: unknown[] = []): Promise<Store> {
   await settle();
   s.setDocDraft('x');
   await s.saveDoc();
-  vi.clearAllTimers(); // the old page's fallback timer died with it
+  vi.clearAllTimers(); // the old page's reload timer died with it
   loc.reload = vi.fn();
   vi.resetModules();
   return import('../../src/stores/doc-editor.ts');
 }
 
-describe('settle reload (dev content layer lags the dev reload)', () => {
-  it('the page that consumes a fresh save record reloads ONCE more, keeps "Saved", and never loops', async () => {
+describe('the page after a save (one reload, no settle reloads)', () => {
+  it('the reloaded page shows Saved + findings once and schedules NO further reload', async () => {
     const warnings = [
       { severity: 'warning', rule: 'okf/stale', file: 'f', line: 2, message: 'old' },
     ];
-    const page1 = await saveThenFreshPage(warnings);
-
-    // page 1 (the dev reload): shows Saved + findings, schedules the settle reload
-    page1.initDoc({ ...TARGET });
-    expect(page1.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 1 warning' });
+    const page = await saveThenFreshPage(warnings);
+    page.initDoc({ ...TARGET });
+    expect(page.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 1 warning' });
+    expect(page.$docWarnings.get()).toEqual([{ rule: 'okf/stale', message: 'old', line: 2 }]);
     expect(sessionData.has(`ctxman:saved:${KEY}`)).toBe(false);
-    vi.advanceTimersByTime(page1.SETTLE_RELOAD_MS - 1);
+    vi.advanceTimersByTime(60_000);
     expect(loc.reload).not.toHaveBeenCalled();
-    expect(page1.$docSave.get().kind).toBe('saved');
-    vi.advanceTimersByTime(1);
-    expect(loc.reload).toHaveBeenCalledTimes(1);
-    // the record is written again (reloads + 1) so the reloaded page still shows Saved
-    expect(JSON.parse(sessionData.get(`ctxman:saved:${KEY}`) ?? 'null')).toEqual({
-      message: 'Saved · 1 warning',
-      warnings: [{ rule: 'okf/stale', message: 'old', line: 2 }],
-      reloads: 1,
-    });
-
-    // page 2 (the settle reload): shows Saved + findings again and schedules NOTHING
-    loc.reload = vi.fn();
-    vi.resetModules();
-    const page2 = await import('../../src/stores/doc-editor.ts');
-    page2.initDoc({ ...TARGET });
-    expect(page2.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved · 1 warning' });
-    expect(page2.$docWarnings.get()).toHaveLength(1);
-    vi.advanceTimersByTime(page2.SETTLE_RELOAD_MS * 10);
-    expect(loc.reload).not.toHaveBeenCalled();
-    expect(sessionData.has(`ctxman:saved:${KEY}`)).toBe(false);
   });
 
-  it('a plain-text or malformed record counts as reloads 0 (one settle reload at most)', async () => {
+  it('a plain-text or legacy record (with a reloads counter) is shown and schedules nothing', async () => {
     sessionData.set(`ctxman:saved:${KEY}`, 'Saved');
     s.initDoc({ ...TARGET });
     expect(s.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved' });
-    vi.advanceTimersByTime(s.SETTLE_RELOAD_MS);
-    expect(loc.reload).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(sessionData.get(`ctxman:saved:${KEY}`) ?? 'null').reloads).toBe(1);
-  });
-
-  it('a record that already did its settle reload (or claims more) schedules nothing', async () => {
-    for (const reloads of [1, 5]) {
-      sessionData.set(
-        `ctxman:saved:${KEY}`,
-        JSON.stringify({ message: 'Saved', warnings: [], reloads }),
-      );
-      vi.resetModules();
-      const page = await import('../../src/stores/doc-editor.ts');
-      page.initDoc({ ...TARGET });
-      expect(page.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved' });
-      vi.advanceTimersByTime(page.SETTLE_RELOAD_MS * 4);
-    }
+    sessionData.set(
+      `ctxman:saved:${KEY}`,
+      JSON.stringify({ message: 'Saved again', warnings: [], reloads: 3 }),
+    );
+    vi.resetModules();
+    const page = await import('../../src/stores/doc-editor.ts');
+    page.initDoc({ ...TARGET });
+    expect(page.$docSave.get()).toEqual({ kind: 'saved', message: 'Saved again' });
+    vi.advanceTimersByTime(60_000);
     expect(loc.reload).not.toHaveBeenCalled();
   });
 
-  it('no record, no reload (a normal visit, a manual F5 after the settle reload)', async () => {
+  it('no record, no reload (a normal visit)', async () => {
     s.initDoc({ ...TARGET });
-    vi.advanceTimersByTime(s.SETTLE_RELOAD_MS * 4);
+    vi.advanceTimersByTime(60_000);
     expect(loc.reload).not.toHaveBeenCalled();
     expect(s.$docSave.get().kind).toBe('idle');
   });
 
-  it('is skipped while the user edits again; leaving edit then reloads through the fallback', async () => {
-    const page = await saveThenFreshPage();
-    page.initDoc({ ...TARGET });
-    disk({ markdown: 'x', lastModified: 'T2' });
-    page.enterEdit();
-    await settle();
-    page.setDocDraft('typing again');
-    vi.advanceTimersByTime(page.SETTLE_RELOAD_MS);
-    expect(loc.reload).not.toHaveBeenCalled();
-    // the SSR preview behind the editor may still be old: flagged stale, and the draft is untouched
-    expect(page.$docStale.get()).toBe(true);
-    expect(page.$docDraft.get()).toBe('typing again');
-    expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(true);
-    page.discardEdit();
-    vi.advanceTimersByTime(page.RELOAD_FALLBACK_MS);
-    expect(loc.reload).toHaveBeenCalledTimes(1);
-  });
-
-  it('a newer save cancels a pending settle reload (its record must not be overwritten)', async () => {
+  it('a newer save restarts the reload timer', async () => {
     const page = await saveThenFreshPage();
     page.initDoc({ ...TARGET });
     disk({ markdown: 'x', lastModified: 'T2' }, () => ({
@@ -763,23 +715,15 @@ describe('settle reload (dev content layer lags the dev reload)', () => {
     await settle();
     page.setDocDraft('second');
     await page.saveDoc();
-    // only the fallback reload of the NEW save runs; the old settle timer is gone
-    vi.advanceTimersByTime(page.SETTLE_RELOAD_MS);
     expect(loc.reload).not.toHaveBeenCalled();
-    expect(JSON.parse(sessionData.get(`ctxman:saved:${KEY}`) ?? 'null').reloads).toBe(0);
-    vi.advanceTimersByTime(page.RELOAD_FALLBACK_MS);
+    vi.advanceTimersByTime(page.RELOAD_AFTER_SAVE_MS);
     expect(loc.reload).toHaveBeenCalledTimes(1);
   });
 
   it('consuming the record leaves the draft backup of the file alone', async () => {
     sessionData.set(`ctxman:draft:${KEY}`, JSON.stringify({ text: 'kept', base: 'T2' }));
-    sessionData.set(
-      `ctxman:saved:${KEY}`,
-      JSON.stringify({ message: 'Saved', warnings: [], reloads: 0 }),
-    );
+    sessionData.set(`ctxman:saved:${KEY}`, JSON.stringify({ message: 'Saved', warnings: [] }));
     s.initDoc({ ...TARGET });
-    vi.advanceTimersByTime(s.SETTLE_RELOAD_MS);
-    expect(loc.reload).toHaveBeenCalledTimes(1);
     expect(JSON.parse(sessionData.get(`ctxman:draft:${KEY}`) ?? 'null')).toEqual({
       text: 'kept',
       base: 'T2',

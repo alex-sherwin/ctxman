@@ -16,6 +16,8 @@ import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
 
@@ -113,7 +115,7 @@ describe('create / read / write / delete cycle', () => {
     expect(created.file).toBe('recipe/my-recipe.yaml');
     const file = path.join(dir, 'recipe', 'my-recipe.yaml');
     const text = readFileSync(file, 'utf8');
-    expect(text).toBe(withSchemaComment('recipe', serializeRecipe(created.recipe)));
+    expect(text).toBe(withSchemaComment('recipe', serializeRecipe(created.recipe), ORIGIN));
     expect(text).toContain('preamble: |\n  Line one.\n  Line two.\n');
 
     const read = await readRecipe('my-recipe', dir);
@@ -127,7 +129,7 @@ describe('create / read / write / delete cycle', () => {
     );
     expect(written.recipe.description).toBe('Changed');
     expect(readFileSync(file, 'utf8')).toBe(
-      withSchemaComment('recipe', serializeRecipe(written.recipe)),
+      withSchemaComment('recipe', serializeRecipe(written.recipe), ORIGIN),
     );
     expect((await readRecipe('my-recipe', dir)).recipe.contexts).toEqual([]);
 

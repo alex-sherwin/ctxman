@@ -15,7 +15,7 @@ import {
   REFERENCE_TYPES,
 } from '../src/datasets/registry.ts';
 import type { Owner } from '../src/datasets/registry.ts';
-import { resolveDataDir } from '../src/lib/data-dir.ts';
+import { DataDirError, resolveDataDir, resolveServerOrigin } from '../src/lib/data-dir.ts';
 import { EntryCreateError, writePlannedEntry } from '../src/lib/entry-create.ts';
 import { entryFileRelPath } from '../src/lib/freshness.ts';
 import {
@@ -46,7 +46,7 @@ Options:
   --json             print one JSON document instead of text
   -h, --help         show this help
 
-Targets CTXMAN_DATA_DIR (default ./data). Exit 0 created, 1 refused, 2 usage error.`;
+Targets CTXMAN_DATA_DIR (required; a .env file is read by the pnpm scripts). Exit 0 created, 1 refused, 2 usage error.`;
 
 const wantsJson = process.argv.slice(2).includes('--json');
 
@@ -58,10 +58,9 @@ function finish(code: number, error?: string): void {
   process.exitCode = code;
 }
 
-/** `data/<rel>` when the data dir is the default ./data, else the absolute path. */
+/** Absolute path of a data-dir relative file. */
 function displayPath(dataDir: string, relPath: string): string {
-  const usesDefault = dataDir === path.resolve(process.cwd(), 'data');
-  return usesDefault ? `data/${relPath}` : path.join(dataDir, ...relPath.split('/'));
+  return path.join(dataDir, ...relPath.split('/'));
 }
 
 async function main(): Promise<void> {
@@ -144,7 +143,13 @@ async function main(): Promise<void> {
     }
   }
 
-  const dataDir = resolveDataDir();
+  let dataDir: string;
+  try {
+    dataDir = resolveDataDir();
+  } catch (error) {
+    if (!(error instanceof DataDirError)) throw error;
+    return finish(EXIT_USAGE, error.message);
+  }
   let planned: PlannedFile[];
   try {
     planned = planNewEntry(dataset, name, {
@@ -156,6 +161,7 @@ async function main(): Promise<void> {
       ...(values.uri === undefined ? {} : { uri: values.uri }),
       ...(values.subpath === undefined ? {} : { subpath: values.subpath }),
       ...(values.owner === undefined ? {} : { owner: values.owner as Owner }),
+      serverOrigin: resolveServerOrigin(),
       now: new Date(),
     });
   } catch (error) {

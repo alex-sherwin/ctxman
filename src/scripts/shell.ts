@@ -11,8 +11,8 @@ const IDE_OK_MS = 4000;
 const STATE_SAVED_MS = 4000;
 /** How long a state select's error message stays. */
 const STATE_ERROR_MS = 8000;
-/** `pnpm start` has no file watcher: the page reloads itself this long after a saved state. (`astro dev` reloads it, see below.) */
-const STATE_RELOAD_FALLBACK_MS = 2000;
+/** The page reloads itself this long after a saved state (data is read from disk per request: no watcher involved). */
+const STATE_RELOAD_MS = 150;
 /** sessionStorage prefix of the status an entry page shows after a reload (src/ui/edit/last-save.ts + entry/after-write.ts). */
 const SAVED_PREFIX = 'ctxman:saved:entry:';
 const IDE_NOT_FOUND =
@@ -214,13 +214,9 @@ async function saveState(select: HTMLSelectElement): Promise<void> {
         // storage blocked: the status line after the reload is a nicety only
       }
     }
-    // `astro dev` pushes a full reload ~0.7 s after the write (the file is under data/), so a second one from here
-    // would only race it and lose the status line the reloaded page shows.
-    if (!import.meta.env.DEV) {
-      window.setTimeout(() => {
-        if (!document.querySelector('[data-edit-locked]')) location.reload();
-      }, STATE_RELOAD_FALLBACK_MS);
-    }
+    window.setTimeout(() => {
+      if (!document.querySelector('[data-edit-locked]')) location.reload();
+    }, STATE_RELOAD_MS);
   } catch {
     select.value = previous;
     setStateStatus(select, 'error', "Couldn't reach the server", STATE_ERROR_MS);

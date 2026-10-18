@@ -11,7 +11,7 @@ import {
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { TAG_PATTERN } from './names.ts';
-import { isSchemaDatasetId, withSchemaComment } from './schema-comment.ts';
+import { DEFAULT_SERVER_ORIGIN, isSchemaDatasetId, withSchemaComment } from './schema-comment.ts';
 import { stringifyYaml } from './yaml.ts';
 
 export interface NewEntryOptions {
@@ -25,6 +25,8 @@ export interface NewEntryOptions {
   uri?: string;
   subpath?: string;
   owner?: Owner;
+  /** Origin of the schema modeline of yaml files (callers pass `resolveServerOrigin()`; default http://127.0.0.1:4321). */
+  serverOrigin?: string;
   now: Date;
 }
 
@@ -150,7 +152,9 @@ export function planNewEntry(
         {
           relPath: `${dataset}/${name}.yaml`,
           // reference, context and recipe files start with the yaml-language-server schema comment.
-          content: isSchemaDatasetId(dataset) ? withSchemaComment(dataset, body) : body,
+          content: isSchemaDatasetId(dataset)
+            ? withSchemaComment(dataset, body, opts.serverOrigin ?? DEFAULT_SERVER_ORIGIN)
+            : body,
         },
       ];
     }

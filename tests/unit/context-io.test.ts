@@ -26,6 +26,8 @@ import { withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
 
@@ -236,7 +238,7 @@ describe('create / read / write / delete cycle', () => {
     );
     // The file starts with the yaml-language-server comment; the serializer itself stays comment-free.
     expect(readFileSync(file, 'utf8')).toBe(
-      withSchemaComment('context', serializeContext(created.context)),
+      withSchemaComment('context', serializeContext(created.context), ORIGIN),
     );
     expect(serializeContext(created.context).startsWith('#')).toBe(false);
 
@@ -259,9 +261,9 @@ describe('create / read / write / delete cycle', () => {
     );
     expect(written.context.description).toBe('Changed');
     const rewritten = readFileSync(file, 'utf8');
-    expect(rewritten).toBe(withSchemaComment('context', serializeContext(written.context)));
+    expect(rewritten).toBe(withSchemaComment('context', serializeContext(written.context), ORIGIN));
     expect(rewritten.split('\n')[0]).toBe(
-      '# yaml-language-server: $schema=../../schemas/context.schema.json',
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/context',
     );
     expect((await readContext('my-ctx', dir)).context.links).toEqual([
       { dataset: 'skill', slug: 'okf-authoring' },

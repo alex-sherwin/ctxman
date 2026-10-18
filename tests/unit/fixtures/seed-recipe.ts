@@ -1,7 +1,7 @@
-// A copy of the seed data/recipe/ctxman-dev-brief.yaml (plans/INFLATE_V2_SPEC.md §13). Unit tests never read
-// ./data, so the seed's shape is pinned here instead: update both together. The real file is covered by
+// A copy of the seed tests/data/recipe/ctxman-dev-brief.yaml (plans/INFLATE_V2_SPEC.md §13). Unit tests never read
+// tests/data, so the seed's shape is pinned here instead: update both together. The real file is covered by
 // `pnpm run check` (schema, warnings) and the e2e specs.
-export const SEED_RECIPE_YAML = `# yaml-language-server: $schema=../../schemas/recipe.schema.json
+export const SEED_RECIPE_YAML = `# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/recipe
 name: ctxman-dev-brief
 description: Session brief for working on ctxman itself, built from the ctxman-dev context plus the add-entry skill.
 tags:

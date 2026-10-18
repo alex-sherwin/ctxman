@@ -14,7 +14,6 @@ import { parseYamlDoc } from '../lib/yaml-doc.ts';
 import type { YamlIssue } from '../lib/yaml-doc.ts';
 import { getJson, sendJson } from '../ui/edit/api.ts';
 import type { ApiResult } from '../ui/edit/api.ts';
-import { rememberSave, takeSave } from '../ui/edit/last-save.ts';
 import type { SaveStatus } from '../ui/edit/status.ts';
 import { $entries, ensureEntries, invalidateEntries } from './entries.ts';
 
@@ -196,10 +195,6 @@ onMount($formView, () => {
 
 let loadSeq = 0;
 
-/** sessionStorage key: a navigation that started after a save and was interrupted by the dev reload. */
-const NAV_KEY = 'dform-nav';
-const NAV_MAX_AGE_MS = 15_000;
-
 const clone = <T>(value: T): T => structuredClone(value);
 
 const apiBase = (ds: YamlDatasetId): string => `/api/${ds}`;
@@ -227,26 +222,6 @@ function reset(meta: FormMeta): void {
   $formDone.set(false);
 }
 
-/** A navigation interrupted by the dev reload resumes here: the reload only happens once the data is current. */
-function resumeNavigation(): boolean {
-  const raw = takeSave(NAV_KEY);
-  if (raw === null) return false;
-  const bar = raw.indexOf('|');
-  const at = Number(raw.slice(0, bar));
-  const url = raw.slice(bar + 1);
-  if (
-    bar === -1 ||
-    !Number.isFinite(at) ||
-    Date.now() - at > NAV_MAX_AGE_MS ||
-    !url.startsWith('/')
-  ) {
-    return false;
-  }
-  $formDone.set(true);
-  location.assign(url);
-  return true;
-}
-
 /**
  * Create mode: the blank document. Edit mode: GET `/api/<ds>/<slug>`. Safe to call again (reload from disk).
  * `meta.dataset` is one of reference | context | recipe.
@@ -254,7 +229,6 @@ function resumeNavigation(): boolean {
 export async function initForm(meta: FormMeta): Promise<void> {
   const seq = ++loadSeq;
   reset(meta);
-  if (resumeNavigation()) return;
   applyUrl();
   ensureEntries(meta.dataset);
   if (meta.mode === 'create') {
@@ -356,48 +330,10 @@ function failure(res: Extract<ApiResult<unknown>, { ok: false }>, mode: FormMeta
   });
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-/** Poll `/api/entries?dataset=` (max 5 s) until `done(entries)` holds: the glob-loaded SSR pages lag ~0.7 s. */
-async function pollEntries(
-  ds: YamlDatasetId,
-  done: (entries: readonly EntrySummary[]) => boolean,
-): Promise<void> {
-  const deadline = Date.now() + 5000;
-  for (;;) {
-    const res = await getJson<{ entries?: EntrySummary[] }>(`/api/entries?dataset=${ds}`);
-    if (res.ok && done(res.body.entries ?? [])) return;
-    if (Date.now() >= deadline) return;
-    await sleep(250);
-  }
-}
-
-/**
- * Go to `url`. With `ready` (reference: SSR pages are glob-loaded), wait for it first; the dev server reloads
- * the page about when the data becomes current, so the target is parked in sessionStorage and `initForm`
- * finishes the navigation if that reload gets there first.
- */
-async function navigateWhenReady(url: string, ready?: () => Promise<void>): Promise<void> {
+/** Go to `url` (the data is read from disk on every request, so the target page is already current). */
+function navigateTo(url: string): void {
   $formDone.set(true);
-  if (ready !== undefined) {
-    rememberSave(NAV_KEY, `${Date.now()}|${url}`);
-    await ready();
-    takeSave(NAV_KEY);
-  }
   location.assign(url);
-}
-
-function listedAs(entry: EntrySummary | undefined, doc: FormDoc): boolean {
-  if (entry === undefined) return false;
-  const tags = Array.isArray(doc.tags) ? doc.tags : [];
-  return (
-    entry.description === doc.description &&
-    entry.refType === doc.type &&
-    entry.owner === doc.owner &&
-    JSON.stringify(entry.tags) === JSON.stringify(tags)
-  );
 }
 
 export type SubmitResult = 'invalid' | 'sent' | 'busy';
@@ -447,12 +383,7 @@ export async function submitForm(opts: { overwrite?: boolean } = {}): Promise<Su
     const name = String(body.name);
     $formSave.set({ kind: 'saved' });
     invalidateEntries(dataset);
-    await navigateWhenReady(
-      `/${dataset}/${name}`,
-      dataset === 'reference'
-        ? () => pollEntries(dataset, (list) => list.some((e) => e.slug === name))
-        : undefined,
-    );
+    navigateTo(`/${dataset}/${name}`);
     return 'sent';
   }
 
@@ -480,18 +411,7 @@ export async function submitForm(opts: { overwrite?: boolean } = {}): Promise<Su
   }
   $formSave.set({ kind: 'saved' });
   invalidateEntries(dataset);
-  await navigateWhenReady(
-    `/${dataset}/${slug}`,
-    dataset === 'reference'
-      ? () =>
-          pollEntries(dataset, (list) =>
-            listedAs(
-              list.find((e) => e.slug === slug),
-              body,
-            ),
-          )
-      : undefined,
-  );
+  navigateTo(`/${dataset}/${slug}`);
   return 'sent';
 }
 
@@ -508,12 +428,7 @@ export async function deleteDoc(): Promise<void> {
     return;
   }
   invalidateEntries(dataset);
-  await navigateWhenReady(
-    `/${dataset}`,
-    dataset === 'reference'
-      ? () => pollEntries(dataset, (list) => !list.some((e) => e.slug === slug))
-      : undefined,
-  );
+  navigateTo(`/${dataset}`);
 }
 
 // ---------------------------------------------------------------- conflict dialog

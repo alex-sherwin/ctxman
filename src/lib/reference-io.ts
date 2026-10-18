@@ -1,11 +1,11 @@
-// NODE: runtime read/write of data/reference/<slug>.yaml, a mirror of recipe-io.ts / context-io.ts. The reference
-// collection keeps its glob loader WITH watcher (SSR pages see a write after the content layer re-reads it and
-// the dev server reloads); this module always reads the file itself (fs + zod), so API answers are current.
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+// NODE: runtime read/write of reference/<slug>.yaml, a mirror of recipe-io.ts / context-io.ts. References are
+// ALWAYS read through this module (fs + schema validation) at request time, so lists, details, the search index
+// and the API are current on every request.
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isValidName } from '../datasets/registry.ts';
 import type { ReferenceData } from '../datasets/schemas.ts';
-import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { parseReference, serializeReference } from './reference-yaml.ts';
 import type { ReferenceIssue } from './reference-yaml.ts';
 import { withSchemaComment } from './schema-comment.ts';
@@ -31,7 +31,7 @@ export class ReferenceIoError extends Error {
   }
 }
 
-/** Absolute path of data/reference/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
+/** Absolute path of reference/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
 export function referenceFile(slug: string, dataDir: string = resolveDataDir()): string {
   if (!isValidName(slug)) {
     throw new ReferenceIoError(
@@ -101,6 +101,55 @@ export async function readReference(
   return recordFor(slug, abs, parseReferenceSource(source, slug));
 }
 
+export interface InvalidReferenceFile {
+  slug: string;
+  /** Data-dir-relative path: 'reference/<slug>.yaml'. */
+  file: string;
+  issues: ReferenceIssue[];
+  /** ISO mtime of the file. */
+  lastModified: string;
+}
+
+/**
+ * Every `reference/*.yaml`, sorted by slug: valid ones as records, unreadable ones (bad YAML, schema violation,
+ * name != file stem) in `invalid` with their issues. Other errors (I/O) are rethrown.
+ */
+export async function listReferences(
+  dataDir: string = resolveDataDir(),
+): Promise<{ items: ReferenceRecord[]; invalid: InvalidReferenceFile[] }> {
+  const items: ReferenceRecord[] = [];
+  const invalid: InvalidReferenceFile[] = [];
+  let names: string[];
+  try {
+    names = (await readdir(datasetDir('reference', dataDir)))
+      .filter((f) => f.endsWith('.yaml') && !f.startsWith('.'))
+      .sort();
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') return { items, invalid };
+    throw error;
+  }
+  for (const name of names) {
+    const slug = name.slice(0, -'.yaml'.length);
+    // A file name that is not a valid entry name cannot be addressed by slug at all: skip it.
+    if (!isValidName(slug)) continue;
+    try {
+      items.push(await readReference(slug, dataDir));
+    } catch (error) {
+      if (!(error instanceof ReferenceIoError)) throw error;
+      if (error.code === 'not-found') continue;
+      const abs = referenceFile(slug, dataDir);
+      const st = await stat(abs).catch(() => undefined);
+      invalid.push({
+        slug,
+        file: fileRel(slug),
+        issues: error.issues.length > 0 ? error.issues : [{ path: '', message: error.message }],
+        lastModified: (st?.mtime ?? new Date(0)).toISOString(),
+      });
+    }
+  }
+  return { items, invalid };
+}
+
 /** Creates reference/<input.name>.yaml. Throws `invalid` (schema), `exists` (never overwrites). */
 export async function createReference(
   input: unknown,
@@ -115,10 +164,14 @@ export async function createReference(
   const abs = referenceFile(slug, dataDir);
   await mkdir(path.dirname(abs), { recursive: true });
   try {
-    await writeFile(abs, withSchemaComment('reference', serializeReference(reference)), {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await writeFile(
+      abs,
+      withSchemaComment('reference', serializeReference(reference), resolveServerOrigin()),
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
       throw new ReferenceIoError('exists', `reference "${slug}" already exists`);
@@ -162,7 +215,7 @@ export async function writeReference(
   try {
     await writeFile(
       tmp,
-      withSchemaComment('reference', serializeReference(result.reference)),
+      withSchemaComment('reference', serializeReference(result.reference), resolveServerOrigin()),
       'utf8',
     );
     await rename(tmp, abs);

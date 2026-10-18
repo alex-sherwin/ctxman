@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/reference.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference
 name: flexo
 description: a static site tool which can build ksa parts and subpart asset mods
 type: remote-repo

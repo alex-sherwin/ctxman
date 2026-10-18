@@ -9,6 +9,8 @@ import {
 } from './fixtures/data-fixtures.ts';
 import { schemaCommentLine } from '../../src/lib/schema-comment.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
 
@@ -469,7 +471,7 @@ describe('collections/yaml-schema-comment', () => {
     byRule((await checkCollections(tmp.make(files))).findings, 'collections/yaml-schema-comment');
 
   it('is silent when line 1 is the exact comment, also with a BOM or CRLF line endings', async () => {
-    const line = schemaCommentLine('context');
+    const line = schemaCommentLine('context', ORIGIN);
     expect(await run({ 'context/x.yaml': `${line}\n${body}` })).toEqual([]);
     expect(await run({ 'context/x.yaml': `﻿${line}\n${body}` })).toEqual([]);
     expect(await run({ 'context/x.yaml': `${line}\r\n${body.replaceAll('\n', '\r\n')}` })).toEqual(
@@ -485,19 +487,20 @@ describe('collections/yaml-schema-comment', () => {
       rule: 'collections/yaml-schema-comment',
       file: 'context/x.yaml',
       line: 1,
-      message: `first line must be "${schemaCommentLine('context')}" (pnpm run fix:yaml-comments adds it)`,
+      message: `first line must be "${schemaCommentLine('context', ORIGIN)}" (pnpm run fix:yaml-comments adds it)`,
     });
   });
 
   it('warns when another yaml-language-server comment is in place (wrong dataset, other path)', async () => {
     const wrongDataset = await run({
-      'context/x.yaml': `${schemaCommentLine('recipe')}\n${body}`,
+      'context/x.yaml': `${schemaCommentLine('recipe', ORIGIN)}\n${body}`,
     });
     expect(wrongDataset).toHaveLength(1);
     expect(wrongDataset[0]).toMatchObject({
       severity: 'warning',
       line: 1,
-      message: `schema comment must be "${schemaCommentLine('context')}" (pnpm run fix:yaml-comments fixes it)`,
+      message:
+        "schema comment must point at this server's /api/schemas/context (pnpm run fix:yaml-comments fixes it)",
     });
     expect(
       await run({ 'context/x.yaml': `# yaml-language-server: $schema=./nope.json\n${body}` }),
@@ -508,7 +511,7 @@ describe('collections/yaml-schema-comment', () => {
     const findings = await run({
       'reference/a.yaml': 'name: a\n',
       'recipe/b.yaml': 'name: [oops\n',
-      'context/c.yaml': `${schemaCommentLine('context')}\n${body}`,
+      'context/c.yaml': `${schemaCommentLine('context', ORIGIN)}\n${body}`,
     });
     expect(findings.map((f) => f.file)).toEqual(['recipe/b.yaml', 'reference/a.yaml']);
   });

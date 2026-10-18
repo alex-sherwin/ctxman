@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { $docEdit, $docTarget, RELOAD_FALLBACK_MS } from '../../src/stores/doc-editor.ts';
+import { $docEdit, $docTarget } from '../../src/stores/doc-editor.ts';
 import { takeSave } from '../../src/ui/edit/last-save.ts';
 import { afterWrite, STATUS_KEY } from '../../src/ui/entry/after-write.ts';
 import {
@@ -40,62 +40,44 @@ describe('STATUS_KEY', () => {
 });
 
 describe('afterWrite', () => {
-  it('without a dev reload: remembers the message and reloads at once', () => {
+  it('remembers the message and reloads at once', () => {
     stubSession();
+    stubBrowser();
     const reload = vi.fn();
-    afterWrite(STATUS_KEY('task', 'a'), 'Added to ctx', { devReload: false, reload });
+    afterWrite(STATUS_KEY('task', 'a'), 'Added to ctx', { reload });
     expect(reload).toHaveBeenCalledTimes(1);
     expect(takeSave(STATUS_KEY('task', 'a'))).toBe('Added to ctx');
   });
 
-  it('with a dev reload: reloads only after the fallback delay', () => {
-    vi.useFakeTimers();
-    stubSession();
-    stubBrowser();
-    const reload = vi.fn();
-    afterWrite(STATUS_KEY('task', 'a'), 'Saved details', { reload });
-    expect(reload).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(RELOAD_FALLBACK_MS - 1);
-    expect(reload).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
-
-  it('the fallback reload is skipped while the doc editor is open', () => {
-    vi.useFakeTimers();
+  it('does not reload while the doc editor is open (the message is still remembered)', () => {
     stubSession();
     const reload = vi.fn();
     afterWrite('k', 'Saved', { reload, isEditing: () => true });
-    vi.advanceTimersByTime(RELOAD_FALLBACK_MS * 2);
     expect(reload).not.toHaveBeenCalled();
+    expect(takeSave('k')).toBe('Saved');
   });
 
   it('reads $docEditing by default: a DocEditor mounted AND in edit mode', () => {
-    vi.useFakeTimers();
     stubSession();
     stubBrowser();
     const reload = vi.fn();
     $docTarget.set({ dataset: 'kb', slug: 'demo', path: 'main.md' });
     $docEdit.set(true);
     afterWrite('k', 'Saved', { reload });
-    vi.advanceTimersByTime(RELOAD_FALLBACK_MS);
     expect(reload).not.toHaveBeenCalled();
     $docEdit.set(false);
     afterWrite('k', 'Saved', { reload });
-    vi.advanceTimersByTime(RELOAD_FALLBACK_MS);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('afterWrite without a DocEditor', () => {
   it('still reloads when only ?edit=1 is set (the reference form has no DocEditor)', () => {
-    vi.useFakeTimers();
     stubSession();
     stubBrowser();
     const reload = vi.fn();
     $docEdit.set(true); // $docTarget stays null: no DocEditor island on this page
     afterWrite('k', 'Saved', { reload });
-    vi.advanceTimersByTime(RELOAD_FALLBACK_MS);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });
@@ -125,7 +107,7 @@ describe('entry status', () => {
   it('initEntryStatus takes the message the previous page parked, once', () => {
     vi.useFakeTimers();
     stubSession();
-    afterWrite(STATUS_KEY('kb', 'x'), 'Removed link', { devReload: false, reload: () => {} });
+    afterWrite(STATUS_KEY('kb', 'x'), 'Removed link', { reload: () => {} });
     initEntryStatus(STATUS_KEY('kb', 'x'));
     expect($entryStatus.get()).toBe('Removed link');
     $entryStatus.set('');

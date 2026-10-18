@@ -1,5 +1,5 @@
-// NODE: "what would `astro sync` reject?" for every data file, in plain Node, reporting ALL problems
-// instead of stopping at the first. Mirrors src/content.config.ts (globs, ids, schemas). Rule ids: PLAN.md §E.10.
+// NODE: schema compliance of every data file (globs, ids, schemas), in plain Node, reporting ALL problems
+// instead of stopping at the first. The `collections/*` rule ids are historical. Rule ids: PLAN.md §E.10.
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import type { DatasetId, OkfDatasetId, ReferenceType } from '../datasets/registr
 import { DATASET_SCHEMAS, docSchema } from '../datasets/schemas.ts';
 import type { RecipeData } from '../datasets/schemas.ts';
 import { walkFiles } from './bundles.ts';
-import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { issueMessage, sortFindings } from './findings.ts';
 import type { Finding, PathIssue } from './findings.ts';
 import { entryFileRelPath } from './freshness.ts';
@@ -183,10 +183,10 @@ async function checkYamlDataset(
     ctx.files.add(rel);
     const stem = entry.name.slice(0, -'.yaml'.length);
     const source = await readFile(path.join(base, entry.name), 'utf8');
-    // Not a schema rule: the first line only points editors at schemas/<dataset>.schema.json.
+    // Not a schema rule: the first line only points editors at this server's /api/schemas/<dataset>.
     const commentStatus = schemaCommentStatus(dataset, source);
     if (commentStatus !== 'ok') {
-      const line = schemaCommentLine(dataset);
+      const line = schemaCommentLine(dataset, resolveServerOrigin());
       add(
         ctx,
         'warning',
@@ -194,7 +194,7 @@ async function checkYamlDataset(
         rel,
         commentStatus === 'missing'
           ? `first line must be "${line}" (pnpm run fix:yaml-comments adds it)`
-          : `schema comment must be "${line}" (pnpm run fix:yaml-comments fixes it)`,
+          : `schema comment must point at this server's /api/schemas/${dataset} (pnpm run fix:yaml-comments fixes it)`,
         1,
       );
     }

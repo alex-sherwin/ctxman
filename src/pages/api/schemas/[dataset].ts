@@ -1,6 +1,7 @@
 // GET /api/schemas/:dataset  -> 200 the committed JSON Schema of a YAML dataset (reference | context | recipe)
-// as `application/schema+json`; 404 `unknown-dataset`; 500 `schema-missing` (run `pnpm run gen:schemas`).
-// For external tools and debugging: in-browser editors import schemas/*.json statically (ROUND2 spec D13).
+// as `application/schema+json` (`:dataset` may carry a `.schema.json` suffix); 404 `unknown-dataset`; 500
+// `schema-missing` (run `pnpm run gen:schemas`). The `# yaml-language-server: $schema=` modeline of every YAML data
+// file points here, so the response allows any origin. In-browser editors import schemas/*.json statically.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { APIRoute } from 'astro';
@@ -9,7 +10,8 @@ import { apiError, internalError, methodNotAllowed } from '../../../lib/http.ts'
 import { isSchemaDatasetId, SCHEMA_DATASETS, schemaFileName } from '../../../lib/schema-comment.ts';
 
 export const GET: APIRoute = async ({ params }) => {
-  const dataset = params.dataset;
+  const raw = params.dataset;
+  const dataset = raw?.endsWith('.schema.json') ? raw.slice(0, -'.schema.json'.length) : raw;
   if (!isSchemaDatasetId(dataset)) {
     return apiError(
       404,
@@ -24,6 +26,7 @@ export const GET: APIRoute = async ({ params }) => {
       headers: {
         'content-type': 'application/schema+json; charset=utf-8',
         'cache-control': 'no-store',
+        'access-control-allow-origin': '*',
       },
     });
   } catch (error) {

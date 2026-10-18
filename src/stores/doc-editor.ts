@@ -7,19 +7,14 @@
 // whatever must know that a DocEditor is really open (EntryTools' lock, the post-write reload) reads `$docEditing`.
 //
 // Save model: explicit Save (PUT /api/doc with `ifUnmodifiedSince`), a 409 opens the ConflictDialog, a 200
-// switches back to the preview and dims it until the page reloads (the dev server reloads by itself ~0.7 s
-// after the file changes; `pnpm start` has no watcher, so a 2 s fallback reload runs).
+// switches back to the preview, dims it and reloads the page ~150 ms later (RELOAD_AFTER_SAVE_MS): the server
+// renders the file from disk on every request, so the reloaded page is current and no watcher is involved.
 // Unsaved text is mirrored to localStorage (draft-backup.ts, 14 days) on every change, so a reload caused by
 // ANOTHER file, a closed tab or a crash does not lose it; there is NO native `beforeunload` prompt (ROUND3_SPEC
 // §G). `loadDoc` restores the draft whenever it differs from the disk text; when the file ALSO changed on disk
 // since the draft was started (`base` != `lastModified`) it is restored with `$docDraftStale` set (saving then
 // overwrites the newer disk version, which the banner says). In preview mode `$docDraftAvailable` tells the island
 // that a draft exists ("Resume editing").
-// Stale preview after the dev reload: Astro's content layer re-reads the file ~1 s after the write, so the page
-// the dev reload brings can still render the OLD markdown. The remembered "Saved" record therefore carries a
-// `reloads` counter: the page that consumes a record with `reloads < MAX_SETTLE_RELOADS` schedules exactly ONE more
-// `location.reload()` (SETTLE_RELOAD_MS later) and writes the record again with `reloads + 1`, so "Saved" stays
-// visible across it and a further reload is never scheduled (no loop, whatever reloads the page).
 import { atom, computed, onMount } from 'nanostores';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { parseEditUrl, withParams } from '../lib/url-state.ts';
@@ -59,12 +54,8 @@ export interface DocWarning {
   line?: number;
 }
 
-/** After a save the dev server normally reloads within ~0.7 s; this is the fallback (`pnpm start`). */
-export const RELOAD_FALLBACK_MS = 2000;
-/** The one extra reload that follows the first post-save reload: the content layer needs ~1 s to re-read the file. */
-export const SETTLE_RELOAD_MS = 1500;
-/** How many settle reloads a save may cause (the `reloads` counter of the remembered record). */
-export const MAX_SETTLE_RELOADS = 1;
+/** After a successful save the page reloads this long later (unless the user re-entered edit mode). */
+export const RELOAD_AFTER_SAVE_MS = 150;
 const MAX_WARNINGS = 50;
 
 export const $docTarget = atom<DocTarget | null>(null);
@@ -147,11 +138,9 @@ function toWarnings(value: unknown): DocWarning[] {
 interface SavedRecord {
   message: string;
   warnings: DocWarning[];
-  /** Settle reloads already done for this save (0 right after the save itself). */
-  reloads: number;
 }
 
-/** The text `last-save.ts` carries across the post-save reload: the status message, the findings, `reloads`. */
+/** The text `last-save.ts` carries across the post-save reload: the status message and the findings. */
 function encodeSaved(record: SavedRecord): string {
   return JSON.stringify(record);
 }
@@ -160,19 +149,15 @@ function decodeSaved(raw: string): SavedRecord {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === 'object' && parsed !== null) {
-      const p = parsed as { message?: unknown; warnings?: unknown; reloads?: unknown };
+      const p = parsed as { message?: unknown; warnings?: unknown };
       if (typeof p.message === 'string') {
-        const reloads =
-          typeof p.reloads === 'number' && Number.isInteger(p.reloads) && p.reloads > 0
-            ? p.reloads
-            : 0;
-        return { message: p.message, warnings: toWarnings(p.warnings), reloads };
+        return { message: p.message, warnings: toWarnings(p.warnings) };
       }
     }
   } catch {
     // a plain-text message
   }
-  return { message: raw, warnings: [], reloads: 0 };
+  return { message: raw, warnings: [] };
 }
 
 // ---------------------------------------------------------------- URL plumbing
@@ -205,44 +190,18 @@ onMount($docEdit, () => {
   return () => window.removeEventListener('popstate', onPopState);
 });
 
-// ---------------------------------------------------------------- reload fallback
+// ---------------------------------------------------------------- reload after a save
 
 let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Reload once the dev reload had its chance; skipped while the user is editing again. */
+/** Reload shortly after a save; skipped while the user is editing again (`discardEdit` then reloads). */
 function scheduleReload(): void {
   if (reloadTimer !== undefined) clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => {
     reloadTimer = undefined;
     if ($docEdit.get()) return;
     location.reload();
-  }, RELOAD_FALLBACK_MS);
-}
-
-let settleTimer: ReturnType<typeof setTimeout> | undefined;
-
-function cancelSettleReload(): void {
-  if (settleTimer !== undefined) clearTimeout(settleTimer);
-  settleTimer = undefined;
-}
-
-/**
- * The ONE extra reload after a save (see the header): the content layer may not have re-read the file when the
- * dev reload fired. The record is written again with `reloads + 1` just before reloading so the next page still
- * shows "Saved" and schedules nothing. Skipped while the user is editing again (an `$docStale` preview then makes
- * `discardEdit` reload through the fallback).
- */
-function scheduleSettleReload(key: string, record: SavedRecord): void {
-  cancelSettleReload();
-  settleTimer = setTimeout(() => {
-    settleTimer = undefined;
-    if ($docEdit.get()) {
-      $docStale.set(true);
-      return;
-    }
-    rememberSave(key, encodeSaved({ ...record, reloads: record.reloads + 1 }));
-    location.reload();
-  }, SETTLE_RELOAD_MS);
+  }, RELOAD_AFTER_SAVE_MS);
 }
 
 // ---------------------------------------------------------------- loading
@@ -251,7 +210,6 @@ let loadSeq = 0;
 
 function resetDoc(): void {
   loadSeq++;
-  cancelSettleReload();
   $docLoad.set({ status: 'idle' });
   $docBaseline.set(null);
   $docDraft.set('');
@@ -279,7 +237,6 @@ export function initDoc(target: DocTarget, initialEdit = false): void {
     const decoded = decodeSaved(saved);
     $docSave.set({ kind: 'saved', message: decoded.message });
     $docWarnings.set(decoded.warnings);
-    if (decoded.reloads < MAX_SETTLE_RELOADS) scheduleSettleReload(key, decoded);
   }
   if (initialEdit && !$docEdit.get()) $docEdit.set(true);
   if ($docEdit.get() && $docLoad.get().status === 'idle') void loadDoc();
@@ -423,8 +380,7 @@ export async function saveDoc(opts: { force?: boolean } = {}): Promise<void> {
   const key = docKey(target);
   $docBaseline.set({ text, lastModified: res.body.lastModified });
   clearDraft(key);
-  cancelSettleReload(); // a newer save supersedes the record the old timer would write back
-  rememberSave(key, encodeSaved({ message, warnings, reloads: 0 }));
+  rememberSave(key, encodeSaved({ message, warnings }));
   $docRestored.set(false);
   $docDraftStale.set(false);
   syncDraftAvailable();

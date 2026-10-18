@@ -7,6 +7,8 @@ import { linkText, planNewEntry, titleFromName } from '../../src/lib/templates.t
 import type { PlannedFile } from '../../src/lib/templates.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 const now = new Date('2026-10-17T12:34:56.789Z');
 const byPath = (files: PlannedFile[], rel: string): string => {
   const hit = files.find((f) => f.relPath === rel);
@@ -128,7 +130,7 @@ describe('planNewEntry skill, reference, context', () => {
     const [file] = planNewEntry('reference', 'docs', { now });
     expect(file?.relPath).toBe('reference/docs.yaml');
     expect(file?.content).toBe(
-      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference\n' +
         'name: docs\ndescription: "TODO: describe Docs."\ntype: remote-repo\nuri: https://github.com/TODO/docs.git\nowner: me\n',
     );
   });
@@ -143,7 +145,7 @@ describe('planNewEntry skill, reference, context', () => {
       owner: 'not-me',
     });
     expect(local?.content).toBe(
-      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference\n' +
         'name: r1\ndescription: d\ntype: local-repo\npath: /tmp/r1\nsubpath: src\nowner: not-me\n',
     );
     const [localDefault] = planNewEntry('reference', 'r1', { now, type: 'local-repo' });
@@ -155,7 +157,7 @@ describe('planNewEntry skill, reference, context', () => {
       uri: 'https://github.com/a/b.git',
     });
     expect(skill?.content).toBe(
-      '# yaml-language-server: $schema=../../schemas/reference.schema.json\n' +
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference\n' +
         'name: r2\ndescription: d\ntype: remote-skill\nuri: https://github.com/a/b.git\nowner: me\n',
     );
   });
@@ -165,7 +167,7 @@ describe('planNewEntry skill, reference, context', () => {
     expect(file).toEqual({
       relPath: 'context/ctx.yaml',
       content:
-        '# yaml-language-server: $schema=../../schemas/context.schema.json\n' +
+        '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/context\n' +
         'name: ctx\ndescription: A context\nlinks: []\n',
     });
   });
@@ -175,7 +177,7 @@ describe('planNewEntry skill, reference, context', () => {
     expect(file).toEqual({
       relPath: 'recipe/brief.yaml',
       content:
-        '# yaml-language-server: $schema=../../schemas/recipe.schema.json\n' +
+        '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/recipe\n' +
         'name: brief\ndescription: A brief\ntarget: claude-code\nlayout: grouped\ncontexts: []\nitems: []\n',
     });
   });
@@ -206,10 +208,10 @@ describe('planNewEntry validation', () => {
   it('every yaml dataset file starts with exactly one schema comment line', () => {
     for (const dataset of ['reference', 'context', 'recipe'] as const) {
       const [file] = planNewEntry(dataset, 'demo', { now });
-      expect(file?.content.startsWith(`${schemaCommentLine(dataset)}\n`)).toBe(true);
+      expect(file?.content.startsWith(`${schemaCommentLine(dataset, ORIGIN)}\n`)).toBe(true);
       expect(
         file?.content.split('\n').filter((l) => l.startsWith('# yaml-language-server:')),
-      ).toEqual([schemaCommentLine(dataset)]);
+      ).toEqual([schemaCommentLine(dataset, ORIGIN)]);
       expect(schemaCommentStatus(dataset, file?.content ?? '')).toBe('ok');
     }
   });

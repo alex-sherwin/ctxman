@@ -84,10 +84,10 @@ export default function EntryTools({
   const close = () => setDialog(null);
 
   /** A write succeeded: close, show the message, and load the page again (it is server rendered). */
-  function done(message: string, devReload = true) {
+  function done(message: string) {
     setDialog(null);
     showEntryStatus(message);
-    afterWrite(STATUS_KEY(dataset, slug), message, { devReload });
+    afterWrite(STATUS_KEY(dataset, slug), message);
   }
 
   return (
@@ -130,7 +130,7 @@ export default function EntryTools({
           title={title}
           linkedContexts={linkedContexts}
           onClose={close}
-          onDone={(message) => done(message, false)}
+          onDone={(message) => done(message)}
         />
       )}
       {dialog?.type === 'build-context' && (

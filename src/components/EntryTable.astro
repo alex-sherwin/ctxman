@@ -1,6 +1,6 @@
 ---
 import { OWNER_LABELS } from '../datasets/registry.ts';
-import type { DatasetDef, Owner } from '../datasets/registry.ts';
+import type { DatasetDef } from '../datasets/registry.ts';
 import { TARGETS } from '../lib/inflate/catalog.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
 import type { ListSort } from '../lib/url-state.ts';
@@ -14,11 +14,9 @@ interface Props {
   def: DatasetDef;
   entries: EntrySummary[];
   sort: ListSort;
-  /** reference only: owner per slug (EntrySummary does not carry it). */
-  owners?: Record<string, string>;
 }
 
-const { def, entries, sort, owners = {} } = Astro.props;
+const { def, entries, sort } = Astro.props;
 
 type Column =
   | 'entry'
@@ -140,7 +138,7 @@ const MAX_TAGS = 4;
                     </td>
                   );
                 case 'owner':
-                  return <td class="ck-table__td">{OWNER_LABELS[owners[e.slug] as Owner] ?? owners[e.slug] ?? ''}</td>;
+                  return <td class="ck-table__td">{e.owner === undefined ? '' : (OWNER_LABELS[e.owner] ?? e.owner)}</td>;
                 case 'links':
                   return <td class="ck-table__td cx-mono">{e.linkCount ?? 0}</td>;
                 case 'target':

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/reference.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference
 name: anthropic-skills
 description: Anthropic's public skills repository; the skill-creator skill is a good model for authoring new agent skills.
 type: remote-skill

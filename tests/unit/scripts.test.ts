@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { schemaCommentLine } from '../../src/lib/schema-comment.ts';
 import { trackTemp, validDataTree, withYamlComments } from './fixtures/data-fixtures.ts';
 
+const ORIGIN = 'http://127.0.0.1:4321';
+
 // Each test spawns one or more `node scripts/*.ts` processes.
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -31,6 +33,23 @@ function run(script: string, dataDir: string, ...args: string[]): Run {
   });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
+
+describe('CTXMAN_DATA_DIR is required', () => {
+  it.each(['check-all.ts', 'check-okf.ts', 'fix-yaml-comments.ts'])(
+    '%s exits 2 with the instructions when the variable is unset',
+    (script) => {
+      const r = run(script, '');
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain('CTXMAN_DATA_DIR is not set');
+    },
+  );
+
+  it('add-entry.ts exits 2 with the instructions when the variable is unset', () => {
+    const r = run('add-entry.ts', '', 'task', 'x', '--description', 'd');
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('CTXMAN_DATA_DIR is not set');
+  });
+});
 
 describe('check-all.ts', () => {
   it('exits 0 with a combined JSON report on an empty data dir', () => {
@@ -224,7 +243,7 @@ describe('add-entry.ts', () => {
     const [datasetId] = expectedPath.split('/');
     if (datasetId === 'reference' || datasetId === 'context' || datasetId === 'recipe') {
       const text = readFileSync(path.join(dir, ...expectedPath.split('/')), 'utf8');
-      expect(text.split('\n')[0]).toBe(schemaCommentLine(datasetId));
+      expect(text.split('\n')[0]).toBe(schemaCommentLine(datasetId, ORIGIN));
     }
     const check = run('check-all.ts', dir, '--json');
     expect(check.code, check.stdout).toBe(0);
@@ -277,9 +296,9 @@ describe('add-entry.ts', () => {
 describe('fix-yaml-comments.ts', () => {
   const tree = () => ({
     'reference/a.yaml': 'name: a\n',
-    'context/b.yaml': `${schemaCommentLine('recipe')}\nname: b\n`,
+    'context/b.yaml': `${schemaCommentLine('recipe', ORIGIN)}\nname: b\n`,
     'recipe/c.yaml': '\uFEFFname: c\r\ndescription: d\r\n',
-    'recipe/d.yaml': `${schemaCommentLine('recipe')}\nname: d\n`,
+    'recipe/d.yaml': `${schemaCommentLine('recipe', ORIGIN)}\nname: d\n`,
     'recipe/.hidden.yaml': 'ignored\n',
     'recipe/note.md': 'stray\n',
   });
@@ -296,12 +315,12 @@ describe('fix-yaml-comments.ts', () => {
       '3 files fixed',
     ]);
     const read = (rel: string) => readFileSync(path.join(dir, ...rel.split('/')), 'utf8');
-    expect(read('reference/a.yaml')).toBe(`${schemaCommentLine('reference')}\nname: a\n`);
-    expect(read('context/b.yaml')).toBe(`${schemaCommentLine('context')}\nname: b\n`);
+    expect(read('reference/a.yaml')).toBe(`${schemaCommentLine('reference', ORIGIN)}\nname: a\n`);
+    expect(read('context/b.yaml')).toBe(`${schemaCommentLine('context', ORIGIN)}\nname: b\n`);
     expect(read('recipe/c.yaml')).toBe(
-      `${schemaCommentLine('recipe')}\r\nname: c\r\ndescription: d\r\n`,
+      `${schemaCommentLine('recipe', ORIGIN)}\r\nname: c\r\ndescription: d\r\n`,
     );
-    expect(read('recipe/d.yaml')).toBe(`${schemaCommentLine('recipe')}\nname: d\n`);
+    expect(read('recipe/d.yaml')).toBe(`${schemaCommentLine('recipe', ORIGIN)}\nname: d\n`);
     expect(read('recipe/.hidden.yaml')).toBe('ignored\n');
     expect(read('recipe/note.md')).toBe('stray\n');
 

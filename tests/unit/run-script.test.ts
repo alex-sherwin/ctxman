@@ -163,6 +163,13 @@ describe('runNodeFile', () => {
     expect(realpathSync(echoed.cwd)).toBe(realpathSync(cwd));
   });
 
+  it('answers code 2 with the instructions (never throws) when CTXMAN_DATA_DIR is unset', async () => {
+    const r = await runNodeFile(fixture('emit.ts'), [], { env: { CTXMAN_DATA_DIR: '' } });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('CTXMAN_DATA_DIR is not set');
+    expect(r.stdout).toBe('');
+  });
+
   it('caps each stream at 1 MiB and marks the cut', async () => {
     const r = await runNodeFile(fixture('emit.ts'), ['--flood']);
     expect(r.code).toBe(0);

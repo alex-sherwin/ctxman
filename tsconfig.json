@@ -6,6 +6,7 @@
     "node_modules",
     ".tmp",
     "data",
+    "tests/data",
     "test-results",
     "playwright-report",
     "plans",

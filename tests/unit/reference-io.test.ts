@@ -5,6 +5,7 @@ import {
   ReferenceIoError,
   createReference,
   deleteReference,
+  listReferences,
   readReference,
   referenceFile,
   validateReference,
@@ -14,6 +15,8 @@ import { parseReference, serializeReference } from '../../src/lib/reference-yaml
 import { schemaCommentLine, withSchemaComment } from '../../src/lib/schema-comment.ts';
 import { parseYaml } from '../../src/lib/yaml.ts';
 import { trackTemp } from './fixtures/data-fixtures.ts';
+
+const ORIGIN = 'http://127.0.0.1:4321';
 
 const tmp = trackTemp();
 afterEach(() => tmp.cleanup());
@@ -73,8 +76,10 @@ describe('create / read / write / delete cycle', () => {
     expect(created.file).toBe('reference/my-ref.yaml');
     const file = path.join(dir, 'reference', 'my-ref.yaml');
     const text = readFileSync(file, 'utf8');
-    expect(text).toBe(withSchemaComment('reference', serializeReference(created.reference)));
-    expect(text.split('\n')[0]).toBe(schemaCommentLine('reference'));
+    expect(text).toBe(
+      withSchemaComment('reference', serializeReference(created.reference), ORIGIN),
+    );
+    expect(text.split('\n')[0]).toBe(schemaCommentLine('reference', ORIGIN));
 
     const read = await readReference('my-ref', dir);
     expect(read.reference).toEqual(created.reference);
@@ -83,7 +88,7 @@ describe('create / read / write / delete cycle', () => {
     const written = await writeReference('my-ref', doc({ description: 'Changed' }), dir);
     expect(written.reference.description).toBe('Changed');
     expect(readFileSync(file, 'utf8')).toBe(
-      withSchemaComment('reference', serializeReference(written.reference)),
+      withSchemaComment('reference', serializeReference(written.reference), ORIGIN),
     );
     expect((await readReference('my-ref', dir)).reference.description).toBe('Changed');
 
@@ -193,7 +198,7 @@ describe('readReference on damaged files', () => {
   it('reads a file that starts with the schema comment (and one without it)', async () => {
     const body = 'name: ok\ndescription: d\ntype: local-repo\npath: /x\nowner: me\n';
     const dir = tmp.make({
-      'reference/ok.yaml': `${schemaCommentLine('reference')}\n${body}`,
+      'reference/ok.yaml': `${schemaCommentLine('reference', ORIGIN)}\n${body}`,
       'reference/plain.yaml': body.replace('name: ok', 'name: plain'),
     });
     expect((await readReference('ok', dir)).reference.name).toBe('ok');
@@ -207,5 +212,35 @@ describe('unused-path guard', () => {
     mkdirSync(path.join(dir, 'reference'));
     writeFileSync(path.join(dir, 'reference', 'keep.yaml'), 'name: keep\n');
     await expect(readReference('../keep', dir)).rejects.toBeInstanceOf(ReferenceIoError);
+  });
+});
+
+describe('listReferences', () => {
+  const REMOTE =
+    'name: {n}\ndescription: d\ntype: remote-repo\nuri: git@github.com:org/repo.git\nowner: me\n';
+
+  it('lists valid files sorted by slug and reports invalid ones with their issues', async () => {
+    const root = tmp.make({
+      'reference/b.yaml': REMOTE.replace('{n}', 'b'),
+      'reference/a.yaml': REMOTE.replace('{n}', 'a'),
+      'reference/bad-schema.yaml': 'name: bad-schema\ndescription: d\ntype: nope\n',
+      'reference/bad-yaml.yaml': 'name: [unclosed\n',
+      'reference/wrong-name.yaml': REMOTE.replace('{n}', 'other'),
+      'reference/.hidden.yaml': 'x: 1\n',
+      'reference/notes.txt': 'ignored',
+    });
+    const { items, invalid } = await listReferences(root);
+    expect(items.map((r) => r.slug)).toEqual(['a', 'b']);
+    expect(items[0]?.lastModified).toMatch(/^\d{4}-\d\d-\d\dT/);
+    expect(invalid.map((r) => r.slug)).toEqual(['bad-schema', 'bad-yaml', 'wrong-name']);
+    for (const bad of invalid) {
+      expect(bad.file).toBe(`reference/${bad.slug}.yaml`);
+      expect(bad.issues.length).toBeGreaterThan(0);
+      expect(bad.lastModified).toMatch(/^\d{4}-/);
+    }
+  });
+
+  it('is empty when the reference directory does not exist', async () => {
+    expect(await listReferences(tmp.make())).toEqual({ items: [], invalid: [] });
   });
 });

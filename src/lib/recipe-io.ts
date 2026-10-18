@@ -1,11 +1,10 @@
-// NODE: runtime read/write of data/recipe/<slug>.yaml, a mirror of context-io.ts. Recipes are ALWAYS read
-// through this module (fs + zod) at request time, never through getCollection('recipe'): that collection
-// has no watcher and exists only for schema validation (plans/INFLATE_SPEC.md §7.1).
+// NODE: runtime read/write of recipe/<slug>.yaml, a mirror of context-io.ts. Recipes are ALWAYS read
+// through this module (fs + schema validation) at request time.
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isValidName } from '../datasets/registry.ts';
 import type { RecipeData } from '../datasets/schemas.ts';
-import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { parseRecipe, serializeRecipe } from './inflate/recipe.ts';
 import type { RecipeIssue } from './inflate/recipe.ts';
 import { withSchemaComment } from './schema-comment.ts';
@@ -31,7 +30,7 @@ export class RecipeIoError extends Error {
   }
 }
 
-/** Absolute path of data/recipe/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
+/** Absolute path of recipe/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
 export function recipeFile(slug: string, dataDir: string = resolveDataDir()): string {
   if (!isValidName(slug)) {
     throw new RecipeIoError(
@@ -143,10 +142,14 @@ export async function createRecipe(
   const abs = recipeFile(slug, dataDir);
   await mkdir(path.dirname(abs), { recursive: true });
   try {
-    await writeFile(abs, withSchemaComment('recipe', serializeRecipe(recipe)), {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await writeFile(
+      abs,
+      withSchemaComment('recipe', serializeRecipe(recipe), resolveServerOrigin()),
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
       throw new RecipeIoError('exists', `recipe "${slug}" already exists`);
@@ -186,7 +189,11 @@ export async function writeRecipe(
   }
   const tmp = `${abs}.${process.pid}.tmp`;
   try {
-    await writeFile(tmp, withSchemaComment('recipe', serializeRecipe(result.recipe)), 'utf8');
+    await writeFile(
+      tmp,
+      withSchemaComment('recipe', serializeRecipe(result.recipe), resolveServerOrigin()),
+      'utf8',
+    );
     await rename(tmp, abs);
   } catch (error) {
     await unlink(tmp).catch(() => undefined);

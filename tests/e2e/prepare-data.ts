@@ -1,4 +1,4 @@
-// Copies ./data to .tmp/e2e-data (fresh each run) so e2e tests can write without touching real data.
+// Copies tests/data to .tmp/e2e-data (fresh each run) so e2e tests can write without touching real data.
 // Run by playwright.config.ts webServer.command before `astro dev`. Cross-platform (node:fs only).
 import { spawnSync } from 'node:child_process';
 import {

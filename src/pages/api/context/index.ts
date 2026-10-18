@@ -1,6 +1,6 @@
 // POST /api/context  body ContextDoc -> 201 { context } + Location: /context/<name>
 // 400 invalid (issues) | bad-json, 409 exists, 415, 403. PLAN §G. Contexts are read/written with
-// context-io.ts (fs + zod), never through the content collection.
+// context-io.ts (fs + schema validation) at request time.
 import type { APIRoute } from 'astro';
 import { createContext } from '../../../lib/context-io.ts';
 import { contextErrorResponse, json, methodNotAllowed, readJson } from '../../../lib/http.ts';

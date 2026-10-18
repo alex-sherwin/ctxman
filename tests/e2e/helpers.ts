@@ -94,7 +94,7 @@ export function uniqueName(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** The shipped recipe (data/recipe/ctxman-dev-brief.yaml). Read-only in the suite: tests copy it first. */
+/** The shipped recipe (tests/data/recipe/ctxman-dev-brief.yaml). Read-only in the suite: tests copy it first. */
 export const SEED_RECIPE = 'ctxman-dev-brief';
 
 /** A recipe body as the API returns and accepts it (only the fields the suite reads are typed). */
@@ -124,10 +124,7 @@ export function readRecipeYaml(name: string): RecipeBody {
   return readYaml(`recipe/${name}.yaml`) as RecipeBody;
 }
 
-/**
- * Waits out the dev server's full-reload push (about 0.7 s after a write to an okf, skill or reference data
- * file) so that a spec which only used the API does not leave a reload pending for the next spec's page.
- */
-export function settleDevReload(ms = 1500): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** @deprecated No file watcher reloads pages any more; kept as a no-op so the specs compile (removed in the cleanup phase). */
+export function settleDevReload(_ms = 1500): Promise<void> {
+  return Promise.resolve();
 }

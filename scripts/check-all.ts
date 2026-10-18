@@ -1,18 +1,18 @@
 // Runs the OKF, links and collections checks in-process and prints one combined report.
 // Usage: node scripts/check-all.ts [--json]
 import process from 'node:process';
-import { resolveDataDir } from '../src/lib/data-dir.ts';
 import { checkCollections } from '../src/lib/collections-check.ts';
 import { formatReport } from '../src/lib/findings.ts';
 import { checkLinks } from '../src/lib/links.ts';
 import { checkOkf } from '../src/lib/okf.ts';
-import { buildReport, parseCheckFlags, writeJson, writeLine } from './cli.ts';
+import { buildReport, parseCheckFlags, resolveDataDirOrExit, writeJson, writeLine } from './cli.ts';
 
 const flags = parseCheckFlags('check-all', 'All');
 if ('exit' in flags) {
   process.exitCode = flags.exit;
 } else {
-  const dataDir = resolveDataDir();
+  const dataDir = resolveDataDirOrExit('check-all');
+  if (dataDir === undefined) process.exit(process.exitCode ?? 2);
   const [okf, links, collections] = await Promise.all([
     checkOkf(dataDir),
     checkLinks(dataDir),

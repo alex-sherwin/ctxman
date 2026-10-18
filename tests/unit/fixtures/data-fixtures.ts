@@ -1,4 +1,4 @@
-// Test helpers: temp data directories built in code (never ./data). Fixtures are generated rather than
+// Test helpers: temp data directories built in code (never the repo's tests/data; use corpus.ts for a copy). Fixtures are generated rather than
 // stored as .md/.yaml files so oxfmt does not rewrite deliberately malformed content.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -49,7 +49,9 @@ export function withYamlComments(files: Record<string, string>): Record<string, 
       const isYaml = rel.split('/').length === 2 && name?.endsWith('.yaml');
       return [
         rel,
-        isYaml && isSchemaDatasetId(dataset) ? fixSchemaComment(dataset, content) : content,
+        isYaml && isSchemaDatasetId(dataset)
+          ? fixSchemaComment(dataset, content, 'http://127.0.0.1:4321')
+          : content,
       ];
     }),
   );

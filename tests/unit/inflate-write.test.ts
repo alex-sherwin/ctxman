@@ -88,12 +88,11 @@ describe('checkOutputPath', () => {
     expect(r).toEqual({ ok: true, path: path.join(base, 'brief.md') });
   });
 
-  it('defaults the data directory to CTXMAN_DATA_DIR / ./data', () => {
-    const r = checkOutputPath(path.join(process.cwd(), 'data', 'kb', 'x.md'));
-    // when CTXMAN_DATA_DIR is unset the default is ./data
-    if (process.env.CTXMAN_DATA_DIR === undefined) {
-      expect(r).toEqual({ ok: false, message: 'path must not be inside the data directory' });
-    }
+  it('defaults the data directory to CTXMAN_DATA_DIR', () => {
+    const dataDir = process.env.CTXMAN_DATA_DIR;
+    expect(dataDir).toBeDefined();
+    const r = checkOutputPath(path.join(dataDir ?? '', 'kb', 'x.md'));
+    expect(r).toEqual({ ok: false, message: 'path must not be inside the data directory' });
     expect(checkOutputPath(path.join(process.cwd(), 'out', 'brief.md'))).toMatchObject({
       ok: true,
     });

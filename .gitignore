@@ -9,6 +9,7 @@ playwright/.cache/
 coverage/
 .tmp/
 out/
+/data/
 *.log
 .DS_Store
 .env

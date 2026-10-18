@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/recipe.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/recipe
 name: ctxman-dev-brief
 description: Session brief for working on ctxman itself, built from the ctxman-dev context plus the add-entry skill.
 tags:

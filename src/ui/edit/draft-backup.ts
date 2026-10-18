@@ -1,5 +1,5 @@
 // Browser-safe (localStorage): unsaved editor text survives a reload, a closed tab and a dev reload caused by
-// ANOTHER file changing (`astro dev` reloads the page ~0.7 s after any glob-watched change under data/).
+// a code change (`astro dev` reloads the page when a source file changes).
 // An editor saves its unsaved text on every change, offers it again on the next load, and clears it on
 // save / revert / discard. Because the native `beforeunload` prompt is gone (ROUND3_SPEC §G), this is what keeps
 // work from being lost: it lives 14 days (a draft older than that is dropped on the next read).

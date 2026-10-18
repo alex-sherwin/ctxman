@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/reference.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference
 name: gatos
 description: ksa mod for a linux vm integrated with ksa game data and control (gatOS)
 type: remote-repo

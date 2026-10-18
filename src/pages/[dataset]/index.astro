@@ -1,5 +1,4 @@
 ---
-import { getCollection } from 'astro:content';
 import DatasetBadge from '../../components/DatasetBadge.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import EntryTable from '../../components/EntryTable.astro';
@@ -37,12 +36,6 @@ const entries = filterEntries(all, {
   sort: params.sort,
 });
 
-// EntrySummary carries no reference owner; the Owner column reads it from the collection.
-const owners: Record<string, string> = {};
-if (def.id === 'reference') {
-  for (const ref of await getCollection('reference')) owners[ref.id] = ref.data.owner;
-}
-
 // Every dataset has a create form at /new/<ds>; with a project filter active the new okf / skill entry is prefilled
 // as a child of that project (`?parent=`).
 const newHref =
@@ -75,7 +68,7 @@ const newHref =
 
   {
     entries.length > 0 ? (
-      <EntryTable def={def} entries={entries} sort={params.sort} owners={owners} />
+      <EntryTable def={def} entries={entries} sort={params.sort} />
     ) : (
       <EmptyState
         title={

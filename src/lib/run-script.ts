@@ -9,7 +9,7 @@ import { entryUrl, isDatasetId, isValidName, NAME_MAX_LENGTH } from '../datasets
 import type { DatasetId } from '../datasets/registry.ts';
 import { stripAnsi } from './ansi.ts';
 import type { Issue } from './context-io.ts';
-import { resolveDataDir } from './data-dir.ts';
+import { DataDirError, resolveDataDir } from './data-dir.ts';
 import { entryFileRelPath } from './freshness.ts';
 import { getScript } from './scripts-allowlist.ts';
 import type { ScriptName } from './scripts-allowlist.ts';
@@ -170,9 +170,14 @@ export function runNodeFile(
   const cwd = opts.cwd ?? process.cwd();
   // Scripts must act on the same data dir as the server: pin it to an absolute path.
   const env: NodeJS.ProcessEnv = { ...process.env, ...opts.env, NO_COLOR: '1', FORCE_COLOR: '0' };
-  env.CTXMAN_DATA_DIR = resolveDataDir(env);
-
   const startedAt = performance.now();
+  try {
+    env.CTXMAN_DATA_DIR = resolveDataDir(env);
+  } catch (error) {
+    if (!(error instanceof DataDirError)) throw error;
+    return Promise.resolve({ code: 2, stdout: '', stderr: error.message, durationMs: 0 });
+  }
+
   return new Promise<ScriptResult>((resolve) => {
     const out = new Capture();
     const err = new Capture();

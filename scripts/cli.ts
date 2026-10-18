@@ -3,7 +3,7 @@ import process from 'node:process';
 import { parseArgs } from 'node:util';
 import { exitCode, formatReport, toReport } from '../src/lib/findings.ts';
 import type { Finding, Report } from '../src/lib/findings.ts';
-import { resolveDataDir } from '../src/lib/data-dir.ts';
+import { DataDirError, resolveDataDir } from '../src/lib/data-dir.ts';
 
 /** Exit codes shared by every CLI: 0 ok, 1 findings or refusal, 2 usage error. */
 export const EXIT_OK = 0;
@@ -37,7 +37,7 @@ export function parseCheckFlags(
   script: string,
   title: string,
 ): { json: boolean } | { exit: number } {
-  const usage = `Usage: node scripts/${script}.ts [--json]\n  ${title} check of the data directory (CTXMAN_DATA_DIR or ./data).\n  Exit 0 = no errors, 1 = errors found, 2 = usage error.`;
+  const usage = `Usage: node scripts/${script}.ts [--json]\n  ${title} check of the data directory (CTXMAN_DATA_DIR, required).\n  Exit 0 = no errors, 1 = errors found, 2 = usage error.`;
   try {
     const { values } = parseArgs({
       args: process.argv.slice(2),
@@ -57,6 +57,18 @@ export function parseCheckFlags(
   }
 }
 
+/** The data dir, or undefined after printing the reason and setting exit code 2 (CTXMAN_DATA_DIR is required). */
+export function resolveDataDirOrExit(script: string): string | undefined {
+  try {
+    return resolveDataDir();
+  } catch (error) {
+    if (!(error instanceof DataDirError)) throw error;
+    writeError(`${script}: ${error.message}`);
+    process.exitCode = EXIT_USAGE;
+    return undefined;
+  }
+}
+
 /** Entry point of check-okf / check-links / check-collections. */
 export async function runCheckCli(script: string, title: string, check: CheckFn): Promise<void> {
   const flags = parseCheckFlags(script, title);
@@ -64,7 +76,9 @@ export async function runCheckCli(script: string, title: string, check: CheckFn)
     process.exitCode = flags.exit;
     return;
   }
-  const report = buildReport(await check(resolveDataDir()));
+  const dataDir = resolveDataDirOrExit(script);
+  if (dataDir === undefined) return;
+  const report = buildReport(await check(dataDir));
   if (flags.json) writeJson(report);
   else writeLine(formatReport(title, report));
   process.exitCode = exitCode(report);

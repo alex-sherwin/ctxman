@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/context.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/context
 name: okf-authoring
 description: Everything needed to write or review OKF bundles in ctxman, including the format summary, the authoring skill and a model skill repository.
 tags:

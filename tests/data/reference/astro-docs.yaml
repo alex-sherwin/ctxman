@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../schemas/reference.schema.json
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference
 name: astro-docs
 description: The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.
 type: remote-repo

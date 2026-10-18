@@ -1,19 +1,15 @@
-// SERVER-ASTRO: everything pages and API routes read from the datasets (PLAN §E.21, §H).
-// okf + skill entries (frontmatter, summaries, lists, relations, invalid files) come from the entry index on disk
-// (entry-index.ts, ROUND3_SPEC §A3); collections (astro:content) only provide their rendered HTML (when they hold
-// the entry and its body matches the disk), the `docs` collection and the reference entries; the filesystem
-// provides bundle file lists; contexts are ALWAYS read through context-io.ts (fs + zod), never
-// getCollection('context') (PLAN §A.2: that collection has no watcher and exists only for validation);
-// recipes likewise go through recipe-io.ts, never getCollection('recipe').
-// Never import this module from scripts, tests or browser islands.
-import { getCollection, getEntry } from 'astro:content';
+// SERVER (no astro:*): everything pages, API routes and the MCP endpoint read from the datasets (PLAN §E.21, §H).
+// The disk is the truth on every request: okf + skill entries (frontmatter, bodies, summaries, lists, relations,
+// invalid files) come from the entry index (entry-index.ts); references, contexts and recipes are read through
+// reference-io.ts / context-io.ts / recipe-io.ts; bundle file lists come from bundles.ts; markdown is rendered
+// at request time by markdown.ts (Sätteri, memoized by source hash).
+// Never import this module from scripts or browser islands.
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
   DATASET_IDS,
   ENTRY_REL_INVERSE_LABELS,
   ENTRY_REL_LABELS,
-  OKF_DATASET_IDS,
   datasetDef,
   entryUrl,
   isOkfDatasetId,
@@ -23,13 +19,12 @@ import type { DatasetId, LinkableDatasetId, OkfDatasetId } from '../datasets/reg
 import { DATASET_SCHEMAS } from '../datasets/schemas.ts';
 import type {
   ContextData,
-  DocData,
   OkfEntry,
   RecipeData,
   ReferenceData,
   SkillData,
 } from '../datasets/schemas.ts';
-import { listBundleFiles, safeJoin } from './bundles.ts';
+import { listBundleFiles, safeJoin, walkFiles } from './bundles.ts';
 import type { BundleFile } from './bundles.ts';
 import { backRefs, ContextIoError, listContexts, readContext } from './context-io.ts';
 import type { ContextRecord } from './context-io.ts';
@@ -38,12 +33,13 @@ import { getEntryIndex } from './entry-index.ts';
 import type { EntryIndex, IndexedEntry } from './entry-index.ts';
 import { summarize } from './entry-summary.ts';
 import type { EntrySummary, SearchDoc } from './entry-summary.ts';
-import { entryAbsPath, entryFileRelPath, lastModifiedOf } from './freshness.ts';
+import { entryFileRelPath, lastModifiedOf } from './freshness.ts';
 import { itemKey } from './inflate/catalog.ts';
 import { rewriteRenderedHtml } from './links.ts';
 import { renderMarkdown } from './markdown.ts';
 import { parseFrontmatterLoose, splitFrontmatter } from './okf.ts';
 import { listRecipes, readRecipe, RecipeIoError } from './recipe-io.ts';
+import { listReferences, readReference, ReferenceIoError } from './reference-io.ts';
 import { buildRelationGraph, linkedFrom, linksTo } from './relations.ts';
 import type { OutRel, RelationEdge, RelationGraph } from './relations.ts';
 import {
@@ -158,12 +154,15 @@ export type EntryDetail = {
     }
 );
 
+/** Parsed frontmatter of a non-entry markdown file of an okf bundle (any keys; `type` is checked by `pnpm run check`). */
+export type DocFrontmatter = Record<string, unknown>;
+
 export interface DocDetail {
   /** Summary of the bundle's entry (main.md). */
   entry: EntrySummary;
   /** Bundle-relative file, e.g. 'concepts/search.md'. */
   relPath: string;
-  data: DocData;
+  data: DocFrontmatter;
   title: string;
   html: string;
   /** ISO mtime of this file. */
@@ -172,46 +171,11 @@ export interface DocDetail {
   backRefs: BackRef[];
 }
 
-/** Datasets served by a content collection (everything except the runtime-read yaml datasets context and recipe). */
-type CollectionDatasetId = Exclude<DatasetId, 'context' | 'recipe'>;
-
-/** The slice of a collection entry this module relies on. */
-interface RawEntry {
-  id: string;
-  data: Record<string, unknown>;
-  body?: string | undefined;
-  rendered?: { html: string } | undefined;
-}
-
 const nonEmpty = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined;
 
-async function loadCollection(dataset: CollectionDatasetId): Promise<RawEntry[]> {
-  return (await getCollection(dataset)) as RawEntry[];
-}
-
-async function loadEntry(dataset: CollectionDatasetId, id: string): Promise<RawEntry | undefined> {
-  return (await getEntry(dataset, id)) as RawEntry | undefined;
-}
-
 async function safeContexts(): Promise<ContextRecord[]> {
   return (await listContexts()).items;
-}
-
-/** Line endings and surrounding whitespace do not make two markdown bodies different. */
-function sameBody(a: string | undefined, b: string): boolean {
-  const norm = (text: string): string => text.replace(/\r\n?/g, '\n').trim();
-  return a !== undefined && norm(a) === norm(b);
-}
-
-/**
- * Rendered HTML of `body`, which is the markdown currently on disk: the collection's own render (`entry.rendered`)
- * when the collection holds the entry AND its body equals the disk body; otherwise (entry not loaded yet, invalid
- * file, or the content layer still lags behind a write) the runtime renderer, the same Sätteri pipeline.
- */
-async function htmlFor(entry: RawEntry | undefined, body: string): Promise<string> {
-  if (entry?.rendered !== undefined && sameBody(entry.body, body)) return entry.rendered.html;
-  return renderMarkdown(body);
 }
 
 /** Frontmatter + body of a markdown file read from disk; bad YAML gives empty data and the raw body. */
@@ -268,7 +232,7 @@ function infoOfIndexed(entry: IndexedEntry): TargetInfo {
   return info;
 }
 
-/** okf + skill targets come from the entry index; a reference is a file plus its collection entry. */
+/** okf + skill targets come from the entry index; a reference is read from its yaml file. */
 async function targetInfo(
   index: EntryIndex,
   dataDir: string,
@@ -278,10 +242,17 @@ async function targetInfo(
   const indexed = index.byKey.get(`${dataset}/${slug}`);
   if (indexed !== undefined) return infoOfIndexed(indexed);
   if (dataset !== 'reference') return { missing: true };
-  const abs = path.join(dataDir, ...entryFileRelPath(dataset, slug).split('/'));
-  if (!(await exists(abs))) return { missing: true };
-  const title = nonEmpty((await loadEntry('reference', slug))?.data.title);
-  return title === undefined ? { missing: false } : { missing: false, title };
+  try {
+    const record = await readReference(slug, dataDir);
+    const title = nonEmpty((record.reference as { title?: unknown }).title);
+    return title === undefined ? { missing: false } : { missing: false, title };
+  } catch (error) {
+    if (!(error instanceof ReferenceIoError)) throw error;
+    // An existing but invalid file is a target that exists; a missing or unaddressable one is not.
+    return error.code === 'not-found' || error.code === 'bad-slug'
+      ? { missing: true }
+      : { missing: false };
+  }
 }
 
 function splitKey(key: string): { dataset: LinkableDatasetId; slug: string } {
@@ -382,18 +353,22 @@ export async function listEntries(
       .map((entry) => summaryOf(entry, nowMs))
       .sort((a, b) => compareText(a.slug, b.slug));
   }
-  const entries = await loadCollection(dataset);
-  const summaries = await Promise.all(
-    entries.map(async (entry) =>
-      summarize(
-        dataset,
-        entry.id,
-        entry.data,
-        await lastModifiedOf(entryAbsPath(dataset, entry.id)),
-        nowMs,
-      ),
-    ),
+  // reference
+  const { items, invalid } = await listReferences();
+  const summaries = items.map((record) =>
+    summarize('reference', record.slug, record.reference, new Date(record.lastModified), nowMs),
   );
+  for (const bad of invalid) {
+    const summary = summarize(
+      'reference',
+      bad.slug,
+      { name: bad.slug, description: '' },
+      new Date(bad.lastModified),
+      nowMs,
+    );
+    summary.invalid = bad.issues;
+    summaries.push(summary);
+  }
   return summaries.sort((a, b) => compareText(a.slug, b.slug));
 }
 
@@ -574,18 +549,13 @@ export async function getEntryDetail(
     const indexed = index.byKey.get(`${dataset}/${slug}`);
     if (indexed === undefined) return null;
     const entryFile = datasetDef(dataset).entryFile;
-    // Only a valid entry can be in the collection; an unknown id would log a warning for nothing.
-    const collectionEntry =
-      indexed.issues.length === 0
-        ? await loadEntry(dataset as CollectionDatasetId, slug)
-        : undefined;
-    const html = rewriteRenderedHtml(await htmlFor(collectionEntry, indexed.body), {
+    const html = rewriteRenderedHtml(await renderMarkdown(indexed.body), {
       dataset,
       slug,
       fromRelPath: entryFile,
       dataDir,
     });
-    // A valid file gets the schema's output (defaults, coerced dates) like the collection used to give.
+    // A valid file gets the schema's output (defaults, coerced dates).
     const parsed =
       indexed.issues.length === 0 ? DATASET_SCHEMAS[indexed.dataset].safeParse(indexed.data) : null;
     const data = (parsed?.success === true ? parsed.data : indexed.data) as Record<string, unknown>;
@@ -603,18 +573,20 @@ export async function getEntryDetail(
       : { ...base, kind: 'skill', data: data as SkillData };
   }
 
-  // reference: a yaml file served by its collection. Check the disk first: getEntry() logs a warning for every
-  // miss, and a 404 probe is routine.
-  if (!(await exists(path.join(dataDir, ...fileRelPath.split('/'))))) return null;
-  const entry = await loadEntry(dataset as CollectionDatasetId, slug);
-  if (entry === undefined) return null;
-  const lastModified = await lastModifiedOf(entryAbsPath(dataset, slug, dataDir));
+  // reference: a yaml file read from disk. An invalid file is listed (flagged) but has no detail page (404).
+  let reference;
+  try {
+    reference = await readReference(slug, dataDir);
+  } catch (error) {
+    if (error instanceof ReferenceIoError) return null;
+    throw error;
+  }
   return {
     kind: 'reference',
-    summary: summarize(dataset, slug, entry.data, lastModified, nowMs),
+    summary: summarize(dataset, slug, reference.reference, new Date(reference.lastModified), nowMs),
     backRefs: backRefs(await safeContexts(), dataset, slug),
     fileRelPath,
-    data: entry.data as ReferenceData,
+    data: reference.reference,
     relations: await relationsFor(index, dataDir, dataset, slug),
   };
 }
@@ -644,10 +616,7 @@ export async function getDocDetail(
   const bundleEntry = (await getEntryIndex(dataDir)).byKey.get(`${dataset}/${slug}`);
   if (bundleEntry === undefined) return null;
 
-  // The file as it is on disk. The `docs` collection supplies the rendered HTML when it holds this file with the
-  // same body; a file the content layer has not picked up yet (a new concept) or an older version is rendered here.
   const disk = parseDiskMarkdown(await readFile(abs, 'utf8'));
-  const collectionDoc = await loadDoc(`${dataset}/${slug}/${docPath}`);
   const lastModified = await lastModifiedOf(abs);
   const entry = summaryOf(bundleEntry, nowMs);
   const title = okfDocToSearchDoc({
@@ -662,9 +631,9 @@ export async function getDocDetail(
   return {
     entry,
     relPath,
-    data: disk.data as DocData,
+    data: disk.data,
     title,
-    html: rewriteRenderedHtml(await htmlFor(collectionDoc, disk.body), {
+    html: rewriteRenderedHtml(await renderMarkdown(disk.body), {
       dataset,
       slug,
       fromRelPath: relPath,
@@ -676,10 +645,6 @@ export async function getDocDetail(
   };
 }
 
-async function loadDoc(id: string): Promise<RawEntry | undefined> {
-  return (await getEntry('docs', id)) as RawEntry | undefined;
-}
-
 // ---------------------------------------------------------------- search index
 
 const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
@@ -687,50 +652,57 @@ const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, 
 /** The whole fuse corpus: okf entries + every other okf markdown file + skills + references + contexts + recipes. */
 export async function buildSearchIndex(): Promise<{ generatedAt: string; docs: SearchDoc[] }> {
   const docs: SearchDoc[] = [];
+  const dataDir = resolveDataDir();
+  const index = await getEntryIndex(dataDir);
 
-  for (const dataset of OKF_DATASET_IDS) {
-    for (const entry of await loadCollection(dataset)) {
+  for (const entry of index.entries) {
+    if (entry.dataset === 'skill') {
+      // Only a valid skill has the strict frontmatter the search doc needs.
+      if (entry.issues.length === 0) {
+        docs.push(skillToSearchDoc(entry.slug, entry.data as SkillData, entry.body));
+      }
+      continue;
+    }
+    const dataset = entry.dataset;
+    docs.push(
+      okfDocToSearchDoc({
+        dataset,
+        slug: entry.slug,
+        relPath: 'main.md',
+        data: entry.data,
+        body: entry.body,
+        entryTitle: nonEmpty(entry.data.title) ?? nonEmpty(entry.data.name) ?? entry.slug,
+      }),
+    );
+    // Every other markdown file of the bundle; index.md and log.md are navigation and history, not knowledge
+    // (UX-22), at any depth.
+    const bundleDir = path.join(datasetDir(dataset, dataDir), entry.slug);
+    for (const relPath of await walkFiles(bundleDir)) {
+      if (!relPath.endsWith('.md')) continue;
+      const base = relPath.slice(relPath.lastIndexOf('/') + 1);
+      if (base === 'main.md' || base === 'index.md' || base === 'log.md') continue;
+      let source: string;
+      try {
+        source = await readFile(path.join(bundleDir, ...relPath.split('/')), 'utf8');
+      } catch {
+        continue;
+      }
+      const disk = parseDiskMarkdown(source);
       docs.push(
         okfDocToSearchDoc({
           dataset,
-          slug: entry.id,
-          relPath: 'main.md',
-          data: entry.data,
-          body: entry.body ?? '',
-          entryTitle: nonEmpty(entry.data.title) ?? nonEmpty(entry.data.name) ?? entry.id,
+          slug: entry.slug,
+          relPath,
+          data: disk.data,
+          body: disk.body,
+          entryTitle: entry.slug,
         }),
       );
     }
   }
 
-  // `docs` ids are '<dataset>/<slug>/<path without .md>'; main.md was added above.
-  const okfIds: readonly string[] = OKF_DATASET_IDS;
-  for (const doc of (await getCollection('docs')) as RawEntry[]) {
-    const [dataset, slug, ...rest] = doc.id.split('/');
-    if (dataset === undefined || slug === undefined || rest.length === 0) continue;
-    if (!okfIds.includes(dataset) || !isOkfDatasetId(dataset)) continue;
-    // index.md and log.md are navigation and history, not knowledge: they stay out of search (UX-22).
-    const last = rest[rest.length - 1];
-    if (last === 'index' || last === 'log') continue;
-    const relPath = `${rest.join('/')}.md`;
-    if (relPath === 'main.md') continue;
-    docs.push(
-      okfDocToSearchDoc({
-        dataset,
-        slug,
-        relPath,
-        data: doc.data,
-        body: doc.body ?? '',
-        entryTitle: slug,
-      }),
-    );
-  }
-
-  for (const entry of await loadCollection('skill')) {
-    docs.push(skillToSearchDoc(entry.id, entry.data as SkillData, entry.body ?? ''));
-  }
-  for (const entry of await loadCollection('reference')) {
-    docs.push(referenceToSearchDoc(entry.id, entry.data as ReferenceData));
+  for (const record of (await listReferences(dataDir)).items) {
+    docs.push(referenceToSearchDoc(record.slug, record.reference));
   }
   for (const record of await safeContexts()) {
     docs.push(contextToSearchDoc(record.slug, record.context));

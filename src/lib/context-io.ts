@@ -1,5 +1,5 @@
-// NODE: runtime read/write of data/context/<slug>.yaml. Contexts are ALWAYS read through this module
-// (fs + zod) at request time, never through getCollection('context') (PLAN.md §A.2, runtime-mode rules).
+// NODE: runtime read/write of context/<slug>.yaml. Contexts are ALWAYS read through this module
+// (fs + schema validation) at request time.
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isValidName } from '../datasets/registry.ts';
@@ -7,7 +7,7 @@ import type { LinkableDatasetId } from '../datasets/registry.ts';
 import { contextLinkSchema, contextSchema } from '../datasets/schemas.ts';
 import type { ContextData } from '../datasets/schemas.ts';
 import { withFileLock, writeFileAtomic } from './atomic-write.ts';
-import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { datasetDir, resolveDataDir, resolveServerOrigin } from './data-dir.ts';
 import { describeIssue, issuePath } from './findings.ts';
 import type { PathIssue } from './findings.ts';
 import { withSchemaComment } from './schema-comment.ts';
@@ -49,7 +49,7 @@ export class ContextIoError extends Error {
   }
 }
 
-/** Absolute path of data/context/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
+/** Absolute path of context/<slug>.yaml; throws `bad-slug` unless the slug is a valid entry name. */
 export function contextFile(slug: string, dataDir: string = resolveDataDir()): string {
   if (!isValidName(slug)) {
     throw new ContextIoError(
@@ -208,10 +208,14 @@ export async function createContext(
   const abs = contextFile(slug, dataDir);
   await mkdir(path.dirname(abs), { recursive: true });
   try {
-    await writeFile(abs, withSchemaComment('context', serializeContext(context)), {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await writeFile(
+      abs,
+      withSchemaComment('context', serializeContext(context), resolveServerOrigin()),
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
   } catch (error) {
     if (errorCode(error) === 'EEXIST') {
       throw new ContextIoError('exists', `context "${slug}" already exists`);
@@ -247,7 +251,11 @@ async function writeContextLocked(
       result.issues,
     );
   }
-  await writeFileAtomic(abs, withSchemaComment('context', serializeContext(result.context)), mode);
+  await writeFileAtomic(
+    abs,
+    withSchemaComment('context', serializeContext(result.context), resolveServerOrigin()),
+    mode,
+  );
   return recordFor(slug, abs, result.context);
 }
 
