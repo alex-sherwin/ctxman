@@ -17,19 +17,20 @@ interface Props {
   shown: number;
   /** `project=<slug>` is active: the project's title (undefined = the project does not exist). */
   projectTitle?: string | undefined;
+  /** Where Clear goes: the bare list in the current sort. */
+  clearHref: string;
 }
 
-const { def, params, entries, shown, projectTitle } = Astro.props;
+const { def, params, entries, shown, projectTitle, clearHref } = Astro.props;
 // `dir` only travels with the form while it differs from the sort's own direction (a header press sets it).
 const customDir = params.dir !== defaultSortDir(params.sort);
+// The sort is not a filter: the list remembers it (list-sort-memory.ts), so Clear keeps it.
 const anyActive =
   params.q.trim() !== '' ||
   params.states.length > 0 ||
   params.tags.length > 0 ||
   params.type !== null ||
-  params.project !== null ||
-  params.sort !== 'modified' ||
-  customDir;
+  params.project !== null;
 
 const stateTotals = countStates(entries);
 
@@ -69,6 +70,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   aria-label={`Filter ${def.plural}`}
   data-testid="list-filter-form"
   data-filter-form
+  data-dataset={def.id}
 >
   <div class="cx-filters__row">
     <label class="ck-sr-only" for="f-q">Filter text</label>
@@ -104,7 +106,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
       anyActive && (
         <a
           class="ck-button ck-button--ghost ck-button--sm ck-button--glow cx-filters__clear"
-          href={`/${def.id}`}
+          href={clearHref}
           data-testid="list-filter-clear"
         >
           <span class="ck-button__label">Clear</span>
@@ -226,7 +228,21 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   // Progressive enhancement (UI_SPEC §E.4). Without JS the form is a plain GET form with an Apply button.
   // With JS every chip / select change navigates to the clean URL, so back / forward work natively.
   // The text field does NOT auto-submit while typing (a reload would lose the caret); Enter submits.
+  import { isDatasetId } from '../datasets/registry.ts';
+  import { defaultSortDir } from '../lib/entry-filter.ts';
+  import { rememberListSort } from '../lib/list-sort-memory.ts';
+  import { listSortsFor } from '../lib/url-state.ts';
+
   const FOCUS_KEY = 'cx-filter-focus';
+
+  /** The sort picked in the Sort select becomes the list's remembered one (the default included: it forgets). */
+  function rememberSortOf(form: HTMLFormElement): void {
+    const dataset = form.dataset.dataset;
+    if (!isDatasetId(dataset)) return;
+    const value = new FormData(form).get('sort');
+    const sort = listSortsFor(dataset).find((s) => s === value);
+    if (sort !== undefined) rememberListSort(dataset, sort, defaultSortDir(sort));
+  }
 
   // A new sort starts in its own direction: the hidden `dir` (set by a column header press) only survives the
   // other controls.
@@ -238,6 +254,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
       if (key === 'dir' && sortChanged) continue;
       params.append(key, value);
     }
+    if (sortChanged) rememberSortOf(form);
     try {
       if (focusId) sessionStorage.setItem(FOCUS_KEY, focusId);
     } catch {

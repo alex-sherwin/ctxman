@@ -6,7 +6,8 @@
 // - Columns resize (drag the right edge, or "Resize column" in the column menu + arrow keys) and can be hidden;
 //   widths, hidden columns and the row density are remembered per dataset in localStorage (table-prefs.ts).
 // - Sorting is URL state like every other list control: a header press (or the column menu) navigates to the same
-//   list with `sort` / `dir`, and the server sorts (filterEntries).
+//   list with `sort` / `dir`, and the server sorts (filterEntries). The choice is remembered first
+//   (list-sort-memory.ts): a list URL without a sort opens in the last one chosen.
 // - The state select is the native one src/scripts/shell.ts saves (StateSelect.tsx); `keyboardNavigationBehavior
 //   ="tab"` keeps arrow keys and Enter inside it instead of moving through the grid.
 // - The last column holds the entry's `⋯` menu (EntryMenu.tsx, shared with the EntryMenus island of detail pages).
@@ -14,10 +15,12 @@ import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useState } from 'react';
 import type { Key } from 'react-aria-components';
 import { getDataset, OWNER_LABELS } from '../../datasets/registry.ts';
+import type { DatasetId } from '../../datasets/registry.ts';
 import { defaultSortDir } from '../../lib/entry-filter.ts';
 import type { SortDir } from '../../lib/entry-filter.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { TARGETS } from '../../lib/inflate/catalog.ts';
+import { rememberListSort } from '../../lib/list-sort-memory.ts';
 import { formatAbsolute, formatRelative } from '../../lib/time.ts';
 import { listSortHref } from '../../lib/url-state.ts';
 import type { ListSort } from '../../lib/url-state.ts';
@@ -53,8 +56,9 @@ interface MenuColumn {
 const MENU_COLUMN: MenuColumn = { id: 'menu' };
 const MENU_WIDTH = 44;
 
-/** The same list sorted by `sort` / `dir`: a navigation, the server sorts. */
-function goSort(sort: ListSort, dir: SortDir): void {
+/** The same list sorted by `sort` / `dir`: a navigation, the server sorts. Remembered as the list's sort. */
+function goSort(dataset: DatasetId, sort: ListSort, dir: SortDir): void {
+  rememberListSort(dataset, sort, dir);
   location.assign(listSortHref(`${location.pathname}${location.search}`, sort, dir));
 }
 
@@ -106,7 +110,7 @@ function ListTableView({ data }: { data: ListData }) {
   function sortBy(next: ListSort, nextDir: SortDir) {
     if (next === sort && nextDir === dir) return;
     setSorting(true);
-    goSort(next, nextDir);
+    goSort(dataset, next, nextDir);
   }
 
   return (

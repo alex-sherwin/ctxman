@@ -1,6 +1,7 @@
 // The ListTable island of the dataset list pages (src/ui/list): header sorting through the URL (`sort` / `dir`),
 // resizable columns, the Columns menu (hide / density / reset) and the column menus, with the layout kept per
-// dataset in localStorage (`ctxman:table:<ds>`; every test gets a fresh browser context, so none is stored).
+// dataset in localStorage (`ctxman:table:<ds>`) and the last chosen sort in a cookie (`ctxman-sort-<ds>`); every test
+// gets a fresh browser context, so none is stored.
 // Read-only: nothing here writes data. Relies on the 4 seed tasks.
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
@@ -67,6 +68,45 @@ test('a header press sorts through the URL, a second press flips it, filters kee
   await expect(page).toHaveURL(/sort=name&dir=desc&state=complete$/);
   await page.getByTestId('list-sort').selectOption('state');
   await expect(page).toHaveURL(/\/task\?sort=state&state=complete$/);
+});
+
+test('a list opened without a sort comes back in the last one chosen, per dataset', async ({
+  page,
+}) => {
+  await openList(page, '/task');
+  await header(page, 'entry').click();
+  await expect(page).toHaveURL(/\/task\?sort=name$/);
+  await header(page, 'entry').click();
+  await expect(page).toHaveURL(/\/task\?sort=name&dir=desc$/);
+
+  // a bare list URL (the header nav, Clear, a project's children) is sent to the remembered sort; filters stay
+  await openList(page, '/task');
+  await expect(page).toHaveURL(/\/task\?sort=name&dir=desc$/);
+  await expectOrder(page, ROWS, 'data-slug', [...ALPHABETICAL].reverse());
+  await openList(page, '/task?state=complete');
+  await expect(page).toHaveURL(/\/task\?state=complete&sort=name&dir=desc$/);
+  // a URL that names a sort wins; another list keeps its own (none yet)
+  await openList(page, '/task?sort=state');
+  await expect(page).toHaveURL(/\/task\?sort=state$/);
+  await openList(page, '/bug');
+  await expect(page).toHaveURL(/\/bug$/);
+
+  // only filters count for Clear, and it keeps the sort
+  await openList(page, '/task?state=complete&sort=name&dir=desc');
+  await expect(page.getByTestId('list-filter-clear')).toHaveAttribute(
+    'href',
+    '/task?sort=name&dir=desc',
+  );
+  await openList(page, '/task?sort=name');
+  await expect(page.getByTestId('list-filter-clear')).toHaveCount(0);
+
+  // choosing the default sort (here from the Sort select) forgets it
+  await page.getByTestId('list-sort').selectOption('modified');
+  await expect(page).toHaveURL(/\/task$/);
+  await mounted(page);
+  await expect(header(page, 'modified')).toHaveAttribute('aria-sort', 'descending');
+  await openList(page, '/task');
+  await expect(page).toHaveURL(/\/task$/);
 });
 
 test('a column resizes by its edge and keeps its width after a reload', async ({ page }) => {
