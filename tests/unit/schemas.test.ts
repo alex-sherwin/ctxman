@@ -114,7 +114,8 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
       expect(validate(schema, { ...MINIMAL[id], state: 'in progress' }).success).toBe(false);
       const { state: _state, ...withoutState } = MINIMAL[id];
       expect(validate(schema, withoutState).success).toBe(false);
-      expect(validate(schema, { ...MINIMAL[id], state: 'in-progress' }).success).toBe(true);
+      const active = id === 'project' ? 'wip' : 'in-progress';
+      expect(validate(schema, { ...MINIMAL[id], state: active }).success).toBe(true);
     },
   );
 
@@ -128,6 +129,16 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     expect(validate(DATASET_SCHEMAS.bug, { ...MINIMAL.bug, state: 'complete' }).success).toBe(
       false,
     );
+    for (const state of ['pending', 'wip', 'stable', 'abandoned', 'wont-do']) {
+      expect(validate(DATASET_SCHEMAS.project, { ...MINIMAL.project, state }).success, state).toBe(
+        true,
+      );
+    }
+    for (const state of ['in-progress', 'complete']) {
+      expect(validate(DATASET_SCHEMAS.project, { ...MINIMAL.project, state }).success, state).toBe(
+        false,
+      );
+    }
     expect(validate(DATASET_SCHEMAS.task, { ...MINIMAL.task, state: 'wont-do' }).success).toBe(
       true,
     );

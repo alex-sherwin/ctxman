@@ -146,7 +146,7 @@ describe('dataset registry', () => {
     expect(ids('task')).toEqual(['pending', 'in-progress', 'complete', 'wont-do']);
     expect(ids('bug')).toEqual(['pending', 'in-progress', 'fixed', 'wont-fix']);
     expect(ids('feature')).toEqual(['pending', 'in-progress', 'complete', 'wont-do']);
-    expect(ids('project')).toEqual(['pending', 'in-progress', 'complete', 'wont-do']);
+    expect(ids('project')).toEqual(['pending', 'wip', 'stable', 'abandoned', 'wont-do']);
   });
 
   it('maps states to groups per the UI spec', () => {
@@ -158,6 +158,9 @@ describe('dataset registry', () => {
     expect(stateGroup('idea', 'abandoned')).toBe('closed');
     expect(stateGroup('task', 'wont-do')).toBe('closed');
     expect(stateGroup('bug', 'wont-fix')).toBe('closed');
+    expect(stateGroup('project', 'wip')).toBe('active');
+    expect(stateGroup('project', 'stable')).toBe('done');
+    expect(stateGroup('project', 'abandoned')).toBe('closed');
     expect(groups('bug')).toEqual(['neutral', 'active', 'done', 'closed']);
     expect(groups('idea')).toEqual(['neutral', 'active', 'done', 'closed']);
   });
@@ -173,6 +176,8 @@ describe('dataset registry', () => {
     expect(stateLabel('in-progress')).toBe('In progress');
     expect(stateLabel('wont-do')).toBe("Won't do");
     expect(stateLabel('wont-fix')).toBe("Won't fix");
+    expect(stateLabel('wip')).toBe('WIP');
+    expect(stateLabel('stable')).toBe('Stable');
     expect(stateLabel('mystery')).toBe('mystery');
     expect(datasetDef('bug').states?.map((s) => s.label)).toEqual([
       'Pending',

@@ -33,7 +33,7 @@ Do not use it for `skill`, `reference` or `context` entries; those are not OKF b
 ## Quick reference
 
 * Name rule: lowercase letters, digits and single hyphens, at most 64 characters.
-* Lifecycle states are stored kebab-case: `pending`, `in-progress`, `complete`, `abandoned`, `fixed`, `wont-do`, `wont-fix` depending on the dataset.
+* Lifecycle states are stored kebab-case: `pending`, `in-progress`, `complete`, `abandoned`, `fixed`, `wont-do`, `wont-fix` depending on the dataset; projects use `pending`, `wip`, `stable`, `abandoned`, `wont-do`.
 * `status` is `draft`, `stable` or `deprecated`.
 
 The full preflight list is in [the checklist](references/checklist.md). The ctxman concepts and rules are summarised in [ctxman](ctxman:kb/ctxman).

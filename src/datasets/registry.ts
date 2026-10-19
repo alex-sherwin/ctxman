@@ -63,7 +63,7 @@ export const IDEA_STATES = ['pending', 'in-progress', 'complete', 'abandoned'] a
 export const TASK_STATES = ['pending', 'in-progress', 'complete', 'wont-do'] as const;
 export const BUG_STATES = ['pending', 'in-progress', 'fixed', 'wont-fix'] as const;
 export const FEATURE_STATES = ['pending', 'in-progress', 'complete', 'wont-do'] as const;
-export const PROJECT_STATES = ['pending', 'in-progress', 'complete', 'wont-do'] as const;
+export const PROJECT_STATES = ['pending', 'wip', 'stable', 'abandoned', 'wont-do'] as const;
 export type LifecycleStateId =
   | (typeof IDEA_STATES)[number]
   | (typeof TASK_STATES)[number]
@@ -77,7 +77,9 @@ export type StateGroup = 'neutral' | 'active' | 'done' | 'closed';
 export const STATE_LABELS: Readonly<Record<LifecycleStateId, string>> = {
   pending: 'Pending',
   'in-progress': 'In progress',
+  wip: 'WIP',
   complete: 'Complete',
+  stable: 'Stable',
   abandoned: 'Abandoned',
   'wont-do': "Won't do",
   fixed: 'Fixed',
@@ -87,7 +89,9 @@ export const STATE_LABELS: Readonly<Record<LifecycleStateId, string>> = {
 export const STATE_GROUPS: Readonly<Record<LifecycleStateId, StateGroup>> = {
   pending: 'neutral',
   'in-progress': 'active',
+  wip: 'active',
   complete: 'done',
+  stable: 'done',
   fixed: 'done',
   abandoned: 'closed',
   'wont-do': 'closed',

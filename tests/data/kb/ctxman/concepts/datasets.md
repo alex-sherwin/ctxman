@@ -22,14 +22,14 @@ All data lives in the data directory, the folder `CTXMAN_DATA_DIR` points at (se
 | `task` | OKF bundle | `task/<name>/index.md` | pending, in-progress, complete, wont-do |
 | `bug` | OKF bundle | `bug/<name>/index.md` | pending, in-progress, fixed, wont-fix |
 | `feature` | OKF bundle | `feature/<name>/index.md` | pending, in-progress, complete, wont-do |
-| `project` | OKF bundle | `project/<name>/index.md` | pending, in-progress, complete, wont-do |
+| `project` | OKF bundle | `project/<name>/index.md` | pending, wip, stable, abandoned, wont-do |
 | `skill` | agentskills.io folder | `skill/<name>/SKILL.md` | none |
 | `reference` | YAML file | `reference/<name>.yaml` | none |
 | `snippet` | YAML file | `snippet/<name>.yaml` | none |
 | `context` | YAML file | `context/<name>.yaml` | none |
 | `recipe` | YAML file | `recipe/<name>.yaml` | none |
 
-State values are stored kebab-case in the files; the UI shows labels such as "in progress" and "won't do".
+State values are stored kebab-case in the files; the UI shows labels such as "in progress" and "won't do". Projects have their own set: `wip` (shown as "WIP", in progress) and `stable` (done) instead of `in-progress` and `complete`, plus `abandoned`.
 
 ## OKF bundles
 

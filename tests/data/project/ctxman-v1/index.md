@@ -4,7 +4,7 @@ type: Project
 name: ctxman-v1
 title: ctxman v1
 description: Deliver the first complete version of ctxman with ten datasets, search, context forge, tools runner, checks and tests.
-state: in-progress
+state: wip
 tags: [ctxman, roadmap]
 generated:
   by: claude-code/ctxman-seed

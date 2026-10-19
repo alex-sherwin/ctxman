@@ -75,7 +75,7 @@ export function seedTree(extra: Record<string, string> = {}): Record<string, str
       'Project',
       'ctxman-v1',
       'Deliver the first complete version of ctxman with ten datasets.',
-      'state: in-progress\n',
+      'state: wip\n',
     ),
     'skill/okf-authoring/SKILL.md': `---\nname: okf-authoring\ndescription: Author and review OKF v0.2 knowledge bundles (kb, rca, idea, task, bug, feature, project).\n---\n\n# OKF authoring\n\nFollow the checklist.\n`,
     'skill/ctxman-add-entry/SKILL.md': `---\nname: ctxman-add-entry\ndescription: Create a new ctxman dataset entry with the add scripts.\n---\n\n# Add an entry\n\nRun the script.\n`,

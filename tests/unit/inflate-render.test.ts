@@ -1845,7 +1845,7 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '',
       '### ctxman-v1',
       '',
-      '`project/ctxman-v1` · Project · state: In progress · [`project/ctxman-v1/index.md`](project/ctxman-v1/index.md) · symlink',
+      '`project/ctxman-v1` · Project · state: WIP · [`project/ctxman-v1/index.md`](project/ctxman-v1/index.md) · symlink',
       '',
       'Deliver the first complete version of ctxman with ten datasets.',
       '',
