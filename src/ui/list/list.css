@@ -1,0 +1,95 @@
+/* ListTable island (`/<ds>` list pages): the layout bar above the table, the scroll box and the cells. The table
+   itself is the kit Table (ck-table*, src/ui/kit/Table.css: sort arrows, resize handles, sticky header); only the
+   list's own bits live here. */
+@layer cx-app {
+  .cx-ltable {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .cx-ltable__bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-3);
+  }
+  .cx-ltable__bar .ck-button__label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  /* at most one screen tall: the header row stays in view while the rows scroll under it */
+  .cx-ltable__scroll {
+    max-height: calc(100dvh - var(--header-h) - var(--sp-6));
+  }
+  /* a header press navigates to the re-sorted list: dim the old order until it arrives */
+  .cx-ltable[data-sorting] .ck-table__body {
+    opacity: 0.55;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+
+  /* column menu button ("…"): takes no room until the header is hovered or focused (a narrow column keeps its
+     label), stays while its menu is open; always there on touch screens */
+  .cx-ltable__colmenu {
+    display: none;
+    flex: none;
+    height: 18px;
+    margin-right: var(--sp-2);
+  }
+  .ck-table__th:is(:hover, :focus-within) .cx-ltable__colmenu,
+  .cx-ltable__colmenu[aria-expanded='true'] {
+    display: inline-flex;
+  }
+  @media (hover: none) {
+    .cx-ltable__colmenu {
+      display: inline-flex;
+    }
+  }
+  .ck-menu__item .cx-ltable__check {
+    display: inline-grid;
+    place-items: center;
+    width: 12px;
+    flex: none;
+    color: var(--accent);
+  }
+
+  /* rows are links (react-aria Row href) */
+  .cx-table__row[data-href] {
+    cursor: pointer;
+  }
+  /* fixed column widths: content truncates instead of widening its column */
+  .cx-table__td--entry,
+  .cx-table__td--type {
+    overflow: hidden;
+  }
+  .cx-table__td--entry .ck-badge {
+    flex: none;
+  }
+  .cx-table__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cx-table__slug {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cx-table__td--desc > .cx-truncate {
+    display: block;
+  }
+  .cx-table__td--state .cx-statesel,
+  .cx-table__td--state .cx-statesel__select {
+    max-width: 100%;
+  }
+  .cx-table__td--modified {
+    white-space: nowrap;
+  }
+  /* the actions column: the row's ⋯ menu, right-aligned */
+  .cx-table__th--menu,
+  .cx-table__td--menu {
+    padding-inline: var(--sp-2);
+    text-align: right;
+  }
+}

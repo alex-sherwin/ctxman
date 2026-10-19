@@ -7,6 +7,7 @@ import {
   ENTRY_RELS,
   LINKABLE_DATASETS,
   NAME_MAX_LENGTH,
+  NAV_DATASET_IDS,
   OKF_DATASET_IDS,
   datasetDef,
   docUrl,
@@ -105,6 +106,23 @@ describe('dataset registry', () => {
     expect(isLinkableDatasetId('context')).toBe(false);
     expect(isLinkableDatasetId('recipe')).toBe(false);
     expect(isLinkableDatasetId(null)).toBe(false);
+  });
+
+  it('NAV_DATASET_IDS orders the header nav and names every dataset exactly once', () => {
+    expect(NAV_DATASET_IDS).toEqual([
+      'kb',
+      'idea',
+      'feature',
+      'task',
+      'project',
+      'reference',
+      'bug',
+      'rca',
+      'skill',
+      'context',
+      'recipe',
+    ]);
+    expect([...NAV_DATASET_IDS].sort()).toEqual([...DATASET_IDS].sort());
   });
 
   it('only idea, task, bug, feature and project have lifecycle states', () => {

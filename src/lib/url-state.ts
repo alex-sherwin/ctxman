@@ -9,6 +9,8 @@ import {
   isValidName,
 } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, ReferenceType } from '../datasets/registry.ts';
+import { defaultSortDir, isSortDir } from './entry-filter.ts';
+import type { SortDir } from './entry-filter.ts';
 
 /** The only list-valued key that is comma-separated (search dataset filter: `in=kb,task`). */
 const IN_KEY = 'in';
@@ -88,8 +90,43 @@ export function withParams(
 
 // ---------------------------------------------------------------- list pages (UI_SPEC §E.1)
 
-export const LIST_SORTS = ['modified', 'name', 'state'] as const;
+export const LIST_SORTS = [
+  'modified',
+  'name',
+  'state',
+  'type',
+  'owner',
+  'links',
+  'target',
+  'contexts',
+] as const;
 export type ListSort = (typeof LIST_SORTS)[number];
+
+export const LIST_SORT_LABELS: Readonly<Record<ListSort, string>> = {
+  modified: 'Last modified',
+  name: 'Name',
+  state: 'State',
+  type: 'Type',
+  owner: 'Owner',
+  links: 'Links',
+  target: 'Target',
+  contexts: 'Contexts',
+};
+
+/** The sorts a dataset's list offers (Sort select order): its sortable columns. */
+export function listSortsFor(dataset: DatasetId): readonly ListSort[] {
+  const extra: readonly ListSort[] =
+    dataset === 'reference'
+      ? ['type', 'owner']
+      : dataset === 'context'
+        ? ['links']
+        : dataset === 'recipe'
+          ? ['target', 'contexts']
+          : getDataset(dataset)?.states
+            ? ['state']
+            : [];
+  return ['modified', 'name', ...extra];
+}
 
 export interface ListParams {
   q: string;
@@ -98,27 +135,36 @@ export interface ListParams {
   tags: string[];
   /** `reference` only. */
   type: ReferenceType | null;
+  /** One of `listSortsFor(dataset)`; default 'modified'. */
   sort: ListSort;
+  /** `dir=asc|desc`; default `defaultSortDir(sort)` (newest first for 'modified', A→Z for 'name'). */
+  dir: SortDir;
   /** `project=<slug>`: only the children of `project/<slug>` (its `child` relations; any dataset). null = no filter. */
   project: string | null;
 }
 
-/** `/[dataset]?q=&state=&tag=&sort=&type=&project=`. Unknown / not-applicable values are ignored (not errors). */
+/** `/[dataset]?q=&state=&tag=&sort=&dir=&type=&project=`. Unknown / not-applicable values are ignored (not errors). */
 export function parseListParams(params: URLSearchParams, dataset: DatasetId): ListParams {
   const stateIds = new Set<string>((getDataset(dataset)?.states ?? []).map((s) => s.id));
   const rawType = params.get('type');
   const rawSort = params.get('sort');
+  const rawDir = params.get('dir');
   const rawProject = params.get('project');
-  const sort: ListSort =
-    rawSort === 'name' ? 'name' : rawSort === 'state' && stateIds.size > 0 ? 'state' : 'modified';
+  const sort: ListSort = listSortsFor(dataset).find((s) => s === rawSort) ?? 'modified';
   return {
     q: params.get('q') ?? '',
     states: readList(params, 'state').filter((s) => stateIds.has(s)),
     tags: readList(params, 'tag'),
     type: dataset === 'reference' && isReferenceType(rawType) ? rawType : null,
     sort,
+    dir: isSortDir(rawDir) ? rawDir : defaultSortDir(sort),
     project: rawProject !== null && isValidName(rawProject) ? rawProject : null,
   };
+}
+
+/** `href` (a list URL, filters kept) sorted by `sort` / `dir`; the defaults ('modified', the sort's own dir) are omitted. */
+export function listSortHref(href: string, sort: ListSort, dir: SortDir): string {
+  return withParams(href, { sort, dir }, { sort: 'modified', dir: defaultSortDir(sort) });
 }
 
 // ---------------------------------------------------------------- search widget (UI_SPEC §G.3)

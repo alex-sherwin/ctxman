@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   forgeHref,
   inflateHref,
+  listSortHref,
+  listSortsFor,
   parseEditUrl,
   parseForgeUrl,
   parseInflateUrl,
@@ -147,6 +149,7 @@ describe('parseListParams', () => {
       tags: [],
       type: null,
       sort: 'modified',
+      dir: 'desc',
       project: null,
     });
   });
@@ -163,6 +166,7 @@ describe('parseListParams', () => {
       tags: ['a', 'b'],
       type: null,
       sort: 'name',
+      dir: 'asc',
       project: null,
     });
   });
@@ -188,6 +192,27 @@ describe('parseListParams', () => {
     expect(parseListParams(sp('sort=modified'), 'task').sort).toBe('modified');
     expect(parseListParams(sp('sort=name'), 'kb').sort).toBe('name');
     expect(parseListParams(sp('sort=bogus'), 'task').sort).toBe('modified');
+  });
+
+  it("allows each dataset's own column sorts only", () => {
+    expect(parseListParams(sp('sort=type'), 'reference').sort).toBe('type');
+    expect(parseListParams(sp('sort=owner'), 'reference').sort).toBe('owner');
+    expect(parseListParams(sp('sort=links'), 'context').sort).toBe('links');
+    expect(parseListParams(sp('sort=target'), 'recipe').sort).toBe('target');
+    expect(parseListParams(sp('sort=contexts'), 'recipe').sort).toBe('contexts');
+    expect(parseListParams(sp('sort=links'), 'recipe').sort).toBe('modified');
+    expect(parseListParams(sp('sort=type'), 'task').sort).toBe('modified');
+    expect(parseListParams(sp('sort=state'), 'reference').sort).toBe('modified');
+  });
+
+  it("reads dir=asc|desc; anything else is the sort's own default", () => {
+    expect(parseListParams(sp('dir=asc'), 'task').dir).toBe('asc');
+    expect(parseListParams(sp('sort=name&dir=desc'), 'task').dir).toBe('desc');
+    expect(parseListParams(sp('sort=name'), 'task').dir).toBe('asc');
+    expect(parseListParams(sp('sort=state'), 'task').dir).toBe('asc');
+    expect(parseListParams(sp('sort=links'), 'context').dir).toBe('desc');
+    expect(parseListParams(sp('dir=up'), 'task').dir).toBe('desc');
+    expect(parseListParams(sp('sort=name&dir=sideways'), 'kb').dir).toBe('asc');
   });
 
   it('allows type only for reference with a valid value', () => {
@@ -221,6 +246,32 @@ describe('parseListParams', () => {
     });
     expect(href).toBe('/task?project=ctxman-v1&state=pending&state=complete');
     expect(withParams(href, { project: null })).toBe('/task?state=pending&state=complete');
+  });
+});
+
+describe('listSortsFor', () => {
+  it('offers modified and name everywhere, then the columns of the dataset', () => {
+    expect(listSortsFor('kb')).toEqual(['modified', 'name']);
+    expect(listSortsFor('skill')).toEqual(['modified', 'name']);
+    expect(listSortsFor('task')).toEqual(['modified', 'name', 'state']);
+    expect(listSortsFor('bug')).toEqual(['modified', 'name', 'state']);
+    expect(listSortsFor('reference')).toEqual(['modified', 'name', 'type', 'owner']);
+    expect(listSortsFor('context')).toEqual(['modified', 'name', 'links']);
+    expect(listSortsFor('recipe')).toEqual(['modified', 'name', 'target', 'contexts']);
+  });
+});
+
+describe('listSortHref', () => {
+  it('keeps the filters and omits the default sort and direction', () => {
+    expect(listSortHref('/task?state=pending', 'name', 'asc')).toBe(
+      '/task?state=pending&sort=name',
+    );
+    expect(listSortHref('/task?state=pending&sort=name', 'name', 'desc')).toBe(
+      '/task?state=pending&sort=name&dir=desc',
+    );
+    expect(listSortHref('/task?sort=name&dir=desc', 'modified', 'desc')).toBe('/task');
+    expect(listSortHref('/task', 'modified', 'asc')).toBe('/task?dir=asc');
+    expect(listSortHref('/context?q=x', 'links', 'desc')).toBe('/context?q=x&sort=links');
   });
 });
 

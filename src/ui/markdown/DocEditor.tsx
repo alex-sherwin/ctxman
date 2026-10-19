@@ -4,12 +4,16 @@
 // preview element. Mounted by the okf / skill detail and sub-doc pages with client:only="react".
 // Kit parts and src/ui/edit helpers are imported by file (never kit/index.ts: it pulls Monaco statically); the
 // editor only through LazyCodeEditor, so the ~4 MB chunk loads when Edit is first pressed.
-// Unsaved text is kept in localStorage by the store, so there is no native `beforeunload` prompt (ROUND3_SPEC §G);
-// the in-app discard dialog stays. "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
+// Unsaved text is mirrored to localStorage by the store and every way out asks first: the Preview toggle, Cancel,
+// Back / Forward and link clicks show the in-app "Discard unsaved changes?" dialog (`requestLeave`, `$docLeave`), and
+// whatever else unloads the page (reload, closing the tab) the browser's prompt (`useUnsavedGuard`).
+// "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
 import { useStore } from '@nanostores/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { EDIT_SHORTCUT_EVENT } from '../../lib/shortcuts.ts';
 import {
   $docConflict,
+  $docLeave,
   $docDirty,
   $docDraft,
   $docDraftAvailable,
@@ -21,24 +25,29 @@ import {
   $docStale,
   $docStatus,
   $docWarnings,
+  cancelLeave,
+  confirmLeave,
   discardDraft,
-  discardEdit,
   enterEdit,
   initDoc,
   keepEditing,
   loadDiskVersion,
   loadDoc,
+  requestLeave,
   saveDoc,
   setDocDraft,
 } from '../../stores/doc-editor.ts';
 import type { DocDataset } from '../../stores/doc-editor.ts';
+import type { CodeEditorApi } from '../editor/CodeEditor.tsx';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import { ConflictDialog } from '../edit/ConflictDialog.tsx';
 import { DiscardDialog } from '../edit/DiscardDialog.tsx';
+import { leavingHref } from '../edit/leave-link.ts';
 import { DraftNotice } from '../edit/DraftNotice.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import { statusText } from '../edit/status.ts';
 import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
+import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { Button } from '../kit/Button.tsx';
 import { ChipToggle } from '../kit/Chip.tsx';
 import { Loading } from '../kit/Loading.tsx';
@@ -72,8 +81,10 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   const draftAvailable = useStore($docDraftAvailable);
   const stale = useStore($docStale);
   const warnings = useStore($docWarnings);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const leave = useStore($docLeave);
   const link = useInsertLink();
+  // Set by the `e` shortcut: the editor takes the focus once it has loaded, so typing can start right away.
+  const focusWhenReady = useRef(false);
 
   useEffect(() => {
     initDoc({ dataset, slug, path }, initialEdit);
@@ -97,9 +108,44 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   }, []);
   useSaveShortcut(saveDocStable, edit);
 
+  // `e` (the Shortcuts island, src/lib/shortcuts.ts): Preview -> Edit. Taken in edit mode too, where it does nothing.
+  useEffect(() => {
+    const onEditShortcut = (event: Event) => {
+      event.preventDefault();
+      if ($docEdit.get()) return;
+      focusWhenReady.current = true;
+      enterEdit();
+    };
+    window.addEventListener(EDIT_SHORTCUT_EVENT, onEditShortcut);
+    return () => window.removeEventListener(EDIT_SHORTCUT_EVENT, onEditShortcut);
+  }, []);
+
+  function onEditorReady(api: CodeEditorApi) {
+    link.onReady(api);
+    if (focusWhenReady.current) {
+      focusWhenReady.current = false;
+      api.focus();
+    }
+  }
+
+  // Unsaved text: the browser asks before anything unloads the page; a click on a link asks in-app first.
+  const unsaved = edit && dirty;
+  useUnsavedGuard(unsaved);
+  useEffect(() => {
+    if (!unsaved) return;
+    const onClick = (event: MouseEvent) => {
+      const href = leavingHref(event, location.href);
+      if (href === null) return;
+      event.preventDefault();
+      requestLeave({ kind: 'link', href });
+    };
+    // Bubble phase on window: handlers that keep the click on the page (the search trigger) have run already.
+    window.addEventListener('click', onClick);
+    return () => window.removeEventListener('click', onClick);
+  }, [unsaved]);
+
   function leaveEdit() {
-    if (dirty) setConfirmDiscard(true);
-    else discardEdit();
+    requestLeave({ kind: 'preview' });
   }
 
   return (
@@ -200,7 +246,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
                 value={draft}
                 onChange={setDocDraft}
                 onSave={() => void saveDoc()}
-                onReady={link.onReady}
+                onReady={onEditorReady}
                 onInsertLink={link.open}
                 readOnly={saving}
                 ariaLabel={`Markdown source of ${path}`}
@@ -223,13 +269,14 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
         testIdPrefix="doc"
       />
       <DiscardDialog
-        isOpen={confirmDiscard}
-        message="Leaving edit mode drops the changes you have not saved."
-        onConfirm={() => {
-          setConfirmDiscard(false);
-          discardEdit();
-        }}
-        onCancel={() => setConfirmDiscard(false)}
+        isOpen={leave !== null}
+        message={
+          leave?.kind === 'link'
+            ? 'Leaving this page drops the changes you have not saved.'
+            : 'Leaving edit mode drops the changes you have not saved.'
+        }
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
         testId="doc-discard-dialog"
       />
     </>

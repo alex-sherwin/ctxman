@@ -1,7 +1,5 @@
 ---
-import DatasetBadge from '../../components/DatasetBadge.astro';
 import EmptyState from '../../components/EmptyState.astro';
-import EntryTable from '../../components/EntryTable.astro';
 import FilterForm from '../../components/FilterForm.astro';
 import PageHeader from '../../components/PageHeader.astro';
 import { getDataset } from '../../datasets/registry.ts';
@@ -10,7 +8,8 @@ import { getRelationGraph, listEntries } from '../../lib/entries.ts';
 import { childrenOf } from '../../lib/relations.ts';
 import { parseListParams } from '../../lib/url-state.ts';
 import Base from '../../layouts/Base.astro';
-import EntryMenus from '../../ui/menus/EntryMenus.tsx';
+import ListTable from '../../ui/list/ListTable.tsx';
+import { LIST_DATA_ID, serializeListData } from '../../ui/list/list-data.ts';
 
 const def = getDataset(Astro.params.dataset ?? '');
 if (!def) return Astro.rewrite('/404');
@@ -35,6 +34,7 @@ const entries = filterEntries(all, {
   tags: params.tags,
   type: params.type,
   sort: params.sort,
+  dir: params.dir,
 });
 
 // Every dataset has a create form at /new/<ds>; with a project filter active the new okf / skill entry is prefilled
@@ -47,7 +47,6 @@ const newHref =
 
 <Base title={def.label} active={def.id} createHref={newHref}>
   <PageHeader title={def.label}>
-    <DatasetBadge slot="eyebrow" dataset={def.id} />
     <a
       slot="actions"
       class="ck-button ck-button--secondary ck-button--sm"
@@ -70,8 +69,20 @@ const newHref =
   {
     entries.length > 0 ? (
       <>
-        <EntryTable def={def} entries={entries} sort={params.sort} />
-        <EntryMenus client:only="react" />
+        {/* The table is client-only: the page ships its rows as JSON, ListTable reads them when it mounts. */}
+        <script
+          is:inline
+          type="application/json"
+          id={LIST_DATA_ID}
+          set:html={serializeListData({
+            dataset: def.id,
+            entries,
+            sort: params.sort,
+            dir: params.dir,
+            now: Date.now(),
+          })}
+        />
+        <ListTable client:only="react" />
       </>
     ) : (
       <EmptyState

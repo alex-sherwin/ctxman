@@ -189,6 +189,7 @@ test("/task?project=<slug> lists exactly the project's tasks; unticking the chip
   const chip = page.getByTestId('list-project-chip');
   await expect(chip).toBeChecked();
   await expect(page.locator('label.ck-chip', { has: chip })).toContainText('E2E relations project');
+  await expect(page.getByTestId('list-row')).toHaveCount(2);
   const slugs = await page
     .getByTestId('list-row')
     .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.slug));

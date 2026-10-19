@@ -31,6 +31,13 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     label: 'Open in IDE',
     where: 'Entry and document pages, when an IDE command is available',
   },
+  {
+    id: 'edit',
+    keys: ['e'],
+    label:
+      'Edit: the markdown editor of an entry or document, the form of a reference, context or recipe',
+    where: 'Entry and document pages',
+  },
   { id: 'save', keys: ['Mod', 'S'], label: 'Save', where: 'Editors' },
   {
     id: 'insert-link',
@@ -46,6 +53,15 @@ export const LINK_BUTTON_SELECTOR = '[data-entry-action="add-relation"]:not([dis
 
 /** Selector of the Open in IDE button that `i` clicks (enabled only: shell.ts disables it when no IDE command exists). */
 export const IDE_BUTTON_SELECTOR = '[data-ide-open]:not([disabled])';
+
+/** The Edit button of a reference, context or recipe page, which `e` clicks when no island takes the key. */
+export const EDIT_LINK_SELECTOR = '[data-shortcut-edit-link]';
+
+/**
+ * The window event `e` dispatches first (cancelable). The DocEditor of okf / skill pages answers it with
+ * `preventDefault()` and switches to its editor; unanswered, the Shortcuts island clicks `EDIT_LINK_SELECTOR`.
+ */
+export const EDIT_SHORTCUT_EVENT = 'ctxman:edit-shortcut';
 
 /** Elements that take typed text: shortcuts never fire there. */
 export const TYPING_SELECTOR = 'input, textarea, select, [contenteditable], .monaco-editor';
@@ -68,6 +84,8 @@ export interface ShortcutContext {
   linkShortcut: boolean;
   /** The page has an ENABLED Open in IDE button (`IDE_BUTTON_SELECTOR` matches). */
   ideShortcut: boolean;
+  /** `data-shortcut-edit` is present: the page has an edit mode it is not in yet. */
+  editShortcut: boolean;
   /** The event target is a typing target (see {@link isTypingTarget}). */
   typing: boolean;
   /** Some `[role="dialog"]` / `[role="alertdialog"]` is open. */
@@ -77,7 +95,8 @@ export interface ShortcutContext {
 export type ShortcutAction =
   | { kind: 'help' }
   | { kind: 'navigate'; href: string }
-  | { kind: 'click'; selector: string };
+  | { kind: 'click'; selector: string }
+  | { kind: 'edit' };
 
 /** True for an element (or a descendant of one) that takes typed text. `null` is not a typing target. */
 export function isTypingTarget(el: { closest(selector: string): unknown } | null): boolean {
@@ -100,5 +119,6 @@ export function shortcutAction(e: KeyInfo, ctx: ShortcutContext): ShortcutAction
     return ctx.linkShortcut ? { kind: 'click', selector: LINK_BUTTON_SELECTOR } : null;
   if (e.key === 'i')
     return ctx.ideShortcut ? { kind: 'click', selector: IDE_BUTTON_SELECTOR } : null;
+  if (e.key === 'e') return ctx.editShortcut ? { kind: 'edit' } : null;
   return null;
 }

@@ -104,7 +104,12 @@ const breadcrumbs = [
       </section>
     </Base>
   ) : (
-    <Base title={`${doc.title} · ${bundleTitle}`} active={def.id} createHref={`/new/${def.id}`}>
+    <Base
+      title={`${doc.title} · ${bundleTitle}`}
+      active={def.id}
+      createHref={`/new/${def.id}`}
+      editShortcut
+    >
       <Breadcrumbs items={breadcrumbs} />
       <PageHeader title={doc.title}>
         <Fragment slot="meta">

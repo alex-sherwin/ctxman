@@ -32,8 +32,6 @@ const HOOK_ALLOWLIST: readonly string[] = [
   'ck-listbox__section', // kit structural hook (ListBoxSection)
   'ck-olist-wrap', // kit structural hook (OrderedList wrapper)
   'ck-olist__num', // kit structural hook (OrderedList row number)
-  'ck-table__body', // kit structural hook (SSR twin of TableBody)
-  'ck-table__head', // kit structural hook (SSR twin of TableHeader)
   'cx-doc-preview', // an element ID (the SSR preview node DocEditor attaches to), not a class
   'cx-filter-focus', // a sessionStorage key in FilterForm.astro, not a class
   'cx-nform', // query hook of the focus-first-invalid-field lookup in NewEntryForm.tsx; no styles

@@ -17,8 +17,17 @@ export interface EntryFilter {
    * null/undefined = no restriction; an empty set matches nothing.
    */
   keys?: ReadonlySet<string> | null;
-  /** 'name' | 'modified' | 'state'; anything else = 'modified'. */
+  /** A key of `SORTS` ('modified', 'name', 'state', 'type', 'owner', 'links', 'target', 'contexts'); anything else = 'modified'. */
   sort?: string;
+  /** Direction of `sort`; undefined = `defaultSortDir(sort)`. Ties always fall back to the name, A→Z. */
+  dir?: SortDir;
+}
+
+export const SORT_DIRS = ['asc', 'desc'] as const;
+export type SortDir = (typeof SORT_DIRS)[number];
+
+export function isSortDir(value: unknown): value is SortDir {
+  return value === 'asc' || value === 'desc';
 }
 
 const LOCALE = 'en';
@@ -38,20 +47,46 @@ function modifiedMs(e: EntrySummary): number {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
-function byModifiedDesc(a: EntrySummary, b: EntrySummary): number {
-  return modifiedMs(b) - modifiedMs(a) || byName(a, b);
+/** Position of the entry's state in its dataset's lifecycle; undefined = no known state. */
+function stateIndex(e: EntrySummary): number | undefined {
+  const idx = getDataset(e.dataset)?.states?.findIndex((s) => s.id === e.state) ?? -1;
+  return idx === -1 ? undefined : idx;
 }
 
-/** Position of the entry's state in its dataset's lifecycle; entries without a known state sort last. */
-function stateRank(e: EntrySummary): number {
-  const states = getDataset(e.dataset)?.states;
-  if (!states) return 0;
-  const idx = e.state === undefined ? -1 : states.findIndex((s) => s.id === e.state);
-  return idx === -1 ? states.length : idx;
+type Compare = (a: EntrySummary, b: EntrySummary, sign: number) => number;
+
+/** Compares one value of each entry; an entry without the value sorts after every entry with one, in both directions. */
+function byKey(pick: (e: EntrySummary) => string | number | undefined): Compare {
+  return (a, b, sign) => {
+    const x = pick(a);
+    const y = pick(b);
+    if (x === undefined || y === undefined) return x === y ? 0 : x === undefined ? 1 : -1;
+    const cmp =
+      typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : String(x).localeCompare(String(y), LOCALE);
+    return sign * cmp;
+  };
 }
 
-function byState(a: EntrySummary, b: EntrySummary): number {
-  return stateRank(a) - stateRank(b) || byName(a, b);
+/** The primary comparison of each sort key (`sign` is 1 ascending, -1 descending); ties go to the name. */
+const SORTS: Record<string, Compare> = {
+  modified: byKey(modifiedMs),
+  name: (a, b, sign) => sign * byName(a, b),
+  state: byKey(stateIndex),
+  type: byKey((e) => e.refType),
+  owner: byKey((e) => e.owner),
+  links: byKey((e) => e.linkCount ?? 0),
+  target: byKey((e) => e.recipeTarget),
+  contexts: byKey((e) => e.contextCount ?? 0),
+};
+
+/** Sorts that start A→Z (lifecycle order for `state`); the others start newest / biggest first. */
+const ASCENDING_FIRST: ReadonlySet<string> = new Set(['name', 'state', 'type', 'owner', 'target']);
+
+/** The direction a sort starts in; an unknown sort is `modified`, so it starts newest first. */
+export function defaultSortDir(sort: string | undefined): SortDir {
+  return sort !== undefined && ASCENDING_FIRST.has(sort) ? 'asc' : 'desc';
 }
 
 export function filterEntries(entries: readonly EntrySummary[], p: EntryFilter): EntrySummary[] {
@@ -73,8 +108,11 @@ export function filterEntries(entries: readonly EntrySummary[], p: EntryFilter):
     return true;
   });
 
+  const key = p.sort !== undefined && Object.hasOwn(SORTS, p.sort) ? p.sort : 'modified';
+  const primary = SORTS[key];
+  const sign = (p.dir ?? defaultSortDir(key)) === 'desc' ? -1 : 1;
   // `filter` returned a fresh array, so sorting it never mutates the caller's input.
-  return out.sort(p.sort === 'name' ? byName : p.sort === 'state' ? byState : byModifiedDesc);
+  return out.sort((a, b) => primary(a, b, sign) || byName(a, b));
 }
 
 /** Distinct tags with their entry counts: count desc, then tag asc. */

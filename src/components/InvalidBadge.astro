@@ -2,7 +2,7 @@
 import type { Issue } from '../lib/context-io.ts';
 
 // "invalid" marker for an okf / skill entry whose file fails its schema (EntrySummary.invalid); the title carries
-// the first issue. Used by EntryTable, EntryMiniList and InvalidBanner.
+// the first issue. Used by EntryMiniList and InvalidBanner (the ListTable island renders the same badge).
 interface Props {
   issues: readonly Issue[];
 }

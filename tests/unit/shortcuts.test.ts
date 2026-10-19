@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EDIT_LINK_SELECTOR,
   IDE_BUTTON_SELECTOR,
   LINK_BUTTON_SELECTOR,
   SHORTCUTS,
@@ -22,6 +23,7 @@ const ctx = (extra: Partial<ShortcutContext> = {}): ShortcutContext => ({
   createHref: '/new/task',
   linkShortcut: true,
   ideShortcut: true,
+  editShortcut: true,
   typing: false,
   dialogOpen: false,
   ...extra,
@@ -69,6 +71,13 @@ describe('shortcutAction', () => {
     expect(shortcutAction(key('l'), ctx({ linkShortcut: false }))).toBeNull();
   });
 
+  it('e asks for edit mode only on pages that have one', () => {
+    expect(shortcutAction(key('e'), ctx())).toEqual({ kind: 'edit' });
+    expect(shortcutAction(key('e'), ctx({ editShortcut: false }))).toBeNull();
+    expect(shortcutAction(key('E', { shiftKey: true }), ctx())).toBeNull();
+    expect(EDIT_LINK_SELECTOR).toBe('[data-shortcut-edit-link]');
+  });
+
   it('c and l do not fire with shift', () => {
     expect(shortcutAction(key('C', { shiftKey: true }), ctx())).toBeNull();
     expect(shortcutAction(key('c', { shiftKey: true }), ctx())).toBeNull();
@@ -76,7 +85,7 @@ describe('shortcutAction', () => {
   });
 
   it.each(['metaKey', 'ctrlKey', 'altKey'] as const)('ignores %s for every key', (mod) => {
-    for (const k of ['?', 'c', 'l']) {
+    for (const k of ['?', 'c', 'l', 'e']) {
       expect(shortcutAction(key(k, { [mod]: true }), ctx())).toBeNull();
     }
   });
@@ -87,7 +96,7 @@ describe('shortcutAction', () => {
   });
 
   it('ignores typing targets and open dialogs', () => {
-    for (const k of ['?', 'c', 'l']) {
+    for (const k of ['?', 'c', 'l', 'e']) {
       expect(shortcutAction(key(k), ctx({ typing: true }))).toBeNull();
       expect(shortcutAction(key(k), ctx({ dialogOpen: true }))).toBeNull();
     }
@@ -137,8 +146,8 @@ describe('SHORTCUTS', () => {
     for (const s of SHORTCUTS) expect(s.keys.length).toBeGreaterThan(0);
   });
 
-  it('lists ?, Mod+K, c, l, i, Mod+S, Mod+Alt+K and Esc', () => {
+  it('lists ?, Mod+K, c, l, i, e, Mod+S, Mod+Alt+K and Esc', () => {
     const combos = SHORTCUTS.map((s) => s.keys.join('+'));
-    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', 'i', 'Mod+S', 'Mod+Alt+K', 'Esc']);
+    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', 'i', 'e', 'Mod+S', 'Mod+Alt+K', 'Esc']);
   });
 });

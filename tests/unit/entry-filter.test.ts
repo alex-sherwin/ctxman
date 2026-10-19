@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { filterEntries, mergeEntries, stateCounts, tagCounts } from '../../src/lib/entry-filter.ts';
+import {
+  defaultSortDir,
+  filterEntries,
+  mergeEntries,
+  stateCounts,
+  tagCounts,
+} from '../../src/lib/entry-filter.ts';
 import type { EntrySummary } from '../../src/lib/entry-summary.ts';
 
 function entry(over: Partial<EntrySummary> & Pick<EntrySummary, 'slug'>): EntrySummary {
@@ -273,6 +279,81 @@ describe('filterEntries', () => {
       const list = [entry({ slug: 'b' }), entry({ slug: 'a' })];
       expect(slugs(filterEntries(list, {}))).toEqual(['a', 'b']);
     });
+
+    it('dir reverses the sort key; ties stay in name order', () => {
+      expect(slugs(filterEntries(ENTRIES, { sort: 'modified', dir: 'asc' }))).toEqual([
+        'windows-smoke-test',
+        'write-agents-md',
+        'forge-e2e-coverage',
+        'seed-sample-data',
+        'no-state-task',
+      ]);
+      expect(slugs(filterEntries(ENTRIES, { sort: 'name', dir: 'desc' }))).toEqual([
+        'write-agents-md',
+        'windows-smoke-test',
+        'seed-sample-data',
+        'no-state-task',
+        'forge-e2e-coverage',
+      ]);
+      const same = [entry({ slug: 'b' }), entry({ slug: 'a' })];
+      expect(slugs(filterEntries(same, { sort: 'modified', dir: 'asc' }))).toEqual(['a', 'b']);
+    });
+
+    it('state desc: reverse lifecycle order, entries without a state still last', () => {
+      expect(slugs(filterEntries(ENTRIES, { sort: 'state', dir: 'desc' }))).toEqual([
+        'windows-smoke-test',
+        'seed-sample-data',
+        'write-agents-md',
+        'forge-e2e-coverage',
+        'no-state-task',
+      ]);
+    });
+
+    it('type / owner (reference): A→Z by value, entries without one last in both directions', () => {
+      const ref = (slug: string, over: Partial<EntrySummary>) =>
+        entry({ dataset: 'reference', slug, ...over });
+      const list = [
+        ref('a', { refType: 'remote-skill', owner: 'me' }),
+        ref('b', { refType: 'local-repo', owner: 'not-me' }),
+        ref('c', {}),
+        ref('d', { refType: 'remote-repo', owner: 'me' }),
+      ];
+      expect(slugs(filterEntries(list, { sort: 'type' }))).toEqual(['b', 'd', 'a', 'c']);
+      expect(slugs(filterEntries(list, { sort: 'type', dir: 'desc' }))).toEqual([
+        'a',
+        'd',
+        'b',
+        'c',
+      ]);
+      expect(slugs(filterEntries(list, { sort: 'owner' }))).toEqual(['a', 'd', 'b', 'c']);
+    });
+
+    it('links / contexts: biggest count first by default', () => {
+      const list = [
+        entry({ dataset: 'context', slug: 'a', linkCount: 2 }),
+        entry({ dataset: 'context', slug: 'b', linkCount: 7 }),
+        entry({ dataset: 'context', slug: 'c' }),
+      ];
+      expect(slugs(filterEntries(list, { sort: 'links' }))).toEqual(['b', 'a', 'c']);
+      expect(slugs(filterEntries(list, { sort: 'links', dir: 'asc' }))).toEqual(['c', 'a', 'b']);
+      const recipes = [
+        entry({ dataset: 'recipe', slug: 'x', contextCount: 1, recipeTarget: 'codex' }),
+        entry({ dataset: 'recipe', slug: 'y', contextCount: 3, recipeTarget: 'claude-code' }),
+      ];
+      expect(slugs(filterEntries(recipes, { sort: 'contexts' }))).toEqual(['y', 'x']);
+      expect(slugs(filterEntries(recipes, { sort: 'target' }))).toEqual(['y', 'x']);
+    });
+  });
+});
+
+describe('defaultSortDir', () => {
+  it('starts names, states and labels A→Z, times and counts biggest first', () => {
+    for (const sort of ['name', 'state', 'type', 'owner', 'target']) {
+      expect(defaultSortDir(sort)).toBe('asc');
+    }
+    for (const sort of ['modified', 'links', 'contexts', 'bogus', undefined]) {
+      expect(defaultSortDir(sort)).toBe('desc');
+    }
   });
 });
 

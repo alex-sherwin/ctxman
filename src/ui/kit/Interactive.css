@@ -24,6 +24,14 @@
   .ck-olist__handle {
     cursor: grab;
   }
+  /* sortable table headers act on click; column resize handles (react-aria copies this cursor onto its
+     full-screen overlay while dragging) */
+  .ck-table__th[data-allows-sorting] {
+    cursor: pointer;
+  }
+  .ck-table__resizer {
+    cursor: col-resize;
+  }
   /* disabled: no pointer. (.ck-button also drops pointer events, so it shows its parent's cursor) */
   :is(
     button,

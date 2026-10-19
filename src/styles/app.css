@@ -356,7 +356,15 @@
     flex-direction: column;
     gap: var(--sp-1);
   }
+  /* The row aligns to the bottom (the Sort label sits above its select), so Clear and the count are centred on the
+     line of the search input and select by hand: that line is var(--control-h-md) + 4px tall. */
+  .cx-filters__clear {
+    margin-bottom: calc((var(--control-h-md) + 4px - var(--control-h-sm)) / 2);
+  }
   .cx-filters__count {
+    display: flex;
+    align-items: center;
+    height: calc(var(--control-h-md) + 4px);
     margin-left: auto;
     font-size: var(--fs-sm);
     color: var(--fg-muted);
@@ -390,60 +398,8 @@
     margin-bottom: var(--sp-1);
   }
 
-  /* ---------- E list page: results table ---------- */
-  /* Markup twin of kit/Table.css (`ck-table`, `ck-table__th|td|row`): base look and row hover live there. Only the
-     sticky header (z-index 2, above the row-link overlays of cx-rowlink) and the list-specific bits stay here. */
-  .cx-table .ck-table__th {
-    position: sticky;
-    top: var(--header-h);
-    z-index: 2;
-  }
-  .cx-table__slug {
-    display: block;
-  }
-  /* the actions column: narrow, right-aligned; the EntryMenus island portals the menu button into the slot. The
-     button sits above the cx-rowlink overlay through the generic `.cx-rowlink button` rule. */
-  .cx-table__th--menu,
-  .cx-table__td--menu {
-    width: 1%;
-    padding-inline: var(--sp-2);
-    text-align: right;
-    white-space: nowrap;
-  }
-  .cx-table__desc {
-    font-size: var(--fs-sm);
-    color: var(--fg-muted);
-    max-width: 0;
-  }
-  .cx-table .ck-table__td:last-child {
-    white-space: nowrap;
-  }
-  /* column widths */
-  .cx-table__th--entry {
-    min-width: 220px;
-    width: 26%;
-  }
-  .cx-table__th--state,
-  .cx-table__th--type,
-  .cx-table__th--modified {
-    width: 120px;
-  }
-  .cx-table__th--tags {
-    width: 180px;
-  }
-  .cx-table__th--owner,
-  .cx-table__th--links {
-    width: 80px;
-  }
-  /* narrow viewports: the table scrolls horizontally inside its wrapper, so the sticky header goes */
-  @media (max-width: 999px) {
-    .cx-table-wrap {
-      overflow-x: auto;
-    }
-    .cx-table-wrap .cx-table .ck-table__th {
-      position: static;
-    }
-  }
+  /* ---------- E list page: results table ----------
+     The ListTable island: src/ui/list/list.css on top of the kit Table. */
 
   /* ---------- F detail page ----------
      Every entry page uses this grid; the details aside is var(--sidebar-w) wide on the right (reference, context,
@@ -663,10 +619,6 @@
     align-items: center;
     gap: var(--sp-2);
   }
-  /* the description span must be a block for text-overflow to truncate inside the table cell */
-  .cx-table__desc > .cx-truncate {
-    display: block;
-  }
   /* MetaPanel: vertical lists (sources, verification events) and nested key/value lists (skill metadata) */
   .cx-meta__row dd ul.cx-meta__col {
     flex-direction: column;
@@ -704,12 +656,6 @@
     .cx-dash__tiles {
       grid-template-columns: repeat(6, minmax(0, 1fr));
     }
-  }
-  .cx-table__th--target {
-    width: 140px;
-  }
-  .cx-table__th--contexts {
-    width: 90px;
   }
 
   /* RecipeComposition (detail page main column): reuses cx-panel + cx-minilist */
@@ -884,9 +830,6 @@
     white-space: normal;
     width: max-content;
     max-width: 260px;
-  }
-  .cx-table__th--state {
-    width: 150px;
   }
 
   /* ---------- Round 3: relation panels (RelationPanels.astro, RelationRow.astro) ---------- */

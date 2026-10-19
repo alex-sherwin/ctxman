@@ -63,7 +63,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [Compliance checks](/concepts/compliance-checks.md) - OKF, link and collection checks.
 * [Runtime modes](/concepts/runtime-modes.md) - the data directory, the per-request read path, dev server versus built server.
 * [MCP server](/concepts/mcp.md) - the embedded MCP endpoint for agents: setup, tools and resources.
-* [Keyboard shortcuts](/concepts/keyboard-shortcuts.md) - `?` help, `c` new entry, `l` add a link, and the editor and search keys.
+* [Keyboard shortcuts](/concepts/keyboard-shortcuts.md) - `?` help, `c` new entry, `l` add a link, `i` open in the IDE, `e` edit, and the editor and search keys.
 * [Editing](/concepts/editing.md) - editing in the browser: the Save model, drafts, markdown editor with link completion, Details dialog and forms, Open in IDE, JSON Schemas.
 
 ## Quick facts

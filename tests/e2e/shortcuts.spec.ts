@@ -1,7 +1,8 @@
-// Keyboard shortcuts (Phase 8): `?` help dialog, `c` create for the page context, `l` add link, typing targets.
+// Keyboard shortcuts (Phase 8): `?` help dialog, `c` create for the page context, `l` add link, `i` IDE, `e` edit,
+// typing targets.
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
-import { modKey, openSearch } from './helpers.ts';
+import { SEED_RECIPE, modKey, openSearch } from './helpers.ts';
 
 /** The island sets `data-shortcuts-ready` on <body> once its key listener is registered. */
 async function ready(page: Page, url: string): Promise<void> {
@@ -16,7 +17,7 @@ test('? opens the shortcuts dialog and Esc closes it', async ({ page }) => {
   await page.keyboard.press('?');
   const dialog = page.getByTestId('shortcuts-dialog');
   await expect(dialog).toBeVisible();
-  expect(await page.getByTestId('shortcut-row').count()).toBe(8);
+  expect(await page.getByTestId('shortcut-row').count()).toBe(9);
   await expect(dialog).toContainText('New entry');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -88,6 +89,95 @@ test('l does nothing on a page without a + Link button', async ({ page }) => {
   await ready(page, '/task');
   await page.keyboard.press('l');
   await expect(page.getByTestId('relation-picker')).toHaveCount(0);
+});
+
+test('e on an okf entry opens the markdown editor with the cursor in it', async ({ page }) => {
+  await ready(page, '/kb/ctxman');
+  await expect(page.getByTestId('doc-view-toggle')).toBeVisible();
+  await page.keyboard.press('e');
+  await expect(page).toHaveURL(/\/kb\/ctxman\?edit=1$/);
+  await expect(page.getByTestId('doc-view-edit')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('doc-editor').locator('.monaco-editor textarea')).toBeFocused({
+    timeout: 15_000,
+  });
+});
+
+test('Edit and Preview are history entries: Back and Forward switch modes (click and e)', async ({
+  page,
+}) => {
+  await ready(page, '/kb/ctxman');
+  const preview = page.getByTestId('doc-view-preview');
+  const editChip = page.getByTestId('doc-view-edit');
+  await editChip.click();
+  await expect(page).toHaveURL(/\/kb\/ctxman\?edit=1$/);
+  await expect(page.getByTestId('doc-editor').locator('.monaco-editor')).toBeVisible({
+    timeout: 15_000,
+  });
+  await preview.click();
+  await expect(page).toHaveURL(/\/kb\/ctxman$/);
+  await expect(page.getByTestId('detail-content')).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/kb\/ctxman\?edit=1$/);
+  await expect(editChip).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('detail-content')).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/kb\/ctxman$/);
+  await expect(preview).toHaveAttribute('aria-checked', 'true');
+  await page.goForward();
+  await expect(editChip).toHaveAttribute('aria-checked', 'true');
+
+  // the e key pushes an entry too; Back out of unsaved text asks first
+  await page.goBack();
+  await expect(preview).toHaveAttribute('aria-checked', 'true');
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('e');
+  await expect(page).toHaveURL(/\/kb\/ctxman\?edit=1$/);
+  const textarea = page.getByTestId('doc-editor').locator('.monaco-editor textarea');
+  await expect(textarea).toBeFocused();
+  await page.keyboard.type('unsaved');
+  await page.goBack();
+  const discard = page.getByTestId('doc-discard-dialog');
+  await expect(discard).toBeVisible();
+  await expect(page).toHaveURL(/\/kb\/ctxman\?edit=1$/);
+  await discard.getByRole('button', { name: 'Discard' }).click();
+  await expect(page).toHaveURL(/\/kb\/ctxman$/);
+  await expect(preview).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('doc-draft-available')).toHaveCount(0);
+});
+
+test('e on a document page edits that file', async ({ page }) => {
+  await ready(page, '/kb/ctxman/doc/concepts/datasets');
+  await expect(page.getByTestId('doc-view-toggle')).toBeVisible();
+  await page.keyboard.press('e');
+  await expect(page).toHaveURL(/\/kb\/ctxman\/doc\/concepts\/datasets\?edit=1$/);
+  await expect(page.getByTestId('doc-editor').locator('.monaco-editor textarea')).toBeFocused({
+    timeout: 15_000,
+  });
+});
+
+for (const url of ['/reference/ctxman-repo', '/context/ctxman-dev', `/recipe/${SEED_RECIPE}`]) {
+  test(`e on ${url} opens its edit form`, async ({ page }) => {
+    await ready(page, url);
+    await page.keyboard.press('e');
+    await expect(page).toHaveURL(new RegExp(`${url}\\?edit=1$`));
+    await expect(page.getByTestId('dform')).toBeVisible();
+  });
+}
+
+test('e does nothing on a page without an edit mode, or with Shift', async ({ page }) => {
+  await ready(page, '/reference/ctxman-repo');
+  await page.keyboard.press('Shift+E');
+  await page.keyboard.press('?');
+  // the help dialog proves the page took the keys in order; Shift+E before it changed nothing
+  await expect(page.getByTestId('shortcuts-dialog')).toBeVisible();
+  await expect(page).toHaveURL(/\/reference\/ctxman-repo$/);
+
+  await ready(page, '/task');
+  await page.keyboard.press('e');
+  await page.keyboard.press('?');
+  await expect(page.getByTestId('shortcuts-dialog')).toBeVisible();
+  await expect(page).toHaveURL(/\/task$/);
 });
 
 test('typing c in the search box does not navigate', async ({ page }) => {

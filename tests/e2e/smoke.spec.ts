@@ -29,6 +29,27 @@ test('dashboard renders the shell and dataset navigation', async ({ page }) => {
   await expect(page.getByTestId('footer-data-dir')).toHaveText(E2E_DATA_DIR);
 });
 
+test('the header nav lists the datasets in nav order, then the tools', async ({ page }) => {
+  await page.goto('/');
+  const links = page.getByTestId('primary-nav').locator('a.cx-nav__link');
+  expect(await links.evaluateAll((all) => all.map((a) => a.getAttribute('data-testid')))).toEqual([
+    'nav-kb',
+    'nav-idea',
+    'nav-feature',
+    'nav-task',
+    'nav-project',
+    'nav-reference',
+    'nav-bug',
+    'nav-rca',
+    'nav-skill',
+    'nav-context',
+    'nav-recipe',
+    'nav-forge',
+    'nav-inflate',
+    'nav-tools',
+  ]);
+});
+
 for (const ds of DATASETS) {
   test(`/${ds} list page returns 200 with its filter form`, async ({ page }) => {
     const response = await page.goto(`/${ds}`);

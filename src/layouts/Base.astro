@@ -16,9 +16,18 @@ interface Props {
   createHref?: string;
   /** The page has a + Link button (`relation-add`): the `l` shortcut clicks it. */
   linkShortcut?: boolean;
+  /** The page has an edit mode (DocEditor, or an Edit link to `?edit=1`): the `e` shortcut enters it. */
+  editShortcut?: boolean;
 }
 
-const { title, fill = false, active, createHref, linkShortcut = false } = Astro.props;
+const {
+  title,
+  fill = false,
+  active,
+  createHref,
+  linkShortcut = false,
+  editShortcut = false,
+} = Astro.props;
 
 const favicon = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#0d0e14"/><text x="16" y="22" text-anchor="middle" font-family="monospace" font-size="16" font-weight="700" fill="#00f0ff">cx</text></svg>',
@@ -38,6 +47,7 @@ const favicon = `data:image/svg+xml,${encodeURIComponent(
     class={fill ? 'cx-shell--fill' : undefined}
     data-shortcut-create={createHref}
     data-shortcut-link={linkShortcut ? '' : undefined}
+    data-shortcut-edit={editShortcut ? '' : undefined}
   >
     <a class="cx-skip ck-sr-only" href="#main">Skip to content</a>
     <Header active={active} />

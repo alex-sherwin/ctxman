@@ -40,6 +40,21 @@ export const LINKABLE_DATASETS = [
 ] as const;
 export type LinkableDatasetId = (typeof LINKABLE_DATASETS)[number];
 
+/** Order of the dataset links in the header nav (every dataset once). Everything else keeps the registry order. */
+export const NAV_DATASET_IDS = [
+  'kb',
+  'idea',
+  'feature',
+  'task',
+  'project',
+  'reference',
+  'bug',
+  'rca',
+  'skill',
+  'context',
+  'recipe',
+] as const satisfies readonly DatasetId[];
+
 // Lifecycle state ids are kebab-case in data files (tuples feed type.enumerated in schemas.ts).
 export const IDEA_STATES = ['pending', 'in-progress', 'complete', 'abandoned'] as const;
 export const TASK_STATES = ['pending', 'in-progress', 'complete', 'wont-do'] as const;

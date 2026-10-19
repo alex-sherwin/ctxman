@@ -1,7 +1,7 @@
 ---
 type: Feature Guide
 title: Keyboard shortcuts
-description: The global keys of the UI (help dialog, new entry, add a link), when they fire, and how pages tell the shortcuts their context.
+description: The global keys of the UI (help dialog, new entry, add a link, open in the IDE, edit), when they fire, and how pages tell the shortcuts their context.
 tags: [ui, keyboard, shortcuts]
 generated:
   by: claude-code/ctxman-phase8
@@ -19,6 +19,7 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 | `c` | New entry for the page's context | lists, entry pages, dashboard, Tools, Forge, Inflate |
 | `l` | Add a link to another entry (the + Link dialog) | entry pages of okf datasets |
 | `i` | Open in IDE (the entry folder with the current file) | entry and document pages, when an IDE command is available |
+| `e` | Edit: the markdown editor of an okf entry, skill or document (the cursor lands in it), the form of a reference, context or recipe | entry and document pages |
 | Cmd/Ctrl+S | Save | editors, see [Editing](/concepts/editing.md) |
 | Cmd/Ctrl+Alt+K | Insert link to entry | markdown editors |
 | `Esc` | Close the dialog | dialogs |
@@ -33,8 +34,8 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 
 ## When keys are ignored
 
-`?`, `c` and `l` do nothing while you type (an input, textarea, select, contenteditable element or a Monaco editor has focus), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c` and `l` also need Shift released.
+`?`, `c`, `l`, `i` and `e` do nothing while you type (an input, textarea, select, contenteditable element or a Monaco editor has focus), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c`, `l`, `i` and `e` also need Shift released. `e` does nothing on a page that is already in edit mode or has none (lists, dashboard, tools).
 
 ## How it works
 
-`Base.astro` takes the optional props `createHref` and `linkShortcut` and renders them as `data-shortcut-create` and `data-shortcut-link` on `<body>`; every page passes its own context. The Shortcuts island (mounted by `Base.astro` on every page) listens on `window` in the capture phase, like the search key, and asks the pure `src/lib/shortcuts.ts` what a key press means: open the help, navigate to the create href, or click the enabled + Link button. The help table is the `SHORTCUTS` list in the same file. The URL does not carry shortcut state.
+`Base.astro` takes the optional props `createHref`, `linkShortcut` and `editShortcut` and renders them as `data-shortcut-create`, `data-shortcut-link` and `data-shortcut-edit` on `<body>`; every page passes its own context (`editShortcut`: okf and skill entry pages, document pages, and reference, context and recipe pages outside edit mode). The Shortcuts island (mounted by `Base.astro` on every page) listens on `window` in the capture phase, like the search key, and asks the pure `src/lib/shortcuts.ts` what a key press means: open the help, navigate to the create href, click the enabled + Link or Open in IDE button, or edit. For `e` it first dispatches the cancelable `ctxman:edit-shortcut` window event, which the DocEditor answers (it switches to its editor and focuses it once loaded); unanswered, it clicks the page's Edit link (`[data-shortcut-edit-link]`, which goes to `?edit=1`). The help table is the `SHORTCUTS` list in the same file. The URL does not carry shortcut state.

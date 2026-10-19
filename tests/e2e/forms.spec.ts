@@ -679,6 +679,7 @@ test.describe('edit: reference', () => {
     await page.getByTestId('dform-delete-dialog').getByRole('button', { name: 'Delete' }).click();
     await expect(page).toHaveURL(/\/reference$/);
     expect(dataExists(`reference/${name}.yaml`)).toBe(false);
+    await expect(page.getByTestId('list-results')).toBeVisible();
     await expect(page.locator(`[data-testid="list-row"][data-slug="${name}"]`)).toHaveCount(0);
   });
 

@@ -50,11 +50,18 @@ function disk(
 }
 
 const sessionData = new Map<string, string>();
-const loc = { pathname: '/kb/demo/doc/concepts/a%20b', search: '', hash: '', reload: vi.fn() };
+const loc = {
+  pathname: '/kb/demo/doc/concepts/a%20b',
+  search: '',
+  hash: '',
+  reload: vi.fn(),
+  assign: vi.fn(),
+};
 const popstateHandlers: (() => void)[] = [];
 /** Every event type the store ever registered on `window` (no `beforeunload`: ROUND3_SPEC §G). */
 const windowListeners: string[] = [];
 const replaceState = vi.fn();
+const pushState = vi.fn();
 
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -63,12 +70,16 @@ beforeEach(async () => {
   windowListeners.length = 0;
   loc.search = '';
   loc.reload = vi.fn();
-  replaceState.mockReset();
-  replaceState.mockImplementation((_state: unknown, _title: string, url: string) => {
+  loc.assign = vi.fn();
+  const go = (_state: unknown, _title: string, url: string) => {
     const parsed = new URL(url, 'http://localhost');
     loc.pathname = parsed.pathname;
     loc.search = parsed.search;
-  });
+  };
+  replaceState.mockReset();
+  replaceState.mockImplementation(go);
+  pushState.mockReset();
+  pushState.mockImplementation(go);
   // drafts live in localStorage since round 3, the "Saved" record in sessionStorage: one backing map for both
   const storage = {
     getItem: (k: string) => sessionData.get(k) ?? null,
@@ -78,7 +89,7 @@ beforeEach(async () => {
   vi.stubGlobal('sessionStorage', storage);
   vi.stubGlobal('localStorage', storage);
   vi.stubGlobal('location', loc);
-  vi.stubGlobal('history', { state: null, replaceState });
+  vi.stubGlobal('history', { state: null, replaceState, pushState });
   vi.stubGlobal('window', {
     addEventListener: (type: string, fn: () => void) => {
       windowListeners.push(type);
@@ -155,10 +166,11 @@ describe('edit mode and loading', () => {
     expect(s.$docLoad.get().status).toBe('idle');
   });
 
-  it('enterEdit puts edit=1 in the URL with replaceState and loads', async () => {
+  it('enterEdit pushes a history entry with edit=1 and loads', async () => {
     const calls = await openEditor();
-    expect(replaceState).toHaveBeenCalledTimes(1);
-    expect(replaceState.mock.calls[0]?.[2]).toBe('/kb/demo/doc/concepts/a%20b?edit=1');
+    expect(pushState).toHaveBeenCalledTimes(1);
+    expect(pushState.mock.calls[0]?.[2]).toBe('/kb/demo/doc/concepts/a%20b?edit=1');
+    expect(replaceState).not.toHaveBeenCalled();
     expect(s.$docEdit.get()).toBe(true);
     expect(calls).toHaveLength(1);
     expect(s.$docLoad.get().status).toBe('ready');
@@ -192,6 +204,92 @@ describe('edit mode and loading', () => {
     popstateHandlers.forEach((fn) => fn());
     expect(s.$docEdit.get()).toBe(false);
     expect(replaceState).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('leaving edit mode and a save each push a history entry without edit', async () => {
+    await openEditor('base', 'T1');
+    s.discardEdit();
+    expect(pushState).toHaveBeenCalledTimes(2);
+    expect(pushState.mock.calls[1]?.[2]).toBe('/kb/demo/doc/concepts/a%20b');
+    s.enterEdit();
+    await settle();
+    s.setDocDraft('changed');
+    await s.saveDoc();
+    expect(pushState).toHaveBeenCalledTimes(4);
+    expect(pushState.mock.calls[3]?.[2]).toBe('/kb/demo/doc/concepts/a%20b');
+    expect(replaceState).not.toHaveBeenCalled();
+  });
+
+  it('Back into the editor re-reads the file; with unsaved text it keeps the text', async () => {
+    const calls = await openEditor('one', 'T1');
+    s.discardEdit();
+    disk({ markdown: 'two', lastModified: 'T2' });
+    loc.search = '?edit=1';
+    popstateHandlers.forEach((fn) => fn());
+    await settle();
+    expect(s.$docDraft.get()).toBe('two');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('Back out of unsaved text is undone and asks; Cancel stays, Discard goes to the preview', async () => {
+    await openEditor('one', 'T1');
+    s.setDocDraft('one, edited');
+    const pushes = pushState.mock.calls.length;
+    loc.search = '';
+    popstateHandlers.forEach((fn) => fn());
+    // the edit URL is back on top, the editor still open, the dialog asks
+    expect(pushState.mock.calls.length).toBe(pushes + 1);
+    expect(loc.search).toBe('?edit=1');
+    expect(s.$docEdit.get()).toBe(true);
+    expect(s.$docLeave.get()).toEqual({ kind: 'preview' });
+
+    s.cancelLeave();
+    expect(s.$docLeave.get()).toBeNull();
+    expect(s.$docDraft.get()).toBe('one, edited');
+
+    loc.search = '';
+    popstateHandlers.forEach((fn) => fn());
+    s.confirmLeave();
+    expect(s.$docEdit.get()).toBe(false);
+    expect(loc.search).toBe('');
+    expect(s.$docDraftAvailable.get()).toBe(false);
+  });
+});
+
+describe('requestLeave', () => {
+  it('without unsaved text leaves at once', async () => {
+    await openEditor('clean', 'T1');
+    s.requestLeave({ kind: 'link', href: 'http://localhost/task' });
+    expect(s.$docLeave.get()).toBeNull();
+    expect(loc.assign).toHaveBeenCalledWith('http://localhost/task');
+
+    s.requestLeave({ kind: 'preview' });
+    expect(s.$docEdit.get()).toBe(false);
+  });
+
+  it('with unsaved text asks; Discard drops the draft and follows the link', async () => {
+    await openEditor('base', 'T1');
+    s.setDocDraft('base, edited');
+    s.requestLeave({ kind: 'link', href: 'http://localhost/task' });
+    expect(s.$docLeave.get()).toEqual({ kind: 'link', href: 'http://localhost/task' });
+    expect(loc.assign).not.toHaveBeenCalled();
+    expect(s.$docDraftAvailable.get()).toBe(true);
+
+    s.confirmLeave();
+    expect(loc.assign).toHaveBeenCalledWith('http://localhost/task');
+    expect(s.$docLeave.get()).toBeNull();
+    expect(sessionData.size).toBe(0);
+  });
+
+  it('the Preview toggle with unsaved text asks before it drops anything', async () => {
+    await openEditor('base', 'T1');
+    s.setDocDraft('base, edited');
+    s.requestLeave({ kind: 'preview' });
+    expect(s.$docEdit.get()).toBe(true);
+    s.confirmLeave();
+    expect(s.$docEdit.get()).toBe(false);
+    expect(s.$docDraft.get()).toBe('base');
   });
 });
 
@@ -352,13 +450,13 @@ describe('draft available (preview mode)', () => {
     expect(s.$docDraftAvailable.get()).toBe(false);
   });
 
-  it('leaving edit mode with the browser back button keeps the draft and offers it', async () => {
+  it('the browser back button out of unsaved text stays in the editor and asks; the draft stays stored', async () => {
     await openEditor('base', 'T1');
     s.setDocDraft('typed');
     loc.search = '';
     popstateHandlers.forEach((fn) => fn());
-    expect(s.$docEdit.get()).toBe(false);
-    expect(s.$docDraftAvailable.get()).toBe(true);
+    expect(s.$docEdit.get()).toBe(true);
+    expect(s.$docLeave.get()).toEqual({ kind: 'preview' });
     expect(sessionData.has(`ctxman:draft:${KEY}`)).toBe(true);
   });
 

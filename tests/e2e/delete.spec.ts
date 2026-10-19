@@ -65,6 +65,7 @@ test('the list row menu deletes a task and the list reloads without it', async (
     );
   });
   expect(response!.status()).toBe(204);
+  await expect(page.getByTestId('list-results')).toBeVisible();
   await expect(page.locator(`[data-testid="list-row"][data-slug="${name}"]`)).toHaveCount(0);
   const list = await request.get(`${API}/entries?dataset=task`);
   expect(JSON.stringify(await list.json())).not.toContain(name);

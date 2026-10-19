@@ -1,5 +1,5 @@
 ---
-import { DATASETS } from '../datasets/registry.ts';
+import { NAV_DATASET_IDS, datasetDef } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import SearchButton from './SearchButton.astro';
 
@@ -8,6 +8,7 @@ interface Props {
 }
 
 const { active } = Astro.props;
+const navDatasets = NAV_DATASET_IDS.map((id) => datasetDef(id));
 const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
 
 // "page" on the exact page, "true" (section) on detail / sub-doc pages below it.
@@ -33,7 +34,7 @@ const current = (id: string, href: string): 'page' | 'true' | undefined =>
   <nav class="cx-nav" aria-label="Primary" data-testid="primary-nav">
     <ul class="cx-nav__list">
       {
-        DATASETS.map((d) => (
+        navDatasets.map((d) => (
           <li>
             <a
               class="cx-nav__link ck-label"

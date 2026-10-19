@@ -1,8 +1,9 @@
 ---
 import { REFERENCE_TYPES, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
 import type { DatasetDef } from '../datasets/registry.ts';
-import { stateCounts as countStates, tagCounts } from '../lib/entry-filter.ts';
+import { defaultSortDir, stateCounts as countStates, tagCounts } from '../lib/entry-filter.ts';
 import type { EntrySummary } from '../lib/entry-summary.ts';
+import { LIST_SORT_LABELS, listSortsFor } from '../lib/url-state.ts';
 import type { ListParams } from '../lib/url-state.ts';
 import ChipCheckbox from './ChipCheckbox.astro';
 
@@ -19,14 +20,16 @@ interface Props {
 }
 
 const { def, params, entries, shown, projectTitle } = Astro.props;
-const lifecycle = def.states !== undefined;
+// `dir` only travels with the form while it differs from the sort's own direction (a header press sets it).
+const customDir = params.dir !== defaultSortDir(params.sort);
 const anyActive =
   params.q.trim() !== '' ||
   params.states.length > 0 ||
   params.tags.length > 0 ||
   params.type !== null ||
   params.project !== null ||
-  params.sort !== 'modified';
+  params.sort !== 'modified' ||
+  customDir;
 
 const stateTotals = countStates(entries);
 
@@ -82,11 +85,16 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
     <label class="cx-filters__sort">
       <span class="ck-field__label">Sort</span>
       <select id="f-sort" class="ck-native-select" name="sort" data-testid="list-sort">
-        <option value="modified" selected={params.sort === 'modified'}>Last modified</option>
-        <option value="name" selected={params.sort === 'name'}>Name</option>
-        {lifecycle && <option value="state" selected={params.sort === 'state'}>State</option>}
+        {
+          listSortsFor(def.id).map((sort) => (
+            <option value={sort} selected={params.sort === sort}>
+              {LIST_SORT_LABELS[sort]}
+            </option>
+          ))
+        }
       </select>
     </label>
+    {customDir && <input type="hidden" name="dir" value={params.dir} />}
     <button
       class="ck-button ck-button--primary ck-button--sm cx-filters__submit"
       type="submit"
@@ -95,7 +103,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
     {
       anyActive && (
         <a
-          class="ck-button ck-button--ghost ck-button--sm"
+          class="ck-button ck-button--ghost ck-button--sm ck-button--glow cx-filters__clear"
           href={`/${def.id}`}
           data-testid="list-filter-clear"
         >
@@ -220,11 +228,14 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
   // The text field does NOT auto-submit while typing (a reload would lose the caret); Enter submits.
   const FOCUS_KEY = 'cx-filter-focus';
 
-  function submitClean(form: HTMLFormElement, focusId: string | undefined): void {
+  // A new sort starts in its own direction: the hidden `dir` (set by a column header press) only survives the
+  // other controls.
+  function submitClean(form: HTMLFormElement, focusId: string | undefined, sortChanged = false): void {
     const params = new URLSearchParams();
     for (const [key, value] of new FormData(form)) {
       if (typeof value !== 'string' || value.trim() === '') continue;
       if (key === 'sort' && value === 'modified') continue;
+      if (key === 'dir' && sortChanged) continue;
       params.append(key, value);
     }
     try {
@@ -251,7 +262,7 @@ const rest = restTags.map((t) => ({ ...t, id: tagId(t.tag) }));
     form.addEventListener('change', (event) => {
       const target = event.target;
       if (target instanceof HTMLInputElement && target.type === 'search') return;
-      if (target instanceof HTMLElement) submitClean(form, target.id);
+      if (target instanceof HTMLElement) submitClean(form, target.id, target.id === 'f-sort');
     });
     form.addEventListener('submit', (event) => {
       event.preventDefault();

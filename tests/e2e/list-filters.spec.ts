@@ -5,8 +5,9 @@ import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import { API, afterReload, chipOf, dataPath, uniqueName } from './helpers.ts';
 
-/** `data-slug` of every rendered row, in display order. */
+/** `data-slug` of every rendered row, in display order, once the client-only ListTable has mounted. */
 async function rowSlugs(page: Page): Promise<string[]> {
+  await expect(page.getByTestId('list-results')).toBeVisible();
   return page
     .getByTestId('list-row')
     .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.slug ?? ''));

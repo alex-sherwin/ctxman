@@ -1,8 +1,14 @@
 // DocEditor state (ROUND2_UI_SPEC §F.1): the markdown source of ONE okf / skill file, edited in a Monaco
 // editor that sits next to the server-rendered preview. URL-synced per UI_SPEC §0.3: `onMount($docEdit)` reads
 // `?edit=1` and registers popstate; actions are plain functions that `.set()` stores and call
-// `history.replaceState` themselves (edit mode never adds history entries); popstate re-reads the URL and never
-// writes history. Imported by the client:only DocEditor island and, for `$docEditing`, the EntryTools island.
+// `history.pushState` themselves (every switch between preview and edit, a save included, is a history entry, so
+// Back and Forward switch modes); popstate re-reads the URL and only writes history to undo a step out of an
+// editor with unsaved text.
+//
+// Leaving unsaved text: the Preview toggle / Cancel, Back or Forward out of the editor and a click on a link all go
+// through `requestLeave`, which asks first (`$docLeave`, the island's "Discard unsaved changes?" dialog). Back and
+// Forward cannot be cancelled, so the edit URL is pushed back on top while the dialog is open. Anything else that
+// unloads the page (reload, closing the tab, a typed URL) meets the browser's own prompt (`useUnsavedGuard`). Imported by the client:only DocEditor island and, for `$docEditing`, the EntryTools island.
 // `$docEdit` is only the URL flag: other pages use `?edit=1` too (the reference DataForm has no DocEditor), so
 // whatever must know that a DocEditor is really open (EntryTools' lock, the post-write reload) reads `$docEditing`.
 //
@@ -22,6 +28,7 @@ import { parseEditUrl, withParams } from '../lib/url-state.ts';
 import { getJson, sendJson } from '../ui/edit/api.ts';
 import { clearDraft, hasDraft, loadDraft, saveDraft } from '../ui/edit/draft-backup.ts';
 import { rememberSave, takeSave } from '../ui/edit/last-save.ts';
+import { allowUnload } from '../ui/edit/unload-guard.ts';
 import type { SaveStatus } from '../ui/edit/status.ts';
 import { planRestore } from '../ui/markdown/draft-restore.ts';
 
@@ -95,6 +102,11 @@ export const $docStale = atom<boolean>(false);
 /** Validator findings of the last successful save. */
 export const $docWarnings = atom<readonly DocWarning[]>([]);
 
+/** A way out of edit mode that would drop unsaved text: back to the preview, or away to another page. */
+export type DocLeave = { kind: 'preview' } | { kind: 'link'; href: string };
+/** The leave the "Discard unsaved changes?" dialog is asking about; null = no dialog. */
+export const $docLeave = atom<DocLeave | null>(null);
+
 // ---------------------------------------------------------------- helpers
 
 /** Storage key of a file: draft backup (localStorage) and the remembered "Saved" (sessionStorage). */
@@ -163,9 +175,9 @@ function readEdit(): boolean {
   return parseEditUrl(new URLSearchParams(location.search)).edit;
 }
 
-/** `edit=1` on / off in the current URL (replaceState: edit mode never creates history entries). */
-function replaceEdit(edit: boolean): void {
-  history.replaceState(
+/** `edit=1` on / off as a NEW history entry: Back returns to the other mode. */
+function pushEdit(edit: boolean): void {
+  history.pushState(
     history.state,
     '',
     withParams(`${location.pathname}${location.search}${location.hash}`, {
@@ -176,9 +188,18 @@ function replaceEdit(edit: boolean): void {
 
 function onPopState(): void {
   const edit = readEdit();
+  // Back or Forward out of an editor with unsaved text: undo the step (the edit URL goes back on top) and ask.
+  if (!edit && $docEditing.get() && $docDirty.get()) {
+    pushEdit(true);
+    $docLeave.set({ kind: 'preview' });
+    return;
+  }
   $docEdit.set(edit);
   syncDraftAvailable();
-  if (edit && $docTarget.get() !== null && $docLoad.get().status === 'idle') void loadDoc();
+  if (!edit) $docConflict.set(false);
+  // Back into the editor: re-read the file like `enterEdit`, unless unsaved text is still in it.
+  if (edit && $docTarget.get() !== null && $docLoad.get().status !== 'loading' && !$docDirty.get())
+    void loadDoc();
 }
 
 onMount($docEdit, () => {
@@ -277,7 +298,7 @@ export async function loadDoc(): Promise<void> {
 /** Preview -> Edit. Always re-reads the file so the editor never starts from stale text. */
 export function enterEdit(): void {
   if ($docEdit.get() || $docTarget.get() === null) return;
-  replaceEdit(true);
+  pushEdit(true);
   $docEdit.set(true);
   if ($docSave.get().kind === 'saved') $docSave.set({ kind: 'idle' });
   if ($docLoad.get().status !== 'loading') void loadDoc();
@@ -315,7 +336,7 @@ export function discardDraft(): void {
 export function discardEdit(): void {
   const target = $docTarget.get();
   if (target !== null) clearDraft(docKey(target));
-  replaceEdit(false);
+  pushEdit(false);
   $docEdit.set(false);
   $docDraft.set($docBaseline.get()?.text ?? '');
   $docRestored.set(false);
@@ -324,6 +345,35 @@ export function discardEdit(): void {
   $docConflict.set(false);
   touch();
   if ($docStale.get()) scheduleReload();
+}
+
+/** Leave edit mode (`preview`) or the page (`link`): at once when nothing is unsaved, else after the dialog. */
+export function requestLeave(leave: DocLeave): void {
+  if ($docEdit.get() && $docDirty.get()) $docLeave.set(leave);
+  else applyLeave(leave);
+}
+
+/** The dialog's "Discard": the unsaved text is dropped, then the leave happens. */
+export function confirmLeave(): void {
+  const leave = $docLeave.get();
+  $docLeave.set(null);
+  if (leave !== null) applyLeave(leave);
+}
+
+/** The dialog's "Cancel": stay in the editor. */
+export function cancelLeave(): void {
+  $docLeave.set(null);
+}
+
+function applyLeave(leave: DocLeave): void {
+  if (leave.kind === 'preview') {
+    discardEdit();
+    return;
+  }
+  const target = $docTarget.get();
+  if (target !== null) clearDraft(docKey(target));
+  allowUnload(); // the browser's prompt must not ask a second time
+  location.assign(leave.href);
 }
 
 /** The ConflictDialog's "Keep editing". */
@@ -384,7 +434,7 @@ export async function saveDoc(opts: { force?: boolean } = {}): Promise<void> {
   $docWarnings.set(warnings);
   $docSave.set({ kind: 'saved', message });
   $docStale.set(true);
-  replaceEdit(false);
+  pushEdit(false);
   $docEdit.set(false);
   scheduleReload();
 }

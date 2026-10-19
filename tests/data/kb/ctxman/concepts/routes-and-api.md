@@ -17,7 +17,7 @@ All routes are server-rendered from the files in the data directory (read on eve
 | Route | Shows |
 | --- | --- |
 | `/` | Dashboard: counts per dataset, recently modified entries, stale entries, contexts, recipes |
-| `/<dataset>` | Filterable list of one dataset; files that fail their schema are listed flagged "invalid" (references too) |
+| `/<dataset>` | Filterable list of one dataset in a table (the ListTable island); files that fail their schema are listed flagged "invalid" (references too). A press on a column header sorts by it (again: the other way), columns resize by their right edge and can be hidden, and the Columns menu also sets the row density; that layout is kept per dataset in the browser (`localStorage`, `ctxman:table:<dataset>`), not in the URL |
 | `/<dataset>/<slug>` | Entry detail: rendered content, metadata, file tree, contexts that link here. Okf and skill pages put the details on the left and the markdown preview on the right, with a Preview \| Edit toggle and an Open in IDE button, a state select (lifecycle datasets), Add to context, a Details panel with an Edit dialog, the Links to and Linked from panels (see [Relations](/concepts/relations.md)), a Files panel with `+ New concept` and, on a project, the Children panel; an invalid file shows a banner with its issues. Reference pages have Add to context and Linked from (the page of an invalid reference file is a 404 until the file is fixed). Context pages list their links in context order. Every page has a `⋯` actions menu in its header with Delete… (see [Editing](/concepts/editing.md)). List, dashboard and back-reference rows are whole-row links; list rows end in the same menu. |
 | `/<dataset>/<slug>?edit=1` | Edit mode of the same route: okf and skill pages open the Monaco source editor in place of the preview; reference, context and recipe pages show the form (`view=form` or `view=yaml`). See [Editing](/concepts/editing.md). |
 | `/<dataset>/<slug>/doc/<path>` | Another markdown file of the bundle, `.md` dropped from the URL (a `….md` URL redirects with 301, query kept); it has the same two columns and `?edit=1`. A concept path that does not exist in an existing bundle shows "Create this file" (404 status). |
@@ -39,7 +39,8 @@ For example, `/kb/ctxman/doc/concepts/search` renders the [search concept](/conc
 | `q` | Text filter; every term must appear in name, title, description or tags |
 | `state` | Repeatable; entries in any selected state |
 | `tag` | Repeatable; entries having all selected tags |
-| `sort` | `modified` (default), `name` or `state` |
+| `sort` | `modified` (default), `name`, or a column of the dataset: `state` (lifecycle datasets), `type` and `owner` (references), `links` (contexts), `target` and `contexts` (recipes) |
+| `dir` | `asc` or `desc`; omitted when it is the sort's own direction (newest first for `modified`, biggest first for `links` and `contexts`, A to Z or lifecycle order otherwise). A header press sets it; the filters keep it, and a new sort from the Sort select starts in its own direction |
 | `type` | References only: `local-repo`, `local-folder`, `remote-repo` or `remote-skill` |
 | `project` | Only the children of that project (any dataset; the project's `rel: child` links). Shown as a checked chip; the New button then adds `?parent=` |
 
@@ -49,7 +50,7 @@ The global search uses a different set (`search`, `sq`, `in`); see [Search](/con
 
 | Parameter | Meaning |
 | --- | --- |
-| `edit=1` | Edit mode on a detail or doc page (exactly `1`; anything else is preview). The editor adds and removes it with `replaceState`, so it never creates history entries, and a save removes it |
+| `edit=1` | Edit mode on a detail or doc page (exactly `1`; anything else is preview). The editor adds and removes it with `pushState`, so every switch between preview and edit is a history entry (Back and Forward switch modes), and a save removes it. The `e` key enters it (see [Keyboard shortcuts](/concepts/keyboard-shortcuts.md)) |
 | `view` | Reference, context and recipe edit form only: `form` (default) or `yaml` |
 
 ## JSON endpoints

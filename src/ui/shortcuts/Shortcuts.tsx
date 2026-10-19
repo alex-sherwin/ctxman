@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
+  EDIT_LINK_SELECTOR,
+  EDIT_SHORTCUT_EVENT,
   IDE_BUTTON_SELECTOR,
   SHORTCUTS,
   isTypingTarget,
@@ -19,10 +21,10 @@ function keyLabel(key: string): string {
 }
 
 /**
- * Global keyboard shortcuts (`?` help, `c` create, `l` add link) and their help dialog. Mounted once in
- * Base.astro as `<Shortcuts client:only="react" />`. The page context comes from `<body data-shortcut-create
- * data-shortcut-link>`; the decision is the pure `shortcutAction`. The window listener is registered in the
- * CAPTURE phase, like the search store's.
+ * Global keyboard shortcuts (`?` help, `c` create, `l` add link, `i` IDE, `e` edit) and their help dialog. Mounted
+ * once in Base.astro as `<Shortcuts client:only="react" />`. The page context comes from `<body data-shortcut-create
+ * data-shortcut-link data-shortcut-edit>`; the decision is the pure `shortcutAction`. The window listener is
+ * registered in the CAPTURE phase, like the search store's.
  */
 export function Shortcuts() {
   const [open, setOpen] = useState(false);
@@ -35,6 +37,7 @@ export function Shortcuts() {
         createHref: body.getAttribute('data-shortcut-create'),
         linkShortcut: body.hasAttribute('data-shortcut-link'),
         ideShortcut: document.querySelector(IDE_BUTTON_SELECTOR) !== null,
+        editShortcut: body.hasAttribute('data-shortcut-edit'),
         typing: isTypingTarget(target),
         dialogOpen: document.querySelector(DIALOG_SELECTOR) !== null,
       });
@@ -42,7 +45,13 @@ export function Shortcuts() {
       e.preventDefault();
       if (action.kind === 'help') setOpen(true);
       else if (action.kind === 'navigate') location.assign(action.href);
-      else document.querySelector<HTMLElement>(action.selector)?.click();
+      else if (action.kind === 'edit') {
+        // The DocEditor takes it (preventDefault); otherwise the page's Edit link goes to `?edit=1`.
+        const taken = !window.dispatchEvent(
+          new CustomEvent(EDIT_SHORTCUT_EVENT, { cancelable: true }),
+        );
+        if (!taken) document.querySelector<HTMLElement>(EDIT_LINK_SELECTOR)?.click();
+      } else document.querySelector<HTMLElement>(action.selector)?.click();
     }
     function onClick(e: MouseEvent) {
       if (e.defaultPrevented || e.button !== 0) return;

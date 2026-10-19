@@ -246,7 +246,7 @@ test.describe('clickable rows', () => {
     await page.goto('/kb');
     const row = page.locator('[data-testid="list-row"][data-slug="ctxman"]');
     const cell = row.locator('td').nth(1); // Description
-    await expect(row.locator('a.cx-rowlink__main')).toHaveAttribute('href', '/kb/ctxman');
+    await expect(row.locator('a.ck-entryline__title')).toHaveAttribute('href', '/kb/ctxman');
 
     // Modified click: a new tab opens, this page stays where it is.
     const [tab] = await Promise.all([
@@ -258,7 +258,7 @@ test.describe('clickable rows', () => {
     await tab.close();
     await expect(page).toHaveURL(/\/kb$/);
 
-    // Plain click on the description cell (the stretched link covers it).
+    // Plain click on the description cell (the row is a link).
     await cell.click({ force: true });
     await expect(page).toHaveURL(/\/kb\/ctxman$/);
   });

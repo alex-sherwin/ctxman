@@ -16,8 +16,99 @@
     border-bottom: 1px solid var(--accent-line);
     outline: none;
   }
-  .ck-table__th[aria-sort] {
+  /* the sorted column (react-aria marks every sortable header aria-sort="none"; SSR twins only the sorted one) */
+  .ck-table__th:is([data-sort-direction], [aria-sort]:not([aria-sort='none'])) {
     color: var(--accent-text);
+  }
+  .ck-table__th[data-allows-sorting][data-hovered] {
+    color: var(--fg);
+  }
+  .ck-table__th[data-focus-visible] {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  /* header content of a sortable / resizable / menu column: label, sort arrow, actions, resize handle */
+  .ck-table__colhead {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    height: 100%;
+  }
+  .ck-table__colname {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ck-table__sort {
+    display: inline-flex;
+    flex: none;
+    opacity: 0;
+    transition:
+      opacity var(--dur-fast) var(--ease),
+      transform var(--dur-fast) var(--ease);
+  }
+  .ck-table__th[data-hovered] .ck-table__sort {
+    opacity: 0.5;
+  }
+  .ck-table__sort[data-dir] {
+    opacity: 1;
+  }
+  .ck-table__sort[data-dir='ascending'] {
+    transform: rotate(180deg);
+  }
+  /* resize handle: an 8px grab zone inside the right edge (the next sticky header cell would cover anything past
+     it), a line on the border while the header is hovered, neon while hovered, focused or dragged */
+  .ck-table__th--resizable {
+    position: relative;
+  }
+  .ck-table__resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 8px;
+    touch-action: none;
+    outline: none;
+  }
+  .ck-table__resizer::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 0;
+    bottom: 4px;
+    width: 2px;
+    background: var(--border-strong);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .ck-table__head:hover .ck-table__resizer::before {
+    opacity: 1;
+  }
+  .ck-table__resizer:is([data-hovered], [data-focus-visible], [data-resizing])::before {
+    opacity: 1;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  /* ResizableTable: the box react-aria measures; wide layouts scroll sideways, a max-height scrolls rows under a
+     sticky header */
+  .ck-table-scroll {
+    position: relative;
+    width: 100%;
+    overflow: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .ck-table-scroll > .ck-table {
+    border: 0;
+  }
+  .ck-table-scroll .ck-table__th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
   .ck-table__th--end,
   .ck-table__td--end {

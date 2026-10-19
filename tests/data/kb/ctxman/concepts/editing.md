@@ -12,7 +12,7 @@ Files stay the source of truth. Nothing watches the data directory, so a file yo
 ## The Save model
 
 * Saving is explicit: a Save button or Cmd/Ctrl+S. There is no autosave and no debounce. Press `?` anywhere for the list of [keyboard shortcuts](/concepts/keyboard-shortcuts.md).
-* A save that succeeds leaves edit mode and shows "Saved" (plus the validator findings, if any). `?edit=1` is removed from the URL, using `replaceState`, so edit mode never creates history entries.
+* A save that succeeds leaves edit mode and shows "Saved" (plus the validator findings, if any). `?edit=1` is removed from the URL. Every switch between preview and edit (the toggle, the `e` key, Cancel, a save) is a browser history entry, so Back and Forward switch modes; leaving unsaved text always asks first (see Leaving unsaved text).
 * Unsaved text is a **draft** mirrored to `localStorage` (see Drafts below), so a reload, a closed tab or a crash does not lose it.
 * A markdown save sends `ifUnmodifiedSince` (the mtime it loaded). If the file changed on disk meanwhile the server answers 409 and a dialog offers "Keep editing", "Load disk version" (your edits are dropped) or "Overwrite".
 * Findings never block a markdown save: the validators run on the written file and report as warnings (including `links/broken`, `links/ctxman-target` and the relation rules), and `pnpm run check` remains the gate. A file saved with broken frontmatter is allowed on purpose; nothing breaks at runtime and `pnpm run check:okf` names the file. The page of such a file shows an "invalid" banner with the issues instead of silently disappearing from lists.
@@ -20,7 +20,7 @@ Files stay the source of truth. Nothing watches the data directory, so a file yo
 
 ## Markdown docs (DocEditor)
 
-Every okf entry page (`/<dataset>/<slug>`), every sub-document page (`/<dataset>/<slug>/doc/<path>`) and every skill page has two columns: the details on the left, the server-rendered markdown preview on the right. A Preview | Edit toggle sits above the preview. Edit shows a Monaco source editor of the whole file, frontmatter included, in place of the preview (which is only hidden, never replaced by client-rendered HTML). `?edit=1` opens straight into the editor. The island loads Monaco lazily, so a detail page does not fetch the ~4 MB editor until Edit is pressed.
+Every okf entry page (`/<dataset>/<slug>`), every sub-document page (`/<dataset>/<slug>/doc/<path>`) and every skill page has two columns: the details on the left, the server-rendered markdown preview on the right. A Preview | Edit toggle sits above the preview. Edit shows a Monaco source editor of the whole file, frontmatter included, in place of the preview (which is only hidden, never replaced by client-rendered HTML). `?edit=1` opens straight into the editor, and the `e` key does the same from the preview and puts the cursor in the editor once it has loaded ([Keyboard shortcuts](/concepts/keyboard-shortcuts.md)). The island loads Monaco lazily, so a detail page does not fetch the ~4 MB editor until Edit is pressed.
 
 The file is read and written through `GET|PUT /api/doc/<dataset>/<slug>/<path>`. It only edits an existing `.md` file under the entry (no traversal) and refuses text over 512 KB. Creating a concept file is `POST` on the same route (see New concept).
 
@@ -49,7 +49,7 @@ The okf and skill detail pages have small writers that do not need the source ed
 
 ## Deleting entries
 
-Every list row ends in a `⋯` button and every detail page header has one next to its action buttons. Both are rendered by the EntryMenus island into empty `[data-entry-menu]` slots that the server-rendered page provides (`data-dataset`, `data-slug`, `data-title`, `data-context="row"|"detail"`), so the whole-row link overlay is untouched (the button sits above it like the state select). The menu has one item, **Delete…**, which opens a confirm dialog: "This removes the whole folder `<ds>/<slug>` and every file in it." for okf bundles and skills, "This removes `<ds>/<slug>.yaml`." for reference, context and recipe. A confirmed delete calls `DELETE /api/entry/<ds>/<slug>` (okf, skill) or `DELETE /api/<ds>/<slug>` (yaml datasets); a failure shows its message inside the dialog and keeps it open. After success a list row reloads the list; the detail page goes back to `/<ds>`. While a DocEditor is open the item is disabled ("Leave the editor first"). Links to the deleted entry are not rewritten: links to it become dangling (`links/relation-target` warnings) until they are removed. Deleting is permanent (no trash); the data directory is usually under version control.
+Every list row ends in a `⋯` button and every detail page header has one next to its action buttons. The ListTable island renders the row menus in its own last column; the EntryMenus island renders the header one into an empty `[data-entry-menu]` slot that the server-rendered page provides (`data-dataset`, `data-slug`, `data-title`, `data-context="detail"`). Both use the same menu and dialog (`src/ui/menus/EntryMenu.tsx`). The menu has one item, **Delete…**, which opens a confirm dialog: "This removes the whole folder `<ds>/<slug>` and every file in it." for okf bundles and skills, "This removes `<ds>/<slug>.yaml`." for reference, context and recipe. A confirmed delete calls `DELETE /api/entry/<ds>/<slug>` (okf, skill) or `DELETE /api/<ds>/<slug>` (yaml datasets); a failure shows its message inside the dialog and keeps it open. After success a list row reloads the list; the detail page goes back to `/<ds>`. While a DocEditor is open the item is disabled ("Leave the editor first"). Links to the deleted entry are not rewritten: links to it become dangling (`links/relation-target` warnings) until they are removed. Deleting is permanent (no trash); the data directory is usually under version control.
 
 ## Popup editors for small markdown areas
 
@@ -60,7 +60,7 @@ On a context page each link's notes, on a recipe page the preamble and each mark
 The three yaml datasets can be managed in the UI without the Forge or Inflate:
 
 * `/new/reference`, `/new/context` and `/new/recipe` create an entry. The okf datasets and skills have their own create form at `/new/<dataset>` (the NewEntryForm: name, title, description, state, tags and, for work items, "Part of project"; see [Adding entries](/concepts/adding-entries.md)).
-* `/<dataset>/<slug>?edit=1` edits one. The Form tab shows typed fields (single-line text fields, and a Monaco markdown editor for a recipe's preamble and a reference's Info) and the YAML tab a Monaco editor; both edit the same working document, and `view=form|yaml` in the URL selects the tab. The name is immutable after creation.
+* `/<dataset>/<slug>?edit=1` edits one (the Edit button of the page, or the `e` key). The Form tab shows typed fields (single-line text fields, and a Monaco markdown editor for a recipe's preamble and a reference's Info) and the YAML tab a Monaco editor; both edit the same working document, and `view=form|yaml` in the URL selects the tab. The name is immutable after creation.
 * Delete asks for confirmation. A conflict dialog covers an entry that changed on disk since the form loaded it.
 * After a write (and after a delete) the form navigates at once; every dataset is read from the disk, so the target page is current.
 
@@ -68,7 +68,11 @@ The three yaml datasets can be managed in the UI without the Forge or Inflate:
 
 Unsaved text of the DocEditor, the markdown popups, the Forge and Inflate is saved to `localStorage` on every change (keys `ctxman:draft:doc:<dataset>/<slug>/<path>`, `…:md:…`, `…:forge:<context>` and `…:inflate:<recipe>`, kept 14 days) and removed on save, revert, discard or when it equals the saved text. After any reload the editor restores it and shows "Restored unsaved changes from earlier." with a Discard button (the `DraftNotice` banner, the same component in every editor). If the file changed on disk since the draft was started, the draft is still restored and the banner says "the file changed on disk since — saving overwrites it". A preview page with a stored draft offers "Resume editing".
 
-These editors have **no native "leave site?" prompt**: the reload that follows a save cannot be told apart from closing the tab, and drafts make the prompt unnecessary. The in-app confirmations stay (discard dialogs, switching contexts or recipes). The forms without persistence, DataForm and the NewEntryForm, keep the native prompt.
+The markdown popups, the Forge and Inflate have **no native "leave site?" prompt**: drafts make it unnecessary, and their in-app confirmations stay (discard dialogs, switching contexts or recipes). The forms without persistence, DataForm and the NewEntryForm, keep the native prompt.
+
+## Leaving unsaved text
+
+The markdown editor (DocEditor) asks before any way out drops unsaved text. The Preview toggle, Cancel, Back or Forward out of the editor, and a click on any link (the header nav, breadcrumbs, panels) open the in-app "Discard unsaved changes?" dialog: Cancel keeps editing, Discard drops the draft and then goes where you were going. Back and Forward cannot be stopped by a page, so the editor puts its own URL back on top while it asks. Everything else that leaves the page (a reload, closing the tab, a typed URL, a shortcut that navigates) shows the browser's own "Leave site?" prompt; leaving there keeps the draft, which the next visit restores. The reload after a successful save never asks.
 
 ## Reload after a save
 

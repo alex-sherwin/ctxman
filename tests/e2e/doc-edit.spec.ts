@@ -1,7 +1,7 @@
 // Markdown editing in place (ROUND2_UI_SPEC §F.1, §G.1; ROUND3_SPEC §E-§G): the DocEditor island next to the SSR
 // preview of an okf entry (Preview | Edit toggle, Monaco, explicit Save with Cmd/Ctrl+S, conflict dialog,
-// validation + link warnings, entry-link completion and the "Insert link…" picker, drafts kept in localStorage
-// with NO native beforeunload prompt) and the "Open in IDE" button handled by src/scripts/shell.ts. Every test gets
+// validation + link warnings, entry-link completion and the "Insert link…" picker, drafts kept in localStorage,
+// every way out of unsaved text asking first) and the "Open in IDE" button handled by src/scripts/shell.ts. Every test gets
 // its own entry (the `doc` fixture: created through POST /api/entry/kb plus one concept file, removed afterwards), so
 // the tests run in parallel; every assertion about what was saved reads the file in the worker's data copy.
 //
@@ -14,6 +14,7 @@ import { expect, test as base } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import {
   API,
+  afterReload,
   bumpMtime,
   dataPath,
   nextPageLoad,
@@ -335,12 +336,12 @@ async function draftHas(page: Page, doc: DocEntry, text: string): Promise<void> 
 /** What the editor shows at the end of the file (the cursor is there after `typeAtEnd`; Monaco renders only that part). */
 const viewLines = (page: Page) => page.getByTestId('doc-editor').locator('.view-lines');
 
-/** Collects every native dialog (a `beforeunload` prompt would show up here) and dismisses it. */
+/** Records the type of every native dialog (the browser's `beforeunload` prompt) and accepts it: the page leaves. */
 function trackDialogs(page: Page): string[] {
   const seen: string[] = [];
   page.on('dialog', (dialog) => {
-    seen.push(`${dialog.type()}: ${dialog.message()}`);
-    void dialog.dismiss();
+    seen.push(dialog.type());
+    void dialog.accept();
   });
   return seen;
 }
@@ -463,8 +464,8 @@ test.describe('entry links in the editor', () => {
   });
 });
 
-test.describe('drafts survive a reload (no native prompt)', () => {
-  test('a dirty editor reloads without a dialog and offers the draft back; Discard drops it', async ({
+test.describe('drafts survive a reload (after the browser asks)', () => {
+  test('reloading a dirty editor asks first; the reloaded editor offers the draft back; Discard drops it', async ({
     page,
     doc,
   }) => {
@@ -482,7 +483,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await expect(page.getByTestId('doc-editor').locator('.monaco-editor')).toBeVisible({
       timeout: 15_000,
     });
-    expect(dialogs).toEqual([]);
+    expect(dialogs).toEqual(['beforeunload']);
     const banner = page.getByTestId('doc-draft-restored');
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('Restored unsaved changes');
@@ -498,7 +499,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await expect(page.getByTestId('doc-save')).toBeDisabled();
     expect(await storedDraft(page, doc)).toBeNull();
     expect(readDataText(doc.main)).not.toContain('DRAFT-LINE-ONE');
-    expect(dialogs).toEqual([]);
+    expect(dialogs).toEqual(['beforeunload']);
     expect(errors).toEqual([]);
   });
 
@@ -519,7 +520,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner).toHaveAttribute('data-stale', 'true');
     await expect(banner).toContainText('the file changed on disk since');
-    expect(dialogs).toEqual([]);
+    expect(dialogs).toEqual(['beforeunload']);
     await page.getByTestId('doc-editor').locator('.monaco-editor textarea').focus();
     await page.keyboard.press('Control+End');
     await expect(viewLines(page)).toContainText('STALE-DRAFT-LINE');
@@ -542,7 +543,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await draftHas(page, doc, 'RESUME-DRAFT-LINE');
 
     await page.goto(`/kb/${doc.name}`);
-    expect(dialogs).toEqual([]);
+    expect(dialogs).toEqual(['beforeunload']);
     const available = page.getByTestId('doc-draft-available');
     await expect(available).toBeVisible({ timeout: 15_000 });
     await expect(available).toContainText('Unsaved changes to this file');
@@ -561,6 +562,7 @@ test.describe('drafts survive a reload (no native prompt)', () => {
   });
 
   test('a saved draft is gone: the reloaded page has no draft offer', async ({ page, doc }) => {
+    const dialogs = trackDialogs(page);
     await openEditor(page, `/kb/${doc.name}`);
     await typeAtEnd(page, '\n\nSAVED-DRAFT-LINE');
     await draftHas(page, doc, 'SAVED-DRAFT-LINE');
@@ -572,6 +574,60 @@ test.describe('drafts survive a reload (no native prompt)', () => {
     await expect(page.getByTestId('doc-status')).toBeVisible();
     await expect(page.getByTestId('doc-draft-available')).toHaveCount(0);
     expect(readDataText(doc.main)).toContain('SAVED-DRAFT-LINE');
+    expect(dialogs).toEqual([]); // the reload after a save never asks
+  });
+});
+
+test.describe('leaving unsaved text asks first', () => {
+  test('a click on a nav link asks in the app; Cancel stays, Discard follows the link', async ({
+    page,
+    doc,
+  }) => {
+    const dialogs = trackDialogs(page);
+    await openEditor(page, `/kb/${doc.name}`);
+    await typeAtEnd(page, '\n\nLEAVE-BY-LINK');
+    await draftHas(page, doc, 'LEAVE-BY-LINK');
+
+    const discard = page.getByTestId('doc-discard-dialog');
+    await page.getByTestId('nav-task').click();
+    await expect(discard).toBeVisible();
+    await expect(discard).toContainText('Leaving this page drops the changes');
+    await discard.getByRole('button', { name: 'Cancel' }).click();
+    await expect(discard).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/kb/${doc.name}\\?edit=1$`));
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+
+    await page.getByTestId('nav-task').click();
+    await afterReload(page, () => discard.getByRole('button', { name: 'Discard' }).click());
+    await expect(page).toHaveURL(/\/task$/);
+    expect(await storedDraft(page, doc)).toBeNull();
+    expect(readDataText(doc.main)).not.toContain('LEAVE-BY-LINK');
+    expect(dialogs).toEqual([]); // the in-app dialog asked; the browser does not ask again
+  });
+
+  test('Back out of the editor asks; Cancel keeps the text, Discard shows the preview', async ({
+    page,
+    doc,
+  }) => {
+    await openEditor(page, `/kb/${doc.name}`);
+    await typeAtEnd(page, '\n\nLEAVE-BY-BACK');
+    await draftHas(page, doc, 'LEAVE-BY-BACK');
+
+    const discard = page.getByTestId('doc-discard-dialog');
+    await page.goBack();
+    await expect(discard).toBeVisible();
+    await expect(discard).toContainText('Leaving edit mode drops the changes');
+    await expect(page).toHaveURL(/[?&]edit=1/);
+    await discard.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    await expect(viewLines(page)).toContainText('LEAVE-BY-BACK');
+
+    await page.goBack();
+    await discard.getByRole('button', { name: 'Discard' }).click();
+    await expect(page).not.toHaveURL(/edit=1/);
+    await expect(page.getByTestId('detail-content')).toBeVisible();
+    await expect(page.getByTestId('doc-draft-available')).toHaveCount(0);
+    expect(await storedDraft(page, doc)).toBeNull();
   });
 });
 
