@@ -3,7 +3,7 @@
 import { expect, test } from './fixtures.ts';
 import { API } from './helpers.ts';
 
-for (const dataset of ['reference', 'context', 'recipe'] as const) {
+for (const dataset of ['reference', 'snippet', 'context', 'recipe'] as const) {
   test(`GET /api/schemas/${dataset} serves the draft-07 schema`, async ({ request }) => {
     const response = await request.get(`${API}/schemas/${dataset}`);
     expect(response.status()).toBe(200);

@@ -54,6 +54,7 @@ import { checkLinks } from '../links.ts';
 import { checkOkf } from '../okf.ts';
 import { RecipeIoError, readRecipe } from '../recipe-io.ts';
 import { ReferenceIoError } from '../reference-io.ts';
+import { SnippetIoError } from '../snippet-io.ts';
 import { childrenOf } from '../relations.ts';
 import { FUSE_OPTIONS, MIN_QUERY } from '../search-config.ts';
 import { planNewEntry } from '../templates.ts';
@@ -131,6 +132,7 @@ export function toFailure(error: unknown): ToolResult {
     error instanceof ContextIoError ||
     error instanceof RecipeIoError ||
     error instanceof ReferenceIoError ||
+    error instanceof SnippetIoError ||
     error instanceof DocIoError
   ) {
     return failure(error.code, error.message, error.issues);
@@ -290,7 +292,7 @@ const searchTool = defineTool({
   name: 'search',
   title: 'Search entries',
   description:
-    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, context, recipe), the same search as the ctxman UI. Returns ranked hits with a snippet. Start here, then call get-entry or read-bundle-file.',
+    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, snippet, context, recipe), the same search as the ctxman UI. Returns ranked hits with an excerpt. Start here, then call get-entry or read-bundle-file.',
   readOnly: true,
   input: type({
     '+': 'reject',
@@ -352,7 +354,7 @@ const listDatasetsTool = defineTool({
   name: 'list-datasets',
   title: 'List datasets',
   description:
-    'The 11 datasets with their kind, lifecycle states, entry file layout and entry count. Call once to learn what exists.',
+    'The 12 datasets with their kind, lifecycle states, entry file layout and entry count. Call once to learn what exists.',
   readOnly: true,
   input: noInput,
   async handler(_args, ctx) {
@@ -465,7 +467,7 @@ const getEntryTool = defineTool({
   name: 'get-entry',
   title: 'Get entry',
   description:
-    'One entry: frontmatter and markdown body (okf and skill), the yaml data (reference, context, recipe), its relations (links to, linked from, children, parents), bundle files and the contexts that link to it. Bodies over 50 KB are clipped; read the rest with read-bundle-file.',
+    'One entry: frontmatter and markdown body (okf and skill), the yaml data (reference, snippet, context, recipe; a snippet also its markdown), its relations (links to, linked from, children, parents), bundle files and the contexts that link to it. Bodies over 50 KB are clipped; read the rest with read-bundle-file.',
   readOnly: true,
   input: type({
     '+': 'reject',
@@ -550,6 +552,16 @@ const getEntryTool = defineTool({
     } else if (detail.kind === 'reference') {
       structured.data = detail.data;
       out.push('', frontmatterText(detail.data as Record<string, unknown>));
+      structured.relations = {
+        linksTo: compactRows(detail.relations.linksTo),
+        linkedFrom: compactRows(detail.relations.linkedFrom),
+        parents: compactRows(detail.relations.parents),
+      };
+      out.push(...relationsText(detail.relations));
+    } else if (detail.kind === 'snippet') {
+      structured.data = detail.data;
+      const { markdown, ...rest } = detail.data;
+      out.push('', frontmatterText(rest), '', markdown.trim());
       structured.relations = {
         linksTo: compactRows(detail.relations.linksTo),
         linkedFrom: compactRows(detail.relations.linkedFrom),
@@ -916,7 +928,7 @@ const createEntryTool = defineTool({
   name: 'create-entry',
   title: 'Create entry',
   description:
-    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, owner. context and recipe start empty (add links with append-context-links).',
+    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, owner. snippet: markdown (the reusable text). context and recipe start empty (add links with append-context-links).',
   readOnly: false,
   input: type({
     '+': 'reject',
@@ -934,6 +946,9 @@ const createEntryTool = defineTool({
     'uri?': 'string',
     'subpath?': 'string',
     'owner?': type.enumerated(...OWNERS),
+    'markdown?': type('string').describe(
+      'snippet only: the markdown of the snippet (default: a TODO placeholder).',
+    ),
   }),
   async handler(args, ctx) {
     const def = datasetDef(args.dataset);
@@ -942,6 +957,9 @@ const createEntryTool = defineTool({
     );
     if (args.dataset !== 'reference' && referenceOnly.length > 0) {
       return failure('invalid', `${referenceOnly.join(', ')} only apply to the reference dataset`);
+    }
+    if (args.dataset !== 'snippet' && args.markdown !== undefined) {
+      return failure('invalid', 'markdown only applies to the snippet dataset');
     }
     let created: {
       dataset: DatasetId;
@@ -967,6 +985,7 @@ const createEntryTool = defineTool({
           ...(args.uri === undefined ? {} : { uri: args.uri }),
           ...(args.subpath === undefined ? {} : { subpath: args.subpath }),
           ...(args.owner === undefined ? {} : { owner: args.owner }),
+          ...(args.markdown === undefined ? {} : { markdown: args.markdown }),
           serverOrigin: ctx.serverOrigin,
           now: new Date(ctx.nowMs),
         });

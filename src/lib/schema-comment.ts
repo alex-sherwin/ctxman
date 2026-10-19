@@ -4,7 +4,7 @@
 // it through `withSchemaComment`, passing the origin (`resolveServerOrigin()` in data-dir.ts).
 
 /** The YAML datasets that have a JSON Schema, in registry order. */
-export const SCHEMA_DATASETS = ['reference', 'context', 'recipe'] as const;
+export const SCHEMA_DATASETS = ['reference', 'snippet', 'context', 'recipe'] as const;
 export type SchemaDatasetId = (typeof SCHEMA_DATASETS)[number];
 
 export function isSchemaDatasetId(value: unknown): value is SchemaDatasetId {

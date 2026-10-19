@@ -1,7 +1,7 @@
 // Scaffold a new entry of any dataset from its template. Never overwrites.
 // Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S]
 //          [--type local-repo|local-folder|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
-//          [--owner me|not-me] [--json]
+//          [--owner me|not-me] [--markdown M] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
 import path from 'node:path';
 import process from 'node:process';
@@ -44,6 +44,7 @@ Options:
                      remote-skill: git URI or https URL ending .tar.gz / .tgz / .zip
   --subpath S        reference: repo-relative sub folder
   --owner O          reference: ${OWNERS.join(' | ')} (default: me)
+  --markdown M       snippet: the markdown text (default: "TODO: write the <title> snippet.")
   --json             print one JSON document instead of text
   -h, --help         show this help
 
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
         uri: { type: 'string' },
         subpath: { type: 'string' },
         owner: { type: 'string' },
+        markdown: { type: 'string' },
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
@@ -112,6 +114,9 @@ async function main(): Promise<void> {
   );
   if (dataset !== 'reference' && referenceOnly.length > 0) {
     return finish(EXIT_USAGE, `--${referenceOnly[0]} only applies to the reference dataset`);
+  }
+  if (dataset !== 'snippet' && values.markdown !== undefined) {
+    return finish(EXIT_USAGE, '--markdown only applies to the snippet dataset');
   }
   if (values.type !== undefined && !isReferenceType(values.type)) {
     return finish(
@@ -162,6 +167,7 @@ async function main(): Promise<void> {
       ...(values.uri === undefined ? {} : { uri: values.uri }),
       ...(values.subpath === undefined ? {} : { subpath: values.subpath }),
       ...(values.owner === undefined ? {} : { owner: values.owner as Owner }),
+      ...(values.markdown === undefined ? {} : { markdown: values.markdown }),
       serverOrigin: resolveServerOrigin(),
       now: new Date(),
     });

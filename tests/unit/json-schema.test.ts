@@ -95,11 +95,13 @@ describe.each(SCHEMA_DATASETS)('JSON Schema of %s', (ds) => {
 
   it('never marks a defaulted array / tags field as required', () => {
     const variants = parsed(ds).anyOf ?? [parsed(ds)];
+    // a recipe's `markdown` is a defaulted list of blocks; a snippet's `markdown` is its required text
+    const arrays = ['links', 'contexts', 'items', 'markdown', 'overrides', 'order'].filter(
+      (key) => !(ds === 'snippet' && key === 'markdown'),
+    );
     for (const variant of variants) {
       expect(variant.required as string[]).not.toContain('tags');
-      for (const key of ['links', 'contexts', 'items', 'markdown', 'overrides', 'order']) {
-        expect(variant.required as string[]).not.toContain(key);
-      }
+      for (const key of arrays) expect(variant.required as string[]).not.toContain(key);
     }
   });
 });
@@ -168,12 +170,13 @@ describe('recipe schema', () => {
 
   it('defaults.properties has one entry per item kind (sorted), each mode.enum = that kind modes', () => {
     const defaults = props.defaults as Node & {
-      properties: Record<string, { properties: { mode: { enum: string[] } } }>;
+      properties: Record<string, { properties: { mode: { enum?: string[]; const?: string } } }>;
     };
     expect(Object.keys(defaults.properties)).toEqual([...ITEM_KINDS].sort());
     for (const kind of ITEM_KINDS) {
       const mode = defaults.properties[kind].properties.mode;
-      expect([...mode.enum].sort()).toEqual(
+      // one choice (a snippet's `inline`) is a `const`, several an `enum`
+      expect([...(mode.enum ?? [mode.const])].sort()).toEqual(
         modesFor(kind)
           .map((m) => m.id)
           .sort(),
@@ -183,10 +186,11 @@ describe('recipe schema', () => {
 
   it('defaults.<kind>.material.enum = that kind materials (v3: skill symlink, local-repo copy)', () => {
     const defaults = props.defaults as Node & {
-      properties: Record<string, { properties: { material: { enum: string[] } } }>;
+      properties: Record<string, { properties: { material: { enum?: string[]; const?: string } } }>;
     };
     for (const kind of ITEM_KINDS) {
-      expect([...defaults.properties[kind].properties.material.enum].sort(), kind).toEqual(
+      const material = defaults.properties[kind].properties.material;
+      expect([...(material.enum ?? [material.const])].sort(), kind).toEqual(
         materialsFor(kind)
           .map((m) => m.id)
           .sort(),

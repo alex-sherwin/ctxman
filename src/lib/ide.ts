@@ -156,7 +156,8 @@ type TargetResult =
 /**
  * okf / skill: root = data/<ds>/<slug> (must be a dir), file = `relPath` (bundle-relative, any existing regular
  * file, resolved with resolveBundleFile) or the entry file (index.md / SKILL.md) when relPath is undefined.
- * reference / context / recipe: root = the data dir, file = <ds>/<slug>.yaml (must exist); relPath must be undefined.
+ * snippet: root = the snippet folder (data/snippet), file = <slug>.yaml in it. reference / context / recipe: root =
+ * the data dir, file = <ds>/<slug>.yaml. A yaml file must exist, and relPath must be undefined for them.
  */
 export async function ideTargetFor(
   dataset: DatasetId,
@@ -208,7 +209,7 @@ export async function ideTargetFor(
   } catch {
     return { ok: false, error: 'not-found', message: `${dataset} entry "${slug}" does not exist` };
   }
-  return { ok: true, target: { root: dataDir, file } };
+  return { ok: true, target: { root: dataset === 'snippet' ? path.dirname(file) : dataDir, file } };
 }
 
 export interface IdeInvocation {

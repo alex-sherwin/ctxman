@@ -270,7 +270,7 @@ describe('the HTTP guards', () => {
         }),
       );
       const { result } = await rpc(response);
-      expect(result.structuredContent.datasets).toHaveLength(11);
+      expect(result.structuredContent.datasets).toHaveLength(12);
     } finally {
       if (previous === undefined) delete process.env.CTXMAN_DATA_DIR;
       else process.env.CTXMAN_DATA_DIR = previous;

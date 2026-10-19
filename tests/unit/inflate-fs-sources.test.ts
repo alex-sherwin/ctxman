@@ -27,6 +27,9 @@ function fixture(extra: Record<string, string> = {}) {
       'name: bad-schema\ndescription: d\ntype: remote-repo\nuri: nope\nowner: me\n',
     'context/broken.yaml': 'name: [oops\n',
     'context/bad-schema.yaml': 'name: bad-schema\ndescription: d\nlinks: nope\n',
+    'snippet/sn.yaml': 'name: sn\ndescription: A snippet.\ntags: [t]\nmarkdown: |\n  Do it.\n',
+    'snippet/broken.yaml': 'name: [oops\n',
+    'snippet/bad-schema.yaml': 'name: bad-schema\ndescription: d\n',
     ...extra,
   });
   return {
@@ -169,6 +172,41 @@ describe('readItem', () => {
     const schema = await src.readItem('reference', 'bad-schema');
     expect(schema.status).toBe('invalid');
     expect(schema.status === 'invalid' && schema.message).toMatch(/^uri: /);
+  });
+});
+
+describe('readItem snippet', () => {
+  it('meta plus the markdown (server side only)', async () => {
+    const { src } = fixture();
+    const found = await src.readItem('snippet', 'sn');
+    expect(found.status).toBe('ready');
+    if (found.status === 'ready') {
+      expect(found.meta).toMatchObject({
+        dataset: 'snippet',
+        slug: 'sn',
+        title: 'sn',
+        description: 'A snippet.',
+        tags: ['t'],
+        markdown: 'Do it.\n',
+      });
+      expect(found.meta.ref).toBeUndefined();
+    }
+  });
+
+  it('missing, invalid yaml and invalid schema', async () => {
+    const { src } = fixture();
+    expect(await src.readItem('snippet', 'gone')).toEqual({ status: 'missing' });
+    expect(await src.readItem('snippet', '../sn')).toEqual({ status: 'missing' });
+    expect((await src.readItem('snippet', 'broken')).status).toBe('invalid');
+    const schema = await src.readItem('snippet', 'bad-schema');
+    expect(schema.status === 'invalid' && schema.message).toBe('markdown: Required');
+  });
+
+  it('entryRef and itemPaths point at the yaml file', async () => {
+    const { src, dataDir } = fixture();
+    const file = path.join(dataDir, 'snippet', 'sn.yaml');
+    expect(await src.entryRef('snippet', 'sn')).toEqual({ title: 'sn', abs: file });
+    expect(src.itemPaths('snippet', 'sn')).toEqual({ rootAbs: file, entryAbs: file });
   });
 });
 

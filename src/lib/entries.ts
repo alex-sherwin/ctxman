@@ -24,6 +24,7 @@ import type {
   RecipeData,
   ReferenceData,
   SkillData,
+  SnippetData,
 } from '../datasets/schemas.ts';
 import { validate } from '../datasets/validate.ts';
 import { listBundleFiles, safeJoin, walkFiles } from './bundles.ts';
@@ -43,6 +44,7 @@ import { parseFrontmatterLoose, splitFrontmatter } from './okf.ts';
 import { listRecipes, readRecipe, RecipeIoError } from './recipe-io.ts';
 import { listReferences, readReference, ReferenceIoError } from './reference-io.ts';
 import { buildRelationGraph, linkedFrom, linksTo } from './relations.ts';
+import { listSnippets, readSnippet, SnippetIoError } from './snippet-io.ts';
 import type { OutRel, RelationEdge, RelationGraph } from './relations.ts';
 import {
   contextToSearchDoc,
@@ -50,6 +52,7 @@ import {
   recipeToSearchDoc,
   referenceToSearchDoc,
   skillToSearchDoc,
+  snippetToSearchDoc,
 } from './search-index.ts';
 
 export type BackRef = ReturnType<typeof backRefs>[number];
@@ -108,9 +111,12 @@ export interface RelationRow {
   files: string[];
 }
 
-/** What a detail page shows about an entry's relations (okf, skill, reference; never context / recipe). */
+/** What a detail page shows about an entry's relations (okf, skill, reference, snippet; never context / recipe). */
 export interface EntryRelations {
-  /** Outgoing edges: frontmatter `links` in file order (every rel, `child` included), then mentions. [] for reference. */
+  /**
+   * Outgoing edges: frontmatter `links` in file order (every rel, `child` included), then mentions. [] for
+   * reference and snippet.
+   */
   linksTo: RelationRow[];
   /** Incoming edges, ordered Parent (child), Required by, Related, Mentioned by; then by key. */
   linkedFrom: RelationRow[];
@@ -150,6 +156,13 @@ export type EntryDetail = {
       relations: EntryRelations;
       /** `info` rendered with the project's markdown pipeline (absent when blank). */
       infoHtml?: string;
+    }
+  | {
+      kind: 'snippet';
+      data: SnippetData;
+      relations: EntryRelations;
+      /** `markdown` rendered with the project's markdown pipeline. */
+      markdownHtml: string;
     }
   | { kind: 'context'; data: ContextData; links: ResolvedLink[] }
   | {
@@ -240,7 +253,7 @@ function infoOfIndexed(entry: IndexedEntry): TargetInfo {
   return info;
 }
 
-/** okf + skill targets come from the entry index; a reference is read from its yaml file. */
+/** okf + skill targets come from the entry index; a reference or snippet is read from its yaml file. */
 async function targetInfo(
   index: EntryIndex,
   dataDir: string,
@@ -249,6 +262,18 @@ async function targetInfo(
 ): Promise<TargetInfo> {
   const indexed = index.byKey.get(`${dataset}/${slug}`);
   if (indexed !== undefined) return infoOfIndexed(indexed);
+  if (dataset === 'snippet') {
+    try {
+      await readSnippet(slug, dataDir);
+      return { missing: false };
+    } catch (error) {
+      if (!(error instanceof SnippetIoError)) throw error;
+      // An existing but invalid file is a target that exists; a missing or unaddressable one is not.
+      return error.code === 'not-found' || error.code === 'bad-slug'
+        ? { missing: true }
+        : { missing: false };
+    }
+  }
   if (dataset !== 'reference') return { missing: true };
   try {
     const record = await readReference(slug, dataDir);
@@ -362,14 +387,31 @@ export async function listEntries(
       .map((entry) => summaryOf(entry, nowMs))
       .sort((a, b) => compareText(a.slug, b.slug));
   }
-  // reference
-  const { items, invalid } = await listReferences(dataDir);
+  // reference, snippet: yaml files; an invalid one is listed (flagged) with its issues
+  const { items, invalid } =
+    dataset === 'snippet'
+      ? await listSnippets(dataDir).then(({ items: records, invalid: bad }) => ({
+          items: records.map((r) => ({
+            slug: r.slug,
+            data: r.snippet,
+            lastModified: r.lastModified,
+          })),
+          invalid: bad,
+        }))
+      : await listReferences(dataDir).then(({ items: records, invalid: bad }) => ({
+          items: records.map((r) => ({
+            slug: r.slug,
+            data: r.reference,
+            lastModified: r.lastModified,
+          })),
+          invalid: bad,
+        }));
   const summaries = items.map((record) =>
-    summarize('reference', record.slug, record.reference, new Date(record.lastModified), nowMs),
+    summarize(dataset, record.slug, record.data, new Date(record.lastModified), nowMs),
   );
   for (const bad of invalid) {
     const summary = summarize(
-      'reference',
+      dataset,
       bad.slug,
       { name: bad.slug, description: '' },
       new Date(bad.lastModified),
@@ -583,6 +625,32 @@ export async function getEntryDetail(
       : { ...base, kind: 'skill', data: data as SkillData };
   }
 
+  // snippet: a yaml file read from disk. An invalid file is listed (flagged) but has no detail page (404).
+  if (dataset === 'snippet') {
+    let snippet;
+    try {
+      snippet = await readSnippet(slug, dataDir);
+    } catch (error) {
+      if (error instanceof SnippetIoError) return null;
+      throw error;
+    }
+    return {
+      kind: 'snippet',
+      summary: summarize(dataset, slug, snippet.snippet, new Date(snippet.lastModified), nowMs),
+      backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
+      fileRelPath,
+      data: snippet.snippet,
+      relations: await relationsFor(index, dataDir, dataset, slug),
+      // Like a reference's info: only ctxman: and external links are rewritten (a snippet has no bundle).
+      markdownHtml: rewriteRenderedHtml(await renderMarkdown(snippet.snippet.markdown), {
+        dataset,
+        slug,
+        fromRelPath: '',
+        dataDir,
+      }),
+    };
+  }
+
   // reference: a yaml file read from disk. An invalid file is listed (flagged) but has no detail page (404).
   let reference;
   try {
@@ -672,7 +740,10 @@ export async function getDocDetail(
 
 const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
 
-/** The whole fuse corpus: okf entries + every other okf markdown file + skills + references + contexts + recipes. */
+/**
+ * The whole fuse corpus: okf entries + every other okf markdown file + skills + references + snippets +
+ * contexts + recipes.
+ */
 export async function buildSearchIndex(
   dataDir: string = resolveDataDir(),
 ): Promise<{ generatedAt: string; docs: SearchDoc[] }> {
@@ -727,6 +798,9 @@ export async function buildSearchIndex(
 
   for (const record of (await listReferences(dataDir)).items) {
     docs.push(referenceToSearchDoc(record.slug, record.reference));
+  }
+  for (const record of (await listSnippets(dataDir)).items) {
+    docs.push(snippetToSearchDoc(record.slug, record.snippet));
   }
   for (const record of await safeContexts(dataDir)) {
     docs.push(contextToSearchDoc(record.slug, record.context));

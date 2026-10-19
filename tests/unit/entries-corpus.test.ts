@@ -69,6 +69,28 @@ describe('entries.ts on the seed corpus', () => {
     expect(plain?.kind === 'reference' && plain.infoHtml).toBe(undefined);
   });
 
+  it('lists snippets from disk (an invalid file flagged) and renders a snippet markdown as HTML', async () => {
+    writeTree(dir, { 'snippet/broken.yaml': 'name: broken\ndescription: d\n' });
+    const snippets = await listEntries('snippet');
+    expect(snippets.map((s) => s.slug)).toEqual([
+      'broken',
+      'conventional-commits',
+      'finish-checklist',
+    ]);
+    expect(snippets.find((s) => s.slug === 'broken')?.invalid?.length).toBeGreaterThan(0);
+    expect(snippets.find((s) => s.slug === 'finish-checklist')?.tags).toEqual(['workflow']);
+    expect(await getEntryDetail('snippet', 'broken')).toBeNull();
+    expect(await getEntryDetail('snippet', 'missing-one')).toBeNull();
+
+    const detail = await getEntryDetail('snippet', 'finish-checklist');
+    expect(detail?.kind).toBe('snippet');
+    if (detail?.kind !== 'snippet') return;
+    expect(detail.data.markdown).toContain('## Before you finish');
+    expect(detail.markdownHtml).toContain('Before you finish</h2>');
+    expect(detail.markdownHtml).toContain('href="/kb/ctxman"');
+    expect(detail.relations.linksTo).toEqual([]);
+  });
+
   it('renders the entry and a concept body at request time', async () => {
     const detail = await getEntryDetail('kb', 'ctxman');
     expect(detail?.kind).toBe('okf');
@@ -97,11 +119,11 @@ describe('entries.ts on the seed corpus', () => {
     expect(index.docs.some((d) => d.id === 'kb/ctxman/concepts/fresh-one')).toBe(true);
   });
 
-  it('builds the search index from disk: entries, concepts, skills, references, contexts, recipes', async () => {
+  it('builds the search index from disk: entries, concepts, skills, references, snippets, contexts, recipes', async () => {
     const { docs } = await buildSearchIndex();
     expect(docs.length).toBeGreaterThan(40);
     const datasets = new Set(docs.map((d) => d.dataset));
-    for (const ds of ['kb', 'task', 'skill', 'reference', 'context', 'recipe']) {
+    for (const ds of ['kb', 'task', 'skill', 'reference', 'snippet', 'context', 'recipe']) {
       expect(datasets.has(ds as never), ds).toBe(true);
     }
     // index.md and log.md never enter the corpus; index.md only as the entry itself

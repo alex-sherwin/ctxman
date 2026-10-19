@@ -8,12 +8,14 @@ import {
   recipeToSearchDoc,
   referenceToSearchDoc,
   skillToSearchDoc,
+  snippetToSearchDoc,
 } from '../../src/lib/search-index.ts';
 import {
   contextSchema,
   recipeSchema,
   referenceSchema,
   skillSchema,
+  snippetSchema,
 } from '../../src/datasets/schemas.ts';
 import { assertValid } from '../../src/datasets/validate.ts';
 
@@ -322,6 +324,42 @@ describe('skillToSearchDoc', () => {
   it('falls back to the skill name for the title', () => {
     const data = assertValid(skillSchema, { name: 'plain', description: 'd' });
     expect(skillToSearchDoc('plain', data, 'no heading').title).toBe('plain');
+  });
+});
+
+describe('snippetToSearchDoc', () => {
+  it('indexes the markdown as text with its headings; the title is the name', () => {
+    const data = assertValid(snippetSchema, {
+      name: 'finish-checklist',
+      description: 'Checks before done',
+      tags: ['workflow'],
+      markdown:
+        '## Before you finish\n\n1. Run `pnpm run check`.\n2. See [the docs](ctxman:kb/ctxman).\n',
+    });
+    expect(snippetToSearchDoc('finish-checklist', data)).toEqual({
+      id: 'snippet/finish-checklist',
+      dataset: 'snippet',
+      slug: 'finish-checklist',
+      path: null,
+      title: 'finish-checklist',
+      name: 'finish-checklist',
+      description: 'Checks before done',
+      tags: ['workflow'],
+      headings: ['Before you finish'],
+      body: markdownToText(data.markdown),
+      url: '/snippet/finish-checklist',
+    });
+    expect(snippetToSearchDoc('finish-checklist', data).body).toContain('Run pnpm run check.');
+    expect(snippetToSearchDoc('finish-checklist', data).body).toContain('the docs');
+  });
+
+  it('caps the body like any other document', () => {
+    const data = assertValid(snippetSchema, {
+      name: 'long',
+      description: 'd',
+      markdown: 'word '.repeat(MAX_BODY_CHARS),
+    });
+    expect(snippetToSearchDoc('long', data).body.length).toBeLessThanOrEqual(MAX_BODY_CHARS);
   });
 });
 

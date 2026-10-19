@@ -76,6 +76,7 @@
     --cx-neon-lime: #b8ff3d;
     --cx-neon-pink: #ff6ad5;
     --cx-neon-teal: #2ee6c5;
+    --cx-neon-sand: #e8c07d;
     --cx-magenta-text: #ff6b96; /* magenta-500 is 4.49:1 on tinted void-400; this is 6.0:1 */
 
     /* ---- surfaces + text ---- */
@@ -189,6 +190,8 @@
     --ds-skill-fg: var(--cx-neon-lime);
     --ds-reference: var(--cyber-chrome-300);
     --ds-reference-fg: var(--cyber-chrome-300);
+    --ds-snippet: var(--cx-neon-sand);
+    --ds-snippet-fg: var(--cx-neon-sand);
     --ds-context: var(--cx-neon-pink);
     --ds-context-fg: var(--cx-neon-pink);
     --ds-recipe: var(--cx-neon-teal);

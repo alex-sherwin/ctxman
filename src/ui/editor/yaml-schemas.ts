@@ -6,11 +6,13 @@ import type { JSONSchema, SchemasSettings } from 'monaco-yaml';
 import contextSchema from '../../../schemas/context.schema.json';
 import recipeSchema from '../../../schemas/recipe.schema.json';
 import referenceSchema from '../../../schemas/reference.schema.json';
+import snippetSchema from '../../../schemas/snippet.schema.json';
 import { SCHEMA_DATASETS } from '../../lib/schema-comment.ts';
 import type { SchemaDatasetId } from '../../lib/schema-comment.ts';
 
 const SCHEMAS: Record<SchemaDatasetId, JSONSchema> = {
   reference: referenceSchema as unknown as JSONSchema,
+  snippet: snippetSchema as unknown as JSONSchema,
   context: contextSchema as unknown as JSONSchema,
   recipe: recipeSchema as unknown as JSONSchema,
 };

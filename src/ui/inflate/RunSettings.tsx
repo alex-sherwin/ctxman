@@ -8,6 +8,7 @@ import {
   DEFAULT_CONTEXT_FILE,
   defaultDirFor,
   isMaterialFor,
+  isPlaceableKind,
   isPortableAbsoluteDir,
   isPrimaryEligible,
   materialDescription,
@@ -104,8 +105,11 @@ function ContextFileField({ recipeFile }: { recipeFile: string }) {
 }
 
 /** Included items with a known kind: the ones a run places something for. */
+/** The included items a run can place (a snippet places nothing: its markdown is in the context file). */
 function runItems(segments: readonly ItemSegment[]): ItemSegment[] {
-  return segments.filter((s) => s.status === 'included' && s.kind !== null);
+  return segments.filter(
+    (s) => s.status === 'included' && s.kind !== null && isPlaceableKind(s.kind),
+  );
 }
 
 function PrimarySelect({ items, primary }: { items: ItemSegment[]; primary: string | null }) {

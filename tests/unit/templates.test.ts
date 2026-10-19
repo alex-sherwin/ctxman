@@ -130,6 +130,26 @@ describe('planNewEntry skill, reference, context', () => {
     );
   });
 
+  it('snippet: a TODO markdown by default, the given markdown as typed, markdown last', () => {
+    const [todo] = planNewEntry('snippet', 'commit-rules', { now });
+    expect(todo?.relPath).toBe('snippet/commit-rules.yaml');
+    expect(todo?.content).toBe(
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/snippet\n' +
+        'name: commit-rules\ndescription: "TODO: describe Commit rules."\nmarkdown: |\n  TODO: write the Commit rules snippet.\n',
+    );
+    const [given] = planNewEntry('snippet', 'commit-rules', {
+      now,
+      description: 'How to commit',
+      markdown: '## Commits\n\nUse `feat:`.',
+    });
+    expect(given?.content).toBe(
+      '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/snippet\n' +
+        'name: commit-rules\ndescription: How to commit\nmarkdown: |-\n  ## Commits\n\n  Use `feat:`.\n',
+    );
+    const [blank] = planNewEntry('snippet', 'commit-rules', { now, markdown: '  \n' });
+    expect(blank?.content).toBe(todo?.content);
+  });
+
   it('reference variants use path / uri / subpath / owner in a fixed order', () => {
     const [local] = planNewEntry('reference', 'r1', {
       now,
@@ -212,8 +232,16 @@ describe('planNewEntry validation', () => {
     expect(() => planNewEntry('reference', 'x', { now, owner: 'them' as never })).toThrow(/owner/);
   });
 
+  it('rejects markdown on datasets other than snippet', () => {
+    for (const dataset of ['kb', 'skill', 'reference', 'context'] as const) {
+      expect(() => planNewEntry(dataset, 'x', { now, markdown: 'm' }), dataset).toThrow(
+        'markdown only applies to snippet entries',
+      );
+    }
+  });
+
   it('every yaml dataset file starts with exactly one schema comment line', () => {
-    for (const dataset of ['reference', 'context', 'recipe'] as const) {
+    for (const dataset of ['reference', 'snippet', 'context', 'recipe'] as const) {
       const [file] = planNewEntry(dataset, 'demo', { now });
       expect(file?.content.startsWith(`${schemaCommentLine(dataset, ORIGIN)}\n`)).toBe(true);
       expect(

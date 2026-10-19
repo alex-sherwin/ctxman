@@ -877,6 +877,24 @@ describe('placement summary (v3)', () => {
     expect($placementSummary.get()?.editable).toEqual(['local-a']);
   });
 
+  it('a snippet is not counted: it has nothing to place', () => {
+    $entries.set({ ...$entries.get(), snippet: ready(summary('snippet', 'rules')) });
+    setOutputDir('/work');
+    addItem('snippet', 'rules');
+    expect($plan.get()?.segments.find((s) => s.key === 'snippet/rules')).toMatchObject({
+      kind: 'snippet',
+      mode: 'inline',
+      material: 'none',
+    });
+    expect($placementSummary.get()?.counts).toEqual({
+      symlink: 3,
+      copy: 0,
+      clone: 1,
+      download: 0,
+      none: 0,
+    });
+  });
+
   it('leaves out excluded items', () => {
     setOutputDir('/work');
     setExcluded('task/two', true);

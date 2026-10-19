@@ -461,3 +461,37 @@ test.describe('reference info', () => {
     await expect(panel).toContainText('One file per week.');
   });
 });
+
+test.describe('snippet markdown', () => {
+  const snippets: string[] = [];
+  test.afterEach(async ({ request }) => {
+    for (const name of snippets.splice(0)) await request.delete(`${API}/snippet/${name}`);
+  });
+
+  test('the Markdown pencil writes through the snippet API; the page renders it after the reload', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-mdsnip');
+    const response = await request.post(`${API}/snippet`, {
+      data: { name, description: 'E2E snippet', markdown: 'First line.\n' },
+    });
+    expect(response.status()).toBe(201);
+    snippets.push(name);
+
+    await page.goto(`/snippet/${name}`);
+    const panel = page.getByTestId('snippet-markdown');
+    await expect(panel).toContainText('First line.');
+    await openPopup(page, page.getByTestId('snippet-edit-markdown'));
+    await expect(page.getByTestId('md-modal')).toContainText('Edit markdown');
+    await typeAtEnd(page, '\n## Then\n\nSecond part.');
+    await afterReload(page, () => page.getByTestId('md-save').click());
+
+    const saved = readYaml(`snippet/${name}.yaml`) as Record<string, unknown>;
+    expect(saved).toMatchObject({ name, description: 'E2E snippet' });
+    expect(String(saved.markdown)).toContain('First line.');
+    expect(String(saved.markdown)).toContain('## Then');
+    await expect(panel.locator('h2', { hasText: 'Then' })).toBeVisible();
+    await expect(panel).toContainText('Second part.');
+  });
+});

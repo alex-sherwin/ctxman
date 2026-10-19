@@ -69,6 +69,7 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
     [['skill', 'my-skill', '--description', 'A skill'], 'skill/my-skill/SKILL.md'],
     [['context', 'my-ctx', '--description', 'Ctx: with colon'], 'context/my-ctx.yaml'],
     [['recipe', 'my-recipe', '--description', 'Recipe: with colon'], 'recipe/my-recipe.yaml'],
+    [['snippet', 'my-snippet', '--description', 'Snippet: with colon'], 'snippet/my-snippet.yaml'],
     [
       ['reference', 'my-ref', '--type', 'local-repo', '--path', '/tmp', '--owner', 'me'],
       'reference/my-ref.yaml',
@@ -115,7 +116,12 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       expect(JSON.parse(r.stdout).path).toBe(expectedPath);
       expect(existsSync(path.join(dir, ...expectedPath.split('/')))).toBe(true);
       const [datasetId] = expectedPath.split('/');
-      if (datasetId === 'reference' || datasetId === 'context' || datasetId === 'recipe') {
+      if (
+        datasetId === 'reference' ||
+        datasetId === 'snippet' ||
+        datasetId === 'context' ||
+        datasetId === 'recipe'
+      ) {
         const text = readFileSync(path.join(dir, ...expectedPath.split('/')), 'utf8');
         expect(text.split('\n')[0]).toBe(schemaCommentLine(datasetId, ORIGIN));
       }
@@ -124,6 +130,22 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       expect(JSON.parse(check.stdout).checks.collections.warnings).toBe(0);
     },
   );
+
+  it('snippet --markdown writes the given markdown (a literal block, as typed)', async ({
+    expect,
+  }) => {
+    const dir = tmp.make();
+    const markdown = '## Commits\n\nUse `feat:` and `fix:`.\n';
+    const r = await runCli('add-entry.ts', dir, 'snippet', 'commits', '--markdown', markdown);
+    expect(r.code, r.stderr).toBe(0);
+    expect(readFileSync(path.join(dir, 'snippet', 'commits.yaml'), 'utf8')).toBe(
+      `${schemaCommentLine('snippet', ORIGIN)}\n` +
+        'name: commits\ndescription: "TODO: describe Commits."\n' +
+        'markdown: |\n  ## Commits\n\n  Use `feat:` and `fix:`.\n',
+    );
+    expect(r.stdout).toContain('Open: http://127.0.0.1:4321/snippet/commits');
+    expect((await runCli('check-all.ts', dir, '--json')).code).toBe(0);
+  });
 
   it('exits 2 on usage errors and writes nothing', async ({ expect }) => {
     const dir = tmp.make();
@@ -144,6 +166,8 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       ['reference', 'x', '--type', 'remote-repo', '--uri', 'not a uri'],
       ['reference', 'x', '--type', 'remote-repo', '--uri', 'https://h.test/a/b.tar.gz'],
       ['reference', 'x', '--type', 'remote-skill', '--uri', 'https://h.test/b.rar'],
+      ['kb', 'x', '--markdown', 'm'],
+      ['reference', 'x', '--markdown', 'm'],
       ['kb', 'x', '--bogus'],
     ];
     const [results, badName] = await Promise.all([

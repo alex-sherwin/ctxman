@@ -525,7 +525,8 @@
     overflow-wrap: anywhere;
   }
   /* the reference's info markdown, inside a Panel under the fields */
-  .cx-refinfo__body {
+  .cx-refinfo__body,
+  .cx-snippet__body {
     padding: var(--sp-3) var(--sp-4);
   }
 
@@ -648,9 +649,9 @@
   }
 
   /* ---------- Q2 additions: recipes (list columns, dashboard tiles, detail composition) ---------- */
-  /* 11 datasets: one row of tiles from 1440px up (same tile width as the former 10 at 1280px), else 6 + 5 */
+  /* 12 datasets: one row of tiles from 1440px up, else two rows of 6 */
   .cx-dash__tiles {
-    grid-template-columns: repeat(11, minmax(0, 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
   @media (max-width: 1439px) {
     .cx-dash__tiles {

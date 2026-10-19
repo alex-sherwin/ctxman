@@ -311,6 +311,7 @@ describe('ideTargetFor', () => {
       'reference/repo.yaml': 'name: repo\n',
       'context/ctx.yaml': 'name: ctx\n',
       'recipe/brief.yaml': 'name: brief\n',
+      'snippet/rules.yaml': 'name: rules\n',
     });
   }
 
@@ -358,6 +359,25 @@ describe('ideTargetFor', () => {
         target: { root: dir, file: path.join(dir, ds, `${slug}.yaml`) },
       });
     }
+  });
+
+  it('snippet: the snippet folder with <slug>.yaml', async () => {
+    const dir = dataTree();
+    expect(await ideTargetFor('snippet', 'rules', undefined, dir)).toEqual({
+      ok: true,
+      target: {
+        root: path.join(dir, 'snippet'),
+        file: path.join(dir, 'snippet', 'rules.yaml'),
+      },
+    });
+    expect(await ideTargetFor('snippet', 'nope', undefined, dir)).toMatchObject({
+      ok: false,
+      error: 'not-found',
+    });
+    expect(await ideTargetFor('snippet', 'rules', 'x.md', dir)).toMatchObject({
+      ok: false,
+      error: 'bad-path',
+    });
   });
 
   it('a path for a yaml dataset is bad-path', async () => {

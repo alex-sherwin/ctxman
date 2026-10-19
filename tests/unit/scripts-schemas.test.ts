@@ -14,13 +14,13 @@ describe.concurrent('check-schemas.ts / gen-schemas.ts', { timeout: 20_000 }, ()
       runCli('check-schemas.ts', tmp.make(), '--json'),
     ]);
     expect(text.code, text.stdout).toBe(0);
-    expect(text.stdout.trim()).toBe('Schemas: OK (3 files)');
+    expect(text.stdout.trim()).toBe('Schemas: OK (4 files)');
     expect(json.code).toBe(0);
     expect(JSON.parse(json.stdout)).toMatchObject({
       ok: true,
       errors: 0,
       warnings: 0,
-      filesChecked: 3,
+      filesChecked: 4,
     });
   });
 
@@ -32,10 +32,11 @@ describe.concurrent('check-schemas.ts / gen-schemas.ts', { timeout: 20_000 }, ()
     expect(first.code, first.stderr).toBe(0);
     expect(first.stdout.trim().split('\n')).toEqual([
       'wrote schemas/reference.schema.json',
+      'wrote schemas/snippet.schema.json',
       'wrote schemas/context.schema.json',
       'wrote schemas/recipe.schema.json',
     ]);
-    for (const ds of ['reference', 'context', 'recipe']) {
+    for (const ds of ['reference', 'snippet', 'context', 'recipe']) {
       const name = `${ds}.schema.json`;
       expect(readFileSync(path.join(cwd, 'schemas', name), 'utf8')).toBe(
         readFileSync(path.join(repoRoot, 'schemas', name), 'utf8'),
@@ -74,7 +75,7 @@ describe.concurrent('check-schemas.ts / gen-schemas.ts', { timeout: 20_000 }, ()
     expect(stray.stdout).toContain('WARN  schemas/stray');
 
     expect(missing.code).toBe(1);
-    expect(missing.stdout.match(/schemas\/missing/g)).toHaveLength(3);
+    expect(missing.stdout.match(/schemas\/missing/g)).toHaveLength(4);
   });
 
   it('both scripts reject unknown flags with exit 2', async ({ expect }) => {

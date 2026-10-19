@@ -18,9 +18,10 @@ import {
 const ids = (defs: readonly { id: string }[]): string[] => defs.map((d) => d.id);
 
 describe('YAML_DATASETS', () => {
-  it('lists the three editable yaml datasets', () => {
-    expect([...YAML_DATASETS]).toEqual(['reference', 'context', 'recipe']);
+  it('lists the four editable yaml datasets', () => {
+    expect([...YAML_DATASETS]).toEqual(['reference', 'snippet', 'context', 'recipe']);
     expect(isYamlDatasetId('reference')).toBe(true);
+    expect(isYamlDatasetId('snippet')).toBe(true);
     expect(isYamlDatasetId('kb')).toBe(false);
     expect(isYamlDatasetId(undefined)).toBe(false);
   });
@@ -113,9 +114,18 @@ describe('FORM_FIELDS / visibleFields', () => {
   });
 });
 
+describe('FORM_FIELDS.snippet', () => {
+  it('is name, description, tags and a required markdown editor', () => {
+    expect(ids(visibleFields('snippet', {}))).toEqual(['name', 'description', 'tags', 'markdown']);
+    const markdown = FORM_FIELDS.snippet.find((f) => f.id === 'markdown');
+    expect(markdown).toMatchObject({ kind: 'markdown', required: true });
+  });
+});
+
 describe('LINKED_EDITOR', () => {
   it('points context at the Forge and recipe at Inflate', () => {
     expect(LINKED_EDITOR.reference).toBeNull();
+    expect(LINKED_EDITOR.snippet).toBeNull();
     expect(LINKED_EDITOR.context?.label).toBe('Edit links in Forge');
     expect(LINKED_EDITOR.context?.href('my-ctx')).toBe('/forge?context=my-ctx');
     expect(LINKED_EDITOR.recipe?.label).toBe('Edit composition in Inflate');
@@ -133,6 +143,7 @@ describe('emptyDoc', () => {
       owner: 'me',
     });
     expect(emptyDoc('context')).toEqual({ name: '', description: '', links: [] });
+    expect(emptyDoc('snippet')).toEqual({ name: '', description: '', markdown: '' });
     expect(emptyDoc('recipe')).toMatchObject({
       name: '',
       target: 'claude-code',
@@ -254,7 +265,43 @@ describe('normalizeDoc', () => {
   });
 });
 
+describe('normalizeDoc snippet', () => {
+  it('trims name and description, drops empty tags, keeps markdown exactly as typed (last key)', () => {
+    const doc = normalizeDoc('snippet', {
+      name: ' s ',
+      description: ' d ',
+      tags: [],
+      markdown: '  indented\n\n',
+      stray: 'gone',
+    });
+    expect(doc).toEqual({ name: 's', description: 'd', markdown: '  indented\n\n' });
+    expect(Object.keys(normalizeDoc('snippet', { ...doc, tags: ['a'] }))).toEqual([
+      'name',
+      'description',
+      'tags',
+      'markdown',
+    ]);
+  });
+});
+
 describe('validateDoc', () => {
+  it('snippet: a blank markdown is Required; a filled one is valid', () => {
+    const r = validateDoc('snippet', emptyDoc('snippet'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors).toEqual({ name: 'Required', description: 'Required', markdown: 'Required' });
+    }
+    const blank = validateDoc('snippet', { name: 's', description: 'd', markdown: ' \n ' });
+    expect(!blank.ok && blank.errors).toEqual({ markdown: 'Required' });
+    expect(validateDoc('snippet', { name: 's', description: 'd', markdown: 'Do it.' })).toEqual({
+      ok: true,
+      doc: { name: 's', description: 'd', tags: [], markdown: 'Do it.' },
+    });
+    expect(
+      validateDoc('snippet', { name: 't', description: 'd', markdown: 'x' }, 's'),
+    ).toMatchObject({ ok: false, errors: { name: expect.stringContaining("can't be changed") } });
+  });
+
   it('accepts a minimal local-repo reference', () => {
     const r = validateDoc('reference', {
       name: 'my-ref',
@@ -373,6 +420,7 @@ describe('readonlySummary', () => {
       '1 context · 2 items · 0 blocks — edit in Inflate',
     );
     expect(readonlySummary('reference', {})).toBeNull();
+    expect(readonlySummary('snippet', {})).toBeNull();
   });
 });
 
@@ -400,6 +448,17 @@ describe('YAML_CODECS', () => {
       ].join('\n'),
     );
     expect(validate(YAML_CODECS.reference.schema, doc).success).toBe(true);
+  });
+
+  it('snippet: markdown last as a literal block; same compares the data', () => {
+    const doc = { name: 's', description: 'd', tags: ['t'], markdown: 'One.\n\nTwo.\n' };
+    expect(YAML_CODECS.snippet.serialize(doc)).toBe(
+      'name: s\ndescription: d\ntags:\n  - t\nmarkdown: |\n  One.\n\n  Two.\n',
+    );
+    expect(YAML_CODECS.snippet.same(doc, { ...doc })).toBe(true);
+    expect(YAML_CODECS.snippet.same(doc, { ...doc, markdown: 'One.\n' })).toBe(false);
+    expect(YAML_CODECS.snippet.toDoc({ snippet: doc, lastModified: 'T' })).toEqual(doc);
+    expect(YAML_CODECS.snippet.serialize(emptyDoc('snippet'))).toContain('markdown: ""');
   });
 
   it('serializes an invalid document best-effort instead of throwing', () => {

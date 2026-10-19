@@ -20,6 +20,7 @@
     "add:project": "node --env-file-if-exists=.env scripts/add-entry.ts project",
     "add:skill": "node --env-file-if-exists=.env scripts/add-entry.ts skill",
     "add:reference": "node --env-file-if-exists=.env scripts/add-entry.ts reference",
+    "add:snippet": "node --env-file-if-exists=.env scripts/add-entry.ts snippet",
     "add:context": "node --env-file-if-exists=.env scripts/add-entry.ts context",
     "add:recipe": "node --env-file-if-exists=.env scripts/add-entry.ts recipe",
     "check": "node --env-file-if-exists=.env scripts/check-all.ts && node scripts/check-schemas.ts",

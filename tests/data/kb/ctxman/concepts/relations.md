@@ -46,7 +46,7 @@ A project lists its tasks, features, bugs and ideas as `rel: child` links in its
 
 ## Where relations show
 
-* **Links to** (okf pages, reference pages show only Linked from): the entry's frontmatter links in file order, then mentions. Each row has the relation label, a dataset badge, the title, the state and a `missing` badge when the target does not exist. Frontmatter rows have a remove button; on a project the `child` rows live in the Children panel instead.
+* **Links to** (okf pages, reference and snippet pages show only Linked from): the entry's frontmatter links in file order, then mentions. Each row has the relation label, a dataset badge, the title, the state and a `missing` badge when the target does not exist. Frontmatter rows have a remove button; on a project the `child` rows live in the Children panel instead.
 * **Linked from**: incoming edges, sorted Parent, Required by, Related, Mentioned by. A mention row names the file it appears in when that is not the entry file.
 * **Broken links** in rendered markdown are drawn with a dashed underline and a tooltip (`Missing: <dataset>/<slug>`), so a dangling reference is visible before any check runs.
 * **Lists and the dashboard** flag entries whose file is invalid (see below).
@@ -68,7 +68,7 @@ Everything below is the EntryTools island on okf and skill detail pages (see [Ed
 
 ## Add to context and Build context
 
-* **Add to context** (every okf, skill and reference page): choose an existing context (one that already links the entry is disabled) or "New context…", optionally write notes, and the entry is appended through `POST /api/context/<slug>/links`. A present link is left as it is and reported as skipped.
+* **Add to context** (every okf, skill, reference and snippet page): choose an existing context (one that already links the entry is disabled) or "New context…", optionally write notes, and the entry is appended through `POST /api/context/<slug>/links`. A present link is left as it is and reported as skipped.
 * **Build context** (project pages): a checklist of the project (always on), its children (on) and its related and depends-on entries (off) becomes the links of a new context, or is appended to an existing one, and the browser opens it in the [Forge](/concepts/context-forge.md). There is no dedicated endpoint: it is `POST /api/context` or the links endpoint with the list computed in the page.
 * In the Forge itself the **All** tab searches every linkable dataset, and a row that has children offers `+ Add with N children` (children not yet linked, in file order).
 

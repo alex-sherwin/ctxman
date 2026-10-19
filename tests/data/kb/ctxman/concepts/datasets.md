@@ -1,7 +1,7 @@
 ---
 type: Dataset Model
 title: Datasets
-description: The eleven datasets, their on-disk shape, lifecycle states and the link syntax between entries.
+description: The twelve datasets, their on-disk shape, lifecycle states and the link syntax between entries.
 tags: [datasets, okf, schema]
 generated:
   by: claude-code/ctxman-seed
@@ -12,7 +12,7 @@ generated:
 
 All data lives in the data directory, the folder `CTXMAN_DATA_DIR` points at (see [Runtime modes](/concepts/runtime-modes.md)); the paths below are relative to it. The repository's own sample corpus, which includes these docs, is `tests/data/`. Every entry has a required unique `name` (kebab-case, at most 64 characters) and a required `description`. The name equals the folder name or file stem and doubles as the slug.
 
-## The eleven datasets
+## The twelve datasets
 
 | Dataset | Kind | Entry file | Lifecycle states |
 | --- | --- | --- | --- |
@@ -25,6 +25,7 @@ All data lives in the data directory, the folder `CTXMAN_DATA_DIR` points at (se
 | `project` | OKF bundle | `project/<name>/index.md` | pending, in-progress, complete, wont-do |
 | `skill` | agentskills.io folder | `skill/<name>/SKILL.md` | none |
 | `reference` | YAML file | `reference/<name>.yaml` | none |
+| `snippet` | YAML file | `snippet/<name>.yaml` | none |
 | `context` | YAML file | `context/<name>.yaml` | none |
 | `recipe` | YAML file | `recipe/<name>.yaml` | none |
 
@@ -63,9 +64,27 @@ Every dataset can be created in the UI (`/new/<dataset>`). References can be cre
 
 One pure helper, `src/lib/remote-uri.ts` (`isGitUri`, `isArchiveUri`, `classifyRemoteUri`), backs the schema, `add-entry`, the search text and the badges. A git URI is SCP-style SSH (`git@github.com:org/repo.git`), `ssh://git@host/org/repo.git`, or HTTPS `https://host/org/repo` with or without `.git`; credentials, query strings and fragments are rejected. A `remote-skill` `uri` may instead be an HTTPS URL whose path ends in `.tar.gz`, `.tgz` or `.zip`. The two kinds never overlap, and `remote-repo` accepts git URIs only. The `git` or `archive` badge on list rows, the detail page and the search body is derived from the URI, never stored.
 
+## Snippets
+
+A snippet is a reusable piece of markdown: the instructions you give every session, house rules, a checklist. It has `name`, `description`, optional `tags` and a required, non-blank `markdown` field. There are no files and no bundle; the text is the data:
+
+```yaml
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/snippet
+name: finish-checklist
+description: The checks to run before saying a piece of work is done.
+tags:
+  - workflow
+markdown: |
+  ## Before you finish
+
+  1. Run the full suite.
+```
+
+`markdown` is written last, as a literal block, exactly as typed. A snippet is linkable, so a context links it and a recipe includes it like any other entry; [Context inflate](/concepts/context-inflate.md) writes its markdown into the document under the item heading. The snippet page renders the markdown in a panel with Copy (the raw text) and a pencil popup editor; `/new/snippet` and `?edit=1` use the form, with the markdown in a Monaco field. The API is `GET|PUT|DELETE /api/snippet/<slug>` and `POST /api/snippet`, and `src/lib/snippet-io.ts` writes the file atomically (key order `name`, `description`, `tags`, `markdown`). Like a reference, an invalid snippet file is listed flagged and its page is a 404 until it is fixed. `ctxman:` links in a snippet are not checked by `check:links` (Inflate warns about unresolved ones).
+
 ## Contexts
 
-A context aggregates links to the other nine linkable datasets (everything except `context` and `recipe`), each with optional markdown notes for the consuming agent. See [Context forge](/concepts/context-forge.md). Contexts never copy the linked content; [Context inflate](/concepts/context-inflate.md) reads them at generate time.
+A context aggregates links to the ten linkable datasets (everything except `context` and `recipe`), each with optional markdown notes for the consuming agent. See [Context forge](/concepts/context-forge.md). Contexts never copy the linked content; [Context inflate](/concepts/context-inflate.md) reads them at generate time.
 
 ## Recipes
 
@@ -73,16 +92,16 @@ A recipe is the saved input of the [Context inflate](/concepts/context-inflate.m
 
 ## JSON Schemas and the magic comment
 
-`reference`, `context` and `recipe` also exist as generated JSON Schemas in `schemas/<dataset>.schema.json`. They come from the arktype Types in `src/datasets/schemas.ts`, the same Types that validate the files at runtime (arktype is the only validator), via `pnpm run gen:schemas`; `pnpm run check:schemas` fails when a file is stale, and `GET /api/schemas/<dataset>` serves them. Rules JSON Schema cannot express (duplicate links, name equals file stem, URI shapes) are custom narrows of the same Types and are listed in each schema's `$comment`.
+`reference`, `snippet`, `context` and `recipe` also exist as generated JSON Schemas in `schemas/<dataset>.schema.json`. They come from the arktype Types in `src/datasets/schemas.ts`, the same Types that validate the files at runtime (arktype is the only validator), via `pnpm run gen:schemas`; `pnpm run check:schemas` fails when a file is stale, and `GET /api/schemas/<dataset>` serves them. Rules JSON Schema cannot express (duplicate links, name equals file stem, URI shapes) are custom narrows of the same Types and are listed in each schema's `$comment`.
 
-Every file of these three datasets starts with the yaml-language-server comment on line 1, which points editors at the schema so the Red Hat YAML extension validates as you type:
+Every file of these four datasets starts with the yaml-language-server comment on line 1, which points editors at the schema so the Red Hat YAML extension validates as you type:
 
 ```yaml
 # yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/context
 name: ctxman-dev
 ```
 
-The URL is the running app's schema endpoint, so the schema resolves while ctxman runs (the endpoint answers with CORS `*` and also accepts `/api/schemas/context.schema.json`). The origin comes from `CTXMAN_SERVER_ORIGIN`, default `http://127.0.0.1:4321`. The file writers add the line (context-io, recipe-io, reference-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong: it accepts any loopback origin and port (127.0.0.1, localhost, [::1]) and an optional `.schema.json` suffix for that dataset, so a file written for another port still passes. `pnpm run fix:yaml-comments` repairs a hand-made file. The browser YAML editors never show the line; they match the schemas on a model path. See [Editing](/concepts/editing.md).
+The URL is the running app's schema endpoint, so the schema resolves while ctxman runs (the endpoint answers with CORS `*` and also accepts `/api/schemas/context.schema.json`). The origin comes from `CTXMAN_SERVER_ORIGIN`, default `http://127.0.0.1:4321`. The file writers add the line (context-io, recipe-io, reference-io, snippet-io and the add scripts); the serializers stay pure data. Do not strip it. `collections/yaml-schema-comment` warns when it is missing or wrong: it accepts any loopback origin and port (127.0.0.1, localhost, [::1]) and an optional `.schema.json` suffix for that dataset, so a file written for another port still passes. `pnpm run fix:yaml-comments` repairs a hand-made file. The browser YAML editors never show the line; they match the schemas on a model path. See [Editing](/concepts/editing.md).
 
 ## Relations: the `links` field
 

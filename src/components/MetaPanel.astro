@@ -27,7 +27,7 @@ import { withParams } from '../lib/url-state.ts';
 
 interface Props {
   dataset: DatasetId;
-  kind: 'okf' | 'skill' | 'reference' | 'context' | 'recipe';
+  kind: 'okf' | 'skill' | 'reference' | 'snippet' | 'context' | 'recipe';
   /** Frontmatter / yaml data of the entry (or of the sub-doc). */
   data: Record<string, unknown>;
   /** ISO mtime of the shown file / entry. */

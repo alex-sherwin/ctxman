@@ -27,6 +27,7 @@ import {
   defaultModeFor,
   isMaterialFor,
   isModeForPlacement,
+  isPlaceableKind,
   isPrimaryEligible,
   mdKey,
   nextBlockId,
@@ -188,6 +189,8 @@ export function summarizePlacement(plan: ExpandedPlan): PlacementSummary | null 
   const primaryKey = plan.primary?.status === 'ok' ? plan.primary.key : null;
   for (const seg of plan.segments) {
     if (seg.type !== 'item' || seg.status !== 'included' || seg.kind === null) continue;
+    // a snippet has nothing to place (its markdown is in the context file): not counted as "not placed"
+    if (!isPlaceableKind(seg.kind)) continue;
     switch (seg.material) {
       case 'symlink':
         counts.symlink++;

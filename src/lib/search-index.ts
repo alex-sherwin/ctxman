@@ -9,7 +9,13 @@ import {
 } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { isLocalReference } from '../datasets/schemas.ts';
-import type { ContextData, RecipeData, ReferenceData, SkillData } from '../datasets/schemas.ts';
+import type {
+  ContextData,
+  RecipeData,
+  ReferenceData,
+  SkillData,
+  SnippetData,
+} from '../datasets/schemas.ts';
 import type { SearchDoc } from './entry-summary.ts';
 import { TARGETS, itemKey } from './inflate/catalog.ts';
 import { classifyRemoteUri } from './remote-uri.ts';
@@ -272,6 +278,23 @@ export function referenceToSearchDoc(slug: string, data: ReferenceData): SearchD
     headings: [],
     body: info === '' ? body : truncate(`${body} ${info}`, MAX_BODY_CHARS),
     url: entryUrl('reference', slug),
+  };
+}
+
+/** A snippet: its markdown is the body (as text) and its headings are the headings. */
+export function snippetToSearchDoc(slug: string, data: SnippetData): SearchDoc {
+  return {
+    id: `snippet/${slug}`,
+    dataset: 'snippet',
+    slug,
+    path: null,
+    title: data.name,
+    name: data.name,
+    description: data.description,
+    tags: [...data.tags],
+    headings: extractHeadings(data.markdown),
+    body: markdownToText(data.markdown),
+    url: entryUrl('snippet', slug),
   };
 }
 

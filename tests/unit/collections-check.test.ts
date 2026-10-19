@@ -126,6 +126,38 @@ describe('checkCollections', () => {
     expect(stray.find((f) => f.file.endsWith('.yml'))?.message).toContain('.yml');
   });
 
+  it('snippet yaml: schema, name vs stem, stray files; contexts and recipes may link snippets', async () => {
+    const dir = tmp.make(
+      withYamlComments({
+        ...validDataTree(),
+        'snippet/good.yaml': 'name: good\ndescription: d\nmarkdown: |\n  Run the checks.\n',
+        'snippet/no-markdown.yaml': 'name: no-markdown\ndescription: d\n',
+        'snippet/blank.yaml': 'name: blank\ndescription: d\nmarkdown: "  "\n',
+        'snippet/other-name.yaml': 'name: someone-else\ndescription: d\nmarkdown: m\n',
+        'snippet/notes.md': 'stray',
+        'context/uses-snippets.yaml':
+          'name: uses-snippets\ndescription: d\nlinks:\n  - dataset: snippet\n    slug: good\n  - dataset: snippet\n    slug: gone\n',
+        'recipe/uses-snippet.yaml':
+          'name: uses-snippet\ndescription: d\nitems:\n  - dataset: snippet\n    slug: good\n',
+      }),
+    );
+    const { findings } = await checkCollections(dir);
+    expect(findings.map((f) => `${f.file} ${f.rule} ${f.severity}`)).toEqual([
+      'context/uses-snippets.yaml collections/dangling-link warning',
+      'snippet/blank.yaml collections/schema error',
+      'snippet/no-markdown.yaml collections/schema error',
+      'snippet/notes.md collections/stray-file warning',
+      'snippet/other-name.yaml collections/name-mismatch error',
+    ]);
+    expect(byRule(findings, 'collections/dangling-link')[0]?.message).toBe(
+      'link snippet/gone does not exist',
+    );
+    expect(
+      byRule(findings, 'collections/schema').find((f) => f.file === 'snippet/no-markdown.yaml')
+        ?.message,
+    ).toContain('markdown');
+  });
+
   it('dangling context links are warnings only (never errors)', async () => {
     const dir = tmp.make(
       withYamlComments({

@@ -52,6 +52,7 @@ import {
   isSafeGitRef,
   isSafeRelativeDir,
   itemKey,
+  isPlaceableKind,
   itemKindOf,
   materialDef,
   materialDescription,
@@ -147,7 +148,7 @@ describe('inlineCode', () => {
 });
 
 describe('item kinds', () => {
-  it('lists the 12 kinds in order', () => {
+  it('lists the 13 kinds in order', () => {
     expect([...ITEM_KINDS]).toEqual([
       'kb',
       'rca',
@@ -161,10 +162,11 @@ describe('item kinds', () => {
       'local-folder',
       'remote-repo',
       'remote-skill',
+      'snippet',
     ]);
   });
 
-  it('labels: okf type, Skill, reference type labels', () => {
+  it('labels: okf type, Skill, reference type labels, Snippet', () => {
     expect(ITEM_KIND_LABELS).toEqual({
       kb: 'Knowledge Base',
       rca: 'Root Cause Analysis',
@@ -178,6 +180,7 @@ describe('item kinds', () => {
       'local-folder': 'Local folder',
       'remote-repo': 'Remote repo',
       'remote-skill': 'Remote skill',
+      snippet: 'Snippet',
     });
     for (const id of ['kb', 'task'] as const) {
       expect(ITEM_KIND_LABELS[id]).toBe(datasetDef(id).okfType);
@@ -298,6 +301,7 @@ describe('defaultModeFor (spec 4.3, ROUND3 §H.1: every okf kind is inline-main)
     'local-folder': ['describe', 'describe', 'describe'],
     'remote-repo': ['describe', 'describe', 'describe'],
     'remote-skill': ['install', 'install', 'describe'],
+    snippet: ['inline', 'inline', 'inline'],
   };
   const targets: InflateTarget[] = ['claude-code', 'codex', 'generic'];
 
@@ -393,6 +397,7 @@ describe('modes per placement (plans/INFLATE_V3_PLAN.md §3.3)', () => {
       'local-folder': ['describe', 'describe', 'describe'],
       'remote-repo': ['describe', 'describe', 'describe'],
       'remote-skill': ['describe', 'describe', 'describe'],
+      snippet: ['inline', 'inline', 'inline'],
     };
     for (const kind of ITEM_KINDS) {
       INFLATE_TARGETS.forEach((target, i) => {
@@ -738,7 +743,23 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       'local-folder',
       'remote-repo',
       'remote-skill',
+      'snippet',
     ]);
+  });
+
+  it('snippet: nothing to place (its markdown goes into the context file), always inlined', () => {
+    expect(materialsFor('snippet').map((m) => m.id)).toEqual(['none']);
+    expect(materialDef('snippet', 'none')?.description).toBe(
+      'Nothing to place: the markdown is written into LLM_CONTEXT.md.',
+    );
+    expect(modesFor('snippet').map((m) => m.id)).toEqual(['inline']);
+    expect(modesForPlacement('snippet', true).map((m) => m.id)).toEqual(['inline']);
+    expect(modeDef('snippet', 'inline')?.options).toEqual(['shiftHeadings', 'rewriteLinks']);
+    expect(itemKindOf('snippet')).toBe('snippet');
+  });
+
+  it('isPlaceableKind: every kind but snippet has something to place', () => {
+    expect(ITEM_KINDS.filter((k) => !isPlaceableKind(k))).toEqual(['snippet']);
   });
 
   const notPlaced = [
@@ -910,6 +931,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
         'local-folder': 'symlink',
         'remote-repo': 'clone',
         'remote-skill': 'install',
+        snippet: 'none',
       });
     }
     for (const kind of ITEM_KINDS) {

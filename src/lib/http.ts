@@ -7,6 +7,7 @@ import { DocIoError } from './doc-io.ts';
 import { EntryIoError } from './entry-io.ts';
 import { RecipeIoError } from './recipe-io.ts';
 import { ReferenceIoError } from './reference-io.ts';
+import { SnippetIoError } from './snippet-io.ts';
 
 /** Statuses that must not carry a body (a `Response` with a body and one of these throws). */
 const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([101, 204, 205, 304]);
@@ -138,7 +139,10 @@ export async function readJson(
   }
 }
 
-/** The slice of `ContextIoError` / `RecipeIoError` / `ReferenceIoError` the shared mapper reads (same shape). */
+/**
+ * The slice of `ContextIoError` / `RecipeIoError` / `ReferenceIoError` / `SnippetIoError` the shared mapper
+ * reads (same shape).
+ */
 interface IoErrorLike {
   code:
     | 'not-found'
@@ -193,6 +197,12 @@ export function recipeErrorResponse(error: unknown, mode: 'read' | 'write'): Res
 /** Maps a reference-io failure to its API response (same table as contexts); anything else is a 500. */
 export function referenceErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
   if (!(error instanceof ReferenceIoError)) return internalError(error);
+  return ioErrorResponse(error, mode);
+}
+
+/** Maps a snippet-io failure to its API response (same table as contexts); anything else is a 500. */
+export function snippetErrorResponse(error: unknown, mode: 'read' | 'write'): Response {
+  if (!(error instanceof SnippetIoError)) return internalError(error);
   return ioErrorResponse(error, mode);
 }
 

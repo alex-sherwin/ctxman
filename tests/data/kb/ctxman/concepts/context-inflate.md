@@ -84,7 +84,7 @@ order:
 | `markdown` | Injected blocks `{id, body}`; `id` is kebab-case, new blocks are named `b1`, `b2` and so on. |
 | `overrides` | Per-item `{key, mode?, options?, material?, materialOptions?, edit?, exclude?}`, where `key` is `<dataset>/<slug>`. `edit` (the Editable flag of a repository) is only valid on a `reference/<slug>` key. Entries that set nothing are dropped when saving. |
 | `order` | Segment keys that pin the order (see below). Written only when non-empty. |
-| `defaults` | Per item kind `{mode?, options?, material?, materialOptions?}`, keyed by `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `local-repo`, `local-folder`, `remote-repo` or `remote-skill`. |
+| `defaults` | Per item kind `{mode?, options?, material?, materialOptions?}`, keyed by `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `local-repo`, `local-folder`, `remote-repo`, `remote-skill` or `snippet`. |
 
 The `output` object:
 
@@ -137,6 +137,7 @@ The **mode** says how the document presents an item. Which modes exist depends o
 | reference `local-repo`, `local-folder` | `describe`, `tree` | `describe`, `tree` |
 | reference `remote-repo` | `describe`, `clone` | `describe` |
 | reference `remote-skill` | `install` (`describe` for the generic target), `describe` | `describe` |
+| `snippet` | `inline` | (never placed) |
 
 The schema accepts every mode of the family in either case; a stored mode the placement does not offer is not applied (see Expansion rules). The UI offers only the list that fits, and shows a one-entry list as plain text.
 
@@ -155,6 +156,7 @@ What each mode writes:
 | `tree` | `describe`, then the top-level entries of the local path (`treeLimit`). |
 | `clone` | Not placed only: `git clone` commands into the project. |
 | `install` (remote-skill) | Not placed only: commands that clone or download the skill into the skills directory. |
+| `inline` (snippet) | The context notes, then the snippet's markdown, nothing else: no meta line, and a first heading that repeats the item title is dropped. |
 
 **Reference info.** Whatever the mode, a reference with an `info` (markdown in the reference file) gets it inlined under its item: after the description in the single document, between the facts line (and context notes) and the `Details:` line in a working directory. Its headings are nested below the item heading, and `ctxman:` links are resolved like in inline bodies (relative links when the target is placed); other links stay as written, since a reference has no bundle. A `ctxman:` link that does not resolve adds an `unresolved-link` warning. The Primary repository, Repositories, Folders and Skills sections stay one-liners and do not repeat it.
 
@@ -164,8 +166,8 @@ Options a mode accepts (others are ignored and not stored):
 | --- | --- | --- | --- |
 | `includeFrontmatter` | checkbox | off | `inline-main`, `inline-bundle`, skill `inline` |
 | `includeLog` | checkbox | off | `inline-bundle` |
-| `shiftHeadings` | checkbox | on | the inline modes: nests the item's headings under its section |
-| `rewriteLinks` ("Resolve links") | checkbox | on | the inline modes: bundle and `ctxman:` links become file paths (relative to the directory when the item is placed in one, absolute otherwise) |
+| `shiftHeadings` | checkbox | on | the inline modes (snippet `inline` too): nests the item's headings under its section |
+| `rewriteLinks` ("Resolve links") | checkbox | on | the inline modes (snippet `inline` too): bundle and `ctxman:` links become file paths (relative to the directory when the item is placed in one, absolute otherwise) |
 | `eager` | checkbox | off | `pointer`: load the file up front (see targets) |
 | `symlink` | checkbox | off | skill `install` (the commands) |
 | `treeLimit` | select 10, 25, 50, 100, 200, 500 | 50 | `tree` |
@@ -187,6 +189,9 @@ The material of an item is independent of its mode, and it comes first: it decid
 | reference `local-folder` | Symlink, Copy, Don't place | `folders/<slug>` |
 | reference `remote-repo` | Clone (`clone`), Don't place | `repos/<slug>` |
 | reference `remote-skill` | Clone for a git URI or Download for an archive (`install`), Don't place | `<skillsDir>/<last subpath segment, or the slug>` |
+| `snippet` | Don't place (`none`, the only one) | none: the markdown is written into `LLM_CONTEXT.md` |
+
+A snippet has nothing to place, so the UI shows no Place control for it, the run settings do not list it, and it never counts as "not placed" (neither in the placement summary nor in the `## Placement` legend).
 
 The defaults are the same for every target (the target only decides `<skillsDir>`): knowledge, skills, local repositories and local folders are symlinked, remote repositories and remote skills are fetched. `install` of a remote skill is labelled by the URI kind (Clone, Download, or "Clone or download" while the kind is unknown). Don't place means nothing is placed and `LLM_CONTEXT.md` points at the original path or URI.
 

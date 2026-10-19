@@ -272,6 +272,18 @@ export const referenceSchema = localRepoReferenceSchema
   .or(remoteRepoReferenceSchema)
   .or(remoteSkillReferenceSchema);
 
+// ---------------------------------------------------------------- snippet (yaml)
+
+/** Reusable markdown (common instructions, conventions) that contexts and recipes include; Inflate inlines it. */
+export const snippetSchema = type({
+  '+': 'reject',
+  name: nameSchema,
+  description: nonBlank,
+  tags,
+  /** The snippet itself: markdown, written last as a literal block. */
+  markdown: nonBlank,
+});
+
 // ---------------------------------------------------------------- context (yaml)
 
 export const contextLinkSchema = type({
@@ -534,6 +546,9 @@ export type ReferenceInput = typeof referenceSchema.inferIn;
 export type LocalReferenceData = Extract<ReferenceData, { path: string }>;
 export const isLocalReference = (r: ReferenceData): r is LocalReferenceData =>
   isLocalReferenceType(r.type);
+export type SnippetData = typeof snippetSchema.infer;
+/** Input shape (before defaults): what API bodies carry. */
+export type SnippetInput = typeof snippetSchema.inferIn;
 /** A structured relation of an okf entry; `rel` is always present after parsing (default 'related'). */
 export type EntryLink = typeof entryLinkSchema.infer;
 /** Input shape (before the `rel` default): what API clients send. */
@@ -567,6 +582,7 @@ export const DATASET_SCHEMAS = {
   project: projectSchema,
   skill: skillSchema,
   reference: referenceSchema,
+  snippet: snippetSchema,
   context: contextSchema,
   recipe: recipeSchema,
 } as const satisfies Record<DatasetId, Type<any, any>>;
@@ -574,6 +590,7 @@ export const DATASET_SCHEMAS = {
 /** The arktype model of each YAML dataset (keys = SCHEMA_DATASETS order); the source of schemas/*.schema.json. */
 export const YAML_DATASET_TYPES = {
   reference: referenceSchema,
+  snippet: snippetSchema,
   context: contextSchema,
   recipe: recipeSchema,
 } as const;

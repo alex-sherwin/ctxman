@@ -77,6 +77,7 @@ describe('buildArgs', () => {
       kb: 'kb/x/index.md',
       skill: 'skill/x/SKILL.md',
       reference: 'reference/x.yaml',
+      snippet: 'snippet/x.yaml',
       context: 'context/x.yaml',
       recipe: 'recipe/x.yaml',
     };

@@ -8,6 +8,7 @@ import {
   defaultMaterialFor,
   defaultModeFor,
   isMaterialFor,
+  isPlaceableKind,
   materialDescription,
   materialLabel,
   materialsFor,
@@ -161,7 +162,12 @@ function DefaultKindRow({
   return (
     <div className="cx-defrow" data-dir={hasDir ? 'true' : undefined}>
       <span className="cx-defrow__label">{label}</span>
-      {hasDir && (
+      {hasDir && !isPlaceableKind(kind) && (
+        <span className="cx-seg__static" title={materialDescription(kind, builtInMaterial)}>
+          {builtInMaterialLabel}
+        </span>
+      )}
+      {hasDir && isPlaceableKind(kind) && (
         <Select
           aria-label={`Default material for ${label} items`}
           size="sm"
@@ -189,27 +195,37 @@ function DefaultKindRow({
           ))}
         </Select>
       )}
-      <Select
-        aria-label={`Default mode for ${label} items`}
-        size="sm"
-        value={shownMode}
-        onChange={(key) => {
-          if (key === null) return;
-          const next = String(key);
-          setDefaultMode(kind, next === DEFAULT_ITEM ? null : (next as ModeId));
-        }}
-        triggerTestId={`inflate-default-${kind}`}
-        pinnedKeys={[DEFAULT_ITEM]}
-      >
-        <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInLabel})`}>
-          Default ({builtInLabel})
-        </ListBoxItem>
-        {modes.map((m) => (
-          <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
-            {m.label}
+      {modes.length === 1 ? (
+        <span
+          className="cx-seg__static"
+          title={modes[0]?.description}
+          data-testid={`inflate-default-${kind}`}
+        >
+          {builtInLabel}
+        </span>
+      ) : (
+        <Select
+          aria-label={`Default mode for ${label} items`}
+          size="sm"
+          value={shownMode}
+          onChange={(key) => {
+            if (key === null) return;
+            const next = String(key);
+            setDefaultMode(kind, next === DEFAULT_ITEM ? null : (next as ModeId));
+          }}
+          triggerTestId={`inflate-default-${kind}`}
+          pinnedKeys={[DEFAULT_ITEM]}
+        >
+          <ListBoxItem id={DEFAULT_ITEM} textValue={`Default (${builtInLabel})`}>
+            Default ({builtInLabel})
           </ListBoxItem>
-        ))}
-      </Select>
+          {modes.map((m) => (
+            <ListBoxItem key={m.id} id={m.id} textValue={m.label} description={m.description}>
+              {m.label}
+            </ListBoxItem>
+          ))}
+        </Select>
+      )}
     </div>
   );
 }

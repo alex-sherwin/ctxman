@@ -1109,7 +1109,18 @@ test.describe('switching, deleting and history', () => {
 });
 
 test.describe('All tab', () => {
-  const DATASETS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project', 'skill', 'reference'];
+  const DATASETS = [
+    'kb',
+    'rca',
+    'idea',
+    'task',
+    'bug',
+    'feature',
+    'project',
+    'skill',
+    'reference',
+    'snippet',
+  ];
 
   test('Add items has an All tab: summed count, rows of several datasets, filter, add', async ({
     page,
@@ -1272,5 +1283,70 @@ test.describe('Unsaved changes survive a reload (no native prompt)', () => {
     await page.reload();
     await expect(page.getByTestId('inflate-description')).toHaveValue('Draft text');
     await expect(page.getByTestId('inflate-draft-restored')).toHaveCount(0);
+  });
+});
+
+test.describe('snippet items', () => {
+  test('a snippet is added from its tab, has one fixed mode and no Place line, and is inlined in the preview', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-rcp');
+    created.add(name);
+    const response = await request.post(`${API}/recipe`, {
+      data: {
+        name,
+        description: 'snippet items',
+        target: 'claude-code',
+        layout: 'flat',
+        contexts: [],
+        items: [{ dataset: 'kb', slug: 'ctxman' }],
+        output: { dir: `~/ctxman-inflate/${name}` },
+      },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    await openInflate(page, name);
+    await expect(segmentRow(page, 'kb/ctxman')).toBeVisible();
+
+    await page.getByTestId('inflate-tab-snippet').click();
+    const result = page.locator('[data-testid="inflate-result"][data-slug="finish-checklist"]');
+    await expect(result).toBeVisible();
+    await result.getByTestId('inflate-add').click();
+    const row = segmentRow(page, 'snippet/finish-checklist');
+    await expect(row).toContainText('ad hoc');
+    await expect(row.getByTestId('inflate-segment-mode')).toHaveText('Inline');
+    await expect(row.getByTestId('inflate-segment-materials')).toHaveCount(0);
+    // nothing placed for the snippet, so it is not "not placed" either
+    await expect(page.getByTestId('inflate-placement-summary')).toHaveText(
+      `~/ctxman-inflate/${name} · 1 symlink`,
+    );
+    await expect(
+      segmentRow(page, 'kb/ctxman').getByTestId('inflate-segment-materials'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: /Default modes/ }).click();
+    await expect(page.getByTestId('inflate-default-snippet')).toHaveText('Inline');
+    await expect(page.getByTestId('inflate-default-material-snippet')).toHaveCount(0);
+    await saveRecipe(page);
+    expect(readRecipeYaml(name).items).toContainEqual({
+      dataset: 'snippet',
+      slug: 'finish-checklist',
+    });
+
+    // the dry run of the saved recipe: what the preview shows and a run writes
+    const saved = (await (await request.get(`${API}/recipe/${name}`)).json()) as {
+      recipe: RecipeBody;
+    };
+    const plan = await request.post(`${API}/inflate/plan`, { data: { recipe: saved.recipe } });
+    expect(plan.status(), await plan.text()).toBe(200);
+    const markdown = ((await plan.json()) as { document: { markdown: string } }).document.markdown;
+    expect(markdown).toContain(
+      '## finish-checklist\n\n### Before you finish\n\n1. Run `pnpm run fmt`',
+    );
+    // ctxman: links point at the placed kb entry, relative to the working directory
+    expect(markdown).toContain('[the ctxman knowledge base](kb/ctxman/index.md)');
+    expect(markdown).not.toContain('**not placed**');
+    await page.getByTestId('inflate-view-preview').click();
+    await expect(page.getByTestId('inflate-render-status')).toHaveAttribute('data-kind', 'ready');
+    await expect(manifestRow(page, 'snippet/finish-checklist')).toContainText('Inline');
   });
 });

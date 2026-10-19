@@ -6,7 +6,8 @@
 // 400 bad-json | invalid (issues) | bad-slug | bad-path, 403 forbidden-origin, 404 not-found, 405,
 // 415 unsupported-media-type, 500 ide-spawn-failed, 501 ide-not-found. ROUND2_BACKEND_SPEC §B.3.
 // Security: local-only server + Origin guard + a fixed command (the request never chooses the executable);
-// only the entry dir (okf / skill), the data dir (yaml datasets) or a directory ctxman inflated is ever opened.
+// only the entry dir (okf / skill), the snippet folder, the data dir (the other yaml datasets) or a directory ctxman
+// inflated is ever opened.
 import type { APIRoute } from 'astro';
 import { DATASET_IDS, isDatasetId, isValidName } from '../../../datasets/registry.ts';
 import type { Issue } from '../../../lib/context-io.ts';

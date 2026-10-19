@@ -1,16 +1,16 @@
 // Browser-safe (fetch via ui/edit/api.ts only inside functions; no Monaco, no React, nothing touches the DOM at
 // import, so the SSR Astro components import the id helpers too): the descriptors and adapters behind the
-// markdown popup editors (ROUND2_UI_SPEC §F.2). A "target" is one small markdown area of a context, recipe or
-// reference yaml: a link's `notes`, a recipe's `preamble`, one `markdown` block `body`, or a reference's `info`.
-// The pure adapters (`readTarget` / `writeTarget` / `endpoint` / `hasTarget`) never mutate; `loadTarget` /
-// `saveTarget` are the read-modify-write round trip against `/api/context/:slug`, `/api/recipe/:slug` and
-// `/api/reference/:slug`.
+// markdown popup editors (ROUND2_UI_SPEC §F.2). A "target" is one small markdown area of a context, recipe,
+// reference or snippet yaml: a link's `notes`, a recipe's `preamble`, one `markdown` block `body`, a
+// reference's `info`, or a snippet's `markdown`. The pure adapters (`readTarget` / `writeTarget` / `endpoint` /
+// `hasTarget`) never mutate; `loadTarget` / `saveTarget` are the read-modify-write round trip against
+// `/api/context/:slug`, `/api/recipe/:slug`, `/api/reference/:slug` and `/api/snippet/:slug`.
 //
 // Those PUTs have no `ifUnmodifiedSince` (unlike `/api/doc`), so `saveTarget` re-GETs right before the PUT and
 // compares `lastModified` with the one the editor was opened on (D11). The PUT then carries the FRESH document
 // with only this target replaced, so concurrent edits to other parts of the file are never rolled back.
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import type { RecipeData, ReferenceData } from '../../datasets/schemas.ts';
+import type { RecipeData, ReferenceData, SnippetData } from '../../datasets/schemas.ts';
 import type { ContextDoc } from '../../lib/entry-summary.ts';
 import { getJson, sendJson } from '../edit/api.ts';
 
@@ -49,6 +49,14 @@ export type MdTarget =
       /** The reference's slug. */
       slug: string;
       label: string;
+    }
+  | {
+      kind: 'snippet-markdown';
+      /** `markdown` */
+      id: string;
+      /** The snippet's slug. */
+      slug: string;
+      label: string;
     };
 
 // ---------------------------------------------------------------- ids shared with the SSR buttons
@@ -61,6 +69,8 @@ export const PREAMBLE_TARGET_ID = 'preamble';
 export const blockTargetId = (blockId: string): string => `block:${blockId}`;
 /** `data-md-edit` of a reference's info pencil button. */
 export const INFO_TARGET_ID = 'info';
+/** `data-md-edit` of a snippet's markdown pencil button. */
+export const SNIPPET_TARGET_ID = 'markdown';
 
 /** The `MarkdownTargets` props of a context detail page: one notes target per link, in context order. */
 export function contextNoteTargets(
@@ -96,8 +106,16 @@ export function referenceTargets(slug: string): MdTarget[] {
   return [{ kind: 'reference-info', id: INFO_TARGET_ID, slug, label: 'info' }];
 }
 
-/** The yaml document a target lives in: a context (`links`), a recipe or a reference (`type`). */
-export type MdDoc = ContextDoc | RecipeData | ReferenceData;
+/** The `MarkdownTargets` props of a snippet detail page: its markdown. */
+export function snippetTargets(slug: string): MdTarget[] {
+  return [{ kind: 'snippet-markdown', id: SNIPPET_TARGET_ID, slug, label: 'markdown' }];
+}
+
+/**
+ * The yaml document a target lives in: a context (`links`), a recipe, a reference (`type`) or a snippet
+ * (`markdown` is a string; a recipe's `markdown` is its list of blocks).
+ */
+export type MdDoc = ContextDoc | RecipeData | ReferenceData | SnippetData;
 
 function isContextDoc(doc: MdDoc): doc is ContextDoc {
   return 'links' in doc;
@@ -107,15 +125,29 @@ function isReferenceDoc(doc: MdDoc): doc is ReferenceData {
   return 'type' in doc && 'owner' in doc;
 }
 
+function isSnippetDoc(doc: MdDoc): doc is SnippetData {
+  return typeof (doc as { markdown?: unknown }).markdown === 'string';
+}
+
 function isRecipeDoc(doc: MdDoc): doc is RecipeData {
-  return !isContextDoc(doc) && !isReferenceDoc(doc);
+  return !isContextDoc(doc) && !isReferenceDoc(doc) && !isSnippetDoc(doc);
 }
 
 /** The API collection of a target's document. */
-const collectionOf = (t: MdTarget): 'context' | 'recipe' | 'reference' =>
-  t.kind === 'context-notes' ? 'context' : t.kind === 'reference-info' ? 'reference' : 'recipe';
+function collectionOf(t: MdTarget): 'context' | 'recipe' | 'reference' | 'snippet' {
+  switch (t.kind) {
+    case 'context-notes':
+      return 'context';
+    case 'reference-info':
+      return 'reference';
+    case 'snippet-markdown':
+      return 'snippet';
+    default:
+      return 'recipe';
+  }
+}
 
-/** `/api/context/<slug>`, `/api/recipe/<slug>` or `/api/reference/<slug>`. */
+/** `/api/context/<slug>`, `/api/recipe/<slug>`, `/api/reference/<slug>` or `/api/snippet/<slug>`. */
 export function endpoint(t: MdTarget): string {
   return `/api/${collectionOf(t)}/${encodeURIComponent(t.slug)}`;
 }
@@ -141,6 +173,8 @@ export function hasTarget(t: MdTarget, doc: MdDoc): boolean {
       return isRecipeDoc(doc) && doc.markdown.some((b) => b.id === t.blockId);
     case 'reference-info':
       return isReferenceDoc(doc);
+    case 'snippet-markdown':
+      return isSnippetDoc(doc);
   }
 }
 
@@ -157,13 +191,16 @@ export function readTarget(t: MdTarget, doc: MdDoc): string {
       return isRecipeDoc(doc) ? (doc.markdown.find((b) => b.id === t.blockId)?.body ?? '') : '';
     case 'reference-info':
       return isReferenceDoc(doc) ? (doc.info ?? '') : '';
+    case 'snippet-markdown':
+      return isSnippetDoc(doc) ? doc.markdown : '';
   }
 }
 
 /**
  * A copy of `doc` with the area set to `text`. Blank notes delete the `notes` key, a blank preamble deletes
- * `preamble` (like the Forge and Inflate editors) and a blank info deletes `info`; a block body is written as is. `doc` is not mutated, and a
- * document that does not contain the area is returned unchanged (check with `hasTarget`).
+ * `preamble` (like the Forge and Inflate editors) and a blank info deletes `info`; a block body and a
+ * snippet's markdown are written as is (the server refuses a blank snippet markdown: it is required). `doc` is
+ * not mutated, and a document that does not contain the area is returned unchanged (check with `hasTarget`).
  */
 export function writeTarget(t: MdTarget, doc: MdDoc, text: string): MdDoc {
   switch (t.kind) {
@@ -195,6 +232,8 @@ export function writeTarget(t: MdTarget, doc: MdDoc, text: string): MdDoc {
       const { info: _removed, ...rest } = doc;
       return text.trim() === '' ? rest : { ...rest, info: text };
     }
+    case 'snippet-markdown':
+      return isSnippetDoc(doc) ? { ...doc, markdown: text } : doc;
   }
 }
 
@@ -212,6 +251,7 @@ interface DocResponse {
   context?: ContextDoc;
   recipe?: RecipeData;
   reference?: ReferenceData;
+  snippet?: SnippetData;
   lastModified: string;
 }
 

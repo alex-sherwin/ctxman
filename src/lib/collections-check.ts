@@ -163,11 +163,11 @@ async function checkSkills(ctx: Ctx): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------- reference + context + recipe (yaml)
+// ---------------------------------------------------------------- reference + snippet + context + recipe (yaml)
 
 async function checkYamlDataset(
   ctx: Ctx,
-  dataset: 'reference' | 'context' | 'recipe',
+  dataset: 'reference' | 'snippet' | 'context' | 'recipe',
 ): Promise<void> {
   const base = datasetDir(dataset, ctx.dataDir);
   const linkChecks: { file: string; links: { dataset: DatasetId; slug: string }[] }[] = [];
@@ -429,6 +429,7 @@ export async function checkCollections(
   for (const dataset of OKF_DATASET_IDS) await checkOkfDataset(ctx, dataset);
   await checkSkills(ctx);
   await checkYamlDataset(ctx, 'reference');
+  await checkYamlDataset(ctx, 'snippet');
   await checkYamlDataset(ctx, 'context');
   await checkYamlDataset(ctx, 'recipe');
   checkRecipeReferences(ctx);

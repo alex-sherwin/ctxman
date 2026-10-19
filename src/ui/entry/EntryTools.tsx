@@ -28,7 +28,7 @@ export interface EntryToolsProps {
   slug: string;
   /** Display title of the entry. */
   title: string;
-  kind: 'okf' | 'skill' | 'reference';
+  kind: 'okf' | 'skill' | 'reference' | 'snippet';
   /** `'ds/slug'` keys of the frontmatter `links` (okf): excluded from the relation pickers. */
   relationKeys?: readonly string[];
   /**
@@ -96,7 +96,7 @@ export default function EntryTools({
       <Status kind="saved" testId="entry-status" className="cx-entry__status">
         {status}
       </Status>
-      {dialog?.type === 'frontmatter' && kind !== 'reference' && (
+      {dialog?.type === 'frontmatter' && kind !== 'reference' && kind !== 'snippet' && (
         <FrontmatterDialog
           dataset={dataset}
           slug={slug}

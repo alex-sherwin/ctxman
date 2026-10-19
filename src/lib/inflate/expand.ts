@@ -44,6 +44,8 @@ export interface ItemMeta {
   subpath?: string;
   /** Full reference data: server only (fs-sources); undefined in the browser. */
   ref?: ReferenceData;
+  /** A snippet's markdown: server only (fs-sources); undefined in the browser. */
+  markdown?: string;
 }
 
 export interface ContextLike {

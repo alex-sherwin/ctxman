@@ -1151,6 +1151,87 @@ describe('reference info', () => {
   });
 });
 
+describe('snippet items', () => {
+  const RULES = {
+    'snippet/rules.yaml': [
+      'name: rules',
+      'description: House rules.',
+      'markdown: |',
+      '  # rules',
+      '',
+      '  See [the demo](ctxman:kb/demo) and [gone](ctxman:kb/nope).',
+      '',
+      '  ## Commits',
+      '',
+      '  Use `feat:`.',
+      '',
+    ].join('\n'),
+  };
+  const only = (r: Record<string, unknown> = {}): RecipeData =>
+    recipe({ layout: 'flat', items: [{ dataset: 'snippet', slug: 'rules' }], ...r });
+
+  it('inline: only the markdown under the heading (its own title dropped, headings nested, links resolved)', async () => {
+    const { D } = world(RULES);
+    const { markdown, manifest } = await render(D, only());
+    expect(body(markdown)).toBe(
+      [
+        '## rules',
+        '',
+        `See [the demo](${D}/kb/demo/index.md) and [gone](ctxman:kb/nope).`,
+        '',
+        '### Commits',
+        '',
+        'Use `feat:`.',
+        '',
+      ].join('\n'),
+    );
+    expect(manifest.warnings).toEqual([
+      {
+        code: 'unresolved-link',
+        key: 'snippet/rules',
+        message: 'snippet/rules: link "ctxman:kb/nope" does not resolve (no such entry)',
+      },
+    ]);
+  });
+
+  it('shiftHeadings and rewriteLinks off keep the markdown as written', async () => {
+    const { D } = world(RULES);
+    const { markdown, manifest } = await render(
+      D,
+      only({
+        overrides: [
+          { key: 'snippet/rules', options: { shiftHeadings: false, rewriteLinks: false } },
+        ],
+      }),
+    );
+    expect(body(markdown)).toContain('See [the demo](ctxman:kb/demo)');
+    expect(body(markdown)).toContain('\n## Commits\n');
+    expect(manifest.warnings).toEqual([]);
+  });
+
+  it('a context link to a snippet puts its notes as guidance above the markdown', async () => {
+    const { D } = world({
+      ...RULES,
+      'context/with-rules.yaml':
+        'name: with-rules\ndescription: d\nlinks:\n  - dataset: snippet\n    slug: rules\n    notes: Always apply these.\n',
+    });
+    const { markdown } = await render(D, recipe({ layout: 'flat', contexts: ['with-rules'] }));
+    const at = markdown.indexOf('## rules\n');
+    expect(at).toBeGreaterThan(-1);
+    expect(markdown.slice(at)).toMatch(
+      /^## rules\n\n> \*\*From context `with-rules`:\*\* Always apply these\.\n\nSee \[the demo\]/,
+    );
+  });
+
+  it('a missing or invalid snippet is reported like any other item', async () => {
+    const { D } = world({ 'snippet/bad.yaml': 'name: bad\ndescription: d\n' });
+    const missing = await render(D, recipe({ items: [{ dataset: 'snippet', slug: 'gone' }] }));
+    expect(missing.manifest.warnings.map((w) => w.code)).toContain('item-missing');
+    const invalid = await render(D, recipe({ items: [{ dataset: 'snippet', slug: 'bad' }] }));
+    expect(invalid.manifest.warnings.map((w) => w.code)).toContain('item-invalid');
+  });
+});
+
 describe('remote-repo modes', () => {
   const only = (slug: string, r: Record<string, unknown> = {}): RecipeData =>
     recipe({ layout: 'flat', items: [{ dataset: 'reference', slug }], ...r });
@@ -2522,6 +2603,25 @@ describe('renderPlan with output: reference info', () => {
     );
     // the Repositories section keeps its one-line bullets
     expect(section(result.markdown, 'Repositories')).not.toContain('Notes');
+  });
+});
+
+describe('renderPlan with output: snippet items', () => {
+  it('a snippet places nothing: its markdown is in the document, links relative to placed items', async () => {
+    const w = dirWorld({
+      'snippet/rules.yaml':
+        'name: rules\ndescription: House rules.\nmarkdown: |\n  Read [the brief](ctxman:kb/ctxman) first.\n',
+    });
+    const { result, plan } = await renderDir(w, flatDir(['snippet/rules', 'kb/ctxman']));
+    expect(section(result.markdown, 'rules')).toBe(
+      ['## rules', '', 'Read [the brief](kb/ctxman/index.md) first.'].join('\n'),
+    );
+    expect(plan.files.some((f) => f.path.includes('snippet'))).toBe(false);
+    expect(plan.materials['snippet/rules']).toMatchObject({ material: 'none' });
+    expect(plan.steps.some((s) => s.id.includes('snippet'))).toBe(false);
+    expect(result.markdown).not.toContain('snippet/rules/');
+    // the snippet is not "not placed": the legend only explains the symlinked kb
+    expect(section(result.markdown, 'Placement')).not.toContain('not placed');
   });
 });
 

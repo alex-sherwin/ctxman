@@ -222,6 +222,13 @@ export async function gatherContent(
 
     if (kind === 'remote-repo' || kind === 'remote-skill') return;
 
+    // A snippet is inlined from its markdown (meta, read with the item): only its ctxman: link targets are needed.
+    if (kind === 'snippet') {
+      const markdown = seg.meta?.markdown;
+      if (markdown !== undefined && rewrite) collectLinks(markdown.replace(/\r\n?/g, '\n'));
+      return;
+    }
+
     // okf: kb, rca, idea, task, bug, feature, project
     const dataset = seg.dataset as OkfDatasetId;
     if (mode === 'summary' && seg.placed) {

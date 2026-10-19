@@ -182,3 +182,41 @@ describe('conceptFiles', () => {
     expect(conceptFiles(list, null)).toEqual(['concepts/a.md', 'concepts/b.md', 'concepts/c.md']);
   });
 });
+
+describe('gatherContent: snippet', () => {
+  const SNIPPET = [
+    'name: rules',
+    'description: House rules.',
+    'markdown: |',
+    '  Read [the kb](ctxman:kb/ctxman) and [a gone one](ctxman:task/gone).',
+    '',
+  ].join('\n');
+
+  it('reads no file: the markdown comes with the item meta, its ctxman: links become targets', async () => {
+    const dataDir = tmp.make(seedTree({ 'snippet/rules.yaml': SNIPPET }));
+    const { plan, content } = await prepare(dataDir, recipeOf(['snippet/rules']));
+    expect(plan.segments.find((s) => s.key === 'snippet/rules')).toMatchObject({
+      type: 'item',
+      mode: 'inline',
+      material: 'none',
+      placed: false,
+    });
+    const item = content.items['snippet/rules'];
+    expect(item?.texts).toBeUndefined();
+    expect(item?.files).toBeUndefined();
+    expect(content.targets['kb/ctxman']?.abs).toMatch(/kb[\\/]ctxman[\\/]index\.md$/);
+    expect(content.targets['task/gone']).toBeNull();
+    expect(content.warnings).toEqual([]);
+  });
+
+  it('with rewriteLinks off it collects no targets', async () => {
+    const dataDir = tmp.make(seedTree({ 'snippet/rules.yaml': SNIPPET }));
+    const { content } = await prepare(
+      dataDir,
+      recipeOf(['snippet/rules'], {
+        overrides: [{ key: 'snippet/rules', options: { rewriteLinks: false } }],
+      }),
+    );
+    expect(content.targets).toEqual({});
+  });
+});

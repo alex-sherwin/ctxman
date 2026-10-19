@@ -114,6 +114,7 @@ export const ITEM_KINDS = [
   'local-folder',
   'remote-repo',
   'remote-skill',
+  'snippet',
 ] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
@@ -132,6 +133,7 @@ export const ITEM_KIND_LABELS: Readonly<Record<ItemKind, string>> = {
   'local-folder': REFERENCE_TYPE_LABELS['local-folder'],
   'remote-repo': REFERENCE_TYPE_LABELS['remote-repo'],
   'remote-skill': REFERENCE_TYPE_LABELS['remote-skill'],
+  snippet: 'Snippet',
 };
 
 export type ModeFamily =
@@ -140,7 +142,8 @@ export type ModeFamily =
   | 'local-repo'
   | 'local-folder'
   | 'remote-repo'
-  | 'remote-skill';
+  | 'remote-skill'
+  | 'snippet';
 
 export function familyOf(kind: ItemKind): ModeFamily {
   switch (kind) {
@@ -149,6 +152,7 @@ export function familyOf(kind: ItemKind): ModeFamily {
     case 'local-folder':
     case 'remote-repo':
     case 'remote-skill':
+    case 'snippet':
       return kind;
     default:
       return 'okf';
@@ -414,6 +418,15 @@ export const FAMILY_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
       options: [],
     },
   ],
+  // A snippet is its markdown: there is no file to point at or place, so it is always inlined.
+  snippet: [
+    {
+      id: 'inline',
+      label: 'Inline',
+      description: "Embed the snippet's markdown.",
+      options: ['shiftHeadings', 'rewriteLinks'],
+    },
+  ],
 };
 
 export function modesFor(kind: ItemKind): readonly ModeDef[] {
@@ -458,6 +471,7 @@ const PLACED_MODES: Readonly<Record<ModeFamily, readonly ModeDef[]>> = {
   'local-folder': FAMILY_MODES['local-folder'],
   'remote-repo': FAMILY_MODES['remote-repo'].filter((m) => m.id === 'describe'),
   'remote-skill': FAMILY_MODES['remote-skill'].filter((m) => m.id === 'describe'),
+  snippet: FAMILY_MODES.snippet,
 };
 
 /**
@@ -493,6 +507,8 @@ export function defaultModeFor(kind: ItemKind, target: InflateTarget, placed = f
       return 'describe';
     case 'remote-skill':
       return placed || target === 'generic' ? 'describe' : 'install';
+    case 'snippet':
+      return 'inline';
   }
 }
 
@@ -783,10 +799,24 @@ export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[
     },
     dontPlace(),
   ],
+  // Nothing to place: the markdown is written into LLM_CONTEXT.md itself.
+  snippet: [
+    {
+      id: 'none',
+      label: DONT_PLACE,
+      description: 'Nothing to place: the markdown is written into LLM_CONTEXT.md.',
+      options: [],
+    },
+  ],
 };
 
 export function materialsFor(kind: ItemKind): readonly MaterialDef[] {
   return FAMILY_MATERIALS[familyOf(kind)];
+}
+
+/** False for a kind with nothing to place (snippet: its markdown is in the context file): it has no Place choice. */
+export function isPlaceableKind(kind: ItemKind): boolean {
+  return materialsFor(kind).some((m) => m.id !== 'none');
 }
 
 export function materialDef(kind: ItemKind, material: MaterialId): MaterialDef | undefined {
@@ -832,7 +862,7 @@ export function materialDescription(
 
 /**
  * okf symlink · skill symlink · local-repo symlink · local-folder symlink · remote-repo clone · remote-skill
- * install (all targets).
+ * install · snippet none (all targets).
  */
 export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): MaterialId {
   // The first entry of each family list (checked by a unit test).
@@ -846,6 +876,8 @@ export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): Mate
       return 'clone';
     case 'remote-skill':
       return 'install';
+    case 'snippet':
+      return 'none';
   }
 }
 
@@ -970,5 +1002,8 @@ export function materialDest(
       return `${FOLDERS_DIR}/${slug}`;
     case 'remote-skill':
       return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath)}`;
+    case 'snippet':
+      // never placed (its only material is `none`); a stable path keeps the switch exhaustive
+      return `snippet/${slug}`;
   }
 }

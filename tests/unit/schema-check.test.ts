@@ -28,17 +28,17 @@ function schemasDir(overrides: Partial<Record<string, string | null>> = {}): str
 
 describe('checkSchemaFiles', () => {
   it('reports nothing when every file is current', async () => {
-    expect(await checkSchemaFiles(schemasDir())).toEqual({ findings: [], filesChecked: 3 });
+    expect(await checkSchemaFiles(schemasDir())).toEqual({ findings: [], filesChecked: 4 });
   });
 
   it('the committed schemas of this repo are current', async () => {
     const result = await checkSchemaFiles(fileURLToPath(new URL('../../schemas', import.meta.url)));
-    expect(result).toEqual({ findings: [], filesChecked: 3 });
+    expect(result).toEqual({ findings: [], filesChecked: 4 });
   });
 
   it('schemas/missing (error) for an absent file, repo-relative path', async () => {
     const result = await checkSchemaFiles(schemasDir({ 'context.schema.json': null }));
-    expect(result.filesChecked).toBe(2);
+    expect(result.filesChecked).toBe(3);
     expect(result.findings).toEqual([
       {
         severity: 'error',
@@ -56,6 +56,7 @@ describe('checkSchemaFiles', () => {
       ['schemas/missing', 'schemas/context.schema.json'],
       ['schemas/missing', 'schemas/recipe.schema.json'],
       ['schemas/missing', 'schemas/reference.schema.json'],
+      ['schemas/missing', 'schemas/snippet.schema.json'],
     ]);
   });
 
@@ -88,7 +89,7 @@ describe('checkSchemaFiles', () => {
   it('schemas/stray (warning) for any other .json file, other files ignored', async () => {
     const dir = schemasDir({ 'extra.json': '{}\n', 'notes.txt': 'x' });
     const result = await checkSchemaFiles(dir);
-    expect(result.filesChecked).toBe(3);
+    expect(result.filesChecked).toBe(4);
     expect(result.findings).toEqual([
       expect.objectContaining({
         severity: 'warning',

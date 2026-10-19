@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/snippet
+name: finish-checklist
+description: The checks to run before saying a piece of work is done.
+tags:
+  - workflow
+markdown: |
+  ## Before you finish
+
+  1. Run `pnpm run fmt`, then the full suite: `CTXMAN_DATA_DIR=tests/data pnpm run test:all`.
+  2. Fix every failure, including ones you did not cause, or say plainly which ones remain.
+  3. Update [the ctxman knowledge base](ctxman:kb/ctxman) when behaviour changes.

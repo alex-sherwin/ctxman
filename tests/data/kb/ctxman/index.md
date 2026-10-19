@@ -53,7 +53,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 ## Concept map
 
 * [Architecture](/concepts/architecture.md) - stack, layout and layering.
-* [Datasets](/concepts/datasets.md) - the eleven datasets and link syntax.
+* [Datasets](/concepts/datasets.md) - the twelve datasets and link syntax.
 * [Relations](/concepts/relations.md) - typed links between entries, projects and their children, and how the UI edits them.
 * [Context forge](/concepts/context-forge.md) - building and editing contexts.
 * [Context inflate](/concepts/context-inflate.md) - recipes and the generated session document.
@@ -83,7 +83,7 @@ The tool at `/inflate` expands selected contexts, extra items and your own instr
 ## Design
 
 * [Architecture](/concepts/architecture.md) - Stack, repository layout, the three-kind layering (pure, node, server), the single arktype validator and the embedded MCP server that keep scripts, tests and the site sharing one codebase.
-* [Datasets](/concepts/datasets.md) - The eleven datasets, their on-disk shape, lifecycle states, the `links` relations field and the link syntax between entries.
+* [Datasets](/concepts/datasets.md) - The twelve datasets (snippets included), their on-disk shape, lifecycle states, the `links` relations field and the link syntax between entries.
 * [Relations](/concepts/relations.md) - Typed links between entries (child, related, depends-on), projects that own their children, mentions, the entry index behind them and the panels, pickers and APIs that edit them.
 * [Runtime modes](/concepts/runtime-modes.md) - The required data directory and `.env`, the per-request read path from disk, and what still differs between the dev server and a built server.
 * [Editing](/concepts/editing.md) - In-browser editing: the explicit Save model, drafts that survive a reload, the markdown editor with link completion and the entry picker, the Details dialog, state select and New concept, the forms, Open in IDE, the JSON Schemas and the reload that follows a save.

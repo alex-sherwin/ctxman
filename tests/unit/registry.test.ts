@@ -25,7 +25,7 @@ import {
 import type { DatasetId } from '../../src/datasets/registry.ts';
 
 describe('dataset registry', () => {
-  it('lists the 11 datasets in the canonical order', () => {
+  it('lists the 12 datasets in the canonical order', () => {
     expect([...DATASET_IDS]).toEqual([
       'kb',
       'rca',
@@ -36,6 +36,7 @@ describe('dataset registry', () => {
       'project',
       'skill',
       'reference',
+      'snippet',
       'context',
       'recipe',
     ]);
@@ -53,6 +54,7 @@ describe('dataset registry', () => {
       'Projects',
       'Skills',
       'References',
+      'Snippets',
       'Contexts',
       'Recipes',
     ]);
@@ -88,6 +90,12 @@ describe('dataset registry', () => {
   it('classifies skill and the yaml datasets', () => {
     expect(datasetDef('skill')).toMatchObject({ kind: 'skill', entryFile: 'SKILL.md' });
     expect(datasetDef('reference')).toMatchObject({ kind: 'data', entryFile: '.yaml' });
+    expect(datasetDef('snippet')).toMatchObject({
+      kind: 'data',
+      entryFile: '.yaml',
+      singular: 'snippet',
+      plural: 'snippets',
+    });
     expect(datasetDef('context')).toMatchObject({ kind: 'data', entryFile: '.yaml' });
     expect(datasetDef('recipe')).toMatchObject({
       kind: 'data',
@@ -103,6 +111,7 @@ describe('dataset registry', () => {
       DATASET_IDS.filter((id) => id !== 'context' && id !== 'recipe'),
     );
     expect(isLinkableDatasetId('reference')).toBe(true);
+    expect(isLinkableDatasetId('snippet')).toBe(true);
     expect(isLinkableDatasetId('context')).toBe(false);
     expect(isLinkableDatasetId('recipe')).toBe(false);
     expect(isLinkableDatasetId(null)).toBe(false);
@@ -114,6 +123,7 @@ describe('dataset registry', () => {
       'idea',
       'feature',
       'task',
+      'snippet',
       'project',
       'reference',
       'bug',

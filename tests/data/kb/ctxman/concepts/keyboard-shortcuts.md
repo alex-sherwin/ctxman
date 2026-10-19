@@ -18,8 +18,8 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 | Cmd/Ctrl+K | Open the [search](/concepts/search.md) | every page |
 | `c` | New entry for the page's context | lists, entry pages, dashboard, Tools, Forge, Inflate |
 | `l` | Add a link to another entry (the + Link dialog) | entry pages of okf datasets |
-| `i` | Open in IDE (the entry folder with the current file) | entry and document pages, when an IDE command is available |
-| `e` | Edit: the markdown editor of an okf entry, skill or document (the cursor lands in it), the form of a reference, context or recipe | entry and document pages |
+| `i` | Open in IDE (the entry folder with the current file; a snippet: the `snippet/` folder with its file) | entry and document pages, when an IDE command is available |
+| `e` | Edit: the markdown editor of an okf entry, skill or document (the cursor lands in it), the form of a reference, snippet, context or recipe | entry and document pages |
 | Cmd/Ctrl+S | Save | editors, see [Editing](/concepts/editing.md) |
 | Cmd/Ctrl+Alt+K | Insert link to entry | markdown editors |
 | `Esc` | Close the dialog | dialogs |
@@ -38,4 +38,4 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 
 ## How it works
 
-`Base.astro` takes the optional props `createHref`, `linkShortcut` and `editShortcut` and renders them as `data-shortcut-create`, `data-shortcut-link` and `data-shortcut-edit` on `<body>`; every page passes its own context (`editShortcut`: okf and skill entry pages, document pages, and reference, context and recipe pages outside edit mode). The Shortcuts island (mounted by `Base.astro` on every page) listens on `window` in the capture phase, like the search key, and asks the pure `src/lib/shortcuts.ts` what a key press means: open the help, navigate to the create href, click the enabled + Link or Open in IDE button, or edit. For `e` it first dispatches the cancelable `ctxman:edit-shortcut` window event, which the DocEditor answers (it switches to its editor and focuses it once loaded); unanswered, it clicks the page's Edit link (`[data-shortcut-edit-link]`, which goes to `?edit=1`). The help table is the `SHORTCUTS` list in the same file. The URL does not carry shortcut state.
+`Base.astro` takes the optional props `createHref`, `linkShortcut` and `editShortcut` and renders them as `data-shortcut-create`, `data-shortcut-link` and `data-shortcut-edit` on `<body>`; every page passes its own context (`editShortcut`: okf and skill entry pages, document pages, and reference, snippet, context and recipe pages outside edit mode). The Shortcuts island (mounted by `Base.astro` on every page) listens on `window` in the capture phase, like the search key, and asks the pure `src/lib/shortcuts.ts` what a key press means: open the help, navigate to the create href, click the enabled + Link or Open in IDE button, or edit. For `e` it first dispatches the cancelable `ctxman:edit-shortcut` window event, which the DocEditor answers (it switches to its editor and focuses it once loaded); unanswered, it clicks the page's Edit link (`[data-shortcut-edit-link]`, which goes to `?edit=1`). The help table is the `SHORTCUTS` list in the same file. The URL does not carry shortcut state.

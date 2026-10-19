@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RecipeData, ReferenceData } from '../../src/datasets/schemas.ts';
+import type { RecipeData, ReferenceData, SnippetData } from '../../src/datasets/schemas.ts';
 import type { ContextDoc } from '../../src/lib/entry-summary.ts';
 import {
   INFO_TARGET_ID,
   PREAMBLE_TARGET_ID,
+  SNIPPET_TARGET_ID,
   blockTargetId,
   contextNoteTargets,
   endpoint,
@@ -14,6 +15,7 @@ import {
   recipeTargets,
   referenceTargets,
   saveTarget,
+  snippetTargets,
   targetById,
   writeTarget,
 } from '../../src/ui/markdown/targets.ts';
@@ -57,6 +59,13 @@ const reference: ReferenceData = {
   info: '## Layout\n\nOne file per week.\n',
 };
 
+const snippet: SnippetData = {
+  name: 'checks',
+  description: 'Demo snippet',
+  tags: [],
+  markdown: 'Run the checks.\n',
+};
+
 const notesOne = contextNoteTargets('demo', [
   { dataset: 'kb', slug: 'one', title: 'One' },
 ])[0] as MdTarget;
@@ -64,6 +73,7 @@ const notesTwo = contextNoteTargets('demo', [{ dataset: 'task', slug: 'two' }])[
 const preamble = recipeTargets('brief', [])[0] as MdTarget;
 const block1 = recipeTargets('brief', [{ id: 'b1' }])[1] as MdTarget;
 const info = referenceTargets('repo')[0] as MdTarget;
+const snippetMd = snippetTargets('checks')[0] as MdTarget;
 
 describe('ids and target builders', () => {
   it('builds the ids the SSR buttons carry in data-md-edit', () => {
@@ -134,6 +144,38 @@ describe('ids and target builders', () => {
     expect(INFO_TARGET_ID).toBe('info');
     expect(info).toEqual({ kind: 'reference-info', id: 'info', slug: 'repo', label: 'info' });
     expect(endpoint(info)).toBe('/api/reference/repo');
+  });
+
+  it('snippetTargets: the markdown of a snippet, at the snippet API', () => {
+    expect(SNIPPET_TARGET_ID).toBe('markdown');
+    expect(snippetTargets('checks')).toEqual([
+      { kind: 'snippet-markdown', id: 'markdown', slug: 'checks', label: 'markdown' },
+    ]);
+    expect(endpoint(snippetMd)).toBe('/api/snippet/checks');
+  });
+});
+
+describe('snippet markdown target', () => {
+  it('reads and writes markdown as is; matches only a snippet document', () => {
+    expect(hasTarget(snippetMd, snippet)).toBe(true);
+    expect(readTarget(snippetMd, snippet)).toBe('Run the checks.\n');
+    expect(writeTarget(snippetMd, snippet, '## New\n')).toEqual({
+      ...snippet,
+      markdown: '## New\n',
+    });
+    // a blank markdown is written as is: the server refuses it (markdown is required)
+    expect(writeTarget(snippetMd, snippet, ' ')).toEqual({ ...snippet, markdown: ' ' });
+    expect(snippet.markdown).toBe('Run the checks.\n');
+    for (const other of [recipe, context, reference]) {
+      expect(hasTarget(snippetMd, other)).toBe(false);
+      expect(readTarget(snippetMd, other)).toBe('');
+      expect(writeTarget(snippetMd, other, 'x')).toBe(other);
+    }
+    // and no other target matches a snippet (a recipe's markdown is a list of blocks)
+    for (const t of [info, preamble, block1, notesOne]) {
+      expect(hasTarget(t, snippet)).toBe(false);
+      expect(writeTarget(t, snippet, 'x')).toBe(snippet);
+    }
   });
 });
 
@@ -321,6 +363,25 @@ describe('loadTarget / saveTarget', () => {
       'PUT /api/reference/repo',
     ]);
     expect(calls[2]?.body).toEqual({ ...reference, info: 'Updated' });
+  });
+
+  it('loadTarget / saveTarget round-trip a snippet markdown through /api/snippet', async () => {
+    const calls = stub([
+      { body: { snippet, lastModified: 'T1' } },
+      { body: { snippet, lastModified: 'T1' } },
+      { body: { snippet, lastModified: 'T2' } },
+    ]);
+    expect(await loadTarget(snippetMd)).toMatchObject({
+      ok: true,
+      loaded: { lastModified: 'T1', text: 'Run the checks.\n' },
+    });
+    expect(await saveTarget(snippetMd, { lastModified: 'T1' }, 'Updated')).toEqual({ ok: true });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'GET /api/snippet/checks',
+      'GET /api/snippet/checks',
+      'PUT /api/snippet/checks',
+    ]);
+    expect(calls[2]?.body).toEqual({ ...snippet, markdown: 'Updated' });
   });
 
   it('saveTarget refuses with a conflict when the file changed since the popup opened', async () => {

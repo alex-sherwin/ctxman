@@ -18,9 +18,9 @@ Always scaffold with the script instead of copying a folder, so the shape and fr
 pnpm run add:<dataset> <name> [--title "..."] [--description "..."] [--state <state>]
 ```
 
-`<dataset>` is any of the eleven dataset ids (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `context`, `recipe`), for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
+`<dataset>` is any of the twelve dataset ids (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `snippet`, `context`, `recipe`), for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
 
-Reference entries also take `--type local-repo|local-folder|remote-repo|remote-skill`, `--path` (the local types), `--uri` (the remote types), `--subpath` and `--owner me|not-me`. Add `--json` for machine output.
+Reference entries also take `--type local-repo|local-folder|remote-repo|remote-skill`, `--path` (the local types), `--uri` (the remote types), `--subpath` and `--owner me|not-me`. Snippets take `--markdown "..."` (the text; without it the file gets a `TODO:` placeholder). Add `--json` for machine output.
 
 The script validates the name (kebab-case, at most 64 characters) and the state, refuses to overwrite anything that exists, writes the files, then re-validates them against the schemas. The same operation is available on the `/tools` page.
 
@@ -28,7 +28,7 @@ The script validates the name (kebab-case, at most 64 characters) and the state,
 
 Every dataset can also be created in the browser at `/new/<dataset>`:
 
-* `reference`, `context` and `recipe` open a form with typed fields and a YAML tab (the DataForm).
+* `reference`, `snippet`, `context` and `recipe` open a form with typed fields and a YAML tab (the DataForm); a snippet's markdown is a Monaco field.
 * The okf datasets (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`) and `skill` open the NewEntryForm: name (checked live against the existing entries), title, description (required), state (lifecycle datasets, the first state is the default), tags (okf) and, for okf entries, **Part of project**. `POST /api/entry/<dataset>` writes the same files as the script, with the same validation and rollback, then opens the new entry.
 * `/new/<dataset>?parent=<project>` preselects the project; on create the project gets a `rel: child` link to the new entry. The Children panel of a project and the "New" button of a list filtered by `?project=` link there.
 
@@ -41,6 +41,7 @@ The `/tools` page still lists the check scripts; its Add Entry panel is now a th
 | OKF bundle | `index.md` (the entry: `okf_version`, the frontmatter and starter sections) and `log.md` |
 | `skill` | `SKILL.md` with "When to use" and "Instructions" headings |
 | `reference` | `<name>.yaml` |
+| `snippet` | `<name>.yaml` with the `--markdown` text or a `TODO: write the <title> snippet.` placeholder |
 | `context` | `<name>.yaml` with an empty `links` list |
 | `recipe` | `<name>.yaml` with target `claude-code`, layout `grouped` and empty `contexts` and `items` lists |
 

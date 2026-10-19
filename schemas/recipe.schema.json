@@ -964,6 +964,82 @@
           },
           "additionalProperties": false
         },
+        "snippet": {
+          "type": "object",
+          "properties": {
+            "material": {
+              "const": "none"
+            },
+            "materialOptions": {
+              "type": "object",
+              "properties": {
+                "branch": {
+                  "type": "string",
+                  "description": "must be a branch or tag name (letters, digits, . _ - /; no \"..\", no leading \"-\")",
+                  "pattern": "^(?:|(?!.*\\.\\.)(?!.*\\/\\/)(?!.*\\/$)(?!.*\\.lock$)[A-Za-z0-9][A-Za-z0-9._/-]{0,199})$",
+                  "maxLength": 200,
+                  "patternErrorMessage": "must be a branch or tag name (letters, digits, . _ - /; no \"..\", no leading \"-\")"
+                },
+                "cloneDepth": {
+                  "type": "integer",
+                  "maximum": 100000,
+                  "minimum": 0
+                },
+                "subpathOnly": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "mode": {
+              "const": "inline"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "cloneDir": {
+                  "type": "string",
+                  "description": "must be a relative path inside the project (letters, digits, . _ - /, optional {name})",
+                  "pattern": "^(?!\\.\\.?(?:\\/|$))(?:[A-Za-z0-9._-]|\\{name\\})+(?:\\/(?!\\.\\.?(?:\\/|$))(?:[A-Za-z0-9._-]|\\{name\\})+)*$",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "patternErrorMessage": "must be a relative path inside the project (letters, digits, . _ - /, optional {name})"
+                },
+                "eager": {
+                  "type": "boolean"
+                },
+                "includeFrontmatter": {
+                  "type": "boolean"
+                },
+                "includeLog": {
+                  "type": "boolean"
+                },
+                "rewriteLinks": {
+                  "type": "boolean"
+                },
+                "shallow": {
+                  "type": "boolean"
+                },
+                "shiftHeadings": {
+                  "type": "boolean"
+                },
+                "sparse": {
+                  "type": "boolean"
+                },
+                "symlink": {
+                  "type": "boolean"
+                },
+                "treeLimit": {
+                  "type": "integer",
+                  "maximum": 500,
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "task": {
           "type": "object",
           "properties": {
@@ -1067,6 +1143,7 @@
               "rca",
               "reference",
               "skill",
+              "snippet",
               "task"
             ]
           },
@@ -1119,7 +1196,7 @@
       "items": {
         "type": "string",
         "description": "must be <dataset>/<slug>, md:<id>, ctx:<context> or sec:extra",
-        "pattern": "^(?:(?:kb|rca|idea|task|bug|feature|project|skill|reference)\\/[a-z0-9]+(?:-[a-z0-9]+)*|md:[a-z0-9]+(?:-[a-z0-9]+)*|ctx:[a-z0-9]+(?:-[a-z0-9]+)*|sec:extra)$",
+        "pattern": "^(?:(?:kb|rca|idea|task|bug|feature|project|skill|reference|snippet)\\/[a-z0-9]+(?:-[a-z0-9]+)*|md:[a-z0-9]+(?:-[a-z0-9]+)*|ctx:[a-z0-9]+(?:-[a-z0-9]+)*|sec:extra)$",
         "patternErrorMessage": "must be <dataset>/<slug>, md:<id>, ctx:<context> or sec:extra"
       }
     },
@@ -1172,7 +1249,7 @@
           "key": {
             "type": "string",
             "description": "must be <dataset>/<slug> of a linkable dataset",
-            "pattern": "^(kb|rca|idea|task|bug|feature|project|skill|reference)\\/[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "pattern": "^(kb|rca|idea|task|bug|feature|project|skill|reference|snippet)\\/[a-z0-9]+(?:-[a-z0-9]+)*$",
             "patternErrorMessage": "must be <dataset>/<slug> of a linkable dataset"
           },
           "edit": {

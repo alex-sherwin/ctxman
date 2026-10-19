@@ -259,8 +259,38 @@ test('the context page lists the links in the order the Forge saved', async ({ p
   await expect(links.nth(1)).toHaveAttribute('data-slug', 'ctxman');
 });
 
+test('a snippet is added from its Discover tab; the context and snippet pages show the link', async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName('e2e-ctx');
+  await createContextViaApi(request, name);
+  await page.goto(`/forge?context=${name}`);
+  await addFromDiscover(page, 'snippet', 'conventional-commits');
+  await saveForge(page);
+  expect(savedKeys(name)).toEqual(['snippet:conventional-commits']);
+
+  await page.goto(`/context/${name}`);
+  const link = page.getByTestId('context-link');
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveAttribute('data-slug', 'conventional-commits');
+  await page.goto('/snippet/conventional-commits');
+  await expect(page.getByTestId('detail-backrefs')).toContainText(name);
+});
+
 test.describe('Discover tab counts', () => {
-  const DATASETS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project', 'skill', 'reference'];
+  const DATASETS = [
+    'kb',
+    'rca',
+    'idea',
+    'task',
+    'bug',
+    'feature',
+    'project',
+    'skill',
+    'reference',
+    'snippet',
+  ];
 
   test('every tab shows its count on load, without a click', async ({ page, request }) => {
     await page.goto('/forge');

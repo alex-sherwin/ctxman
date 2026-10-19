@@ -16,8 +16,8 @@ const ORIGIN = 'http://127.0.0.1:4321';
 const lineFor = (ds: 'reference' | 'context' | 'recipe'): string => schemaCommentLine(ds, ORIGIN);
 
 describe('SCHEMA_DATASETS / isSchemaDatasetId', () => {
-  it('are the three yaml datasets, all real dataset ids', () => {
-    expect(SCHEMA_DATASETS).toEqual(['reference', 'context', 'recipe']);
+  it('are the four yaml datasets, all real dataset ids', () => {
+    expect(SCHEMA_DATASETS).toEqual(['reference', 'snippet', 'context', 'recipe']);
     for (const ds of SCHEMA_DATASETS) expect(DATASET_IDS).toContain(ds);
   });
 

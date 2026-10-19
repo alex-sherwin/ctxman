@@ -582,6 +582,35 @@ function infoBody(c: ItemCtx): string {
   return body.trim();
 }
 
+/**
+ * A snippet is its markdown: under the item heading come the context guidance and the markdown, nothing else (no
+ * meta line: the text is what the snippet is for). A leading heading equal to the title is dropped; with
+ * `shiftHeadings` its headings go below the item heading, with `rewriteLinks` its `ctxman:` links resolve like in
+ * inline bodies (relative when the target is placed). A snippet has no bundle, so other links stay as written.
+ */
+function snippetItem(c: ItemCtx): string[] {
+  const { seg, meta, level, env } = c;
+  const notes = guidance(seg.notes);
+  let body = stripLeadingTitle(trimBlankLines(normalizeText(meta.markdown ?? '')), seg.title);
+  if (flag(seg.options, 'shiftHeadings')) body = shiftHeadings(body, level + 1);
+  if (flag(seg.options, 'rewriteLinks')) {
+    body = rewriteLinks(body, {
+      fromRel: '',
+      files: new Map(),
+      targets: env.targets,
+      onUnresolved: (destination, reason) => {
+        if (reason !== 'no-entry' && reason !== 'malformed') return;
+        env.warnings.push({
+          code: 'unresolved-link',
+          key: seg.key,
+          message: `${seg.key}: link "${destination}" does not resolve (${UNRESOLVED_WHY[reason]})`,
+        });
+      },
+    });
+  }
+  return [notes, body.trim()].filter((p) => p !== '');
+}
+
 function documentItem(c: ItemCtx): string[] {
   const { seg, kind, mode, meta, ic, level, env } = c;
   const options = seg.options;
@@ -632,6 +661,8 @@ function documentItem(c: ItemCtx): string[] {
         meta.ref !== undefined && 'uri' in meta.ref ? meta.ref.uri : null,
         remoteSkillBody(seg, about(), env),
       );
+    case 'snippet':
+      return snippetItem(c);
   }
 }
 
@@ -844,6 +875,8 @@ function directoryItem(c: ItemCtx): string[] {
       }
       return facts(out);
     }
+    case 'snippet':
+      return snippetItem(c);
   }
 }
 
@@ -1014,7 +1047,8 @@ function placementSection(dir: DirEnv): string {
       `- ${(words.length === 0 ? ['installed'] : words).map((w) => `**${w}**`).join(' / ')} skill: fetched from its URI and copied in without history; replaced by the next inflate.`,
     );
   }
-  if (dir.views.some((v) => !isPlacedView(v))) {
+  // a snippet has nothing to place: its markdown is in this file
+  if (dir.views.some((v) => v.kind !== 'snippet' && !isPlacedView(v))) {
     bullets.push(
       '- **not placed**: outside this directory; open the absolute path, or fetch the URI only when the task needs it.',
     );

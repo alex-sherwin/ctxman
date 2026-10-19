@@ -12,6 +12,7 @@ const DATASETS = [
   'project',
   'skill',
   'reference',
+  'snippet',
   'context',
   'recipe',
 ] as const;
@@ -37,6 +38,7 @@ test('the header nav lists the datasets in nav order, then the tools', async ({ 
     'nav-idea',
     'nav-feature',
     'nav-task',
+    'nav-snippet',
     'nav-project',
     'nav-reference',
     'nav-bug',
@@ -67,6 +69,7 @@ const DETAIL_ROUTES = [
   { path: '/recipe/ctxman-dev-brief', testId: 'recipe-composition' },
   { path: '/skill/okf-authoring', testId: 'detail-files' },
   { path: '/reference/astro-docs', testId: 'reference-fields' },
+  { path: '/snippet/finish-checklist', testId: 'snippet-markdown' },
   { path: '/task/write-agents-md', testId: 'detail-content' },
   { path: '/project/ctxman-v1', testId: 'children-panel' },
 ] as const;
@@ -91,8 +94,8 @@ for (const route of ['/kb/ctxman', '/kb/ctxman/doc/concepts/datasets', '/skill/o
   });
 }
 
-// yaml datasets keep the DataForm island (D6): reference, context and recipe.
-for (const ds of ['reference', 'context', 'recipe']) {
+// yaml datasets keep the DataForm island (D6): reference, snippet, context and recipe.
+for (const ds of ['reference', 'snippet', 'context', 'recipe']) {
   test(`/new/${ds} returns 200 and mounts the DataForm island`, async ({ page }) => {
     const response = await page.goto(`/new/${ds}`);
     expect(response?.status()).toBe(200);

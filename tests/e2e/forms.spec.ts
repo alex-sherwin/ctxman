@@ -18,7 +18,7 @@ import {
   uniqueName,
 } from './helpers.ts';
 
-type Ds = 'reference' | 'context' | 'recipe';
+type Ds = 'reference' | 'snippet' | 'context' | 'recipe';
 const created: { ds: Ds; name: string }[] = [];
 
 test.afterEach(async ({ request }) => {
@@ -576,6 +576,63 @@ async function openEdit(page: Page, ds: Ds, name: string, search = ''): Promise<
   ).toBeVisible();
 }
 
+test.describe('snippet', () => {
+  /** Types into the Monaco markdown field of the form. */
+  async function typeMarkdown(page: Page, text: string): Promise<void> {
+    const field = page.getByTestId('dform-field-markdown');
+    await expect(field.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
+    await field.locator('.monaco-editor textarea').focus();
+    await page.keyboard.type(text);
+  }
+
+  test('/new/snippet: a blank markdown is Required; Create writes the markdown and opens the snippet', async ({
+    page,
+  }) => {
+    const name = uniqueName('e2e-snip');
+    created.push({ ds: 'snippet', name });
+    await openNew(page, 'snippet');
+    await page.getByTestId('dform-field-name').fill(name);
+    await page.getByTestId('dform-field-description').fill('Created by the forms spec');
+    await page.getByTestId('dform-save').click();
+    await expect(page.getByTestId('dform')).toContainText('Required');
+    expect(dataExists(`snippet/${name}.yaml`)).toBe(false);
+
+    await typeMarkdown(page, 'Always run the checks.');
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/snippet/${name}$`));
+    await expect(page.getByTestId('snippet-markdown')).toContainText('Always run the checks.');
+    expect(readYaml(`snippet/${name}.yaml`)).toEqual({
+      name,
+      description: 'Created by the forms spec',
+      markdown: 'Always run the checks.',
+    });
+  });
+
+  test('edit: the form is filled from the file and Save writes the new markdown', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-snip');
+    const response = await request.post(`${API}/snippet`, {
+      data: { name, description: 'Edit me', tags: ['e2e'], markdown: 'Old text.' },
+    });
+    expect(response.status()).toBe(201);
+    created.push({ ds: 'snippet', name });
+    await openEdit(page, 'snippet', name);
+    await expect(page.getByTestId('dform-field-description')).toHaveValue('Edit me');
+    await expect(page.getByTestId('dform-field-tags-tags')).toContainText('e2e');
+    await typeMarkdown(page, ' New text.');
+    await expect(page.getByTestId('dform-status')).toHaveText('Unsaved changes');
+    await page.getByTestId('dform-save').click();
+
+    await expect(page).toHaveURL(new RegExp(`/snippet/${name}$`));
+    await expect(page.getByTestId('snippet-markdown')).toContainText('New text.');
+    expect(String((readYaml(`snippet/${name}.yaml`) as { markdown: string }).markdown)).toContain(
+      'New text.',
+    );
+  });
+});
+
 test.describe('edit: reference', () => {
   test('the form is filled from the file; the name cannot change; Save sends a PUT and the page shows the new values', async ({
     page,
@@ -786,7 +843,7 @@ test.describe('routing', () => {
       const response = await page.goto(`/new/${ds}`);
       expect(response?.status(), ds).toBe(404);
     }
-    for (const ds of ['reference', 'context', 'recipe']) {
+    for (const ds of ['reference', 'snippet', 'context', 'recipe']) {
       const ok = await page.goto(`/new/${ds}`);
       expect(ok?.status(), ds).toBe(200);
       await expect(page.getByTestId('dform')).toBeVisible();

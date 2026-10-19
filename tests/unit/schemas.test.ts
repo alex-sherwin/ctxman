@@ -46,6 +46,7 @@ const MINIMAL: Record<DatasetId, Record<string, unknown>> = {
     uri: 'https://example.com/x.git',
     owner: 'me',
   },
+  snippet: { name: 'demo', description: 'A demo snippet', markdown: 'Run the checks.' },
   context: { name: 'demo', description: 'A demo context' },
   recipe: { name: 'x', description: 'd' },
 };

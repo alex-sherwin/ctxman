@@ -29,7 +29,7 @@ links:
 
 Rules enforced by the schema:
 
-* `dataset` is one of `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `skill`, `reference`, `project`. A context cannot link to another context.
+* `dataset` is one of `kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `snippet`. A context cannot link to another context or a recipe. Link a [snippet](/concepts/datasets.md) for instructions you want in every session that uses the context.
 * `slug` is the target entry name. The same dataset and slug pair may appear only once.
 * `notes` is optional markdown that narrows scope or explains how this item should be used in this particular context.
 * `name` is the file stem and cannot be changed after creation.
@@ -46,7 +46,7 @@ A context never vendors content. It stores `dataset` and `slug` only, so editing
 4. Use the raw YAML mode to edit the whole document; it validates against the same schema before saving, and the editor underlines schema problems (unknown keys, wrong types, a bad `dataset`) as you type, with hover text and completion, using the generated `schemas/context.schema.json`.
 5. Save with the button or Cmd/Ctrl+S. Unsaved changes are kept as a draft in `localStorage` (14 days): after a reload or a closed tab the forge restores the working copy with a "Restored unsaved changes" banner and a Discard button, and warns when the context changed on disk meanwhile (saving then overwrites it). There is no native leave prompt; switching contexts still asks first. A new, never-saved context is not persisted.
 
-A context also grows from other pages: **Add to context** on any okf, skill or reference page appends that entry (`POST /api/context/<slug>/links`), and **Build context** on a project page creates a context from the project and its children and opens it here. See [Relations](/concepts/relations.md).
+A context also grows from other pages: **Add to context** on any okf, skill, reference or snippet page appends that entry (`POST /api/context/<slug>/links`), and **Build context** on a project page creates a context from the project and its children and opens it here. See [Relations](/concepts/relations.md).
 
 A context can also be created or edited without the forge: `/new/context` and `/context/<slug>?edit=1` open the same fields as a form, and the pencil buttons on a context page edit one link's notes in a popup. See [Editing](/concepts/editing.md).
 

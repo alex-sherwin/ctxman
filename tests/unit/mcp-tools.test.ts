@@ -135,12 +135,12 @@ describe('read-only tools', () => {
   });
 
   describe('list-datasets and list-entries', () => {
-    it('lists the 11 datasets with counts', async () => {
+    it('lists the 12 datasets with counts', async () => {
       const result = await ok('list-datasets', {});
       const datasets = data<{
         datasets: { id: string; count: number; states: string[]; kind: string }[];
       }>(result).datasets;
-      expect(datasets).toHaveLength(11);
+      expect(datasets).toHaveLength(12);
       const task = datasets.find((d) => d.id === 'task')!;
       expect(task.count).toBe(4);
       expect(task.states).toEqual(['pending', 'in-progress', 'complete', 'wont-do']);
@@ -222,6 +222,17 @@ describe('read-only tools', () => {
       const recipe = await ok('get-entry', { dataset: 'recipe', slug: 'ctxman-dev-brief' });
       expect(data<{ contexts: { slug: string }[] }>(recipe).contexts[0]!.slug).toBe('ctxman-dev');
       expect(text(recipe)).toContain('ctxman-dev-brief');
+    });
+
+    it('returns a snippet: its data, and the markdown as text after the yaml', async () => {
+      const result = await ok('get-entry', { dataset: 'snippet', slug: 'finish-checklist' });
+      const out = data<{ data: { name: string; markdown: string; tags: string[] } }>(result);
+      expect(out.data).toMatchObject({ name: 'finish-checklist', tags: ['workflow'] });
+      expect(out.data.markdown).toContain('## Before you finish');
+      const shown = text(result);
+      expect(shown).toContain('```yaml');
+      expect(shown).not.toContain('markdown: |');
+      expect(shown).toContain('## Before you finish\n\n1. Run `pnpm run fmt`');
     });
 
     it('lists the contexts that link to an entry', async () => {
@@ -505,6 +516,33 @@ describe('tools on a private corpus copy (tests that write)', () => {
         await ok('get-entry', { dataset: 'recipe', slug: 'mcp-recipe' }),
       );
       expect(got.data.name).toBe('mcp-recipe');
+    });
+
+    it('creates a snippet with its markdown (or a TODO one), found by the next search', async () => {
+      await ok('create-entry', {
+        dataset: 'snippet',
+        name: 'mcp-snippet',
+        description: 'Made through MCP.',
+        markdown: 'Always run zorblaxquint before committing.\n',
+      });
+      expect(read('snippet', 'mcp-snippet.yaml')).toBe(
+        '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/snippet\n' +
+          'name: mcp-snippet\ndescription: Made through MCP.\n' +
+          'markdown: |\n  Always run zorblaxquint before committing.\n',
+      );
+      const hits = data<{ hits: { id: string }[] }>(await ok('search', { query: 'zorblaxquint' }));
+      expect(hits.hits.map((h) => h.id)).toContain('snippet/mcp-snippet');
+
+      await ok('create-entry', { dataset: 'snippet', name: 'mcp-todo', description: 'Later.' });
+      expect(read('snippet', 'mcp-todo.yaml')).toContain(
+        'markdown: |\n  TODO: write the Mcp todo snippet.\n',
+      );
+      await fails(
+        'create-entry',
+        { dataset: 'kb', name: 'not-a-snippet', description: 'x', markdown: 'm' },
+        'invalid',
+      );
+      expect(existsSync(path.join(dir, 'kb', 'not-a-snippet'))).toBe(false);
     });
 
     it('refuses duplicates, bad input and misplaced fields', async () => {

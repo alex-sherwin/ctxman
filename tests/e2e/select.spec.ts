@@ -29,7 +29,7 @@ test.describe('Select v2', () => {
 
   test('opening focuses the filter input and lists every option', async ({ page }) => {
     await openSelect(page);
-    await expect(popover(page).getByRole('option')).toHaveCount(11);
+    await expect(popover(page).getByRole('option')).toHaveCount(12);
     await expect(popover(page).getByRole('option', { name: /Bugs/ })).toBeVisible();
   });
 
@@ -47,7 +47,7 @@ test.describe('Select v2', () => {
 
     await openSelect(page);
     await expect(search(page)).toHaveValue('');
-    await expect(popover(page).getByRole('option')).toHaveCount(11);
+    await expect(popover(page).getByRole('option')).toHaveCount(12);
   });
 
   test('a query without matches shows the empty text', async ({ page }) => {

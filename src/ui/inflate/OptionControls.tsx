@@ -15,6 +15,7 @@ import {
   OPTION_DEFS,
   isMaterialFor,
   isModeFor,
+  isPlaceableKind,
   isPrimaryEligible,
   isSafeGitRef,
   isSafeRelativeDir,
@@ -244,10 +245,13 @@ function EditableCheckbox({ seg }: { seg: ItemSegment }) {
   );
 }
 
-/** Line 1 (working directory): what a run places for this item, its options, Primary and Editable. */
+/**
+ * Line 1 (working directory): what a run places for this item, its options, Primary and Editable. None for a
+ * kind with nothing to place (a snippet).
+ */
 function PlaceLine({ seg }: { seg: ItemSegment }) {
   const { kind, material } = seg;
-  if (kind === null || material === null) return null;
+  if (kind === null || material === null || !isPlaceableKind(kind)) return null;
   const uriKind = seg.meta?.uriKind;
   const options = materialDef(kind, material)?.options ?? [];
   return (

@@ -21,7 +21,7 @@ Three Node scripts validate everything in the data directory (`CTXMAN_DATA_DIR`,
 | `pnpm run check:collections` | Every data file against its dataset schema |
 | `pnpm run check:schemas` | `schemas/*.schema.json` against a fresh generation from the arktype Types (repo level, independent of `CTXMAN_DATA_DIR`) |
 | `pnpm run gen:schemas` | Regenerates `schemas/*.schema.json` (writes only the files that change) |
-| `pnpm run fix:yaml-comments` | Adds or repairs line 1 of every reference, context and recipe file |
+| `pnpm run fix:yaml-comments` | Adds or repairs line 1 of every reference, snippet, context and recipe file |
 | `pnpm run typecheck` | `astro sync` (page types only, needs no data), then `tsc --noEmit --runExternalCode -p tsconfig.json` |
 | `pnpm run test:prod` | Smoke test of the built server against a temp copy of `tests/data` (run `pnpm run build` first) |
 
@@ -69,7 +69,7 @@ Three more warning rules cover the working-directory settings of a recipe (`outp
 | `collections/recipe-material-invalid` | An override of `reference/<slug>` names a material that does not apply to that reference's type (`clone` needs a remote-repo, `symlink` or `copy` a local-repo or local-folder, `install` a remote-skill); only when the reference exists and is valid |
 | `collections/recipe-primary-invalid` | `output.primary` is not a remote-repo or local-repo reference (or is missing; a local-folder is never a primary); or its effective material is not `clone` (remote-repo) / `symlink` (local-repo); or, when every listed context exists and is valid, it is not an item of the recipe |
 
-One more warning rule covers the first line of every reference, context and recipe file:
+One more warning rule covers the first line of every reference, snippet, context and recipe file:
 
 | Rule id | Fires when |
 | --- | --- |

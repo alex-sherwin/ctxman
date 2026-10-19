@@ -185,6 +185,10 @@
     --ds-c: var(--ds-reference);
     --ds-fg: var(--ds-reference-fg);
   }
+  [data-ds='snippet'] {
+    --ds-c: var(--ds-snippet);
+    --ds-fg: var(--ds-snippet-fg);
+  }
   [data-ds='context'] {
     --ds-c: var(--ds-context);
     --ds-fg: var(--ds-context-fg);

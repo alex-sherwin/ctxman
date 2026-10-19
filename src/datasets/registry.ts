@@ -12,6 +12,7 @@ export const DATASET_IDS = [
   'project',
   'skill',
   'reference',
+  'snippet',
   'context',
   'recipe',
 ] as const;
@@ -37,6 +38,7 @@ export const LINKABLE_DATASETS = [
   'project',
   'skill',
   'reference',
+  'snippet',
 ] as const;
 export type LinkableDatasetId = (typeof LINKABLE_DATASETS)[number];
 
@@ -46,6 +48,7 @@ export const NAV_DATASET_IDS = [
   'idea',
   'feature',
   'task',
+  'snippet',
   'project',
   'reference',
   'bug',
@@ -264,6 +267,17 @@ export const DATASETS: readonly DatasetDef[] = [
     kind: 'data',
     entryFile: '.yaml',
     description: 'Pointers to things outside this repo: local repos, remote repos, remote skills.',
+  },
+  {
+    id: 'snippet',
+    label: 'Snippets',
+    navLabel: 'Snippets',
+    plural: 'snippets',
+    singular: 'snippet',
+    kind: 'data',
+    entryFile: '.yaml',
+    description:
+      'Reusable markdown text, such as instructions you give every session, to include in contexts and recipes.',
   },
   {
     id: 'context',

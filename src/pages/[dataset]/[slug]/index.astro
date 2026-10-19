@@ -11,6 +11,7 @@ import OkfStatusBadge from '../../../components/OkfStatusBadge.astro';
 import PageHeader from '../../../components/PageHeader.astro';
 import RecipeComposition from '../../../components/RecipeComposition.astro';
 import ReferenceFields from '../../../components/ReferenceFields.astro';
+import SnippetBody from '../../../components/SnippetBody.astro';
 import StaleBadge from '../../../components/StaleBadge.astro';
 import StateSelect from '../../../components/StateSelect.astro';
 import { entryUrl, getDataset, isLinkableDatasetId } from '../../../datasets/registry.ts';
@@ -28,6 +29,7 @@ import {
   contextNoteTargets,
   recipeTargets,
   referenceTargets,
+  snippetTargets,
 } from '../../../ui/markdown/targets.ts';
 
 const def = getDataset(Astro.params.dataset ?? '');
@@ -48,7 +50,8 @@ const yamlEdit = edit && isYamlDatasetId(def.id);
 // `c` creates a sibling of this page's dataset; on a project page a task that is a child of it.
 const createHref = def.id === 'project' ? `/new/task?parent=${slug}` : `/new/${def.id}`;
 
-// Relations (okf, skill, reference): the data the EntryTools island needs (ROUND3_MOUNT_CONTRACT) and the parent chips.
+// Relations (okf, skill, reference, snippet): the data the EntryTools island needs (ROUND3_MOUNT_CONTRACT)
+// and the parent chips.
 const relations = 'relations' in detail ? detail.relations : undefined;
 const frontmatterLinks = (relations?.linksTo ?? []).filter((row) => row.source === 'frontmatter');
 const pick = (rows: readonly { key: string; title: string }[]) =>
@@ -58,7 +61,7 @@ const tools =
     ? {
         dataset: def.id,
         slug,
-        kind: detail.kind as 'okf' | 'skill' | 'reference',
+        kind: detail.kind as 'okf' | 'skill' | 'reference' | 'snippet',
         // Frontmatter link targets are excluded from the pickers; dangling ones are not offered to Build context.
         relationKeys: frontmatterLinks.map((row) => row.key),
         childEntries: pick((relations.children ?? []).filter((row) => !row.missing)),
@@ -228,6 +231,15 @@ const tools =
           <p class="cx-detail__lede">{detail.summary.description}</p>
           <ReferenceFields data={detail.data} infoHtml={detail.infoHtml} />
           <MarkdownTargets client:only="react" targets={referenceTargets(slug)} />
+        </article>
+      )
+    }
+    {
+      !yamlEdit && detail.kind === 'snippet' && (
+        <article class="cx-detail__main" data-testid="detail-content">
+          <p class="cx-detail__lede">{detail.summary.description}</p>
+          <SnippetBody markdown={detail.data.markdown} markdownHtml={detail.markdownHtml} />
+          <MarkdownTargets client:only="react" targets={snippetTargets(slug)} />
         </article>
       )
     }

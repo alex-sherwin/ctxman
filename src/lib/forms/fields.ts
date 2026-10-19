@@ -16,7 +16,7 @@ import { describeIssue } from '../findings.ts';
 import { nameProblem } from '../names.ts';
 import { plural } from '../text.ts';
 
-export const YAML_DATASETS = ['reference', 'context', 'recipe'] as const;
+export const YAML_DATASETS = ['reference', 'snippet', 'context', 'recipe'] as const;
 export type YamlDatasetId = (typeof YAML_DATASETS)[number];
 
 export function isYamlDatasetId(value: unknown): value is YamlDatasetId {
@@ -134,6 +134,18 @@ export const FORM_FIELDS: Record<YamlDatasetId, readonly FieldDef[]> = {
       help: 'What an agent should know about it (markdown); Context Inflate inlines it under the reference',
     },
   ],
+  snippet: [
+    NAME_FIELD,
+    DESCRIPTION_FIELD,
+    TAGS_FIELD,
+    {
+      id: 'markdown',
+      label: 'Markdown',
+      kind: 'markdown',
+      required: true,
+      help: 'The snippet itself; contexts and recipes that include it get this text (Context Inflate inlines it)',
+    },
+  ],
   context: [NAME_FIELD, DESCRIPTION_FIELD, TAGS_FIELD],
   recipe: [
     NAME_FIELD,
@@ -169,6 +181,7 @@ export const LINKED_EDITOR: Record<
   { label: string; href: (slug: string) => string } | null
 > = {
   reference: null,
+  snippet: null,
   context: {
     label: 'Edit links in Forge',
     href: (slug) => `/forge?context=${encodeURIComponent(slug)}`,
@@ -184,6 +197,8 @@ export function emptyDoc(ds: YamlDatasetId): FormDoc {
   switch (ds) {
     case 'reference':
       return { name: '', description: '', type: 'local-repo', path: '', owner: 'me' };
+    case 'snippet':
+      return { name: '', description: '', markdown: '' };
     case 'context':
       return { name: '', description: '', links: [] };
     case 'recipe':
@@ -216,7 +231,8 @@ function put(out: FormDoc, key: string, value: unknown): void {
 /**
  * The document the API receives: strings trimmed, optional empty values (subpath, tags, info, preamble) dropped.
  * Reference keeps only the keys of the active type variant (`path` for local-repo and local-folder,
- * `uri` for the remote types), in the serializer's key order; context and recipe keep every other key (links, composition) as is.
+ * `uri` for the remote types), in the serializer's key order; a snippet keeps its markdown as typed (not trimmed);
+ * context and recipe keep every other key (links, composition) as is.
  */
 export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
   const tags = tagList(doc.tags);
@@ -232,6 +248,14 @@ export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
     put(out, 'owner', doc.owner);
     if (tags.length > 0) out.tags = tags;
     if (typeof doc.info === 'string' && doc.info.trim() !== '') out.info = doc.info;
+    return out;
+  }
+  if (ds === 'snippet') {
+    const out: FormDoc = {};
+    put(out, 'name', trimmed(doc.name));
+    put(out, 'description', trimmed(doc.description));
+    if (tags.length > 0) out.tags = tags;
+    put(out, 'markdown', doc.markdown);
     return out;
   }
   const out: FormDoc = { ...doc, name: trimmed(doc.name), description: trimmed(doc.description) };
@@ -256,8 +280,8 @@ export const FORM_ERROR_KEY = '_';
 
 /**
  * Validates `doc` as it would be sent (`normalizeDoc`) with the dataset's arktype schema. `errors` has one message
- * per top-level field id (the first issue wins); a required empty text field says 'Required'; `name` follows
- * `nameProblem` (src/lib/names.ts). `expectedName` (edit mode) makes a different name an error.
+ * per top-level field id (the first issue wins); a required blank text or markdown field says 'Required'; `name`
+ * follows `nameProblem` (src/lib/names.ts). `expectedName` (edit mode) makes a different name an error.
  */
 export function validateDoc(
   ds: YamlDatasetId,
@@ -275,9 +299,10 @@ export function validateDoc(
   }
 
   for (const def of visibleFields(ds, normalized)) {
-    if (def.required !== true || def.kind !== 'text' || errors[def.id] !== undefined) continue;
+    if (def.required !== true || errors[def.id] !== undefined) continue;
+    if (def.kind !== 'text' && def.kind !== 'markdown') continue;
     const value = normalized[def.id];
-    if (value === undefined || value === '') errors[def.id] = 'Required';
+    if (typeof value !== 'string' || value.trim() === '') errors[def.id] = 'Required';
   }
 
   const parsed = validate(DATASET_SCHEMAS[ds], normalized);
@@ -295,7 +320,7 @@ export function validateDoc(
 
 /**
  * The line shown instead of the fields the form cannot edit: "N links — edit in Forge" (context),
- * "N contexts · N items · N blocks — edit in Inflate" (recipe); null for reference.
+ * "N contexts · N items · N blocks — edit in Inflate" (recipe); null for reference and snippet.
  */
 export function readonlySummary(ds: YamlDatasetId, doc: FormDoc): string | null {
   const count = (key: string): number => (Array.isArray(doc[key]) ? doc[key].length : 0);

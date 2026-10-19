@@ -94,7 +94,7 @@ export async function readEntryResource(
     return { uri: entryUri(dataset, slug), mimeType: 'application/yaml', text: source };
   }
   const file = await resolveBundleFile(
-    dataset as Exclude<DatasetId, 'reference' | 'context' | 'recipe'>,
+    dataset as Exclude<DatasetId, 'reference' | 'snippet' | 'context' | 'recipe'>,
     slug,
     def.entryFile,
     ctx.dataDir,
@@ -121,7 +121,7 @@ export async function readDocResource(
     );
   }
   const file = await resolveBundleFile(
-    dataset as Exclude<DatasetId, 'reference' | 'context' | 'recipe'>,
+    dataset as Exclude<DatasetId, 'reference' | 'snippet' | 'context' | 'recipe'>,
     slug,
     relPath,
     ctx.dataDir,

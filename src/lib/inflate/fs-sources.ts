@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { datasetDef, isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import { DATASET_SCHEMAS, referenceSchema } from '../../datasets/schemas.ts';
+import { DATASET_SCHEMAS, referenceSchema, snippetSchema } from '../../datasets/schemas.ts';
 import { validate } from '../../datasets/validate.ts';
 import { listBundleFiles, readBundleText } from '../bundles.ts';
 import { ContextIoError, readContext } from '../context-io.ts';
@@ -64,7 +64,7 @@ export function createFsSources(
 
   /** okf `index.md` / skill `SKILL.md`: frontmatter parsed loosely, validated with the dataset schema. */
   async function readFrontmatterItem(
-    dataset: Exclude<LinkableDatasetId, 'reference'>,
+    dataset: Exclude<LinkableDatasetId, 'reference' | 'snippet'>,
     slug: string,
   ): Promise<ItemLookup> {
     const file = datasetDef(dataset).entryFile;
@@ -90,13 +90,17 @@ export function createFsSources(
     };
   }
 
-  async function readReferenceItem(slug: string): Promise<ItemLookup> {
+  /** `reference/<slug>.yaml` / `snippet/<slug>.yaml` parsed (not validated), or the lookup that ends the read. */
+  async function readYamlItem(
+    dataset: 'reference' | 'snippet',
+    slug: string,
+  ): Promise<{ data: Record<string, unknown> } | { lookup: ItemLookup }> {
     let source: string;
     try {
-      source = await readFile(path.join(datasetDir('reference', dataDir), `${slug}.yaml`), 'utf8');
+      source = await readFile(path.join(datasetDir(dataset, dataDir), `${slug}.yaml`), 'utf8');
     } catch (error) {
       if (errorCode(error) === 'ENOENT' || errorCode(error) === 'EISDIR') {
-        return { status: 'missing' };
+        return { lookup: { status: 'missing' } };
       }
       throw error;
     }
@@ -104,20 +108,29 @@ export function createFsSources(
     try {
       value = parseYaml(source);
     } catch (error) {
-      return { status: 'invalid', message: messageOf(error) };
+      return { lookup: { status: 'invalid', message: messageOf(error) } };
     }
-    const data = (value !== null && typeof value === 'object' ? value : {}) as Record<
-      string,
-      unknown
-    >;
+    return {
+      data: (value !== null && typeof value === 'object' ? value : {}) as Record<string, unknown>,
+    };
+  }
+
+  function invalidLookup(
+    issue: Parameters<typeof issueMessage>[0] | undefined,
+    data: Record<string, unknown>,
+  ): ItemLookup {
+    return {
+      status: 'invalid',
+      message: issue === undefined ? 'does not match the schema' : issueMessage(issue, data),
+    };
+  }
+
+  async function readReferenceItem(slug: string): Promise<ItemLookup> {
+    const read = await readYamlItem('reference', slug);
+    if ('lookup' in read) return read.lookup;
+    const data = read.data;
     const parsed = validate(referenceSchema, data);
-    if (!parsed.success) {
-      const issue = parsed.issues[0];
-      return {
-        status: 'invalid',
-        message: issue === undefined ? 'does not match the schema' : issueMessage(issue, data),
-      };
-    }
+    if (!parsed.success) return invalidLookup(parsed.issues[0], data);
     return {
       status: 'ready',
       meta: {
@@ -127,9 +140,25 @@ export function createFsSources(
     };
   }
 
+  async function readSnippetItem(slug: string): Promise<ItemLookup> {
+    const read = await readYamlItem('snippet', slug);
+    if ('lookup' in read) return read.lookup;
+    const data = read.data;
+    const parsed = validate(snippetSchema, data);
+    if (!parsed.success) return invalidLookup(parsed.issues[0], data);
+    return {
+      status: 'ready',
+      meta: {
+        ...itemMetaFromSummary(summarize('snippet', slug, data, new Date(0), nowMs)),
+        markdown: parsed.data.markdown,
+      },
+    };
+  }
+
   async function readItem(dataset: LinkableDatasetId, slug: string): Promise<ItemLookup> {
     if (!isValidName(slug)) return { status: 'missing' };
     if (dataset === 'reference') return readReferenceItem(slug);
+    if (dataset === 'snippet') return readSnippetItem(slug);
     return readFrontmatterItem(dataset, slug);
   }
 

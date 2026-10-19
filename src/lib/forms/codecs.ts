@@ -3,11 +3,17 @@
 // The serializers are the same ones the server writers use, so a document round-trips identically.
 import type { Type } from 'arktype';
 import { DATASET_SCHEMAS } from '../../datasets/schemas.ts';
-import type { ContextData, RecipeData, ReferenceData } from '../../datasets/schemas.ts';
+import type {
+  ContextData,
+  RecipeData,
+  ReferenceData,
+  SnippetData,
+} from '../../datasets/schemas.ts';
 import { validate } from '../../datasets/validate.ts';
 import { sameContext, serializeContext } from '../context-yaml.ts';
 import { sameRecipe, serializeRecipe } from '../inflate/recipe.ts';
 import { sameReference, serializeReference } from '../reference-yaml.ts';
+import { sameSnippet, serializeSnippet } from '../snippet-yaml.ts';
 import { stringifyYaml } from '../yaml.ts';
 import { normalizeDoc } from './fields.ts';
 import type { FormDoc, YamlDatasetId } from './fields.ts';
@@ -22,7 +28,10 @@ export interface YamlCodec {
   serialize(doc: FormDoc): string;
   /** True when both documents hold the same data (null equals only null). */
   same(a: FormDoc | null, b: FormDoc | null): boolean;
-  /** The document inside an API body (`{ reference|context|recipe, lastModified }`), deep-copied; null when absent. */
+  /**
+   * The document inside an API body (`{ reference|snippet|context|recipe, lastModified }`), deep-copied; null
+   * when absent.
+   */
   toDoc(apiBody: unknown): FormDoc | null;
 }
 
@@ -69,6 +78,7 @@ function makeCodec<T>(
 
 export const YAML_CODECS: Record<YamlDatasetId, YamlCodec> = {
   reference: makeCodec<ReferenceData>('reference', serializeReference, sameReference),
+  snippet: makeCodec<SnippetData>('snippet', serializeSnippet, sameSnippet),
   context: makeCodec<ContextData>('context', serializeContext, sameContext),
   recipe: makeCodec<RecipeData>('recipe', serializeRecipe, sameRecipe),
 };

@@ -26,6 +26,8 @@ export interface NewEntryOptions {
   uri?: string;
   subpath?: string;
   owner?: Owner;
+  /** snippet only: the markdown (default: a TODO placeholder). */
+  markdown?: string;
   /** Origin of the schema modeline of yaml files (callers pass `resolveServerOrigin()`; default http://127.0.0.1:4321). */
   serverOrigin?: string;
   now: Date;
@@ -73,7 +75,8 @@ function okfFrontmatterYaml(frontmatter: Record<string, unknown>): string {
  * Files to create for a new entry of `dataset`. Throws `Error` with a user-facing message on an invalid
  * name, state or reference type. Defaults: title from the name; description `TODO: describe <title>.`;
  * state = first lifecycle state; reference type remote-repo, owner me, path ~/repos/<name>
- * (local-repo) or ~/<name> (local-folder), uri https://github.com/TODO/<name>.git.
+ * (local-repo) or ~/<name> (local-folder), uri https://github.com/TODO/<name>.git; snippet markdown
+ * `TODO: write the <title> snippet.`.
  */
 export function planNewEntry(
   dataset: DatasetId,
@@ -101,6 +104,9 @@ export function planNewEntry(
   }
   if (opts.type !== undefined && dataset !== 'reference') {
     throw new Error('type only applies to reference entries');
+  }
+  if (opts.markdown !== undefined && dataset !== 'snippet') {
+    throw new Error('markdown only applies to snippet entries');
   }
   if (opts.tags !== undefined) {
     if (def.kind !== 'okf' && opts.tags.length > 0) {
@@ -149,7 +155,7 @@ export function planNewEntry(
       return [
         {
           relPath: `${dataset}/${name}.yaml`,
-          // reference, context and recipe files start with the yaml-language-server schema comment.
+          // reference, snippet, context and recipe files start with the yaml-language-server schema comment.
           content: isSchemaDatasetId(dataset)
             ? withSchemaComment(dataset, body, opts.serverOrigin ?? DEFAULT_SERVER_ORIGIN)
             : body,
@@ -159,7 +165,7 @@ export function planNewEntry(
   }
 }
 
-/** Starter document of a yaml dataset (reference, context, recipe). */
+/** Starter document of a yaml dataset (reference, snippet, context, recipe). */
 function dataDoc(
   dataset: DatasetId,
   name: string,
@@ -169,6 +175,15 @@ function dataDoc(
   switch (dataset) {
     case 'reference':
       return referenceDoc(name, description, opts);
+    case 'snippet': {
+      // Equals serializeSnippet() of the parsed result (src/lib/snippet-yaml.ts): markdown last.
+      const markdown = opts.markdown?.trim() ? opts.markdown : '';
+      return {
+        name,
+        description,
+        markdown: markdown === '' ? `TODO: write the ${titleFromName(name)} snippet.\n` : markdown,
+      };
+    }
     case 'recipe':
       // Equals serializeRecipe() of the parsed result (src/lib/inflate/recipe.ts).
       return {

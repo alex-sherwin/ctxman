@@ -1,14 +1,15 @@
 ---
 import type { DatasetId } from '../datasets/registry.ts';
 
-// "Open in IDE" for one file of an entry (ROUND2_UI_SPEC §G.1). Vanilla: src/scripts/shell.ts handles the click on
+// "Open in IDE" for one file of an entry (ROUND2_UI_SPEC §G.1); a snippet passes no path (the server opens the
+// snippet folder with its yaml file). Vanilla: src/scripts/shell.ts handles the click on
 // `[data-ide-open]` (POST /api/ide/open) and, on load, asks GET /api/ide/open whether an IDE command exists and
 // disables the button when none does. The status element is the `[data-ide-status]` sibling inside this wrapper.
 interface Props {
   dataset: DatasetId;
   slug: string;
-  /** Bundle-relative path of the shown file: 'index.md', 'SKILL.md' or a sub-doc's relPath. */
-  path: string;
+  /** Bundle-relative path of the shown file: 'index.md', 'SKILL.md' or a sub-doc's relPath; none for a snippet. */
+  path?: string;
 }
 
 const { dataset, slug, path } = Astro.props;

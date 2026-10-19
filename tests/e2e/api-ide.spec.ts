@@ -90,6 +90,37 @@ test('yaml datasets open the data dir with <dataset>/<slug>.yaml', async ({ requ
   expect(context.call).toEqual([E2E_DATA_DIR, dataPath('context/ctxman-dev.yaml')]);
 });
 
+test('a snippet opens the snippet folder with <slug>.yaml', async ({ request }) => {
+  const { call } = await openAndRecord(request, { dataset: 'snippet', slug: 'finish-checklist' });
+  expect(call).toEqual([dataPath('snippet'), dataPath('snippet/finish-checklist.yaml')]);
+});
+
+test('Open in IDE on a snippet page (button and `i`) opens the snippet folder with its file', async ({
+  page,
+}) => {
+  await page.goto('/snippet/finish-checklist');
+  const button = page.getByTestId('detail-open-ide');
+  await expect(button).toBeEnabled();
+  await expect(button).toHaveAttribute('data-dataset', 'snippet');
+  await expect(button).not.toHaveAttribute('data-path');
+  const expected = [dataPath('snippet'), dataPath('snippet/finish-checklist.yaml')];
+
+  let before = recordedCalls().length;
+  await button.click();
+  await expect(page.getByTestId('detail-ide-status')).toHaveText('Opened in VS Code');
+  await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
+  expect(recordedCalls()[before]).toEqual(expected);
+
+  // `i` clicks the same button once the Shortcuts island listens (it marks <body> then)
+  await expect(page.locator('body[data-shortcuts-ready]')).toBeAttached();
+  await expect(button).toBeEnabled();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  before = recordedCalls().length;
+  await page.keyboard.press('i');
+  await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
+  expect(recordedCalls()[before]).toEqual(expected);
+});
+
 test('request errors never start the IDE', async ({ request }) => {
   const before = recordedCalls().length;
   const cases: [unknown, number, string][] = [
