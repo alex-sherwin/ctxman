@@ -14,11 +14,19 @@
     margin-right: auto;
   }
 
+  /* TagEditor: the group's label on a line of its own, then the chips and the "add tags" input on one centre line
+     (the group itself is `display: contents`, so the label never takes part in the row's centring) */
   .cx-tagedit {
     display: flex;
     align-items: center;
-    gap: var(--sp-3);
+    gap: var(--sp-1) var(--sp-3);
     flex-wrap: wrap;
+  }
+  .cx-tagedit > .ck-taggroup {
+    display: contents;
+  }
+  .cx-tagedit > .ck-taggroup > .ck-field__label {
+    flex-basis: 100%;
   }
 
   /* TimeEditor: the duration chips, then the input (with its help line) and the total */
