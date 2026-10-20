@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearMarkdownCache, renderMarkdown } from '../../src/lib/markdown.ts';
+import { clearMarkdownCache, renderMarkdown, renderMarkdownDoc } from '../../src/lib/markdown.ts';
 
 beforeEach(() => clearMarkdownCache());
 
@@ -34,6 +34,38 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<pre class="astro-code ctxman-cyber"');
     expect(html).toContain('<table>');
     expect(html).toContain('<code class="language-math">x');
+  });
+
+  it('wraps every code block with a floating Copy button (highlighted, plain and nested ones)', async () => {
+    const html = await renderMarkdown(
+      '```ts\nconst a = 1;\n```\n\n```\nplain\n```\n\n- item\n\n  ```sh\n  ls\n  ```\n\nInline `code` stays.\n',
+    );
+    expect(html.match(/<div class="cx-codeblock"><pre /g)).toHaveLength(3);
+    expect(
+      html.match(/<button type="button" class="[^"]*cx-codeblock__copy" data-copy-code/g),
+    ).toHaveLength(3);
+    // the button and its live region follow the <pre> inside the wrapper
+    expect(html).toContain(
+      '</code></pre><button type="button" class="ck-button ck-button--ghost ck-button--sm ck-button--glow ck-copy cx-codeblock__copy" data-copy-code="" aria-label="Copy code">',
+    );
+    expect(html).toContain(
+      '<span class="ck-sr-only" role="status" data-copy-status=""></span></div>',
+    );
+    expect(html).toContain('<svg class="ck-icon ck-copy__check" width="13" height="13"');
+    expect(html).toContain('<p>Inline <code>code</code> stays.</p>');
+  });
+
+  it('collects the headings with their ids and text (not the footnotes label)', async () => {
+    const { headings } = await renderMarkdownDoc(
+      '# Title\n\nText[^1].\n\n## Use `code` here\n\n### Sub\n\n## Use code here\n\n[^1]: Note.\n',
+    );
+    expect(headings).toEqual([
+      { depth: 1, id: 'title', text: 'Title' },
+      { depth: 2, id: 'use-code-here', text: 'Use code here' },
+      { depth: 3, id: 'sub', text: 'Sub' },
+      { depth: 2, id: 'use-code-here-1', text: 'Use code here' },
+    ]);
+    expect(await renderMarkdownDoc('  ')).toEqual({ html: '', headings: [] });
   });
 
   it('keeps working past the cache cap (oldest entries are dropped)', async () => {

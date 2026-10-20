@@ -1,0 +1,28 @@
+---
+import type { TocEntry } from '../lib/doc-toc.ts';
+
+// The headings nav of an okf / skill page (entry and sub-doc pages): RIGHT of the rendered markdown, sticky under the
+// header and the doc toolbar, hidden while editing and when the column is too narrow (CSS). src/scripts/shell.ts
+// marks the link of the section being read (`aria-current="location"`).
+interface Props {
+  /** src/lib/doc-toc.ts#tocEntries; the page renders no nav when it is empty. */
+  entries: TocEntry[];
+}
+
+const { entries } = Astro.props;
+---
+
+<nav class="cx-toc" aria-labelledby="h-toc" data-testid="doc-toc">
+  <h2 class="cx-toc__title ck-label" id="h-toc">On this page</h2>
+  <ol class="cx-toc__list" role="list">
+    {
+      entries.map((entry) => (
+        <li>
+          <a class="cx-toc__link" href={`#${entry.id}`} data-level={entry.level} data-toc-link>
+            {entry.text}
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+</nav>

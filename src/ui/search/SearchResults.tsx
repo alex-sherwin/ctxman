@@ -92,7 +92,10 @@ function SearchEmpty() {
   if (q.length < MIN_QUERY) {
     return (
       <div className="cx-search__empty">
-        <span>Type at least {MIN_QUERY} characters. Use the chips (Tab) to limit datasets.</span>
+        <span>
+          Type at least {MIN_QUERY} characters; <code>#tag</code> matches a tag exactly. Use the
+          chips (Tab) to limit datasets.
+        </span>
       </div>
     );
   }

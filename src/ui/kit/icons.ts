@@ -54,3 +54,18 @@ export const ICONS: Record<IconName, IconDef> = {
     ],
   },
 };
+
+/**
+ * The SSR `Icon` (src/components/Icon.astro) as an HTML string, for markup built outside a component: the copy
+ * button that src/lib/markdown.ts puts on rendered code blocks. Decorative (`aria-hidden`), `currentColor`.
+ */
+export function iconSvg(name: IconName, size: number, className?: string): string {
+  const def = ICONS[name];
+  const cls = className === undefined ? 'ck-icon' : `ck-icon ${className}`;
+  const paint = def.stroke ? 'fill="none" stroke="currentColor"' : 'fill="currentColor"';
+  const shapes = [
+    ...def.paths.map((d) => `<path d="${d}"></path>`),
+    ...(def.circles ?? []).map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}"></circle>`),
+  ].join('');
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="${def.viewBox}" aria-hidden="true" focusable="false" ${paint} stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${shapes}</svg>`;
+}

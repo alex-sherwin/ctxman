@@ -11,8 +11,20 @@ test.describe('bundle detail pages', () => {
     await expect(content.getByRole('heading', { level: 1 })).toHaveText('ctxman');
     await expect(page.getByTestId('detail-slug')).toHaveText('ctxman');
     await expect(page.getByTestId('detail-meta')).toContainText('architecture');
-    await expect(page.getByTestId('detail-files')).toContainText('index.md');
-    await expect(page.getByTestId('detail-files')).toContainText('concepts/datasets.md');
+    const files = page.getByTestId('detail-files');
+    await expect(files).toContainText('index.md');
+    // a file explorer tree: folders start closed (with their file count) and open on a click
+    const concepts = files.locator('[data-testid="files-dir"][data-path="concepts"]');
+    const datasets = files.locator('a[href="/kb/ctxman/doc/concepts/datasets"]');
+    await expect(concepts).not.toHaveAttribute('open');
+    await expect(concepts.locator('> summary')).toContainText('concepts');
+    await expect(datasets).toBeHidden();
+    await concepts.locator('> summary').click();
+    await expect(concepts).toHaveAttribute('open', '');
+    await expect(datasets).toBeVisible();
+    await expect(datasets).toHaveText('datasets.md');
+    await concepts.locator('> summary').click();
+    await expect(datasets).toBeHidden();
   });
 
   test('the details column sits LEFT of the content and carries Open in IDE', async ({ page }) => {
@@ -58,10 +70,14 @@ test.describe('bundle detail pages', () => {
     await expect(
       page.getByTestId('detail-content').getByRole('heading', { level: 1 }),
     ).toBeVisible();
-    // The file tree marks the shown file as the current page.
+    // The file tree marks the shown file as the current page, inside its (open) folder.
+    await expect(page.getByTestId('detail-files').locator('a[aria-current="page"]')).toBeVisible();
     await expect(page.getByTestId('detail-files').locator('a[aria-current="page"]')).toContainText(
       'datasets.md',
     );
+    await expect(
+      page.getByTestId('detail-files').locator('[data-testid="files-dir"][data-path="concepts"]'),
+    ).toHaveAttribute('open', '');
   });
 
   test('ctxman: links point at the entry route', async ({ page }) => {
@@ -93,6 +109,87 @@ test.describe('bundle detail pages', () => {
     await page.getByTestId('detail-files').locator('a[href="/kb/ctxman"]').click();
     await expect(page).toHaveURL(/\/kb\/ctxman$/);
     await expect(page.getByTestId('detail-slug')).toHaveText('ctxman');
+  });
+
+  test('every rendered code block has a floating Copy button that copies the block', async ({
+    page,
+  }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/kb/ctxman/doc/concepts/context-inflate');
+    const block = page.getByTestId('detail-content').locator('.cx-codeblock').first();
+    const button = block.locator('[data-copy-code]');
+    await expect(button).toHaveAccessibleName('Copy code');
+    // top-right corner, 4px in
+    const outer = (await block.boundingBox())!;
+    const inner = (await button.boundingBox())!;
+    expect(Math.round(outer.x + outer.width - (inner.x + inner.width))).toBe(4);
+    expect(Math.round(inner.y - outer.y)).toBe(4);
+    await button.click();
+    await expect(button).toHaveAttribute('data-copied', '');
+    const code = await block.locator('pre').textContent();
+    expect(code).not.toBe('');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  });
+
+  test('the headings nav sits right of the markdown, jumps to a section and marks the one being read', async ({
+    page,
+  }) => {
+    await page.goto('/kb/ctxman');
+    const toc = page.getByTestId('doc-toc');
+    const content = page.getByTestId('detail-content');
+    await expect(toc).toBeVisible();
+    const contentBox = (await content.boundingBox())!;
+    expect((await toc.boundingBox())!.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width);
+    // the lone h1 (the title) is not listed
+    await expect(toc.getByRole('link')).toHaveText([
+      'What it holds',
+      'How an agent should use it',
+      'Concept map',
+      'Quick facts',
+      'Context inflate',
+      'Design',
+      'Features',
+      'Working in the repo',
+    ]);
+    const link = toc.getByRole('link', { name: 'Context inflate' });
+    await link.click();
+    await expect(page).toHaveURL(/#context-inflate$/);
+    await expect(link).toHaveAttribute('aria-current', 'location');
+    await expect(toc.locator('[aria-current]')).toHaveCount(1);
+    // sticky: still in view after the jump, below the header and the doc toolbar
+    const tocBox = (await toc.boundingBox())!;
+    const toolbar = (await page.getByTestId('doc-tools').boundingBox())!;
+    expect(tocBox.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height);
+    expect(tocBox.y).toBeLessThan(page.viewportSize()!.height / 2);
+    // the heading landed below the sticky toolbar
+    const heading = (await content.locator('#context-inflate').boundingBox())!;
+    expect(heading.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height);
+    // editing hides it
+    await page.getByTestId('doc-view-edit').click();
+    await expect(toc).toBeHidden();
+  });
+
+  test('in edit mode the markdown editor ends inside the viewport and the page does not scroll', async ({
+    page,
+  }) => {
+    await page.goto('/task/write-agents-md?edit=1');
+    await expect(page.getByTestId('doc-editor').locator('.monaco-editor')).toBeVisible({
+      timeout: 15_000,
+    });
+    // the island has measured the space above the editor
+    await page.waitForFunction(
+      () =>
+        (
+          document.querySelector('[data-testid="doc-editor-wrap"]') as HTMLElement | null
+        )?.style.getPropertyValue('--fill-top') !== '',
+    );
+    const viewport = page.viewportSize()!;
+    const box = (await page.getByTestId('doc-editor-wrap').boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    expect(box.height).toBeGreaterThan(300);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+      viewport.height,
+    );
   });
 
   test('a sub-doc page renders (log.md)', async ({ page }) => {
@@ -310,7 +407,7 @@ test.describe('relation panels, header state and tool buttons (ROUND3_SPEC §E)'
       .locator('[data-testid="relation-row"][data-key="project/ctxman-v1"]');
     await expect(linkedFrom).toContainText('Parent');
     // the SSR buttons start disabled; the EntryTools island enables them
-    for (const id of ['meta-edit', 'files-new-concept', 'entry-add-to-context', 'relation-add']) {
+    for (const id of ['meta-edit', 'files-add-file', 'entry-add-to-context', 'relation-add']) {
       await expect(page.getByTestId(id), id).toBeEnabled();
     }
     // mentions of the body are listed under "Links to", with the other entries' states
@@ -376,7 +473,7 @@ test.describe('relation panels, header state and tool buttons (ROUND3_SPEC §E)'
     // skill: Details edit, no concepts / frontmatter links
     await page.goto('/skill/okf-authoring');
     await expect(page.getByTestId('meta-edit')).toBeEnabled();
-    await expect(page.getByTestId('files-new-concept')).toHaveCount(0);
+    await expect(page.getByTestId('files-add-file')).toHaveCount(0);
     await expect(page.getByTestId('relation-add')).toHaveCount(0);
 
     // context: none of it

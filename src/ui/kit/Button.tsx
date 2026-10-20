@@ -16,6 +16,11 @@ export interface ButtonProps extends AriaButtonProps {
   iconOnly?: boolean;
   /** The icon-button glow on a small text utility button (Copy, Esc). Implied by `iconOnly`. */
   glow?: boolean;
+  /**
+   * 'danger' on a `ghost` button: a destructive trigger that stays quiet at rest (no border) and turns red, text and
+   * border, on hover and focus. Its confirm button is `variant="danger"`.
+   */
+  tone?: 'danger';
 }
 
 export interface ButtonLinkProps extends AriaLinkProps {
@@ -33,6 +38,7 @@ export function Button({
   size = 'md',
   iconOnly,
   glow,
+  tone,
   className,
   children,
   ...rest
@@ -47,6 +53,7 @@ export function Button({
         `ck-button--${size}`,
         iconOnly && 'ck-button--icon',
         glow && 'ck-button--glow',
+        tone === 'danger' && 'ck-button--tone-danger',
       )}
     >
       {(rp) => (

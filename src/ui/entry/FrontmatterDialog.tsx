@@ -1,16 +1,19 @@
 // "Edit details" dialog of an okf / skill entry (ROUND3_SPEC §E.5): the frontmatter keys title, description, tags,
-// state, stale_after and status (a skill: description only). Loads the current frontmatter when opened
+// state, time + resolved (task, feature, bug, rca), stale_after and status (a skill: description only). Loads the current frontmatter when opened
 // (GET /api/entry), saves ONLY the changed keys with an explicit Save (PATCH, `ifUnmodifiedSince` = the loaded
 // mtime). 400 `invalid` puts the server's issues on their fields; 409 shows "Changed on disk" with a Reload
 // button that re-reads the file (my edits in the dialog are dropped). Browser-only; kit parts by file.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Form } from 'react-aria-components';
-import { datasetDef } from '../../datasets/registry.ts';
+import { datasetDef, isTimeTrackedDatasetId } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
+import { localIsoMinutes } from '../../lib/iso8601.ts';
+import { todayYmd } from '../../lib/time.ts';
 import { DiscardDialog } from '../edit/DiscardDialog.tsx';
 import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
 import { TagEditor } from '../edit/TagEditor.tsx';
+import { TimeEditor } from '../edit/TimeEditor.tsx';
 import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
 import { Button } from '../kit/Button.tsx';
 import { Dialog, Modal } from '../kit/Dialog.tsx';
@@ -74,6 +77,7 @@ export function FrontmatterDialog({
   const [attempt, setAttempt] = useState(0);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const states = datasetDef(dataset).states;
+  const timeTracked = kind === 'okf' && isTimeTrackedDatasetId(dataset);
 
   // (Re)load the frontmatter; `attempt` re-runs it (Retry, Reload after a conflict). setState only in the callback.
   useEffect(() => {
@@ -89,7 +93,7 @@ export function FrontmatterDialog({
         status: 'ready',
         lastModified: res.body.lastModified,
         base,
-        draft: { ...base, tags: [...base.tags] },
+        draft: { ...base, tags: [...base.tags], time: [...base.time] },
         save: { kind: 'idle' },
         serverErrors: {},
         other: [],
@@ -295,12 +299,60 @@ export function FrontmatterDialog({
                       )}
                   </Select>
                 )}
+                {timeTracked && (
+                  <TimeEditor
+                    values={ready.draft.time}
+                    onChange={(time) => edit({ time }, 'time')}
+                    errorMessage={shown('time')}
+                    testIdPrefix="fm"
+                  />
+                )}
+                {timeTracked && (
+                  <div className="cx-fm__date">
+                    <TextField
+                      label="Resolved"
+                      mono
+                      className="cx-fm__date-input"
+                      placeholder="2026-10-19 or 2026-10-19T14:30"
+                      value={ready.draft.resolved}
+                      onChange={(resolved) => edit({ resolved }, 'resolved')}
+                      isInvalid={shown('resolved') !== undefined}
+                      errorMessage={shown('resolved')}
+                      description="When the work was resolved: an ISO 8601 date or date-time. Empty = not resolved."
+                      inputTestId="fm-resolved"
+                    />
+                    <div className="cx-fm__date-actions">
+                      <Button
+                        size="sm"
+                        onPress={() => edit({ resolved: localIsoMinutes(Date.now()) }, 'resolved')}
+                        data-testid="fm-resolved-now"
+                      >
+                        Now
+                      </Button>
+                      <Button
+                        size="sm"
+                        onPress={() => edit({ resolved: todayYmd(Date.now()) }, 'resolved')}
+                        data-testid="fm-resolved-today"
+                      >
+                        Today
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => edit({ resolved: '' }, 'resolved')}
+                        data-testid="fm-resolved-clear"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {kind === 'okf' && (
-                  <div className="cx-fm__stale">
+                  <div className="cx-fm__date">
                     <TextField
                       label="Stale after"
                       mono
-                      className="cx-fm__stale-input"
+                      className="cx-fm__date-input"
                       placeholder="YYYY-MM-DD"
                       value={ready.draft.staleAfter}
                       onChange={(staleAfter) => edit({ staleAfter }, 'stale_after')}
@@ -309,7 +361,7 @@ export function FrontmatterDialog({
                       description="From this day the entry counts as stale. Empty = never."
                       inputTestId="fm-stale-after"
                     />
-                    <div className="cx-fm__stale-actions">
+                    <div className="cx-fm__date-actions">
                       <Button
                         size="sm"
                         onPress={() =>

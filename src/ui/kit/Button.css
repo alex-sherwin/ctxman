@@ -106,6 +106,19 @@
     --_fill-fg: var(--danger-on);
     --_glow: 0 0 12px color-mix(in srgb, var(--danger) 45%, transparent);
   }
+  /* `tone="danger"` (a ghost destructive trigger): quiet at rest, red text, border and wash on hover / focus */
+  .ck-button--tone-danger {
+    --_fill: var(--danger-bg);
+    --_fill-fg: var(--danger-fg);
+  }
+  .ck-button--tone-danger[data-hovered],
+  .ck-button--tone-danger:not([data-rac]):hover {
+    border-color: var(--danger);
+  }
+  .ck-button--tone-danger[data-focus-visible] {
+    color: var(--danger-fg);
+    border-color: var(--danger);
+  }
 
   .ck-button--sm {
     height: var(--control-h-sm);
@@ -130,10 +143,13 @@
     width: 11px;
     height: 11px;
   }
+  /* a shortcut hint inside a button (the header search, Save) stays a size below the stand-alone badge */
   .ck-button .ck-kbd {
-    height: 16px;
-    min-width: 16px;
-    font-size: 10px;
+    height: 18px;
+    min-width: 18px;
+    padding: 0 var(--sp-2);
+    font-size: var(--fs-xs);
+    border-bottom-width: 1px;
     margin-left: var(--sp-1);
   }
 

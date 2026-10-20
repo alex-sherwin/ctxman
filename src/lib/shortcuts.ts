@@ -27,7 +27,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   },
   {
     id: 'ide',
-    keys: ['i'],
+    keys: ['.'],
     label: 'Open in IDE',
     where: 'Entry and document pages, when an IDE command is available',
   },
@@ -51,7 +51,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
 /** Selector of the + Link button that `l` clicks (an enabled one only: EntryTools enables it on mount). */
 export const LINK_BUTTON_SELECTOR = '[data-entry-action="add-relation"]:not([disabled])';
 
-/** Selector of the Open in IDE button that `i` clicks (enabled only: shell.ts disables it when no IDE command exists). */
+/** Selector of the Open in IDE button that `.` clicks (enabled only: shell.ts disables it when no IDE command exists). */
 export const IDE_BUTTON_SELECTOR = '[data-ide-open]:not([disabled])';
 
 /** The Edit button of a reference, context or recipe page, which `e` clicks when no island takes the key. */
@@ -117,7 +117,7 @@ export function shortcutAction(e: KeyInfo, ctx: ShortcutContext): ShortcutAction
   }
   if (e.key === 'l')
     return ctx.linkShortcut ? { kind: 'click', selector: LINK_BUTTON_SELECTOR } : null;
-  if (e.key === 'i')
+  if (e.key === '.')
     return ctx.ideShortcut ? { kind: 'click', selector: IDE_BUTTON_SELECTOR } : null;
   if (e.key === 'e') return ctx.editShortcut ? { kind: 'edit' } : null;
   return null;

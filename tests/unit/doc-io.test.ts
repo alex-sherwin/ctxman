@@ -19,10 +19,12 @@ import {
   appendLog,
   appendLogEntry,
   createDoc,
+  deleteDoc,
   DocIoError,
   isDocDatasetId,
   normalizeDocPath,
   readDoc,
+  removeConceptFromIndex,
   validateDoc,
   writeDoc,
 } from '../../src/lib/doc-io.ts';
@@ -812,5 +814,125 @@ describe('createDoc', () => {
       expect(index).toContain(`(/concepts/${n}.md)`);
       expect(log).toContain(`(/concepts/${n}.md)`);
     }
+  });
+});
+
+describe('removeConceptFromIndex', () => {
+  const index = [
+    '# X',
+    '',
+    'See [one](/concepts/one.md) in the text.',
+    '',
+    '## Concepts',
+    '',
+    '* [One](/concepts/one.md) - The first.',
+    '  continued line of one',
+    '* [Two](./concepts/two.md) - The second.',
+    '- [Space](/notes/a%20b.md) - Encoded.',
+    '',
+    '## Later',
+    '',
+    '* [One again](/concepts/one.md)',
+    '',
+  ].join('\n');
+
+  it('drops the Concepts items (and their continuation lines) that link to the file, nothing else', () => {
+    const out = removeConceptFromIndex(index, 'concepts/one.md');
+    expect(out).not.toContain('* [One](/concepts/one.md)');
+    expect(out).not.toContain('continued line of one');
+    expect(out).toContain('See [one](/concepts/one.md) in the text.');
+    expect(out).toContain('* [Two](./concepts/two.md) - The second.');
+    expect(out).toContain('* [One again](/concepts/one.md)');
+    expect(removeConceptFromIndex(index, 'concepts/two.md')).not.toContain('[Two]');
+    expect(removeConceptFromIndex(index, 'notes/a b.md')).not.toContain('[Space]');
+  });
+
+  it('returns the source unchanged when nothing is listed', () => {
+    expect(removeConceptFromIndex(index, 'concepts/none.md')).toBe(index);
+    expect(removeConceptFromIndex('# No section\n', 'a.md')).toBe('# No section\n');
+  });
+});
+
+describe('deleteDoc', () => {
+  const now = new Date('2026-10-19T09:00:00Z');
+
+  it('removes the file, its Concepts line and the folders left empty, and logs it in an existing log.md', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    await createDoc('kb', 'demo', 'references/deep/abc.md', { title: 'Abc' }, dir, now);
+    const deleted = await deleteDoc('kb', 'demo', 'references/deep/abc.md', dir, now);
+    expect(deleted.path).toBe('references/deep/abc.md');
+    expect(deleted.url).toBe('/kb/demo');
+    const root = path.join(dir, 'kb', 'demo');
+    expect(existsSync(path.join(root, 'references'))).toBe(false);
+    expect(readFileSync(path.join(root, 'index.md'), 'utf8')).not.toContain(
+      'references/deep/abc.md',
+    );
+    const log = readFileSync(path.join(root, 'log.md'), 'utf8');
+    expect(log).toContain('## 2026-10-19\n* **Delete**: Deleted `references/deep/abc.md`.\n');
+    // the Create line of the log still links to it: reported, not rewritten
+    expect(deleted.warnings).toEqual([
+      expect.objectContaining({
+        rule: 'links/broken',
+        file: 'kb/demo/log.md',
+        message: 'still links to the deleted references/deep/abc.md',
+      }),
+    ]);
+  });
+
+  it('keeps folders that still hold something and never creates a log.md', async () => {
+    const dir = tmp.make({
+      'kb/x/index.md': MAIN,
+      'kb/x/notes/a.md': '---\ntype: Concept\n---\n# A\n\nSee [b](./b.md).\n',
+      'kb/x/notes/b.md': '---\ntype: Concept\n---\n# B\n',
+    });
+    const deleted = await deleteDoc('kb', 'x', 'notes/b.md', dir, now);
+    expect(deleted.warnings).toEqual([
+      expect.objectContaining({ rule: 'links/broken', file: 'kb/x/notes/a.md', line: 6 }),
+    ]);
+    expect(readdirSync(path.join(dir, 'kb', 'x')).sort()).toEqual(['index.md', 'notes']);
+    expect(readdirSync(path.join(dir, 'kb', 'x', 'notes'))).toEqual(['a.md']);
+  });
+
+  it('deletes a nested index.md and log.md itself', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    writeTree(dir, { 'kb/demo/concepts/index.md': '# Concepts\n' });
+    await deleteDoc('kb', 'demo', 'concepts/index.md', dir, now);
+    expect(existsSync(path.join(dir, 'kb', 'demo', 'concepts', 'index.md'))).toBe(false);
+    await deleteDoc('kb', 'demo', 'log.md', dir, now);
+    expect(existsSync(path.join(dir, 'kb', 'demo', 'log.md'))).toBe(false);
+  });
+
+  it('unlinks a symlinked file and leaves its target alone', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    const root = path.join(dir, 'kb', 'demo');
+    symlinkSync(path.join(root, 'concepts', 'one.md'), path.join(root, 'alias.md'));
+    await deleteDoc('kb', 'demo', 'alias.md', dir, now);
+    expect(existsSync(path.join(root, 'alias.md'))).toBe(false);
+    expect(existsSync(path.join(root, 'concepts', 'one.md'))).toBe(true);
+  });
+
+  it('refuses the entry index.md, skills, bad paths, missing files and links out of the bundle', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    const root = path.join(dir, 'kb', 'demo');
+    writeTree(dir, { 'outside.md': '# Outside\n' });
+    symlinkSync(path.join(dir, 'outside.md'), path.join(root, 'out.md'));
+    const cases: [string, string, string, string][] = [
+      ['kb', 'demo', 'index.md', 'bad-path'],
+      ['skill', 'demo', 'x.md', 'bad-dataset'],
+      ['reference', 'demo', 'x.md', 'bad-dataset'],
+      ['kb', 'Bad Slug', 'x.md', 'bad-slug'],
+      ['kb', 'demo', '../x.md', 'bad-path'],
+      ['kb', 'demo', 'concepts/one.txt', 'bad-path'],
+      ['kb', 'demo', 'out.md', 'bad-path'],
+      ['kb', 'demo', 'concepts/missing.md', 'not-found'],
+      ['kb', 'nope', 'a.md', 'not-found'],
+    ];
+    for (const [ds, slug, rel, code] of cases) {
+      expect((await failure(deleteDoc(ds, slug, rel, dir, now))).code, `${ds}/${slug}/${rel}`).toBe(
+        code,
+      );
+    }
+    expect(existsSync(path.join(root, 'index.md'))).toBe(true);
+    expect(existsSync(path.join(dir, 'outside.md'))).toBe(true);
   });
 });

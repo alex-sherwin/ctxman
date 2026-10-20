@@ -1,19 +1,33 @@
 // NODE: read / write ONE existing markdown file of an okf bundle or skill directory (round 2 doc API,
-// plans/ROUND2_BACKEND_SPEC.md §A) and create a new concept file (round 3, plans/ROUND3_SPEC.md §D.3). Path safety
+// plans/ROUND2_BACKEND_SPEC.md §A), create a new concept file (round 3, plans/ROUND3_SPEC.md §D.3) at any path of
+// the bundle, and delete one that is not the entry. Path safety
 // is bundles.ts (`safeJoin` + `resolveBundleFile`); writes are atomic (atomic-write.ts: hidden temp file in the
 // target's directory, then rename), serialized per file (`withFileLock`) and optimistically locked by mtime.
-import { lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rmdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { docUrl, isOkfDatasetId, isValidName, OKF_DATASET_IDS } from '../datasets/registry.ts';
+import {
+  docUrl,
+  entryUrl,
+  isOkfDatasetId,
+  isValidName,
+  OKF_DATASET_IDS,
+  OKF_ENTRY_FILE,
+} from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
 import { withFileLock, writeFileAtomic } from './atomic-write.ts';
-import { MAX_TEXT_BYTES, normalizeBundlePath, resolveBundleFile, safeJoin } from './bundles.ts';
+import {
+  MAX_TEXT_BYTES,
+  normalizeBundlePath,
+  resolveBundleFile,
+  safeJoin,
+  walkFiles,
+} from './bundles.ts';
 import type { Issue } from './context-io.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
 import { invalidateEntryIndex } from './entry-index.ts';
 import type { Finding } from './findings.ts';
-import { checkFileLinks } from './links.ts';
-import { classifyOkfPath, maskMarkdownCode, validateOkfFile } from './okf.ts';
+import { checkFileLinks, classifyHref, extractLinks, resolveBundleHref } from './links.ts';
+import { classifyOkfPath, maskMarkdownCode, splitFrontmatter, validateOkfFile } from './okf.ts';
 import { validateSkillFile } from './skill-check.ts';
 import { linkText } from './templates.ts';
 import { stringifyYaml } from './yaml.ts';
@@ -395,6 +409,9 @@ const destinationOf = (relPath: string): string =>
     .map((segment) => encodeURIComponent(segment).replaceAll('(', '%28').replaceAll(')', '%29'))
     .join('/');
 
+/** `## Concepts` (ATX, any case) of an entry index.md, as a masked line. */
+const CONCEPTS_HEADING = /^##[ \t]+concepts[ \t]*#*[ \t]*\r?$/i;
+
 /**
  * `index.md` text with the new concept listed under its `## Concepts` section (ATX heading, any case, outside code):
  * `* [title](/path) - description` after the section's last list item, using the section's own bullet character;
@@ -419,7 +436,7 @@ export function addConceptToIndex(
     masked.pop();
   }
   const isBlank = (line: string | undefined): boolean => line === undefined || line.trim() === '';
-  const heading = masked.findIndex((line) => /^##[ \t]+concepts[ \t]*#*[ \t]*\r?$/i.test(line));
+  const heading = masked.findIndex((line) => CONCEPTS_HEADING.test(line));
 
   if (heading === -1) {
     const body = source.replace(/(\r?\n)*$/, '');
@@ -509,6 +526,51 @@ export function addCreateToLog(
   );
 }
 
+/**
+ * `index.md` text without the list items of its `## Concepts` section that link to `relPath` (the bookkeeping
+ * `addConceptToIndex` added, undone when the file is deleted); an item's continuation lines go with it. Links
+ * elsewhere in the file are left alone. Pure text in, text out.
+ */
+export function removeConceptFromIndex(source: string, relPath: string): string {
+  const lines = source.split('\n');
+  const masked = maskMarkdownCode(source).split('\n');
+  const heading = masked.findIndex((line) => CONCEPTS_HEADING.test(line));
+  if (heading === -1) return source;
+  let end = masked.length;
+  for (let i = heading + 1; i < masked.length; i++) {
+    if (/^#{1,2}[ \t]/.test(masked[i] ?? '')) {
+      end = i;
+      break;
+    }
+  }
+  // 0-based lines holding a link to the file
+  const linking = new Set(
+    extractLinks(source)
+      .filter((link) => !link.image && classifyHref(link.href) === 'bundle')
+      .filter((link) => {
+        const resolved = resolveBundleHref(link.href, OKF_ENTRY_FILE);
+        return 'path' in resolved && resolved.path === relPath;
+      })
+      .map((link) => link.line - 1),
+  );
+  const isItem = (i: number): boolean => /^\s*([*-]) /.test(masked[i] ?? '');
+  const drop = new Set<number>();
+  for (let i = heading + 1; i < end; i++) {
+    if (!isItem(i) || !linking.has(i)) continue;
+    drop.add(i);
+    for (let j = i + 1; j < end && /^\s+\S/.test(lines[j] ?? '') && !isItem(j); j++) drop.add(j);
+  }
+  return drop.size === 0 ? source : lines.filter((_, i) => !drop.has(i)).join('\n');
+}
+
+/**
+ * `log.md` text with `* **Delete**: Deleted `path`.` under today's heading (see `appendLogEntry`); no link, its
+ * target is gone. Pure text in, text out.
+ */
+export function addDeleteToLog(source: string, relPath: string, today: string): string {
+  return appendLogEntry(source, today, `* **Delete**: Deleted \`${relPath}\`.`);
+}
+
 /** Reads, transforms and atomically rewrites an existing text file under its lock; false when it does not exist. */
 async function updateExistingFile(
   abs: string,
@@ -560,7 +622,7 @@ export async function createDoc(
   if (classifyOkfPath(target.path) !== 'concept') {
     throw new DocIoError(
       'bad-path',
-      `"${target.path}" is reserved; a concept is any other .md file (e.g. concepts/my-topic.md)`,
+      `"${target.path}" is reserved; a new file is any other .md path (e.g. references/my-topic.md)`,
     );
   }
   const input = parseCreateBody(body);
@@ -623,6 +685,127 @@ export async function createDoc(
     lastModified: created.lastModified,
     warnings,
   };
+}
+
+// ---------------------------------------------------------------- delete one file (DELETE)
+
+export interface DocDeleted {
+  dataset: OkfDatasetId;
+  slug: string;
+  /** Bundle-relative posix path of the removed file. */
+  path: string;
+  /** The bundle's entry page: where the browser goes next. */
+  url: string;
+  /**
+   * `links/broken` warnings for the links of the bundle's other markdown files that still point at the removed file,
+   * plus a `doc/bookkeeping-failed` warning for an index.md / log.md that could not be updated.
+   */
+  warnings: Finding[];
+}
+
+/** Removes `dir` and its parents while they are empty, up to (not including) `root`; a symlink is never followed. */
+async function removeEmptyDirs(root: string, dir: string): Promise<void> {
+  let current = dir;
+  while (current !== root && isInside(root, current)) {
+    try {
+      await rmdir(current);
+    } catch {
+      return; // not empty, a symlink or gone: stop here
+    }
+    current = path.dirname(current);
+  }
+}
+
+/** The links of the bundle's markdown files (other than `relPath`) that resolve to `relPath`, as warnings. */
+async function linksTo(
+  dataset: OkfDatasetId,
+  slug: string,
+  relPath: string,
+  root: string,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const from of await walkFiles(root)) {
+    if (!from.endsWith('.md') || from === relPath) continue;
+    let source: string;
+    try {
+      source = await readFile(path.join(root, ...from.split('/')), 'utf8');
+    } catch {
+      continue;
+    }
+    const split = splitFrontmatter(source);
+    const offset = split ? split.bodyLine - 1 : 0;
+    for (const link of extractLinks(split ? split.body : source)) {
+      if (classifyHref(link.href) !== 'bundle') continue;
+      const resolved = resolveBundleHref(link.href, from);
+      if (!('path' in resolved) || resolved.path !== relPath) continue;
+      findings.push({
+        severity: 'warning',
+        rule: 'links/broken',
+        file: `${dataset}/${slug}/${from}`,
+        line: link.line + offset,
+        message: `still links to the deleted ${relPath}`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Deletes ONE markdown file of an okf bundle that is not its entry: any concept, a nested `index.md` or `log.md` (the
+ * root `index.md` is the bundle itself: `DELETE /api/entry`). A symlinked file is unlinked, never followed, and the
+ * folders the removal leaves empty go too (never the bundle root). `createDoc`'s bookkeeping is undone: the file's line
+ * under `## Concepts` of the root `index.md` is removed, and an existing `log.md` gets a `Delete` line (never created).
+ * Links that still point at the file come back as warnings. Throws DocIoError: `bad-dataset` (not okf), `bad-slug`,
+ * `bad-path` (not a .md path inside the bundle, or the entry `index.md`), `not-found`.
+ */
+export async function deleteDoc(
+  dataset: string,
+  slug: string,
+  rawPath: string | undefined,
+  dataDir: string = resolveDataDir(),
+  now: Date = new Date(),
+): Promise<DocDeleted> {
+  if (!isOkfDatasetId(dataset)) {
+    throw new DocIoError(
+      'bad-dataset',
+      `files can only be deleted from an okf bundle (${OKF_DATASET_IDS.join(', ')}), not "${dataset}"`,
+    );
+  }
+  const target = docTarget(dataset, slug, rawPath, dataDir);
+  if (classifyOkfPath(target.path) === 'root-index') {
+    throw new DocIoError(
+      'bad-path',
+      `index.md is the ${dataset} entry itself; delete the whole entry instead (DELETE /api/entry/${dataset}/${slug})`,
+    );
+  }
+  await withFileLock(target.abs, async () => {
+    await locate(target, dataDir); // an existing regular file whose real path is inside the bundle
+    await unlink(target.abs); // the path as addressed: a symlink goes, its target stays
+  });
+  const root = path.join(datasetDir(dataset, dataDir), slug);
+  await removeEmptyDirs(root, path.dirname(target.abs));
+
+  const warnings: Finding[] = [];
+  const bookkeeping: [string, (source: string) => string][] = [
+    [OKF_ENTRY_FILE, (source) => removeConceptFromIndex(source, target.path)],
+    ['log.md', (source) => addDeleteToLog(source, target.path, ymd(now))],
+  ];
+  for (const [name, transform] of bookkeeping) {
+    if (name === target.path) continue;
+    try {
+      await updateExistingFile(path.join(root, name), transform);
+    } catch (error) {
+      warnings.push({
+        severity: 'warning',
+        rule: 'doc/bookkeeping-failed',
+        file: `${dataset}/${slug}/${name}`,
+        message: `could not update ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  warnings.push(...(await linksTo(dataset, slug, target.path, root)));
+  invalidateEntryIndex(dataDir);
+  return { dataset, slug, path: target.path, url: entryUrl(dataset, slug), warnings };
 }
 
 export interface AppendedLog {

@@ -37,6 +37,7 @@ import { SaveBar } from '../edit/SaveBar.tsx';
 import type { SaveStatus } from '../edit/status.ts';
 import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
 import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
+import { useViewportFill } from '../edit/useViewportFill.ts';
 import { YamlIssues } from '../edit/YamlIssues.tsx';
 import { LazyCodeEditor } from '../editor/LazyCodeEditor.tsx';
 import type { CodeEditorApi } from '../editor/LazyCodeEditor.tsx';
@@ -193,6 +194,9 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
   const conflict = useStore($formConflict);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  // The YAML view's editor ends at the bottom of the viewport, with the save bar under it still on screen.
+  const body = useRef<HTMLDivElement>(null);
+  useViewportFill(body, load.status === 'ready' && view === 'yaml', '.cx-dform');
 
   useEffect(() => {
     void initForm({ dataset, mode, ...(slug === undefined ? {} : { slug }) });
@@ -234,7 +238,7 @@ export default function DataForm({ dataset, mode, slug }: DataFormProps) {
               </ButtonLink>
             )}
           </header>
-          <div className="cx-dform__body" data-view={view}>
+          <div className="cx-dform__body" ref={body} data-view={view}>
             {view === 'form' ? (
               <FormFields dataset={dataset} mode={mode} />
             ) : (

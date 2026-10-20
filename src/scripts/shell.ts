@@ -24,12 +24,19 @@ if (MAC.test(navigator.platform || navigator.userAgent)) {
   for (const el of document.querySelectorAll('[data-kbd-mod]')) el.textContent = '⌘';
 }
 
-// 2. Copy buttons (src/components/CopyButton.astro): <button data-copy="text">. For a moment `data-copied` swaps
-//    the label for a centered check (CSS, same width) and the sibling `[data-copy-status]` live region says "Copied".
+// 2. Copy buttons (src/components/CopyButton.astro): <button data-copy="text">, and the Copy button of every rendered
+//    code block (src/lib/markdown.ts): <div class="cx-codeblock"><pre>…</pre><button data-copy-code>, which copies
+//    the text of that `<pre>`. For a moment `data-copied` swaps the label for a centered check (CSS, same width)
+//    and the sibling `[data-copy-status]` live region says "Copied".
 const copyTimers = new WeakMap<HTMLElement, number>();
 
+function copyTextOf(button: HTMLElement): string {
+  if (button.dataset.copyCode === undefined) return button.dataset.copy ?? '';
+  return button.closest('.cx-codeblock')?.querySelector('pre')?.textContent ?? '';
+}
+
 async function copyFrom(button: HTMLElement): Promise<void> {
-  const text = button.dataset.copy ?? '';
+  const text = copyTextOf(button);
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -242,7 +249,7 @@ document.addEventListener('click', (event) => {
     return;
   }
 
-  const copy = target.closest<HTMLElement>('[data-copy]');
+  const copy = target.closest<HTMLElement>('[data-copy], [data-copy-code]');
   if (copy) {
     void copyFrom(copy);
     return;
@@ -267,3 +274,55 @@ document.addEventListener('click', (event) => {
     }, SEARCH_FALLBACK_MS);
   }
 });
+
+// 6. Headings nav (src/components/DocToc.astro): `aria-current="location"` on the link of the section being read,
+//    i.e. the last heading that has reached its scroll-margin line (where a jump to it lands). At the bottom of the
+//    page the jump target wins when it is further down: the last sections of a document often cannot reach the line.
+function initToc(): void {
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]')];
+  if (links.length === 0) return;
+  const headings = links.map((link) =>
+    document.getElementById(decodeURIComponent(link.hash.slice(1))),
+  );
+  let lines: number[] = [];
+  const measureLines = () => {
+    lines = headings.map((h) =>
+      h === null ? 0 : parseFloat(getComputedStyle(h).scrollMarginTop) || 0,
+    );
+  };
+  let frame = 0;
+  let current = -2;
+  const update = () => {
+    frame = 0;
+    let active = -1;
+    for (let i = 0; i < headings.length; i++) {
+      const heading = headings[i];
+      if (heading === null || heading === undefined) continue;
+      if (heading.getBoundingClientRect().top > (lines[i] ?? 0) + 1) break;
+      active = i;
+    }
+    const root = document.documentElement;
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 2) {
+      const target = links.findIndex((link) => link.hash === location.hash);
+      if (target > active) active = target;
+    }
+    if (active === current) return;
+    current = active;
+    links.forEach((link, i) => {
+      if (i === active) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+  const schedule = () => {
+    if (frame === 0) frame = requestAnimationFrame(update);
+  };
+  measureLines();
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('hashchange', schedule);
+  window.addEventListener('resize', () => {
+    measureLines();
+    schedule();
+  });
+  update();
+}
+initToc();

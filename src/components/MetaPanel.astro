@@ -13,6 +13,7 @@ import {
   stubDefaults,
 } from '../lib/inflate/catalog.ts';
 import type { InflateLayout } from '../lib/inflate/catalog.ts';
+import { timeTotalText } from '../lib/iso8601.ts';
 import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
 import { stringifyYaml } from '../lib/yaml.ts';
 import CopyButton from './CopyButton.astro';
@@ -60,6 +61,17 @@ const staleAfter =
     : undefined;
 const stale = isStale(staleAfter, Date.now());
 const type = str(data.type);
+
+// Time tracking (task, feature, bug, rca): the logged durations and when the work was resolved. A YAML timestamp
+// arrives as a Date: a bare date shows as YYYY-MM-DD, a date-time as its ISO string.
+const time = Array.isArray(data.time) ? data.time.filter((t): t is string => typeof t === 'string') : [];
+const timeTotal = timeTotalText(time);
+const resolved =
+  data.resolved instanceof Date
+    ? Number.isNaN(data.resolved.getTime())
+      ? undefined
+      : data.resolved.toISOString().replace(/T00:00:00\.000Z$/, '')
+    : str(data.resolved);
 
 const recipeTarget =
   kind === 'recipe' && isInflateTarget(data.target) ? TARGETS[data.target].label : undefined;
@@ -167,6 +179,33 @@ const filePath = `data/${file}`;
       state && (
         <MetaRow label="State">
           <StateBadge dataset={dataset} state={state} />
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && time.length > 0 && (
+        <MetaRow label="Time">
+          <ul class="cx-meta__time" data-testid="meta-time">
+            {time.map((value) => (
+              <li>
+                <span class="ck-badge ck-badge--muted ck-badge--mono">{value}</span>
+              </li>
+            ))}
+            {timeTotal && (
+              <li class="cx-meta__total cx-subtle" data-testid="meta-time-total">
+                {timeTotal}
+              </li>
+            )}
+          </ul>
+        </MetaRow>
+      )
+    }
+    {
+      kind === 'okf' && resolved && (
+        <MetaRow label="Resolved">
+          <span class="cx-mono" data-testid="meta-resolved">
+            {resolved}
+          </span>
         </MetaRow>
       )
     }

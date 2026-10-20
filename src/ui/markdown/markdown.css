@@ -30,10 +30,15 @@
     flex: 1;
   }
 
+  /* ends at the bottom of the viewport: --fill-top / --fill-after are measured by useViewportFill (src/ui/edit), the
+     page keeps main's bottom padding and the footer below it */
   .cx-doc__editor {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - var(--header-h) - 140px);
+    height: calc(
+      100dvh - var(--fill-top, calc(var(--header-h) + 140px)) - var(--fill-after, 0px) -
+        var(--sp-6) - var(--footer-h)
+    );
     min-height: 360px;
   }
   /* "Restored unsaved changes" (DraftNotice) and "Unsaved changes to this file" notices above the editor */

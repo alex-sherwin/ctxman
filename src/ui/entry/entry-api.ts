@@ -104,7 +104,7 @@ export interface ConceptCreated {
 export const docApiUrl = (dataset: string, slug: string, path: string): string =>
   `/api/doc/${seg(dataset)}/${seg(slug)}/${path.split('/').map(seg).join('/')}`;
 
-/** `POST /api/doc/<ds>/<slug>/<path>`: creates a concept file and lists it in index.md / log.md. 409 `exists`. */
+/** `POST /api/doc/<ds>/<slug>/<path>`: creates a concept file and lists it in index.md (and an existing log.md). 409 `exists`. */
 export function createConcept(
   dataset: string,
   slug: string,

@@ -5,6 +5,7 @@ import ContextLinkList from '../../../components/ContextLinkList.astro';
 import CopyButton from '../../../components/CopyButton.astro';
 import DatasetBadge from '../../../components/DatasetBadge.astro';
 import DetailAside from '../../../components/DetailAside.astro';
+import DocToc from '../../../components/DocToc.astro';
 import Freshness from '../../../components/Freshness.astro';
 import InvalidBanner from '../../../components/InvalidBanner.astro';
 import OkfStatusBadge from '../../../components/OkfStatusBadge.astro';
@@ -203,14 +204,19 @@ const tools =
           >
             <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
           </DocEditor>
-          <article
-            id="cx-doc-preview"
-            class="cx-prose cx-doc__preview"
-            data-testid="detail-content"
-            hidden={edit}
-          >
-            <Fragment set:html={detail.html} />
-          </article>
+          <div class="cx-doc__body">
+            <div class:list={['cx-doc__layout', detail.toc.length > 0 && 'cx-doc__layout--toc']}>
+              <article
+                id="cx-doc-preview"
+                class="cx-prose cx-doc__preview"
+                data-testid="detail-content"
+                hidden={edit}
+              >
+                <Fragment set:html={detail.html} />
+              </article>
+              {detail.toc.length > 0 && <DocToc entries={detail.toc} />}
+            </div>
+          </div>
         </section>
       )
     }

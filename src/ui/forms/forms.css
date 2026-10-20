@@ -27,8 +27,12 @@
   .cx-dform__summary {
     font-size: var(--fs-sm);
   }
+  /* the YAML view ends at the bottom of the viewport, save bar included (useViewportFill measures --fill-*) */
   .cx-dform__body[data-view='yaml'] {
-    height: calc(100dvh - var(--header-h) - 260px);
+    height: calc(
+      100dvh - var(--fill-top, calc(var(--header-h) + 260px)) - var(--fill-after, 0px) -
+        var(--sp-6) - var(--footer-h)
+    );
     min-height: 360px;
     display: flex;
   }

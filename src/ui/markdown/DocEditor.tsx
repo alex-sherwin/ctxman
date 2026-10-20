@@ -1,5 +1,6 @@
-// DocEditor island (ROUND2_UI_SPEC §F.1): the toolbar (Preview | Edit, path, Save / Cancel, status) and a lazy
-// Monaco editor for ONE markdown file, mounted next to the server-rendered `<article id="cx-doc-preview">`.
+// DocEditor island (ROUND2_UI_SPEC §F.1): the toolbar (Preview | Edit, Delete on okf sub-doc pages, path, Save /
+// Cancel, status) and a lazy Monaco editor for ONE markdown file, mounted next to the server-rendered
+// `<article id="cx-doc-preview">`.
 // The island never receives rendered HTML: it only toggles `hidden` (and `data-stale` after a save) on the SSR
 // preview element. Mounted by the okf / skill detail and sub-doc pages with client:only="react".
 // Kit parts and src/ui/edit helpers are imported by file (never kit/index.ts: it pulls Monaco statically); the
@@ -10,6 +11,7 @@
 // "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
 import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useRef } from 'react';
+import { OKF_ENTRY_FILE } from '../../datasets/registry.ts';
 import { EDIT_SHORTCUT_EVENT } from '../../lib/shortcuts.ts';
 import {
   $docConflict,
@@ -48,6 +50,7 @@ import { SaveBar } from '../edit/SaveBar.tsx';
 import { statusText } from '../edit/status.ts';
 import { useSaveShortcut } from '../edit/useSaveShortcut.ts';
 import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
+import { useViewportFill } from '../edit/useViewportFill.ts';
 import { Button } from '../kit/Button.tsx';
 import { ChipToggle } from '../kit/Chip.tsx';
 import { Loading } from '../kit/Loading.tsx';
@@ -56,6 +59,7 @@ import { ErrorText, Status } from '../kit/Status.tsx';
 import { Toolbar } from '../kit/Toolbar.tsx';
 import { EntryPicker } from '../pickers/EntryPicker.tsx';
 import { useInsertLink } from '../pickers/useInsertLink.ts';
+import { DeleteDocButton } from './DeleteDocButton.tsx';
 
 export interface DocEditorProps {
   dataset: DocDataset;
@@ -85,6 +89,9 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
   const link = useInsertLink();
   // Set by the `e` shortcut: the editor takes the focus once it has loaded, so typing can start right away.
   const focusWhenReady = useRef(false);
+  // The editor box ends at the bottom of the viewport, whatever the page shows above it.
+  const editorBox = useRef<HTMLDivElement>(null);
+  useViewportFill(editorBox, edit, '.cx-detail__main');
 
   useEffect(() => {
     initDoc({ dataset, slug, path }, initialEdit);
@@ -161,6 +168,10 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
             { id: 'edit', label: 'Edit', testId: 'doc-view-edit' },
           ]}
         />
+        {/* any okf bundle file but the entry index.md (the whole bundle: the ⋯ menu of the entry page) */}
+        {dataset !== 'skill' && path !== OKF_ENTRY_FILE && (
+          <DeleteDocButton target={{ dataset, slug, path }} locked={edit} />
+        )}
         <code className="cx-doctools__path">{path}</code>
         <span className="cx-doctools__spacer" />
         {edit && (
@@ -231,7 +242,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
               <DraftNotice testIdPrefix="doc" stale={draftStale} onDiscard={discardDraft} />
             </div>
           )}
-          <div className="cx-doc__editor" data-testid="doc-editor-wrap">
+          <div className="cx-doc__editor" ref={editorBox} data-testid="doc-editor-wrap">
             {load.status === 'error' ? (
               <ErrorText testId="doc-load-error">
                 {load.message ?? 'Could not load the file'}{' '}

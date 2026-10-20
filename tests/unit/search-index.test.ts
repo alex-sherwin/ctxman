@@ -271,11 +271,12 @@ describe('okfDocToSearchDoc', () => {
       dataset: 'idea',
       slug: 'i',
       relPath: 'index.md',
-      data: { tags: ['ok', 7], description: 5 },
+      data: { tags: ['ok', 7, { no: 1 }, '  ', ' ok '], description: 5 },
       body: '',
       entryTitle: '',
     });
-    expect(doc.tags).toEqual(['ok']);
+    // every scalar of the array is a tag on its own (a YAML number as its text); blanks, objects and repeats are not
+    expect(doc.tags).toEqual(['ok', '7']);
     expect(doc.description).toBe('');
     expect(doc.headings).toEqual([]);
     expect(doc.body).toBe('');

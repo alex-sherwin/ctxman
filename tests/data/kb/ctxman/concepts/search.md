@@ -22,9 +22,13 @@ Search is a full-screen modal available on every page. It queries every dataset 
 
 Each document carries `dataset`, `slug`, `path` (null for the entry file itself), `title`, `name`, `description`, `tags`, `headings`, `body`, optional `state` and the page `url`.
 
+`tags` comes from the YAML frontmatter of every markdown file, the entry `index.md` and every concept alike, when it is an array: each value is a tag on its own (trimmed; a YAML number such as `2026` as its text; blanks and repeats dropped), and a `tags` that is not an array is ignored. Every value is indexed individually twice: by fuse.js (each element of the list is matched on its own, and the result row shows the matched tags) and in an exact tag index (`src/lib/search-query.ts#buildTagIndex`, lower-cased tag to documents) for `#tag` queries.
+
 ## Ranking
 
 fuse.js runs in the browser over the downloaded index. Field weights: title 0.4, name 0.3, tags 0.2, description 0.2, headings 0.15, body 0.1. The threshold is 0.35 and location is ignored, so a match anywhere in a field counts. Queries need at least two characters, and at most 60 results are shown, grouped by dataset.
+
+A `#tag` token of the query matches a tag exactly (case-insensitive; `#forge` does not match `forge-ui`). Several `#tag` tokens must all be on the file. The other words are the fuzzy query, run over the files that carry the tags; `#tag` alone lists every file with the tag, in index order. The MCP `search` tool understands the same syntax.
 
 ## Using it
 

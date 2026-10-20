@@ -116,6 +116,19 @@ describe('patchFrontmatter: set, replace, delete', () => {
     expect(parsed.ok && parsed.doc.data.title).toBe('New: title with colon');
   });
 
+  it('quotes a date-time to the second (the timestamp tag would read a Date back), not a bare date', () => {
+    const out = patched('---\ntype: T\n---\n', {
+      resolved: '2026-10-19T14:30:05+02:00',
+      stale_after: '2027-01-01',
+      title: '2026-10-19T14:30',
+    });
+    expect(out).toContain('\nresolved: "2026-10-19T14:30:05+02:00"\n');
+    expect(out).toContain('\nstale_after: 2027-01-01\n');
+    expect(out).toContain('\ntitle: 2026-10-19T14:30\n');
+    const parsed = parseFrontmatter(out);
+    expect(parsed.ok && parsed.doc.data.resolved).toBe('2026-10-19T14:30:05+02:00');
+  });
+
   it('quotes strings that look like other YAML types', () => {
     const out = patched('---\ntype: T\n---\n', { title: 'true', description: '123' });
     const parsed = parseFrontmatter(out);
@@ -192,6 +205,22 @@ describe('patchFrontmatter: inserting new keys', () => {
   it('places tags after description when there is no state, and stale_after / status after tags', () => {
     expect(patched(base, { tags: ['a'], stale_after: '2027-01-01', status: 'draft' })).toBe(
       '---\ntype: Task\nname: n\ndescription: d\ntags: [a]\nstale_after: 2027-01-01\nstatus: draft\ngenerated:\n  by: x\n---\nbody\n',
+    );
+  });
+
+  it('places time (a flow list) after tags and resolved after time', () => {
+    expect(
+      patched(base, {
+        state: 'pending',
+        tags: ['a'],
+        time: ['PT1H', 'PT1H'],
+        resolved: '2026-10-19',
+      }),
+    ).toBe(
+      '---\ntype: Task\nname: n\ndescription: d\nstate: pending\ntags: [a]\ntime: [PT1H, PT1H]\nresolved: 2026-10-19\ngenerated:\n  by: x\n---\nbody\n',
+    );
+    expect(patched(base, { resolved: '2026-10-19' })).toBe(
+      '---\ntype: Task\nname: n\ndescription: d\nresolved: 2026-10-19\ngenerated:\n  by: x\n---\nbody\n',
     );
   });
 

@@ -153,7 +153,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    height: 24px;
+    height: var(--footer-h);
     padding: 0 var(--gutter);
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
@@ -423,6 +423,15 @@
     max-height: calc(100dvh - var(--header-h) - var(--sp-6));
     overflow: auto;
   }
+  /* while the DocEditor is open the page fits the viewport: the details column stops setting the row height (size
+     containment), takes the height of the editor's column and scrolls inside it */
+  @media (min-width: 1100px) {
+    .cx-detail--doc:has(.cx-doc__editor) > .cx-detail__aside {
+      align-self: stretch;
+      contain: size;
+      max-height: none;
+    }
+  }
   @media (max-width: 1099px) {
     .cx-detail,
     .cx-detail--doc {
@@ -443,6 +452,80 @@
   }
   .cx-doc__preview {
     max-width: var(--prose-max);
+  }
+  /* the rendered markdown and, RIGHT of it, the headings nav (DocToc.astro). The column decides (container query):
+     too narrow for both, the nav goes; while editing (the preview is hidden) it goes too. */
+  .cx-doc__body {
+    container-type: inline-size;
+  }
+  .cx-doc__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: calc(2 * var(--sp-6));
+    align-items: start;
+  }
+  .cx-doc__layout--toc {
+    --toc-w: 15rem;
+    grid-template-columns: minmax(0, var(--prose-max)) var(--toc-w);
+  }
+  .cx-doc__preview[hidden] + .cx-toc {
+    display: none;
+  }
+  @container (max-width: 52rem) {
+    .cx-doc__layout--toc {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .cx-toc {
+      display: none;
+    }
+  }
+  /* sticky under the header AND the doc toolbar (also sticky), scrolling on its own when long */
+  .cx-toc {
+    position: sticky;
+    top: calc(var(--header-h) + var(--bar-h) + var(--sp-5));
+    max-height: calc(100dvh - var(--header-h) - var(--bar-h) - 2 * var(--sp-5));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .cx-toc__title {
+    margin: 0 0 var(--sp-3);
+    color: var(--fg-subtle);
+  }
+  .cx-toc__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid var(--border);
+  }
+  .cx-toc__link {
+    display: block;
+    margin-left: -1px;
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-tight);
+    color: var(--fg-muted);
+    overflow-wrap: anywhere;
+    border-left: 2px solid transparent;
+  }
+  .cx-toc__link[data-level='1'] {
+    padding-left: calc(var(--sp-4) + 12px);
+  }
+  .cx-toc__link[data-level='2'] {
+    padding-left: calc(var(--sp-4) + 24px);
+    font-size: var(--fs-xs);
+  }
+  .cx-toc__link[data-level='3'] {
+    padding-left: calc(var(--sp-4) + 36px);
+    font-size: var(--fs-xs);
+  }
+  .cx-toc__link:hover {
+    color: var(--fg);
+    text-decoration: none;
+    border-left-color: var(--border-strong);
+  }
+  .cx-toc__link[aria-current] {
+    color: var(--accent-text);
+    border-left-color: var(--accent);
   }
   /* DataForm edit mode of reference / context / recipe: the form limits its own width */
   .cx-detail__main--form {
@@ -574,19 +657,25 @@
     border-radius: var(--r-sm);
   }
 
-  /* F.4 file tree */
-  .cx-files__list {
-    list-style: none;
+  /* F.4 file tree: folders are <details> (FileTreeNodes.astro); file names line up with folder names (the chevron
+     column), nested levels hang off an indent guide under their folder's chevron */
+  .cx-files {
+    --files-chevron: 14px;
     padding: var(--sp-2);
   }
-  .cx-files__list > li {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+  .cx-files__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .cx-files__list--nested {
+    margin-left: calc(var(--sp-2) + var(--files-chevron) / 2);
+    padding-left: var(--sp-2);
+    border-left: 1px solid var(--border);
   }
   .cx-files__item {
     display: flex;
-    flex: 1;
+    gap: var(--sp-2);
     min-width: 0;
     height: 22px;
     align-items: center;
@@ -594,6 +683,9 @@
     font-family: var(--font-mono);
     font-size: var(--fs-sm);
     color: var(--fg);
+  }
+  .cx-files__file {
+    padding-left: calc(var(--sp-2) + var(--files-chevron) + var(--sp-2));
   }
   .cx-files__item:hover {
     background: var(--bg-muted);
@@ -604,13 +696,49 @@
     color: var(--accent-text);
     box-shadow: inset 2px 0 0 var(--accent);
   }
-  .cx-files__dir {
-    color: var(--fg-subtle);
+  .cx-files__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cx-files__folder {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    color: var(--fg-muted);
+  }
+  .cx-files__folder::-webkit-details-marker {
+    display: none;
+  }
+  .cx-files__folder:hover {
+    color: var(--fg);
+  }
+  .cx-files__folder:focus-visible {
+    outline: var(--focus-w) solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  .cx-files__chevron {
+    flex: none;
+    width: var(--files-chevron);
+    height: var(--files-chevron);
+    color: var(--accent);
+    transform: rotate(-90deg);
+    transition: transform var(--dur) var(--ease);
+  }
+  .cx-files__dir[open] > .cx-files__folder .cx-files__chevron {
+    transform: none;
   }
   .cx-files__hint {
+    flex: none;
+    margin-left: auto;
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
-    margin-left: auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cx-files__chevron {
+      transition: none;
+    }
   }
 
   /* ---------- P5 additions: small rules the Astro pages need on top of the spec CSS ---------- */
@@ -621,6 +749,17 @@
     gap: var(--sp-2);
   }
   /* MetaPanel: vertical lists (sources, verification events) and nested key/value lists (skill metadata) */
+  /* Time: the duration chips and the "Total …" text share one centre line */
+  .cx-meta__row dd ul.cx-meta__time {
+    align-items: center;
+  }
+  .cx-meta__time > li {
+    display: flex;
+    align-items: center;
+  }
+  .cx-meta__total {
+    margin-left: var(--sp-2);
+  }
   .cx-meta__row dd ul.cx-meta__col {
     flex-direction: column;
     flex-wrap: nowrap;

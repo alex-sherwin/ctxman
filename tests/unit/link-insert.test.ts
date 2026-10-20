@@ -6,7 +6,7 @@ import {
   linkInsertText,
   markdownLink,
 } from '../../src/lib/link-insert.ts';
-import { planNewEntry } from '../../src/lib/templates.ts';
+import { linkText } from '../../src/lib/templates.ts';
 
 const ctx = (before: string, explicit = false) => linkCompletionContext(before, { explicit });
 
@@ -95,11 +95,10 @@ describe('escapeLinkText / markdownLink', () => {
     expect(escapeLinkText('plain')).toBe('plain');
   });
 
-  it('gives the same output as templates.ts linkText (checked through a planned entry)', () => {
-    const title = 'a[b]\\c';
-    const files = planNewEntry('kb', 'x', { title, description: 'd', now: new Date() });
-    const log = files.find((f) => f.relPath === 'kb/x/log.md');
-    expect(log?.content).toContain(`[${escapeLinkText(title)}](/index.md)`);
+  it('gives the same output as templates.ts linkText', () => {
+    for (const title of ['a[b]\\c', 'plain', '[[x]]', '\\']) {
+      expect(escapeLinkText(title)).toBe(linkText(title));
+    }
   });
 
   it('writes [Title](ctxman:ds/slug) with the title escaped', () => {

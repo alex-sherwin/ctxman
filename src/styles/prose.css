@@ -12,18 +12,23 @@
     margin-bottom: 0;
   }
   /* cybercore's reset zeroed every margin; prose re-adds block rhythm (dense) */
-  .cx-prose :where(p, ul, ol, dl, blockquote, pre, table, figure, hr, details) {
+  .cx-prose :where(p, ul, ol, dl, blockquote, pre, table, figure, hr, details, .cx-codeblock) {
     margin: 0 0 var(--sp-5);
   }
 
+  /* the space above a heading grows with its size (em of the heading's own font size) */
   .cx-prose :where(h1, h2, h3, h4, h5, h6) {
-    margin: var(--sp-6) 0 var(--sp-3);
+    margin: 1.6em 0 0.5em;
     line-height: var(--lh-tight);
     font-weight: var(--fw-semibold);
     text-transform: none;
     letter-spacing: 0;
     color: var(--fg);
     scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+  }
+  /* a heading right under another one (h2 then h3) needs less */
+  .cx-prose :where(h1, h2, h3, h4, h5, h6) + :where(h1, h2, h3, h4, h5, h6) {
+    margin-top: 0.8em;
   }
   .cx-prose h1 {
     font-size: var(--fs-2xl);
@@ -114,8 +119,9 @@
   }
 
   .cx-prose :not(pre) > code {
-    padding: 0 0.3em;
+    padding: 0.1em 0.45em;
     font-size: 0.86em;
+    box-decoration-break: clone;
     color: var(--cyber-cyan-400);
     background: var(--code-bg);
     border: var(--border-w) solid var(--border);
@@ -142,6 +148,20 @@
   .cx-prose pre.astro-code {
     background-color: var(--code-bg-block) !important;
   } /* Shiki sets an inline bg; keep ours */
+  /* every rendered code block sits in a wrapper with a floating Copy button (src/lib/markdown.ts) */
+  .cx-codeblock {
+    position: relative;
+  }
+  .cx-codeblock > pre {
+    margin: 0;
+  }
+  .cx-codeblock__copy {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    /* the code's own background at rest, so a long first line does not run through the label */
+    --_bg: var(--code-bg-block);
+  }
 
   .cx-prose blockquote {
     padding: var(--sp-2) var(--sp-5);
@@ -281,12 +301,19 @@
     scroll-margin-top: calc(var(--header-h) + var(--sp-4));
   }
 
+  /* okf + skill pages: the doc toolbar is sticky under the header too, so an anchor jump (the headings nav, a
+     footnote) lands below both */
+  .cx-doc__preview :where(h1, h2, h3, h4, h5, h6),
+  .cx-doc__preview :target {
+    scroll-margin-top: calc(var(--header-h) + var(--bar-h) + var(--sp-5));
+  }
+
   /* compact variant: context link notes */
   .cx-prose--compact {
     font-size: var(--fs-md);
     line-height: var(--lh);
   }
-  .cx-prose--compact :where(p, ul, ol, pre, blockquote, table) {
+  .cx-prose--compact :where(p, ul, ol, pre, blockquote, table, .cx-codeblock) {
     margin-bottom: var(--sp-2);
   }
   .cx-prose--compact :where(h1, h2, h3, h4) {

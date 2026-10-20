@@ -21,7 +21,7 @@ function keyLabel(key: string): string {
 }
 
 /**
- * Global keyboard shortcuts (`?` help, `c` create, `l` add link, `i` IDE, `e` edit) and their help dialog. Mounted
+ * Global keyboard shortcuts (`?` help, `c` create, `l` add link, `.` IDE, `e` edit) and their help dialog. Mounted
  * once in Base.astro as `<Shortcuts client:only="react" />`. The page context comes from `<body data-shortcut-create
  * data-shortcut-link data-shortcut-edit>`; the decision is the pure `shortcutAction`. The window listener is
  * registered in the CAPTURE phase, like the search store's.
@@ -72,8 +72,14 @@ export function Shortcuts() {
   }, []);
 
   return (
-    <Modal isOpen={open} onOpenChange={setOpen} isDismissable testId="shortcuts-dialog">
-      <Dialog title="Keyboard shortcuts" className="cx-shortcuts">
+    <Modal
+      isOpen={open}
+      onOpenChange={setOpen}
+      isDismissable
+      className="cx-shortcuts"
+      testId="shortcuts-dialog"
+    >
+      <Dialog title="Keyboard shortcuts">
         <ul className="cx-shortcuts__list">
           {SHORTCUTS.map((s) => (
             <li

@@ -1,8 +1,9 @@
-// Doc API (ROUND2_BACKEND_SPEC §A.4, ROUND3_SPEC §D.3/§D.4) over Playwright's request context: GET|PUT|POST
-// /api/doc/<dataset>/<slug>/<path> (POST creates a concept; PUT/GET return link problems as warnings).
+// Doc API (ROUND2_BACKEND_SPEC §A.4, ROUND3_SPEC §D.3/§D.4) over Playwright's request context: GET|PUT|POST|DELETE
+// /api/doc/<dataset>/<slug>/<path> (POST creates a file at any path, DELETE removes one; PUT/GET return link problems
+// as warnings).
 // The entry is created through the add script; the API reads and writes the files directly. The entry is removed
 // afterwards (a worker's data copy is shared by every test that worker runs).
-import { readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
@@ -235,9 +236,43 @@ test('guards: text/plain is 415, a foreign Origin is 403, other methods are 405'
 
   const patch = await request.patch(docUrl('index.md'), { data: { markdown: 'x' } });
   expect(patch.status()).toBe(405);
-  expect(patch.headers().allow).toBe('GET, PUT, POST');
+  expect(patch.headers().allow).toBe('GET, PUT, POST, DELETE');
   expect((await errorOf(patch)).error).toBe('method-not-allowed');
-  expect((await request.delete(docUrl('index.md'))).status()).toBe(405);
+
+  const foreignDelete = await request.delete(docUrl('concepts/a b.md'), {
+    headers: { origin: 'https://evil.example' },
+  });
+  expect(foreignDelete.status()).toBe(403);
+  expect(existsSync(path.join(entryDir, 'concepts', 'a b.md'))).toBe(true);
+});
+
+test('POST creates the missing folders of a nested path; DELETE removes the file, its Concepts line and empty folders', async ({
+  request,
+}) => {
+  const rel = 'references/deep/e2e-ref.md';
+  const created = await request.post(docUrl(rel), { data: { title: 'E2E ref' } });
+  expect(created.status()).toBe(201);
+  expect(existsSync(path.join(entryDir, 'references', 'deep', 'e2e-ref.md'))).toBe(true);
+  expect(readFileSync(path.join(entryDir, 'index.md'), 'utf8')).toContain(
+    `* [E2E ref](/${rel}) - E2E ref`,
+  );
+
+  const deleted = await request.delete(docUrl(rel));
+  expect(deleted.status()).toBe(200);
+  expect(await deleted.json()).toEqual({ path: rel, url: `/task/${name}`, warnings: [] });
+  expect(existsSync(path.join(entryDir, 'references'))).toBe(false);
+  expect(readFileSync(path.join(entryDir, 'index.md'), 'utf8')).not.toContain(rel);
+  expect(existsSync(path.join(entryDir, 'index.md'))).toBe(true);
+
+  // gone now; the entry itself is refused (DELETE /api/entry removes a bundle); skills and bad paths too
+  expect((await request.delete(docUrl(rel))).status()).toBe(404);
+  const entry = await request.delete(docUrl('index.md'));
+  expect(entry.status()).toBe(400);
+  expect((await errorOf(entry)).error).toBe('bad-path');
+  expect((await request.delete(docUrl('concepts/x.txt'))).status()).toBe(400);
+  expect(
+    (await request.delete(docUrl('references/SKILL.md', 'skill', 'ctxman-add-entry'))).status(),
+  ).toBe(400);
 });
 
 test('PUT returns link problems as warnings (links/broken, links/ctxman-target) and still saves', async ({

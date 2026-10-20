@@ -3,7 +3,6 @@ import {
   addDaysYmd,
   buildContextLinks,
   conceptBody,
-  conceptPath,
   conceptTitleFromPath,
   dialogFor,
   draftFromFrontmatter,
@@ -13,6 +12,9 @@ import {
   isEntryAction,
   isRealYmd,
   issuesToFields,
+  newFilePath,
+  newFilePathProblem,
+  resolvedProblem,
   splitKey,
   staleAfterProblem,
 } from '../../src/ui/entry/entry-helpers.ts';
@@ -23,6 +25,8 @@ const base = (over: Partial<FrontmatterDraft> = {}): FrontmatterDraft => ({
   description: 'Fix the login flow.',
   tags: ['auth', 'ui'],
   state: 'pending',
+  time: ['PT1H'],
+  resolved: '',
   staleAfter: '2027-01-01',
   status: 'draft',
   ...over,
@@ -60,6 +64,14 @@ describe('dates', () => {
     expect(staleAfterProblem('2027-02-30')).toMatch(/YYYY-MM-DD/);
     expect(staleAfterProblem('soon')).toMatch(/YYYY-MM-DD/);
   });
+
+  it('resolvedProblem: empty is fine, so is any ISO 8601 date or date-time; anything else is not', () => {
+    expect(resolvedProblem('')).toBeNull();
+    expect(resolvedProblem(' 2026-10-19 ')).toBeNull();
+    expect(resolvedProblem('2026-10-19T14:30+02:00')).toBeNull();
+    expect(resolvedProblem('2026-02-30')).toMatch(/ISO 8601/);
+    expect(resolvedProblem('last week')).toMatch(/ISO 8601/);
+  });
 });
 
 describe('draftFromFrontmatter', () => {
@@ -70,6 +82,8 @@ describe('draftFromFrontmatter', () => {
         description: 'D',
         tags: ['a', 3, 'b'],
         state: 'pending',
+        time: ['PT1H', 2, 'PT30M'],
+        resolved: '2026-10-19T14:30',
         stale_after: '2027-01-01',
         status: 'stable',
       }),
@@ -78,14 +92,18 @@ describe('draftFromFrontmatter', () => {
       description: 'D',
       tags: ['a', 'b'],
       state: 'pending',
+      time: ['PT1H', 'PT30M'],
+      resolved: '2026-10-19T14:30',
       staleAfter: '2027-01-01',
       status: 'stable',
     });
-    expect(draftFromFrontmatter({ tags: 'x', title: 4 })).toEqual({
+    expect(draftFromFrontmatter({ tags: 'x', title: 4, time: 'PT1H' })).toEqual({
       title: '',
       description: '',
       tags: [],
       state: '',
+      time: [],
+      resolved: '',
       staleAfter: '',
       status: '',
     });
@@ -133,6 +151,23 @@ describe('frontmatterPatch', () => {
     expect(frontmatterPatch('okf', true, base(), base({ state: '' }))).toEqual({});
   });
 
+  it('time: a changed list is sent whole (repeats kept), an emptied one is null', () => {
+    expect(frontmatterPatch('okf', true, base(), base({ time: ['PT1H'] }))).toEqual({});
+    expect(frontmatterPatch('okf', true, base(), base({ time: ['PT1H', 'PT1H'] }))).toEqual({
+      time: ['PT1H', 'PT1H'],
+    });
+    expect(frontmatterPatch('okf', true, base(), base({ time: [] }))).toEqual({ time: null });
+  });
+
+  it('resolved: trimmed when set, null when emptied', () => {
+    expect(frontmatterPatch('okf', true, base(), base({ resolved: ' 2026-10-19 ' }))).toEqual({
+      resolved: '2026-10-19',
+    });
+    expect(
+      frontmatterPatch('okf', true, base({ resolved: '2026-10-19' }), base({ resolved: '' })),
+    ).toEqual({ resolved: null });
+  });
+
   it('status maps to a known value', () => {
     expect(frontmatterPatch('okf', true, base(), base({ status: 'deprecated' }))).toEqual({
       status: 'deprecated',
@@ -153,8 +188,14 @@ describe('frontmatterPatch', () => {
 
 describe('draftProblems', () => {
   it('flags a blank description and a bad date', () => {
-    expect(draftProblems('okf', base({ description: '  ', staleAfter: '2027-02-30' }))).toEqual({
+    expect(
+      draftProblems(
+        'okf',
+        base({ description: '  ', staleAfter: '2027-02-30', resolved: 'yesterday' }),
+      ),
+    ).toEqual({
       description: 'Required',
+      resolved: 'Use an ISO 8601 date or date-time, e.g. 2026-10-19 or 2026-10-19T14:30',
       stale_after: 'Use a real date as YYYY-MM-DD',
     });
     expect(draftProblems('okf', base())).toEqual({});
@@ -175,11 +216,13 @@ describe('issuesToFields', () => {
       { path: 'stale_after', message: 'must be a real date in YYYY-MM-DD form' },
       { path: 'tags.2', message: '"X" is not a valid tag' },
       { path: 'tags.3', message: '"Y" is not a valid tag' },
+      { path: 'time.1', message: '"1h" is not an ISO 8601 duration' },
       { path: 'links.0.slug', message: 'bad' },
       { path: '', message: 'body must be a JSON object' },
     ]);
     expect(fields.stale_after).toBe('must be a real date in YYYY-MM-DD form');
     expect(fields.tags).toBe('"X" is not a valid tag; "Y" is not a valid tag');
+    expect(fields.time).toBe('"1h" is not an ISO 8601 duration');
     expect(other).toEqual(['links.0.slug: bad', 'body must be a JSON object']);
   });
 });
@@ -213,10 +256,39 @@ describe('keys and context links', () => {
   });
 });
 
-describe('new concept', () => {
-  it('builds the path and the default title from the file name', () => {
-    expect(conceptPath('my-topic')).toBe('concepts/my-topic.md');
+describe('add file', () => {
+  it('newFilePath keeps folders, drops a leading / or ./ and adds .md when missing', () => {
+    expect(newFilePath(' references/abc.md ')).toBe('references/abc.md');
+    expect(newFilePath('references/abc')).toBe('references/abc.md');
+    expect(newFilePath('/notes/x')).toBe('notes/x.md');
+    expect(newFilePath('./a/b/c.MD')).toBe('a/b/c.md');
+    expect(newFilePath('top')).toBe('top.md');
+    expect(newFilePath('references/')).toBe('references/');
+    expect(newFilePath('  ')).toBe('');
+  });
+
+  it('newFilePathProblem refuses empty, dot, unsafe and reserved names', () => {
+    for (const ok of ['references/abc.md', 'a/b/c/d.md', 'My notes/Plan v2.md', 'x.md']) {
+      expect(newFilePathProblem(ok), ok).toBeNull();
+    }
+    expect(newFilePathProblem('')).toBeNull();
+    expect(newFilePathProblem('references/')).toMatch(/file name/);
+    expect(newFilePathProblem('a//b.md')).toMatch(/empty/);
+    expect(newFilePathProblem('../b.md')).toMatch(/\.\./);
+    expect(newFilePathProblem('a/../b.md')).toMatch(/\.\./);
+    expect(newFilePathProblem('.hidden/b.md')).toMatch(/dot/);
+    expect(newFilePathProblem('a/b?.md')).toMatch(/not allowed/);
+    expect(newFilePathProblem('a\\b.md')).toMatch(/not allowed/);
+    expect(newFilePathProblem('a/\u0007.md')).toMatch(/control/);
+    expect(newFilePathProblem(`${'a'.repeat(600)}.md`)).toMatch(/512/);
+    expect(newFilePathProblem('index.md')).toMatch(/reserved/);
+    expect(newFilePathProblem('concepts/index.md')).toMatch(/reserved/);
+    expect(newFilePathProblem('a/log.md')).toMatch(/reserved/);
+  });
+
+  it('derives the default title from the file name', () => {
     expect(conceptTitleFromPath('concepts/my-topic.md')).toBe('My topic');
+    expect(conceptTitleFromPath('references/abc.md')).toBe('Abc');
     expect(conceptTitleFromPath('guide.md')).toBe('Guide');
     expect(conceptTitleFromPath('a/b/c-d.md')).toBe('C d');
   });
@@ -238,12 +310,13 @@ describe('dialogFor', () => {
     expect(dialogFor({ action: 'add-child' })).toEqual({ type: 'relation', mode: 'child' });
     expect(dialogFor({ action: 'add-to-context' })).toEqual({ type: 'add-to-context' });
     expect(dialogFor({ action: 'build-context' })).toEqual({ type: 'build-context' });
-    expect(dialogFor({ action: 'new-concept' })).toEqual({ type: 'new-concept' });
-    expect(dialogFor({ action: 'new-concept', path: ' concepts/x.md ' })).toEqual({
-      type: 'new-concept',
-      path: 'concepts/x.md',
+    expect(dialogFor({ action: 'add-file' })).toEqual({ type: 'add-file' });
+    expect(dialogFor({ action: 'add-file', path: ' references/x.md ' })).toEqual({
+      type: 'add-file',
+      path: 'references/x.md',
     });
-    expect(dialogFor({ action: 'new-concept', path: ' ' })).toEqual({ type: 'new-concept' });
+    expect(dialogFor({ action: 'add-file', path: ' ' })).toEqual({ type: 'add-file' });
+    expect(dialogFor({ action: 'new-concept' })).toBeNull();
   });
 
   it('remove needs a valid key; the title falls back to the key; remove-child fixes rel', () => {

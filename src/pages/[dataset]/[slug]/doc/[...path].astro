@@ -2,6 +2,7 @@
 import BackRefs from '../../../../components/BackRefs.astro';
 import Breadcrumbs from '../../../../components/Breadcrumbs.astro';
 import DatasetBadge from '../../../../components/DatasetBadge.astro';
+import DocToc from '../../../../components/DocToc.astro';
 import EmptyState from '../../../../components/EmptyState.astro';
 import FileTree from '../../../../components/FileTree.astro';
 import IdeOpenButton from '../../../../components/IdeOpenButton.astro';
@@ -38,7 +39,7 @@ if (docPath !== rawPath && docPath !== '') {
 const doc = await getDocDetail(def.id, slug, docPath);
 
 // A concept file that does not exist yet in an existing bundle: a 404 page that offers to create it
-// (EntryTools' New concept dialog with the path fixed). index.md / log.md and invalid paths are plain 404s.
+// (EntryTools' Add file dialog with the path fixed). index.md / log.md and invalid paths are plain 404s.
 const missingPath = normalizeDocPath(`${docPath}.md`);
 const bundle =
   doc === null && missingPath !== null && classifyOkfPath(missingPath) === 'concept'
@@ -94,7 +95,7 @@ const breadcrumbs = [
             type="button"
             class="ck-button ck-button--primary ck-button--sm"
             disabled
-            data-entry-action="new-concept"
+            data-entry-action="add-file"
             data-path={missingPath}
             data-testid="doc-missing-create"
           >
@@ -160,14 +161,19 @@ const breadcrumbs = [
           >
             <div slot="fallback" class="cx-doctools cx-doctools--fallback" aria-hidden="true" />
           </DocEditor>
-          <article
-            id="cx-doc-preview"
-            class="cx-prose cx-doc__preview"
-            data-testid="detail-content"
-            hidden={edit}
-          >
-            <Fragment set:html={doc.html} />
-          </article>
+          <div class="cx-doc__body">
+            <div class:list={['cx-doc__layout', doc.toc.length > 0 && 'cx-doc__layout--toc']}>
+              <article
+                id="cx-doc-preview"
+                class="cx-prose cx-doc__preview"
+                data-testid="detail-content"
+                hidden={edit}
+              >
+                <Fragment set:html={doc.html} />
+              </article>
+              {doc.toc.length > 0 && <DocToc entries={doc.toc} />}
+            </div>
+          </div>
         </section>
       </div>
     </Base>

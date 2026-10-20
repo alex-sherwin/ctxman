@@ -20,12 +20,20 @@ const ANCHORS: Readonly<Record<string, readonly string[]>> = {
   title: ['name'],
   state: ['description'],
   tags: ['state', 'description'],
+  time: ['tags', 'state', 'description'],
+  resolved: ['time', 'tags', 'state', 'description'],
   stale_after: ['tags'],
   status: ['tags'],
 };
 
 /** Keys written as a flow sequence (`tags: [a, b]`) when they do not exist yet; existing keys keep their style. */
-const FLOW_BY_DEFAULT: ReadonlySet<string> = new Set(['tags']);
+const FLOW_BY_DEFAULT: ReadonlySet<string> = new Set(['tags', 'time']);
+
+/**
+ * A string the reader's YAML timestamp tag (src/lib/yaml.ts) would turn into a Date: a date with a time to the second.
+ * Written quoted, it reads back as the text that was written (offset and precision included). A bare date stays plain.
+ */
+const YAML_TIMESTAMP_WITH_TIME = /^\d{4}-\d{1,2}-\d{1,2}(?:[Tt]|[ \t]+)\d{1,2}:\d{1,2}:\d{1,2}/;
 
 interface Edit {
   /** Replaced range [start, end) of the LF frontmatter text (start === end = a pure insertion). */
@@ -197,6 +205,14 @@ function lineEnd(text: string, index: number): number {
 /** `key: value` as YAML on its own (no trailing newline); `flow` writes a sequence of scalars as `[a, b]`. */
 function stringifyPair(key: string, value: unknown, flow: boolean): string {
   const doc = new Document({ [key]: value }, { aliasDuplicateObjects: false });
+  const scalar = doc.get(key, true);
+  if (
+    isScalar(scalar) &&
+    typeof scalar.value === 'string' &&
+    YAML_TIMESTAMP_WITH_TIME.test(scalar.value)
+  ) {
+    scalar.type = 'QUOTE_DOUBLE';
+  }
   if (flow) {
     const node = doc.get(key, true);
     // Flow style only suits sequences of scalars; a list of mappings (`links`) stays a block list.

@@ -54,13 +54,15 @@ describe('shortcutAction', () => {
     expect(shortcutAction(key('c'), ctx({ createHref: '' }))).toBeNull();
   });
 
-  it('i clicks the Open in IDE button only when the page has an enabled one', () => {
-    expect(shortcutAction(key('i'), ctx({}))).toEqual({
+  it('. clicks the Open in IDE button only when the page has an enabled one', () => {
+    expect(shortcutAction(key('.'), ctx({}))).toEqual({
       kind: 'click',
       selector: IDE_BUTTON_SELECTOR,
     });
-    expect(shortcutAction(key('i'), ctx({ ideShortcut: false }))).toBeNull();
-    expect(shortcutAction({ ...key('i'), shiftKey: true }, ctx({}))).toBeNull();
+    expect(shortcutAction(key('.'), ctx({ ideShortcut: false }))).toBeNull();
+    expect(shortcutAction({ ...key('.'), shiftKey: true }, ctx({}))).toBeNull();
+    // the old key is free again
+    expect(shortcutAction(key('i'), ctx({}))).toBeNull();
   });
 
   it('l clicks the link button only on pages with the link shortcut', () => {
@@ -146,8 +148,8 @@ describe('SHORTCUTS', () => {
     for (const s of SHORTCUTS) expect(s.keys.length).toBeGreaterThan(0);
   });
 
-  it('lists ?, Mod+K, c, l, i, e, Mod+S, Mod+Alt+K and Esc', () => {
+  it('lists ?, Mod+K, c, l, ., e, Mod+S, Mod+Alt+K and Esc', () => {
     const combos = SHORTCUTS.map((s) => s.keys.join('+'));
-    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', 'i', 'e', 'Mod+S', 'Mod+Alt+K', 'Esc']);
+    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', '.', 'e', 'Mod+S', 'Mod+Alt+K', 'Esc']);
   });
 });

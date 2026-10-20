@@ -49,6 +49,7 @@
     --control-h-lg: 36px;
     --row-h: 28px; /* table rows, list rows, menu/listbox items */
     --header-h: 40px;
+    --footer-h: 24px;
     --bar-h: 36px; /* pane headers, the doc toolbar */
     --toolbar-h: 40px; /* Forge footer, Inflate bar */
     --bar-w: 2px; /* left accent bars (notices, ordered rows, dataset badges) */

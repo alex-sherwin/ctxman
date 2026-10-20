@@ -1,5 +1,5 @@
 // NODE: the entry frontmatter API (plans/ROUND3_SPEC.md §D.1, §D.2): read an okf / skill entry's frontmatter, PATCH
-// single top-level keys (state, title, description, tags, stale_after, status, links) and create a new entry from the
+// single top-level keys (state, title, description, tags, time, resolved, stale_after, status, links) and create a new entry from the
 // shared templates. A PATCH edits the YAML by SOURCE RANGE (frontmatter-patch.ts: every other byte of the file stays
 // as it was), runs under the file's `withFileLock`, is optimistically locked by mtime (`ifUnmodifiedSince`) and
 // NEVER writes frontmatter that fails the dataset schema (400 `invalid`, nothing written).
@@ -10,6 +10,7 @@ import {
   entryUrl,
   isLinkableDatasetId,
   isOkfDatasetId,
+  isTimeTrackedDatasetId,
   isValidName,
   NAME_MAX_LENGTH,
   OKF_DATASET_IDS,
@@ -30,6 +31,12 @@ import type { Finding } from './findings.ts';
 import { entryFileRelPath } from './freshness.ts';
 import { patchFrontmatter } from './frontmatter-patch.ts';
 import type { FrontmatterChanges } from './frontmatter-patch.ts';
+import {
+  DATE_TIME_MESSAGE,
+  DURATION_MESSAGE,
+  isIsoDateTime,
+  normalizeIsoDuration,
+} from './iso8601.ts';
 import { checkFileLinks } from './links.ts';
 import { normalizeTag, TAG_PATTERN } from './names.ts';
 import { parseFrontmatter, validateOkfFile } from './okf.ts';
@@ -69,6 +76,7 @@ export const TITLE_MAX = 200;
 export const DESCRIPTION_MAX = 1024;
 export const TAGS_MAX = 50;
 export const LINKS_MAX = 500;
+export const TIME_MAX = 500;
 
 // ---------------------------------------------------------------- reading
 
@@ -222,6 +230,8 @@ const PATCH_KEYS = [
   'title',
   'description',
   'tags',
+  'time',
+  'resolved',
   'stale_after',
   'status',
   'links',
@@ -272,6 +282,33 @@ function parseTags(value: unknown, key: string, issues: Issue[]): string[] | und
     }
   });
   return ok ? tags : undefined;
+}
+
+/** Validates `time` input: ISO 8601 durations, trimmed and upper-cased; repeats are kept (two sessions of PT1H). */
+function parseTime(value: unknown, issues: Issue[]): string[] | undefined {
+  if (!Array.isArray(value)) {
+    issues.push({ path: 'time', message: 'must be an array of ISO 8601 durations (or null)' });
+    return undefined;
+  }
+  if (value.length > TIME_MAX) {
+    issues.push({ path: 'time', message: `at most ${TIME_MAX} durations` });
+    return undefined;
+  }
+  const out: string[] = [];
+  let ok = true;
+  value.forEach((raw, index) => {
+    const duration = typeof raw === 'string' ? normalizeIsoDuration(raw) : null;
+    if (duration === null) {
+      issues.push({
+        path: `time.${index}`,
+        message: `${JSON.stringify(raw)} is not ${DURATION_MESSAGE}`,
+      });
+      ok = false;
+    } else {
+      out.push(duration);
+    }
+  });
+  return ok ? out : undefined;
 }
 
 /** Validates a list of `{dataset, slug, rel?}` (links, addLinks) or `{dataset, slug}` (removeLinks). */
@@ -377,6 +414,34 @@ function parsePatchBody(dataset: EntryDatasetId, slug: string, body: unknown): P
   if (body.tags !== undefined && okfOnly('tags')) {
     const tags = parseTags(body.tags, 'tags', issues);
     if (tags !== undefined) set.tags = tags;
+  }
+
+  const timeTracked = (key: string): boolean => {
+    if (!okfOnly(key)) return false;
+    if (isTimeTrackedDatasetId(dataset)) return true;
+    issues.push({ path: key, message: `${def.plural} have no time tracking` });
+    return false;
+  };
+
+  if (body.time !== undefined && timeTracked('time')) {
+    if (body.time === null) {
+      set.time = undefined;
+    } else {
+      const time = parseTime(body.time, issues);
+      // An emptied list drops the key.
+      if (time !== undefined) set.time = time.length === 0 ? undefined : time;
+    }
+  }
+
+  if (body.resolved !== undefined && timeTracked('resolved')) {
+    const value = typeof body.resolved === 'string' ? body.resolved.trim() : body.resolved;
+    if (value === null || value === '') {
+      set.resolved = undefined;
+    } else if (typeof value !== 'string' || !isIsoDateTime(value)) {
+      issues.push({ path: 'resolved', message: `must be ${DATE_TIME_MESSAGE} (or null)` });
+    } else {
+      set.resolved = value;
+    }
   }
 
   if (body.stale_after !== undefined && okfOnly('stale_after')) {
@@ -512,7 +577,7 @@ function relationWarnings(located: LocatedEntry, source: string, dataDir: string
 
 /**
  * PATCHes the frontmatter of an existing entry. `body` is untrusted JSON (see D.1: state, title, description, tags,
- * stale_after, status, links | addLinks + removeLinks, ifUnmodifiedSince). Only the given keys are edited, by source
+ * time + resolved (task, feature, bug, rca), stale_after, status, links | addLinks + removeLinks, ifUnmodifiedSince). Only the given keys are edited, by source
  * range; a patch that equals the current values writes nothing (`changed: false`). The patched frontmatter must pass
  * the dataset schema (+ `name` == directory, + the stale_after format rule) or nothing is written (`invalid`).
  * Throws EntryIoError: `bad-dataset`, `bad-slug`, `invalid`, `not-found`, `conflict`, `invalid-file`.

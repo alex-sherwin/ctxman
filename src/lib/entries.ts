@@ -32,6 +32,8 @@ import type { BundleFile } from './bundles.ts';
 import { backRefs, ContextIoError, listContexts, readContext } from './context-io.ts';
 import type { ContextRecord } from './context-io.ts';
 import { datasetDir, resolveDataDir } from './data-dir.ts';
+import { tocEntries } from './doc-toc.ts';
+import type { TocEntry } from './doc-toc.ts';
 import { getEntryIndex } from './entry-index.ts';
 import type { EntryIndex, IndexedEntry } from './entry-index.ts';
 import { summarize } from './entry-summary.ts';
@@ -39,7 +41,7 @@ import type { EntrySummary, SearchDoc } from './entry-summary.ts';
 import { entryFileRelPath, lastModifiedOf } from './freshness.ts';
 import { itemKey } from './inflate/catalog.ts';
 import { rewriteRenderedHtml } from './links.ts';
-import { renderMarkdown } from './markdown.ts';
+import { renderMarkdown, renderMarkdownDoc } from './markdown.ts';
 import { parseFrontmatterLoose, splitFrontmatter } from './okf.ts';
 import { listRecipes, readRecipe, RecipeIoError } from './recipe-io.ts';
 import { listReferences, readReference, ReferenceIoError } from './reference-io.ts';
@@ -136,6 +138,8 @@ export type EntryDetail = {
       kind: 'okf';
       data: OkfEntry;
       html: string;
+      /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
+      toc: TocEntry[];
       files: BundleFile[];
       relations: EntryRelations;
       /** ISO mtime of the entry index.md itself (the `ifUnmodifiedSince` base of the frontmatter PATCH). */
@@ -145,6 +149,8 @@ export type EntryDetail = {
       kind: 'skill';
       data: SkillData;
       html: string;
+      /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
+      toc: TocEntry[];
       files: BundleFile[];
       relations: EntryRelations;
       /** ISO mtime of SKILL.md itself. */
@@ -186,6 +192,8 @@ export interface DocDetail {
   data: DocFrontmatter;
   title: string;
   html: string;
+  /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
+  toc: TocEntry[];
   /** ISO mtime of this file. */
   lastModified: string;
   files: BundleFile[];
@@ -601,7 +609,8 @@ export async function getEntryDetail(
     const indexed = index.byKey.get(`${dataset}/${slug}`);
     if (indexed === undefined) return null;
     const entryFile = datasetDef(dataset).entryFile;
-    const html = rewriteRenderedHtml(await renderMarkdown(indexed.body), {
+    const rendered = await renderMarkdownDoc(indexed.body);
+    const html = rewriteRenderedHtml(rendered.html, {
       dataset,
       slug,
       fromRelPath: entryFile,
@@ -616,6 +625,7 @@ export async function getEntryDetail(
       backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
       fileRelPath,
       html,
+      toc: tocEntries(rendered.headings),
       files: await listBundleFiles(indexed.dataset, slug, dataDir),
       relations: await relationsFor(index, dataDir, dataset, slug),
       fileModified: indexed.fileModified,
@@ -718,18 +728,20 @@ export async function getDocDetail(
     body: disk.body,
     entryTitle: entry.title ?? entry.name,
   }).title;
+  const rendered = await renderMarkdownDoc(disk.body);
 
   return {
     entry,
     relPath,
     data: disk.data,
     title,
-    html: rewriteRenderedHtml(await renderMarkdown(disk.body), {
+    html: rewriteRenderedHtml(rendered.html, {
       dataset,
       slug,
       fromRelPath: relPath,
       dataDir,
     }),
+    toc: tocEntries(rendered.headings),
     lastModified: lastModified.toISOString(),
     files: await listBundleFiles(dataset, slug, dataDir),
     backRefs: backRefs(await safeContexts(dataDir), dataset, slug),

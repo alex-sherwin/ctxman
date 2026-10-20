@@ -81,8 +81,10 @@ test('POST /api/entry creates the project and the task; GET returns JSON-safe fr
     slug: task,
     path: mainOf('task', task),
     url: `/task/${task}`,
-    files: [mainOf('task', task), `task/${task}/log.md`],
+    files: [mainOf('task', task)],
   });
+  // a new bundle is its entry only: no log.md
+  expect(existsSync(dataPath(`task/${task}/log.md`))).toBe(false);
 
   const got = await request.get(entryUrl('task', task));
   expect(got.status()).toBe(200);
@@ -376,7 +378,7 @@ test('POST /api/entry validation: 409 exists, 400 invalid with field paths and n
   expect((await request.put(`${API}/entry/task`, { data: {} })).status()).toBe(405);
 });
 
-test('POST /api/doc creates a concept, lists it in index.md and log.md and answers 409 the second time', async ({
+test('POST /api/doc creates a concept, lists it in index.md (log.md only when the bundle has one) and answers 409 the second time', async ({
   request,
 }) => {
   const concept = 'concepts/e2e-entry-new.md';
@@ -404,9 +406,8 @@ test('POST /api/doc creates a concept, lists it in index.md and log.md and answe
   expect(readDataText(`task/${task}/index.md`)).toContain(
     '\n## Concepts\n\n* [E2E new concept](/concepts/e2e-entry-new.md) - Created by the entry API spec.\n',
   );
-  expect(readDataText(`task/${task}/log.md`)).toMatch(
-    /\n## \d{4}-\d\d-\d\d\n\* \*\*Create\*\*: Created \[E2E new concept\]\(\/concepts\/e2e-entry-new\.md\)\./,
-  );
+  // the bundle was created without a log.md, and listing a concept does not create one
+  expect(existsSync(dataPath(`task/${task}/log.md`))).toBe(false);
 
   // The new file is readable and clean.
   const got = await request.get(url);

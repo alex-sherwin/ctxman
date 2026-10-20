@@ -53,6 +53,28 @@ test.describe('global search', () => {
     await expect(page.getByTestId('search-result').first()).toBeVisible();
   });
 
+  test('#tag matches frontmatter tags exactly, concept files included; more words narrow it fuzzily', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('#workflow');
+    const concept = resultTo(page, '/kb/ctxman/doc/concepts/adding-entries');
+    await expect(concept).toBeVisible();
+    await expect(concept.locator('.cx-search__tags')).toContainText('workflow');
+    await expect(resultTo(page, '/kb/ctxman/doc/concepts/architecture')).toHaveCount(0);
+    // a tag that only starts like the query is not a match
+    await page.getByTestId('search-input').fill('#workflo');
+    await expect(page.getByTestId('search-result')).toHaveCount(0);
+    // the other words are fuzzy text over the tagged files only: the feature that `forge` alone finds has no
+    // `workflow` tag, so it drops out
+    await page.getByTestId('search-input').fill('forge');
+    await expect(resultTo(page, '/feature/context-forge')).toBeVisible();
+    await page.getByTestId('search-input').fill('#workflow forge');
+    await expect(resultTo(page, '/kb/ctxman/doc/concepts/context-forge')).toBeVisible();
+    await expect(resultTo(page, '/feature/context-forge')).toHaveCount(0);
+  });
+
   test('Escape clears the query first, then closes and drops the search params', async ({
     page,
   }) => {

@@ -1,0 +1,80 @@
+---
+import type { BundleFile } from '../lib/bundles.ts';
+import type { FileTreeNode } from '../lib/file-tree.ts';
+import Icon from './Icon.astro';
+
+// One level of the Files panel tree (FileTree.astro), recursive for folders. A folder is a native
+// `<details>`/`<summary>` (no script: the browser toggles it), closed unless it holds the shown file.
+export interface FileTreeItem {
+  /** Bundle-relative posix path (the tree is built from it). */
+  path: string;
+  file: BundleFile;
+  /** Route of the file: the doc page, the entry page, or the raw bytes; undefined = plain text (skill markdown). */
+  href: string | undefined;
+  /** Opens the raw bytes in a new tab. */
+  raw: boolean;
+  hint: string | undefined;
+  current: boolean;
+}
+
+interface Props {
+  nodes: FileTreeNode<FileTreeItem>[];
+  /** Folder paths shown open: the ones that contain the current file. */
+  open: ReadonlySet<string>;
+  nested?: boolean;
+}
+
+const { nodes, open, nested = false } = Astro.props;
+---
+
+<ul class:list={['cx-files__list', nested && 'cx-files__list--nested']} role="list">
+  {
+    nodes.map((node) =>
+      node.kind === 'dir' ? (
+        <li>
+          <details
+            class="cx-files__dir"
+            open={open.has(node.path)}
+            data-testid="files-dir"
+            data-path={node.path}
+          >
+            <summary class="cx-files__item cx-files__folder" data-testid="files-dir-toggle">
+              <Icon name="chevron" size={14} class="cx-files__chevron" />
+              <span class="cx-files__name">{node.name}</span>
+              <span class="cx-files__hint">
+                {node.fileCount}
+                <span class="ck-sr-only">{node.fileCount === 1 ? 'file' : 'files'}</span>
+              </span>
+            </summary>
+            <Astro.self nodes={node.children} open={open} nested />
+          </details>
+        </li>
+      ) : (
+        <li>
+          {node.file.href ? (
+            <a
+              class="cx-files__item cx-files__file"
+              href={node.file.href}
+              target={node.file.raw ? '_blank' : undefined}
+              rel={node.file.raw ? 'noreferrer' : undefined}
+              aria-current={node.file.current ? 'page' : undefined}
+              title={node.file.path}
+            >
+              <span class="cx-files__name">{node.name}</span>
+              {node.file.hint && <span class="cx-files__hint">{node.file.hint}</span>}
+            </a>
+          ) : (
+            <span
+              class="cx-files__item cx-files__file"
+              aria-current={node.file.current ? 'page' : undefined}
+              title={node.file.path}
+            >
+              <span class="cx-files__name">{node.name}</span>
+              {node.file.hint && <span class="cx-files__hint">{node.file.hint}</span>}
+            </span>
+          )}
+        </li>
+      ),
+    )
+  }
+</ul>

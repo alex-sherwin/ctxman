@@ -1,5 +1,6 @@
 // Detail-page tools of an okf entry (ROUND3_SPEC §E.1, §E.5, §J): the Details dialog behind `meta-edit`, Add to
-// context, `+ New concept`, the "Create this file" page of a missing concept and the `….md` redirect. Every test
+// context, `+ Add file`, Delete on a sub-doc page, the "Create this file" page of a missing file and the `….md`
+// redirect. Every test
 // works on its own e2e-* kb entry / contexts (created through the API, removed in afterAll); the seed entries are
 // only read. The island enables the SSR buttons on mount, so each test waits for an enabled button first.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -105,6 +106,51 @@ test('meta-edit opens the Details dialog; saving changes the header and keeps un
   expect(saved).toContain('\nHand-written prose.\n');
 });
 
+test('a task logs time (Enter adds a valid ISO 8601 duration) and a resolution date in the Details dialog', async ({
+  page,
+}) => {
+  await open(page, `/task/${task}`, 'meta-edit');
+  await page.getByTestId('meta-edit').click();
+  await expect(page.getByTestId('fm-dialog')).toBeVisible();
+  const input = page.getByTestId('fm-add-time');
+  await input.fill('pt1h30m');
+  await input.press('Enter');
+  await input.fill('PT45M');
+  await input.press('Enter');
+  // an invalid value stays in the input with the problem shown, and Enter never submits the dialog
+  await input.fill('90 minutes');
+  await input.press('Enter');
+  await expect(input).toHaveValue('90 minutes');
+  await expect(page.getByTestId('fm-dialog')).toContainText('Not an ISO 8601 duration');
+  await expect(page.getByTestId('fm-time')).toContainText('PT1H30M');
+  await expect(page.getByTestId('fm-time')).toContainText('PT45M');
+  await expect(page.getByTestId('fm-time-total')).toHaveText('Total 2h 15m');
+  await input.fill('');
+  await page.getByTestId('fm-resolved').fill('2026-10-19T14:30+02:00');
+  const patched = await afterApi(page, 'PATCH', `${API}/entry/task/`, () =>
+    page.getByTestId('fm-save').click(),
+  );
+  expect(patched.status()).toBe(200);
+  expect(patched.request().postDataJSON()).toMatchObject({
+    time: ['PT1H30M', 'PT45M'],
+    resolved: '2026-10-19T14:30+02:00',
+  });
+  await expect(page.getByTestId('fm-dialog')).toBeHidden();
+  await expect(page.getByTestId('meta-time')).toContainText('PT1H30M');
+  await expect(page.getByTestId('meta-time-total')).toHaveText('Total 2h 15m');
+  await expect(page.getByTestId('meta-resolved')).toHaveText('2026-10-19T14:30+02:00');
+  const saved = readDataText(`task/${task}/index.md`);
+  expect(saved).toContain('\ntime: [PT1H30M, PT45M]\n');
+  expect(saved).toContain('\nresolved: 2026-10-19T14:30+02:00\n');
+
+  // a kb entry has no time tracking: the dialog does not offer it
+  await open(page, `/kb/${kb}`, 'meta-edit');
+  await page.getByTestId('meta-edit').click();
+  await expect(page.getByTestId('fm-title')).toBeVisible();
+  await expect(page.getByTestId('fm-add-time')).toHaveCount(0);
+  await expect(page.getByTestId('fm-resolved')).toHaveCount(0);
+});
+
 test('the header state select and the action buttons lock while the doc editor is open', async ({
   page,
 }) => {
@@ -116,7 +162,7 @@ test('the header state select and the action buttons lock while the doc editor i
   await expect(page.getByTestId('state-select')).toHaveAttribute('title', lockTitle);
   await expect(page.getByTestId('meta-edit')).toBeDisabled();
   await expect(page.getByTestId('entry-add-to-context')).toBeDisabled();
-  await expect(page.getByTestId('files-new-concept')).toBeDisabled();
+  await expect(page.getByTestId('files-add-file')).toBeDisabled();
 });
 
 test('the lock applies only to a page with a doc editor: reference ?edit=1 (DataForm) keeps Add to context enabled', async ({
@@ -183,28 +229,89 @@ test('entry-add-to-context creates a new context with the entry as its first lin
   ).toBeVisible();
 });
 
-test('files-new-concept creates a concept, lists it in the bundle and opens it in the editor', async ({
+test('files-add-file creates a file at a typed folder path (folders created), lists it and opens it in the editor', async ({
   page,
 }) => {
-  const concept = uniqueName('e2e-concept');
-  await open(page, `/kb/${kb}`, 'files-new-concept');
-  await page.getByTestId('files-new-concept').click();
-  await expect(page.getByTestId('new-concept-dialog')).toBeVisible();
-  await page.getByTestId('new-concept-name').fill(concept);
-  await expect(page.getByTestId('new-concept-path')).toHaveText(`concepts/${concept}.md`);
-  await page.getByTestId('new-concept-submit').click();
+  const name = uniqueName('e2e-file');
+  await open(page, `/kb/${kb}`, 'files-add-file');
+  await expect(page.getByTestId('files-add-file')).toHaveText('+ Add file');
+  await page.getByTestId('files-add-file').click();
+  await expect(page.getByTestId('add-file-dialog')).toBeVisible();
+  // a bad path is refused before anything is sent
+  await page.getByTestId('add-file-name').fill('references/');
+  await expect(page.getByTestId('add-file-dialog')).toContainText(
+    'Add a file name after the last /',
+  );
+  await expect(page.getByTestId('add-file-submit')).toBeDisabled();
+  // `.md` is added when left out; the title follows the file name
+  await page.getByTestId('add-file-name').fill(`references/deep/${name}`);
+  await expect(page.getByTestId('add-file-path')).toHaveText(`kb/${kb}/references/deep/${name}.md`);
+  await page.getByTestId('add-file-submit').click();
 
-  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`));
-  expect(existsSync(dataPath(`kb/${kb}/concepts/${concept}.md`))).toBe(true);
-  expect(readDataText(`kb/${kb}/index.md`)).toContain(`](/concepts/${concept}.md)`);
+  await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/references/deep/${name}\\?edit=1$`));
+  expect(existsSync(dataPath(`kb/${kb}/references/deep/${name}.md`))).toBe(true);
+  expect(readDataText(`kb/${kb}/index.md`)).toContain(`](/references/deep/${name}.md)`);
 
   await page.goto(`/kb/${kb}`);
-  await expect(
-    page.getByTestId('detail-files').locator(`a[href="/kb/${kb}/doc/concepts/${concept}"]`),
-  ).toBeVisible();
+  // the new folder of the file tree starts closed on the entry page
+  const files = page.getByTestId('detail-files');
+  const link = files.locator(`a[href="/kb/${kb}/doc/references/deep/${name}"]`);
+  await expect(link).toBeHidden();
+  await files.locator('[data-testid="files-dir"][data-path="references"] > summary').click();
+  await files.locator('[data-testid="files-dir"][data-path="references/deep"] > summary').click();
+  await expect(link).toBeVisible();
   // the doc page offers the button too
-  await page.goto(`/kb/${kb}/doc/concepts/${concept}`);
-  await expect(page.getByTestId('files-new-concept')).toBeEnabled();
+  await page.goto(`/kb/${kb}/doc/references/deep/${name}`);
+  await expect(page.getByTestId('files-add-file')).toBeEnabled();
+});
+
+test('Delete on a sub-doc page removes the file after a confirmation and returns to the entry page; the entry has none', async ({
+  page,
+  request,
+}) => {
+  const rel = `notes/${uniqueName('e2e-del')}.md`;
+  expect(
+    (
+      await request.post(`${API}/doc/kb/${kb}/${rel}`, { data: { title: 'E2E delete me' } })
+    ).status(),
+  ).toBe(201);
+  // the entry index.md is the whole bundle: its delete is the ⋯ menu, not this button
+  await open(page, `/kb/${kb}`, 'meta-edit');
+  await expect(page.getByTestId('doc-tools')).toBeVisible();
+  await expect(page.getByTestId('doc-delete')).toHaveCount(0);
+
+  await page.goto(`/kb/${kb}/doc/${rel.replace(/\.md$/, '')}`);
+  const button = page.getByTestId('doc-delete');
+  await expect(button).toBeEnabled();
+  // right after the Preview | Edit toggle, borderless until hovered, then red
+  const toggle = (await page.getByTestId('doc-view-toggle').boundingBox())!;
+  expect((await button.boundingBox())!.x).toBeGreaterThan(toggle.x + toggle.width - 1);
+  await expect(button).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await button.hover();
+  await expect(button).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await page.mouse.move(0, 0);
+  // locked while editing
+  await page.getByTestId('doc-view-edit').click();
+  await expect(button).toBeDisabled();
+  await page.getByTestId('doc-view-preview').click();
+  await expect(button).toBeEnabled();
+
+  await button.click();
+  await expect(page.getByTestId('doc-delete-dialog')).toContainText(`kb/${kb}/${rel}`);
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByTestId('doc-delete-dialog')).toBeHidden();
+  expect(existsSync(dataPath(`kb/${kb}/${rel}`))).toBe(true);
+
+  await button.click();
+  const deleted = await afterApi(page, 'DELETE', `${API}/doc/kb/${kb}/`, () =>
+    page.getByTestId('doc-delete-dialog').getByRole('button', { name: 'Delete' }).click(),
+  );
+  expect(deleted.status()).toBe(200);
+  await expect(page).toHaveURL(new RegExp(`/kb/${kb}$`));
+  await expect(page.getByTestId('entry-status')).toHaveText(`Deleted ${rel}`);
+  expect(existsSync(dataPath(`kb/${kb}/${rel}`))).toBe(false);
+  expect(existsSync(dataPath(`kb/${kb}/notes`))).toBe(false);
+  expect(readDataText(`kb/${kb}/index.md`)).not.toContain(rel);
 });
 
 test('a missing concept shows "Create this file"; creating it opens the new page', async ({
@@ -220,12 +327,12 @@ test('a missing concept shows "Create this file"; creating it opens the new page
   await expect(create).toHaveAttribute('data-path', `concepts/${concept}.md`);
   await create.click();
 
-  // the path is fixed by the button: no file name field
-  await expect(page.getByTestId('new-concept-dialog')).toBeVisible();
-  await expect(page.getByTestId('new-concept-path')).toHaveText(`concepts/${concept}.md`);
-  await expect(page.getByTestId('new-concept-name')).toHaveCount(0);
-  await page.getByTestId('new-concept-title').fill('E2E missing concept');
-  await page.getByTestId('new-concept-submit').click();
+  // the path is fixed by the button: no path field
+  await expect(page.getByTestId('add-file-dialog')).toBeVisible();
+  await expect(page.getByTestId('add-file-path')).toHaveText(`kb/${kb}/concepts/${concept}.md`);
+  await expect(page.getByTestId('add-file-name')).toHaveCount(0);
+  await page.getByTestId('add-file-title').fill('E2E missing concept');
+  await page.getByTestId('add-file-submit').click();
   await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/concepts/${concept}\\?edit=1$`));
   const source = readDataText(`kb/${kb}/concepts/${concept}.md`);
   expect(source).toContain('title: E2E missing concept');

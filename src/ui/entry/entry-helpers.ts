@@ -1,10 +1,11 @@
 // PURE (no DOM, no fetch; browser-safe): the logic behind the EntryTools dialogs (ROUND3_SPEC §E.5): the
 // frontmatter form (draft <-> API shape, changed keys only, local checks, mapping server issues onto fields),
-// date arithmetic for `stale_after`, context link lists, the New concept path/title rules and the
+// date arithmetic for `stale_after`, context link lists, the Add file path/title rules and the
 // data-attribute contract between the SSR buttons and the island. Unit-tested in tests/unit/entry-tools-helpers.test.ts.
 import { isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import type { OkfStatus } from '../../lib/entry-summary.ts';
+import { isIsoDateTime } from '../../lib/iso8601.ts';
 import { todayYmd } from '../../lib/time.ts';
 import { titleFromName } from '../../lib/templates.ts';
 import type { ApiIssue } from '../edit/api.ts';
@@ -45,6 +46,13 @@ export function staleAfterProblem(value: string): string | null {
   return 'Use a real date as YYYY-MM-DD';
 }
 
+/** The message under the `resolved` input, or null when it is empty (= not resolved) or an ISO 8601 date / date-time. */
+export function resolvedProblem(value: string): string | null {
+  const v = value.trim();
+  if (v === '' || isIsoDateTime(v)) return null;
+  return 'Use an ISO 8601 date or date-time, e.g. 2026-10-19 or 2026-10-19T14:30';
+}
+
 // ---------------------------------------------------------------- frontmatter draft
 
 /** The editable frontmatter keys as form strings ('' = not set). */
@@ -53,9 +61,16 @@ export interface FrontmatterDraft {
   description: string;
   tags: string[];
   state: string;
+  /** task, feature, bug, rca: ISO 8601 durations. */
+  time: string[];
+  /** task, feature, bug, rca: an ISO 8601 date / date-time. */
+  resolved: string;
   staleAfter: string;
   status: string;
 }
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((t): t is string => typeof t === 'string') : [];
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
 
@@ -64,8 +79,10 @@ export function draftFromFrontmatter(fm: Readonly<Record<string, unknown>>): Fro
   return {
     title: str(fm.title),
     description: str(fm.description),
-    tags: Array.isArray(fm.tags) ? fm.tags.filter((t): t is string => typeof t === 'string') : [],
+    tags: strings(fm.tags),
     state: str(fm.state),
+    time: strings(fm.time),
+    resolved: str(fm.resolved),
     staleAfter: str(fm.stale_after),
     status: str(fm.status),
   };
@@ -77,6 +94,8 @@ export interface FrontmatterPatch {
   title?: string | null;
   description?: string;
   tags?: string[];
+  time?: string[] | null;
+  resolved?: string | null;
   stale_after?: string | null;
   status?: OkfStatus | null;
 }
@@ -85,9 +104,10 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
 
 /**
- * Only the keys whose value changed (compared trimmed), in API shape: an emptied `title` / `stale_after` /
- * `status` is `null` (= delete the key). A skill edits its description only; `state` is sent only for datasets
- * with a lifecycle (`hasState`).
+ * Only the keys whose value changed (compared trimmed), in API shape: an emptied `title` / `time` / `resolved` /
+ * `stale_after` / `status` is `null` (= delete the key). A skill edits its description only; `state` is sent only for
+ * datasets with a lifecycle (`hasState`). `time` and `resolved` only change where the dialog shows them (time-tracked
+ * datasets), so other datasets never send them.
  */
 export function frontmatterPatch(
   kind: 'okf' | 'skill',
@@ -105,6 +125,11 @@ export function frontmatterPatch(
   }
   if (!sameList(draft.tags, base.tags)) patch.tags = [...draft.tags];
   if (hasState && draft.state !== base.state && draft.state !== '') patch.state = draft.state;
+  if (!sameList(draft.time, base.time))
+    patch.time = draft.time.length === 0 ? null : [...draft.time];
+  if (draft.resolved.trim() !== base.resolved.trim()) {
+    patch.resolved = draft.resolved.trim() === '' ? null : draft.resolved.trim();
+  }
   if (draft.staleAfter.trim() !== base.staleAfter.trim()) {
     patch.stale_after = draft.staleAfter.trim() === '' ? null : draft.staleAfter.trim();
   }
@@ -120,6 +145,8 @@ export type FrontmatterField =
   | 'description'
   | 'tags'
   | 'state'
+  | 'time'
+  | 'resolved'
   | 'stale_after'
   | 'status';
 export type FieldErrors = Partial<Record<FrontmatterField, string>>;
@@ -129,6 +156,8 @@ const FIELDS: readonly FrontmatterField[] = [
   'description',
   'tags',
   'state',
+  'time',
+  'resolved',
   'stale_after',
   'status',
 ];
@@ -145,6 +174,8 @@ export function draftProblems(kind: 'okf' | 'skill', draft: FrontmatterDraft): F
     if (draft.title.trim().length > TITLE_MAX) errors.title = `${TITLE_MAX} characters max`;
     const stale = staleAfterProblem(draft.staleAfter);
     if (stale !== null) errors.stale_after = stale;
+    const resolved = resolvedProblem(draft.resolved);
+    if (resolved !== null) errors.resolved = resolved;
   }
   return errors;
 }
@@ -201,14 +232,49 @@ export function buildContextLinks(self: LinkTarget, keys: readonly string[]): Li
   return out;
 }
 
-// ---------------------------------------------------------------- New concept
+// ---------------------------------------------------------------- Add file
 
 export const DEFAULT_CONCEPT_TYPE = 'Concept';
 
-/** `'my-topic'` -> `'concepts/my-topic.md'`. */
-export const conceptPath = (name: string): string => `concepts/${name}.md`;
+/** Longest path the bundle file routes accept (bundles.ts). */
+const FILE_PATH_MAX = 512;
 
-/** The title a concept gets by default: the file name without folders / `.md`, "Fix login bug" style. */
+/**
+ * What the Add file dialog creates for the typed path: trimmed, a leading `/` or `./` dropped (a bundle-root link
+ * style), `.md` added when missing (`references/abc` -> `references/abc.md`); a path ending in `/` (no file name yet)
+ * stays as typed; '' for blank input. Check it with `newFilePathProblem`.
+ */
+export function newFilePath(raw: string): string {
+  const path = raw.trim().replace(/^(?:\.?\/)+/, '');
+  if (path === '' || path.endsWith('/')) return path;
+  if (/\.md$/i.test(path)) return path.replace(/\.md$/i, '.md');
+  return `${path}.md`;
+}
+
+/**
+ * Why `path` (a `newFilePath` result) cannot be created, or null: folders and a file name inside the bundle, none
+ * empty, `.` / `..` or dot-prefixed, no characters Windows refuses, and not a reserved `index.md` / `log.md`.
+ */
+export function newFilePathProblem(path: string): string | null {
+  if (path === '') return null;
+  const segments = path.split('/');
+  if (segments.at(-1) === '') return 'Add a file name after the last /';
+  if (segments.includes('')) return 'A folder name is empty (//)';
+  if (segments.some((s) => s === '.' || s === '..'))
+    return 'No . or .. folders: the file stays in the bundle';
+  if (segments.some((s) => s.startsWith('.'))) return 'Names cannot start with a dot';
+  if (/[\\:*?"<>|]/.test(path) || [...path].some((c) => c.charCodeAt(0) < 32)) {
+    return 'These are not allowed: \\ : * ? " < > | and control characters';
+  }
+  if (path.length > FILE_PATH_MAX) return `At most ${FILE_PATH_MAX} characters`;
+  const base = segments.at(-1);
+  if (base === 'index.md' || base === 'log.md') {
+    return `${base} is reserved (the entry, folder navigation and the update log)`;
+  }
+  return null;
+}
+
+/** The title a new file gets by default: the file name without folders / `.md`, "Fix login bug" style. */
 export function conceptTitleFromPath(path: string): string {
   const base = path.split('/').pop() ?? path;
   return titleFromName(base.replace(/\.md$/i, ''));
@@ -243,7 +309,7 @@ export const ENTRY_ACTIONS = [
   'remove-child',
   'add-to-context',
   'build-context',
-  'new-concept',
+  'add-file',
 ] as const;
 export type EntryAction = (typeof ENTRY_ACTIONS)[number];
 
@@ -258,7 +324,7 @@ export type EntryDialog =
   | { type: 'remove'; key: string; rel: string; title: string }
   | { type: 'add-to-context' }
   | { type: 'build-context' }
-  | { type: 'new-concept'; path?: string };
+  | { type: 'add-file'; path?: string };
 
 /** What the island reads from a clicked button: `data-entry-action` plus its `data-key`, `data-rel`, `data-path`, `data-title`. */
 export interface ActionTrigger {
@@ -297,11 +363,9 @@ export function dialogFor(trigger: ActionTrigger): EntryDialog | null {
       return { type: 'add-to-context' };
     case 'build-context':
       return { type: 'build-context' };
-    case 'new-concept': {
+    case 'add-file': {
       const path = trigger.path?.trim();
-      return path === undefined || path === ''
-        ? { type: 'new-concept' }
-        : { type: 'new-concept', path };
+      return path === undefined || path === '' ? { type: 'add-file' } : { type: 'add-file', path };
     }
   }
 }

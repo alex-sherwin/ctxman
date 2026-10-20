@@ -13,6 +13,7 @@ const CLASS = '(?:ck|cx)-[a-z0-9_-]+';
  * one reason each.
  */
 const DEFINED_ALLOWLIST: readonly string[] = [
+  'cx-codeblock__copy', // the Copy button src/lib/markdown.ts puts on rendered code blocks (src/lib is not scanned)
   'cx-link--broken', // set on <a> by src/lib/links.ts (src/lib is not scanned)
 ];
 

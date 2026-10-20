@@ -43,6 +43,12 @@ import {
 } from '../lib/inflate/catalog.ts';
 import type { ItemKind } from '../lib/inflate/catalog.ts';
 import {
+  DATE_TIME_MESSAGE,
+  DURATION_MESSAGE,
+  isIsoDateTime,
+  isIsoDuration,
+} from '../lib/iso8601.ts';
+import {
   GIT_URI_MESSAGE,
   SKILL_URI_MESSAGE,
   classifyRemoteUri,
@@ -174,12 +180,40 @@ export const okfEntrySchema = type({
   'links?': entryLinksSchema,
 });
 
+/** One stretch of work: an ISO 8601 duration (`PT1H30M`). */
+export const durationSchema = type('string').narrow(
+  (value, ctx) => isIsoDuration(value) || ctx.mustBe(DURATION_MESSAGE),
+);
+/**
+ * When the work was resolved: an ISO 8601 date or date-time in any common form (src/lib/iso8601.ts#isIsoDateTime),
+ * kept as written. YAML's timestamp tag turns an unquoted `2026-10-19` (or a date-time with seconds) into a Date.
+ */
+export const resolvedSchema = type('Date | string').narrow((value, ctx) =>
+  value instanceof Date
+    ? !Number.isNaN(value.getTime()) || ctx.mustBe('a valid date')
+    : isIsoDateTime(value) || ctx.mustBe(DATE_TIME_MESSAGE),
+);
+/** The time-tracking keys of task, feature, bug and rca entries (registry TIME_TRACKED_DATASETS). */
+const timeTrackingShape = {
+  'time?': durationSchema.array(),
+  'resolved?': resolvedSchema,
+} as const;
+
 export const kbSchema = okfEntrySchema;
-export const rcaSchema = okfEntrySchema;
+export const rcaSchema = okfEntrySchema.merge(timeTrackingShape);
 export const ideaSchema = okfEntrySchema.merge({ state: type.enumerated(...IDEA_STATES) });
-export const taskSchema = okfEntrySchema.merge({ state: type.enumerated(...TASK_STATES) });
-export const bugSchema = okfEntrySchema.merge({ state: type.enumerated(...BUG_STATES) });
-export const featureSchema = okfEntrySchema.merge({ state: type.enumerated(...FEATURE_STATES) });
+export const taskSchema = okfEntrySchema.merge({
+  state: type.enumerated(...TASK_STATES),
+  ...timeTrackingShape,
+});
+export const bugSchema = okfEntrySchema.merge({
+  state: type.enumerated(...BUG_STATES),
+  ...timeTrackingShape,
+});
+export const featureSchema = okfEntrySchema.merge({
+  state: type.enumerated(...FEATURE_STATES),
+  ...timeTrackingShape,
+});
 export const projectSchema = okfEntrySchema.merge({ state: type.enumerated(...PROJECT_STATES) });
 
 /**

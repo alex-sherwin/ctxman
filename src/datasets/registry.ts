@@ -27,6 +27,13 @@ export const OKF_ENTRY_FILE = 'index.md';
 export const OKF_DATASET_IDS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const;
 export type OkfDatasetId = (typeof OKF_DATASET_IDS)[number];
 
+/**
+ * okf datasets whose entries track work: an optional `time` (ISO 8601 durations, one per stretch of work) and an
+ * optional `resolved` (the ISO 8601 date or date-time the work was resolved) in the entry frontmatter.
+ */
+export const TIME_TRACKED_DATASETS = ['rca', 'task', 'bug', 'feature'] as const;
+export type TimeTrackedDatasetId = (typeof TIME_TRACKED_DATASETS)[number];
+
 /** Datasets a context (or recipe) may link to: everything except context and recipe, registry order. */
 export const LINKABLE_DATASETS = [
   'kb',
@@ -325,6 +332,10 @@ export function isDatasetId(value: unknown): value is DatasetId {
 
 export function isOkfDatasetId(value: unknown): value is OkfDatasetId {
   return typeof value === 'string' && (OKF_DATASET_IDS as readonly string[]).includes(value);
+}
+
+export function isTimeTrackedDatasetId(value: unknown): value is TimeTrackedDatasetId {
+  return typeof value === 'string' && (TIME_TRACKED_DATASETS as readonly string[]).includes(value);
 }
 
 export function isLinkableDatasetId(value: unknown): value is LinkableDatasetId {

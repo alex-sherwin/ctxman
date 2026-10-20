@@ -7,8 +7,9 @@
     padding: 0 var(--sp-2);
   }
 
+  /* the modal itself is wider than the default 480px (the clip-path cut the rows off at the right) */
   .cx-shortcuts {
-    min-width: min(40rem, 90vw);
+    width: min(44rem, 100%);
   }
   .cx-shortcuts__list {
     display: flex;

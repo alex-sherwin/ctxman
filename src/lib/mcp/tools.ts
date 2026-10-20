@@ -57,6 +57,7 @@ import { ReferenceIoError } from '../reference-io.ts';
 import { SnippetIoError } from '../snippet-io.ts';
 import { childrenOf } from '../relations.ts';
 import { FUSE_OPTIONS, MIN_QUERY } from '../search-config.ts';
+import { buildTagIndex, searchDocs } from '../search-query.ts';
 import { planNewEntry } from '../templates.ts';
 import { todayYmd } from '../time.ts';
 import { stringifyYaml } from '../yaml.ts';
@@ -292,11 +293,13 @@ const searchTool = defineTool({
   name: 'search',
   title: 'Search entries',
   description:
-    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, snippet, context, recipe), the same search as the ctxman UI. Returns ranked hits with an excerpt. Start here, then call get-entry or read-bundle-file.',
+    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, snippet, context, recipe), the same search as the ctxman UI. A `#tag` token keeps only files whose frontmatter tags include that tag exactly (several = all of them); the other words are the fuzzy query, and `#tag` alone lists every file with the tag. Returns ranked hits with an excerpt. Start here, then call get-entry or read-bundle-file.',
   readOnly: true,
   input: type({
     '+': 'reject',
-    query: type('string >= 2').describe('Search text (at least 2 characters).'),
+    query: type('string >= 2').describe(
+      'Search text (at least 2 characters); `#tag` tokens match tags exactly.',
+    ),
     'datasets?': datasetType.array().describe('Restrict to these datasets (default: all).'),
     'limit?': limitType,
   }),
@@ -313,7 +316,13 @@ const searchTool = defineTool({
     const docs = (await buildSearchIndex(ctx.dataDir)).docs.filter(
       (doc) => wanted === null || wanted.has(doc.dataset),
     );
-    const results = new Fuse(docs, FUSE_OPTIONS).search(query, { limit });
+    const results = searchDocs(
+      new Fuse(docs, FUSE_OPTIONS),
+      docs,
+      buildTagIndex(docs),
+      query,
+      limit,
+    );
     const hits = results.map((result) => {
       const doc = result.item;
       const score = Math.round((1 - (result.score ?? 1)) * 1000) / 1000;
@@ -1044,7 +1053,7 @@ const patchEntryTool = defineTool({
   name: 'patch-entry',
   title: 'Patch entry frontmatter',
   description:
-    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, tags (replaces the list), addLinks / removeLinks (relations of an okf entry index.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
+    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, tags (replaces the list), time and resolved (task, feature, bug and rca: time tracking), addLinks / removeLinks (relations of an okf entry index.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
   readOnly: false,
   input: type({
     '+': 'reject',
@@ -1054,6 +1063,14 @@ const patchEntryTool = defineTool({
     'title?': type('string').describe('Empty string removes the title.'),
     'description?': 'string',
     'tags?': type('string').array(),
+    'time?': type('string')
+      .array()
+      .describe(
+        'Time spent, one ISO 8601 duration per stretch of work (PT1H30M, PT45M, P1D). Replaces the list: to add one, send the current list (get-entry) plus the new value; [] removes it.',
+      ),
+    'resolved?': type('string | null').describe(
+      'When the work was resolved: an ISO 8601 date or date-time (2026-10-19, 2026-10-19T14:30+02:00). null removes it.',
+    ),
     'addLinks?': entryLinkInput.array(),
     'removeLinks?': linkRefType.array(),
   }),

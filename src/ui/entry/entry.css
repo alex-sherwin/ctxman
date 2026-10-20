@@ -1,5 +1,5 @@
 /* EntryTools island (src/ui/entry): the status line and the dialogs of the detail-page tools (Edit details, relation
-   picker extras, Add to context, Build context, New concept). Imported by src/styles/global.css. */
+   picker extras, Add to context, Build context, Add file). Imported by src/styles/global.css. */
 @layer cx-app {
   /* ---------- status line (header actions) ---------- */
   .cx-entry__status {
@@ -29,16 +29,17 @@
     flex-direction: column;
     gap: var(--sp-2);
   }
-  .cx-fm__stale {
+  /* a date input with its quick-set buttons (Stale after, Resolved) */
+  .cx-fm__date {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
     gap: var(--sp-4);
   }
-  .cx-fm__stale-input {
+  .cx-fm__date-input {
     flex: 1 1 200px;
   }
-  .cx-fm__stale-actions {
+  .cx-fm__date-actions {
     display: flex;
     gap: var(--sp-2);
     /* line up with the input (below the field label) */
@@ -56,8 +57,8 @@
     max-width: 240px;
   }
 
-  /* ---------- Add to context / Build context / New concept ---------- */
-  /* Build context and New concept are Modal size="large"; Add to context (two fields) stays auto-sized */
+  /* ---------- Add to context / Build context / Add file ---------- */
+  /* Build context and Add file are Modal size="large"; Add to context (two fields) stays auto-sized */
   .cx-bctx__group {
     display: flex;
     flex-direction: column;
@@ -74,7 +75,7 @@
   .cx-bctx__key {
     margin-left: var(--sp-3);
   }
-  .cx-nc__path {
+  .cx-addfile__path {
     margin: 0;
     font-size: var(--fs-sm);
     color: var(--fg-muted);

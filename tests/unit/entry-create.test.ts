@@ -36,8 +36,10 @@ describe('writePlannedEntry', () => {
     const dir = tmp.make();
     const planned = planNewEntry('task', 'fix-it', { now, description: 'Fix it' });
     const files = await writePlannedEntry('task', 'fix-it', planned, dir);
-    expect(files).toEqual(['task/fix-it/index.md', 'task/fix-it/log.md']);
+    expect(files).toEqual(['task/fix-it/index.md']);
     for (const file of planned) expect(read(dir, file.relPath)).toBe(file.content);
+    // a new bundle is its entry only: no log.md
+    expect(existsSync(path.join(dir, 'task', 'fix-it', 'log.md'))).toBe(false);
   });
 
   it('never overwrites: an existing entry is `exists` and left alone', async () => {
@@ -115,7 +117,7 @@ describe('createEntry: okf entries', () => {
       slug: 'w2-demo',
       path: 'task/w2-demo/index.md',
       url: '/task/w2-demo',
-      files: ['task/w2-demo/index.md', 'task/w2-demo/log.md'],
+      files: ['task/w2-demo/index.md'],
     });
     const entryText = read(dir, 'task/w2-demo/index.md');
     expect(entryText).toContain('title: W2 demo\n');

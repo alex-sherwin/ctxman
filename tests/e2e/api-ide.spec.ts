@@ -111,12 +111,12 @@ test('Open in IDE on a snippet page (button and `i`) opens the snippet folder wi
   await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
   expect(recordedCalls()[before]).toEqual(expected);
 
-  // `i` clicks the same button once the Shortcuts island listens (it marks <body> then)
+  // `.` clicks the same button once the Shortcuts island listens (it marks <body> then)
   await expect(page.locator('body[data-shortcuts-ready]')).toBeAttached();
   await expect(button).toBeEnabled();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   before = recordedCalls().length;
-  await page.keyboard.press('i');
+  await page.keyboard.press('.');
   await pollUntil(recordedCalls, (calls) => calls.length === before + 1);
   expect(recordedCalls()[before]).toEqual(expected);
 });

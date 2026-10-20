@@ -186,8 +186,25 @@ export function extractHeadings(md: string): string[] {
 const stringOr = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined;
 
-const tagsOf = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((t): t is string => typeof t === 'string') : [];
+/**
+ * The frontmatter `tags` of any markdown file as search tags: only an ARRAY counts, and each of its scalar values is
+ * one tag on its own (trimmed; a number or boolean as its text, since YAML reads `2026` as a number), blanks and
+ * repeats dropped. Fuse indexes every element of the list separately, and search-query.ts builds the exact index.
+ */
+function tagsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    const tag =
+      typeof item === 'string'
+        ? item.trim()
+        : typeof item === 'number' || typeof item === 'boolean'
+          ? String(item)
+          : '';
+    if (tag !== '' && !out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
 
 function basename(relPath: string): string {
   const file = relPath.split('/').pop() ?? relPath;

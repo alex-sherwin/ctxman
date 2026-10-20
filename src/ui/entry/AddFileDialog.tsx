@@ -1,35 +1,36 @@
-// "New concept" dialog (ROUND3_SPEC §E.5, D.3): create a concept file in an okf bundle (`concepts/<name>.md`, or
-// the fixed path of a "Create <path>" button on a missing-doc page) with a title, a type and an optional
-// description. POST /api/doc/<ds>/<slug>/<path> also lists the file in the bundle's index.md and log.md. On 201
-// the browser opens the new page in edit mode; 409 (exists) stays here and says so. Browser-only; kit parts by file.
+// "Add file" dialog (ROUND3_SPEC §E.5, D.3): create a markdown file anywhere in an okf bundle (a typed path such as
+// `references/abc.md`, `.md` added when left out; or the fixed path of a "Create <path>" button on a missing-doc page)
+// with a title, an OKF type and an optional description. POST /api/doc/<ds>/<slug>/<path> creates the missing folders
+// of the path, writes the file and lists it in the bundle's index.md (and log.md, when the bundle has one). On 201 the
+// browser opens the new page in edit mode; 409 (exists) stays here and says so. Browser-only; kit parts by file.
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Form } from 'react-aria-components';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
-import { nameProblem } from '../../lib/names.ts';
 import { Dialog, FormDialogFooter, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ErrorText } from '../kit/Status.tsx';
 import { createConcept } from './entry-api.ts';
 import {
   conceptBody,
-  conceptPath,
   conceptTitleFromPath,
   DEFAULT_CONCEPT_TYPE,
+  newFilePath,
+  newFilePathProblem,
 } from './entry-helpers.ts';
 
-const FORM_ID = 'new-concept-form';
+const FORM_ID = 'add-file-form';
 
-export interface NewConceptDialogProps {
+export interface AddFileDialogProps {
   dataset: LinkableDatasetId;
   slug: string;
-  /** Bundle-relative path to create (`data-path` of the button); absent = the user names the file. */
+  /** Bundle-relative path to create (`data-path` of the button); absent = the user types the path. */
   fixedPath?: string;
   onClose: () => void;
 }
 
-export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConceptDialogProps) {
-  const [name, setName] = useState('');
+export function AddFileDialog({ dataset, slug, fixedPath, onClose }: AddFileDialogProps) {
+  const [typed, setTyped] = useState('');
   // `null` = untouched: the title follows the file name
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [type, setType] = useState(DEFAULT_CONCEPT_TYPE);
@@ -37,11 +38,11 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const path = fixedPath ?? (name === '' ? '' : conceptPath(name));
-  const title = titleDraft ?? (path === '' ? '' : conceptTitleFromPath(path));
-  const nameError = fixedPath === undefined && name !== '' ? nameProblem(name) : null;
-  const valid =
-    path !== '' && nameError === null && title.trim() !== '' && type.trim().length <= 100;
+  const path = fixedPath ?? newFilePath(typed);
+  const pathError = fixedPath === undefined ? newFilePathProblem(path) : null;
+  const hasName = path !== '' && !path.endsWith('/');
+  const title = titleDraft ?? (hasName ? conceptTitleFromPath(path) : '');
+  const valid = hasName && pathError === null && title.trim() !== '' && type.trim().length <= 100;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,7 +57,7 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
     setPending(false);
     setError(
       res.status === 409
-        ? `${path} already exists in this bundle. Pick another name.`
+        ? `${path} already exists in this bundle. Pick another path.`
         : res.issues && res.issues.length > 0
           ? res.issues.map((i) => `${i.path === '' ? '' : `${i.path}: `}${i.message}`).join('; ')
           : res.message,
@@ -71,19 +72,19 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
         if (!open) onClose();
       }}
       size="large"
-      testId="new-concept-dialog"
+      testId="add-file-dialog"
     >
       <Dialog
-        title="New concept"
+        title="Add file"
         footer={
           <FormDialogFooter
             formId={FORM_ID}
-            submitLabel="Create concept"
+            submitLabel="Create file"
             onCancel={onClose}
             isDisabled={!valid}
             isPending={pending}
-            cancelTestId="new-concept-cancel"
-            submitTestId="new-concept-submit"
+            cancelTestId="add-file-cancel"
+            submitTestId="add-file-submit"
           />
         }
       >
@@ -95,23 +96,27 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
         >
           {fixedPath === undefined && (
             <TextField
-              label="File name"
+              label="Path"
               mono
               autoFocus
               isRequired
-              value={name}
+              placeholder="references/abc.md"
+              value={typed}
               onChange={(v) => {
-                setName(v);
+                setTyped(v);
                 setError(null);
               }}
-              isInvalid={nameError !== null}
-              errorMessage={nameError ?? undefined}
-              description="Kebab-case, without .md."
-              inputTestId="new-concept-name"
+              isInvalid={pathError !== null}
+              errorMessage={pathError ?? undefined}
+              description="Folders and file name inside the bundle; missing folders are created and .md is added when left out."
+              inputTestId="add-file-name"
             />
           )}
-          <p className="cx-nc__path">
-            File: <code data-testid="new-concept-path">{path === '' ? 'concepts/…' : path}</code>
+          <p className="cx-addfile__path">
+            File:{' '}
+            <code data-testid="add-file-path">
+              {path === '' ? '…' : `${dataset}/${slug}/${path}`}
+            </code>
           </p>
           <TextField
             label="Title"
@@ -119,24 +124,24 @@ export function NewConceptDialog({ dataset, slug, fixedPath, onClose }: NewConce
             autoFocus={fixedPath !== undefined}
             value={title}
             onChange={setTitleDraft}
-            inputTestId="new-concept-title"
+            inputTestId="add-file-title"
           />
           <TextField
             label="Type"
             mono
             value={type}
             onChange={setType}
-            description="The OKF type of the concept, e.g. Concept, Guide, Decision."
-            inputTestId="new-concept-type"
+            description="The OKF type of the file, e.g. Concept, Guide, Reference, Decision."
+            inputTestId="add-file-type"
           />
           <TextField
             label="Description (optional)"
             value={description}
             onChange={setDescription}
             description="One line; also shown next to the link in index.md."
-            inputTestId="new-concept-description"
+            inputTestId="add-file-description"
           />
-          {error !== null && <ErrorText testId="new-concept-error">{error}</ErrorText>}
+          {error !== null && <ErrorText testId="add-file-error">{error}</ErrorText>}
         </Form>
       </Dialog>
     </Modal>

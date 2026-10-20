@@ -23,7 +23,7 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       dataset: 'task',
       slug: 't1',
       path: 'task/t1/index.md',
-      files: ['task/t1/index.md', 'task/t1/log.md'],
+      files: ['task/t1/index.md'],
     });
     const entryText = readFileSync(path.join(dir, 'task', 't1', 'index.md'), 'utf8');
     expect(entryText).toContain('okf_version: "0.2"\ntype: Task\nname: t1\ntitle: T1\n');
@@ -58,11 +58,8 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
     expect(r.code).toBe(0);
     const lines = r.stdout.trim().split('\n');
     expect(lines[0]).toBe('Created kb "demo":');
-    expect(lines.slice(1, 3)).toEqual([
-      `  ${path.join(dir, 'kb', 'demo', 'index.md')}`,
-      `  ${path.join(dir, 'kb', 'demo', 'log.md')}`,
-    ]);
-    expect(lines[3]).toBe('Open: http://127.0.0.1:4321/kb/demo');
+    expect(lines.slice(1, 2)).toEqual([`  ${path.join(dir, 'kb', 'demo', 'index.md')}`]);
+    expect(lines[2]).toBe('Open: http://127.0.0.1:4321/kb/demo');
   });
 
   it.for([

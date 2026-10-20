@@ -59,7 +59,6 @@ const SECTIONS: Record<string, readonly string[]> = {
 };
 
 const oneLine = (value: string): string => value.replace(/\s*[\r\n]+\s*/g, ' ').trim();
-const ymd = (d: Date): string => d.toISOString().slice(0, 10);
 /** Escapes characters that would end markdown link text early. */
 export const linkText = (value: string): string => value.replace(/([\\[\]])/g, '\\$1');
 
@@ -136,10 +135,6 @@ export function planNewEntry(
         {
           relPath: `${dataset}/${name}/${OKF_ENTRY_FILE}`,
           content: `---\n${okfFrontmatterYaml(frontmatter)}---\n\n# ${title}\n\n${description}\n\n${sections}`,
-        },
-        {
-          relPath: `${dataset}/${name}/log.md`,
-          content: `# Update log\n\n## ${ymd(opts.now)}\n* **Create**: Created [${linkText(title)}](/index.md).\n`,
         },
       ];
     }

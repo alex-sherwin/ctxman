@@ -119,6 +119,38 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     },
   );
 
+  it.each(['rca', 'task', 'bug', 'feature'] as const)(
+    '%s takes optional time (ISO 8601 durations) and resolved (ISO 8601 date / date-time, or a YAML date)',
+    (id) => {
+      const schema = DATASET_SCHEMAS[id];
+      const ok = validate(schema, {
+        ...MINIMAL[id],
+        time: ['PT1H30M', 'P1D'],
+        resolved: '2026-10-19T14:30+02:00',
+      });
+      expect(ok.success).toBe(true);
+      // kept as written, no conversion
+      expect(ok.success && (ok.data as { resolved: unknown }).resolved).toBe(
+        '2026-10-19T14:30+02:00',
+      );
+      const yamlDate = parseYaml('resolved: 2026-10-19') as { resolved: unknown };
+      expect(validate(schema, { ...MINIMAL[id], ...yamlDate }).success).toBe(true);
+      expect(validate(schema, { ...MINIMAL[id], time: ['1h'] }).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], time: 'PT1H' }).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], resolved: 'yesterday' }).success).toBe(false);
+      expect(validate(schema, { ...MINIMAL[id], resolved: '2026-02-30' }).success).toBe(false);
+    },
+  );
+
+  it.each(['kb', 'idea', 'project'] as const)(
+    '%s keeps time / resolved as unknown keys (not checked)',
+    (id) => {
+      expect(validate(DATASET_SCHEMAS[id], { ...MINIMAL[id], time: 'whatever' }).success).toBe(
+        true,
+      );
+    },
+  );
+
   it('uses a different state set per dataset', () => {
     expect(validate(DATASET_SCHEMAS.idea, { ...MINIMAL.idea, state: 'abandoned' }).success).toBe(
       true,

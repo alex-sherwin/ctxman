@@ -10,7 +10,7 @@ generated:
 
 # Keyboard shortcuts
 
-Press `?` on any page, or the **?** button in the footer, for the list. It is a dialog (Esc closes it).
+Press `?` on any page, or the **?** button in the footer, for the list. It is a dialog (Esc closes it). The Open in IDE button's tooltip names its key too.
 
 | Key | Does | Where |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 | Cmd/Ctrl+K | Open the [search](/concepts/search.md) | every page |
 | `c` | New entry for the page's context | lists, entry pages, dashboard, Tools, Forge, Inflate |
 | `l` | Add a link to another entry (the + Link dialog) | entry pages of okf datasets |
-| `i` | Open in IDE (the entry folder with the current file; a snippet: the `snippet/` folder with its file) | entry and document pages, when an IDE command is available |
+| `.` | Open in IDE (the entry folder with the current file; a snippet: the `snippet/` folder with its file) | entry and document pages, when an IDE command is available |
 | `e` | Edit: the markdown editor of an okf entry, skill or document (the cursor lands in it), the form of a reference, snippet, context or recipe | entry and document pages |
 | Cmd/Ctrl+S | Save | editors, see [Editing](/concepts/editing.md) |
 | Cmd/Ctrl+Alt+K | Insert link to entry | markdown editors |
@@ -34,7 +34,7 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 
 ## When keys are ignored
 
-`?`, `c`, `l`, `i` and `e` do nothing while you type (an input, textarea, select, contenteditable element or a Monaco editor has focus), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c`, `l`, `i` and `e` also need Shift released. `e` does nothing on a page that is already in edit mode or has none (lists, dashboard, tools).
+`?`, `c`, `l`, `.` and `e` do nothing while you type (an input, textarea, select, contenteditable element or a Monaco editor has focus), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c`, `l`, `.` and `e` also need Shift released. `e` does nothing on a page that is already in edit mode or has none (lists, dashboard, tools).
 
 ## How it works
 

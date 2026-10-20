@@ -98,12 +98,12 @@ describe('syncActions', () => {
 describe('readTrigger', () => {
   it('reads the action and its data attributes', () => {
     const button = new FakeEl({
-      'data-entry-action': 'new-concept',
-      'data-path': 'concepts/x.md',
+      'data-entry-action': 'add-file',
+      'data-path': 'references/x.md',
     });
     expect(readTrigger(as(button), new Map())).toMatchObject({
-      action: 'new-concept',
-      path: 'concepts/x.md',
+      action: 'add-file',
+      path: 'references/x.md',
     });
   });
 

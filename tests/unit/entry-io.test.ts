@@ -242,6 +242,100 @@ describe('patchEntry: single keys, every other byte untouched', () => {
   });
 });
 
+describe('patchEntry: time tracking (task, feature, bug, rca)', () => {
+  it('time is a flow list of ISO 8601 durations after tags, upper-cased, repeats kept; [] and null delete it', async () => {
+    const { dir, read } = tree();
+    await patchEntry('task', 'bare', { time: ['pt1h30m', ' PT45M ', 'PT45M'] }, dir);
+    expect(read('task/bare/index.md')).toBe(
+      '---\ntype: Task\nname: bare\ndescription: A bare task.\nstate: pending\ntime: [PT1H30M, PT45M, PT45M]\n---\n\n# Bare\n',
+    );
+    expect((await readEntry('task', 'bare', dir)).frontmatter.time).toEqual([
+      'PT1H30M',
+      'PT45M',
+      'PT45M',
+    ]);
+    // an existing tags key comes first
+    await patchEntry('task', 'do-it', { time: ['P1D'] }, dir);
+    expect(read('task/do-it/index.md')).toContain('tags: [a,  b]\ntime: [P1D]\n');
+    await patchEntry('task', 'bare', { time: [] }, dir);
+    expect(read('task/bare/index.md')).not.toContain('time');
+    await patchEntry('task', 'do-it', { time: null }, dir);
+    expect(read('task/do-it/index.md')).not.toContain('time:');
+  });
+
+  it('time refuses anything that is not an ISO 8601 duration, naming the item', async () => {
+    const { dir, read } = tree();
+    const before = read('task/do-it/index.md');
+    const bad = await failure(patchEntry('task', 'do-it', { time: ['PT1H', '1h', 3] }, dir));
+    expect(bad.issues.map((i) => i.path)).toEqual(['time.1', 'time.2']);
+    expect(bad.issues[0]?.message).toContain('ISO 8601 duration');
+    expect((await failure(patchEntry('task', 'do-it', { time: 'PT1H' }, dir))).code).toBe(
+      'invalid',
+    );
+    expect(read('task/do-it/index.md')).toBe(before);
+  });
+
+  it('resolved takes any ISO 8601 date or date-time and reads back as written; null and blank delete it', async () => {
+    const { dir, read } = tree();
+    await patchEntry('task', 'bare', { resolved: '2026-10-19' }, dir);
+    expect(read('task/bare/index.md')).toContain('state: pending\nresolved: 2026-10-19\n');
+    expect((await readEntry('task', 'bare', dir)).frontmatter.resolved).toBe('2026-10-19');
+    // a date-time with seconds is quoted: YAML's timestamp tag would read it back as a UTC Date
+    await patchEntry('task', 'bare', { resolved: '2026-10-19T14:30:05+02:00' }, dir);
+    expect(read('task/bare/index.md')).toContain('resolved: "2026-10-19T14:30:05+02:00"\n');
+    expect((await readEntry('task', 'bare', dir)).frontmatter.resolved).toBe(
+      '2026-10-19T14:30:05+02:00',
+    );
+    for (const ok of ['2026-10-19T14:30', '2026-W42-1', '2026-10', '20261019T1430Z']) {
+      await patchEntry('task', 'bare', { resolved: ok }, dir);
+      expect((await readEntry('task', 'bare', dir)).frontmatter.resolved, ok).toBe(ok);
+      expect((await readEntry('task', 'bare', dir)).issues, ok).toEqual([]);
+    }
+    // time and resolved together: time first, then resolved
+    await patchEntry('task', 'bare', { resolved: null }, dir);
+    await patchEntry('task', 'bare', { time: ['PT2H'], resolved: '2026-10-20' }, dir);
+    expect(read('task/bare/index.md')).toContain(
+      'state: pending\ntime: [PT2H]\nresolved: 2026-10-20\n',
+    );
+    await patchEntry('task', 'bare', { resolved: '  ' }, dir);
+    expect(read('task/bare/index.md')).not.toContain('resolved');
+    for (const bad of ['yesterday', '2026-02-30', '2026-10-19T25:00', 20261019]) {
+      const error = await failure(patchEntry('task', 'bare', { resolved: bad }, dir));
+      expect(error.issues[0]?.path, String(bad)).toBe('resolved');
+    }
+  });
+
+  it('applies to task, feature, bug and rca only', async () => {
+    const dir = tmp.make({
+      'rca/outage/index.md': '---\ntype: Root Cause Analysis\nname: outage\ndescription: O.\n---\n',
+      'feature/f/index.md': '---\ntype: Feature\nname: f\ndescription: F.\nstate: pending\n---\n',
+      'bug/b/index.md': '---\ntype: Bug\nname: b\ndescription: B.\nstate: pending\n---\n',
+      'kb/notes/index.md': '---\ntype: Knowledge Base\nname: notes\ndescription: N.\n---\n',
+      'project/p/index.md': '---\ntype: Project\nname: p\ndescription: P.\nstate: pending\n---\n',
+      'skill/my-skill/SKILL.md': SKILL,
+    });
+    for (const [ds, slug] of [
+      ['rca', 'outage'],
+      ['feature', 'f'],
+      ['bug', 'b'],
+    ] as const) {
+      const result = await patchEntry(ds, slug, { time: ['PT1H'], resolved: '2026-10-19' }, dir);
+      expect(result.frontmatter, ds).toMatchObject({ time: ['PT1H'], resolved: '2026-10-19' });
+    }
+    for (const [ds, slug] of [
+      ['kb', 'notes'],
+      ['project', 'p'],
+      ['skill', 'my-skill'],
+    ] as const) {
+      const error = await failure(patchEntry(ds, slug, { time: ['PT1H'], resolved: '2026' }, dir));
+      expect(
+        error.issues.map((i) => i.path),
+        ds,
+      ).toEqual(['time', 'resolved']);
+    }
+  });
+});
+
 describe('patchEntry: links', () => {
   const link = (dataset: string, slug: string, rel = 'related') => ({ dataset, slug, rel });
 

@@ -19,7 +19,8 @@ import { atom, computed, onMount } from 'nanostores';
 import { DATASET_IDS } from '../datasets/registry.ts';
 import type { DatasetId } from '../datasets/registry.ts';
 import type { SearchDoc } from '../lib/entry-summary.ts';
-import { FUSE_OPTIONS, MAX_RESULTS, MIN_QUERY } from '../lib/search-config.ts';
+import { FUSE_OPTIONS, MAX_RESULTS } from '../lib/search-config.ts';
+import { buildTagIndex, searchDocs } from '../lib/search-query.ts';
 import { parseSearchUrl, withParams } from '../lib/url-state.ts';
 import { getJson } from '../ui/edit/api.ts';
 
@@ -60,10 +61,16 @@ export const $fuse = computed($searchIndex, (s) =>
   s.status === 'ready' ? new Fuse<SearchDoc>(s.docs, FUSE_OPTIONS) : null,
 );
 
-export const $searchHits = computed([$fuse, $searchQuery], (fuse, q) => {
-  const query = q.trim();
-  return fuse !== null && query.length >= MIN_QUERY ? fuse.search(query) : [];
-});
+/** Every frontmatter tag value -> its docs (exact `#tag` queries, src/lib/search-query.ts). */
+export const $tagIndex = computed($searchIndex, (s) =>
+  s.status === 'ready' ? buildTagIndex(s.docs) : null,
+);
+
+export const $searchHits = computed(
+  [$fuse, $tagIndex, $searchIndex, $searchQuery],
+  (fuse, tagIndex, index, q) =>
+    fuse !== null && tagIndex !== null ? searchDocs(fuse, index.docs, tagIndex, q) : [],
+);
 
 const datasetRank = (id: DatasetId): number => DATASET_IDS.indexOf(id);
 const bestScore = (g: SearchGroup): number => g.hits[0]?.score ?? 1;

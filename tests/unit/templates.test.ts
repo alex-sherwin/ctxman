@@ -28,11 +28,8 @@ describe('titleFromName', () => {
 describe('planNewEntry okf lifecycle dataset (task)', () => {
   const files = planNewEntry('task', 'fix-login', { now, description: 'Fix the login flow' });
 
-  it('plans index.md (the entry) and log.md under data/task/<name>/', () => {
-    expect(files.map((f) => f.relPath)).toEqual([
-      'task/fix-login/index.md',
-      'task/fix-login/log.md',
-    ]);
+  it('plans only index.md (the entry, no log.md) under data/task/<name>/', () => {
+    expect(files.map((f) => f.relPath)).toEqual(['task/fix-login/index.md']);
   });
 
   it('writes the exact index.md template', () => {
@@ -62,12 +59,6 @@ describe('planNewEntry okf lifecycle dataset (task)', () => {
         '## Done when',
         '',
       ].join('\n'),
-    );
-  });
-
-  it('writes the exact log.md template', () => {
-    expect(byPath(files, 'task/fix-login/log.md')).toBe(
-      '# Update log\n\n## 2026-10-17\n* **Create**: Created [Fix login](/index.md).\n',
     );
   });
 

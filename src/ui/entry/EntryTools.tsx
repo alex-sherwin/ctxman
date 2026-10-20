@@ -1,6 +1,6 @@
 // EntryTools island (ROUND3_SPEC §E.5): the dialogs behind the server-rendered `[data-entry-action]` buttons of an
 // okf / skill / reference detail page (and of the doc pages): Edit details (frontmatter), Add relation / child,
-// Remove link, Add to context, Build context from this project, New concept. It renders only the status line
+// Remove link, Add to context, Build context from this project, Add file. It renders only the status line
 // (`entry-status`) and the open dialog. On mount it enables the SSR buttons (rendered `disabled`) and listens for
 // clicks on the document (delegated, like MarkdownTargets); while a doc editor is open (`$docEditing`: a DocEditor
 // is mounted AND in edit mode; `?edit=1` alone is not enough, the reference form uses it too) it disables every
@@ -20,7 +20,7 @@ import { dialogFor } from './entry-helpers.ts';
 import type { EntryDialog } from './entry-helpers.ts';
 import { $entryStatus, initEntryStatus, showEntryStatus } from './entry-status.ts';
 import { FrontmatterDialog } from './FrontmatterDialog.tsx';
-import { NewConceptDialog } from './NewConceptDialog.tsx';
+import { AddFileDialog } from './AddFileDialog.tsx';
 import { RelationDialog, RemoveRelationDialog } from './RelationDialog.tsx';
 
 export interface EntryToolsProps {
@@ -144,8 +144,8 @@ export default function EntryTools({
           onClose={close}
         />
       )}
-      {dialog?.type === 'new-concept' && (
-        <NewConceptDialog
+      {dialog?.type === 'add-file' && (
+        <AddFileDialog
           dataset={dataset}
           slug={slug}
           {...(dialog.path === undefined ? {} : { fixedPath: dialog.path })}

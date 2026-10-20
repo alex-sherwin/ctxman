@@ -12,6 +12,7 @@ import {
 import { rememberSave, takeSave } from '../../src/ui/edit/last-save.ts';
 import { saveStatusView, statusText } from '../../src/ui/edit/status.ts';
 import { splitTagInput, tagInputProblem } from '../../src/ui/edit/tag-input.ts';
+import { addTimeInput, TIME_INPUT_PROBLEM } from '../../src/ui/edit/time-input.ts';
 
 /** A minimal in-memory Storage under `name`; `broken` makes every access throw (private window). */
 function stubStorage(name: 'sessionStorage' | 'localStorage', broken = false): Map<string, string> {
@@ -367,5 +368,18 @@ describe('last-save', () => {
     stubSession(true);
     expect(() => rememberSave('k', 'Saved')).not.toThrow();
     expect(takeSave('k')).toBeNull();
+  });
+});
+
+describe('addTimeInput (TimeEditor)', () => {
+  it('appends one valid duration, upper-cased, keeping repeats', () => {
+    expect(addTimeInput(['PT1H'], ' pt1h ')).toEqual({ ok: true, values: ['PT1H', 'PT1H'] });
+    expect(addTimeInput([], 'P1DT2H')).toEqual({ ok: true, values: ['P1DT2H'] });
+  });
+
+  it('refuses anything else and says why; blank input is no problem', () => {
+    expect(addTimeInput(['PT1H'], '1h 30m')).toEqual({ ok: false, problem: TIME_INPUT_PROBLEM });
+    expect(addTimeInput(['PT1H'], 'PT1H PT2H')).toEqual({ ok: false, problem: TIME_INPUT_PROBLEM });
+    expect(addTimeInput([], '   ')).toEqual({ ok: false, problem: null });
   });
 });

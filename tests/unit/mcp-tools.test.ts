@@ -127,6 +127,22 @@ describe('read-only tools', () => {
       await fails('search', { query: ' a ' }, 'invalid');
     });
 
+    it('#tag keeps only files whose frontmatter tags include it exactly (concept files too)', async () => {
+      const tagged = data<{ hits: { id: string; path: string | null }[] }>(
+        await ok('search', { query: '#architecture', limit: 100 }),
+      );
+      expect(tagged.hits.map((h) => h.id)).toContain('kb/ctxman/concepts/architecture');
+      expect(tagged.hits.some((h) => h.path === 'concepts/architecture.md')).toBe(true);
+      // a prefix of a tag is not the tag
+      expect(data(await ok('search', { query: '#architect' })).count).toBe(0);
+      // the rest of the query is fuzzy text within the tagged files
+      const both = data<{ hits: { id: string }[] }>(
+        await ok('search', { query: '#workflow forge', limit: 100 }),
+      );
+      expect(both.hits.map((h) => h.id)).toContain('kb/ctxman/concepts/context-forge');
+      expect(both.hits.map((h) => h.id)).not.toContain('kb/ctxman/concepts/architecture');
+    });
+
     it('reports no hits in plain text', async () => {
       const result = await ok('search', { query: 'zzzzqqqqxxxx' });
       expect(text(result)).toBe('No results for "zzzzqqqqxxxx".');
@@ -618,6 +634,40 @@ describe('tools on a private corpus copy (tests that write)', () => {
         await ok('list-entries', { dataset: 'task', state: ['complete'] }),
       );
       expect(filtered.entries.map((e) => e.slug)).toContain('write-agents-md');
+    });
+
+    it('logs time and the resolution date (time-tracked datasets only)', async () => {
+      const result = await ok('patch-entry', {
+        dataset: 'task',
+        slug: 'write-agents-md',
+        time: ['PT1H30M', 'pt15m'],
+        resolved: '2026-10-19T14:30+02:00',
+      });
+      expect(data(result)).toMatchObject({
+        changed: true,
+        frontmatter: { time: ['PT1H30M', 'PT15M'], resolved: '2026-10-19T14:30+02:00' },
+      });
+      expect(read('task', 'write-agents-md', 'index.md')).toContain('time: [PT1H30M, PT15M]\n');
+      await fails(
+        'patch-entry',
+        { dataset: 'task', slug: 'write-agents-md', time: ['90 minutes'] },
+        'invalid',
+      );
+      await fails(
+        'patch-entry',
+        { dataset: 'kb', slug: 'ctxman', resolved: '2026-10-19' },
+        'invalid',
+      );
+      const cleared = await ok('patch-entry', {
+        dataset: 'task',
+        slug: 'write-agents-md',
+        time: [],
+        resolved: null,
+      });
+      expect(
+        data<{ frontmatter: Record<string, unknown> }>(cleared).frontmatter,
+      ).not.toHaveProperty('time');
+      expect(read('task', 'write-agents-md', 'index.md')).not.toMatch(/^(time|resolved):/m);
     });
 
     it('adds and removes relations', async () => {

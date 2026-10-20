@@ -21,6 +21,20 @@
     flex-wrap: wrap;
   }
 
+  /* TimeEditor: the duration chips, then the input (with its help line) and the total */
+  .cx-timeedit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .cx-timeedit__input {
+    max-width: 28rem;
+  }
+  .cx-timeedit__total {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+  }
+
   .cx-yamlissues {
     flex: none;
     max-height: 120px;
