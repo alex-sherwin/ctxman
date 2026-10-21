@@ -213,8 +213,12 @@ const isInside = (root: string, abs: string): boolean => {
   return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 };
 
-/** `constants.O_NOFOLLOW` where the OS has it (not on Windows: there the readdir type check is the guard). */
-const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
+/**
+ * Open flags of a source file: `O_NOFOLLOW` (a symlink swapped in after the readdir fails with ELOOP instead of being
+ * followed) and `O_NONBLOCK` (a FIFO swapped in does not block the open; no effect on a regular file), where the OS has
+ * them (not on Windows: there the readdir type check is the guard).
+ */
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 interface CopyState {
   /** The realpath of the source bundle: every directory read must stay inside it. */
@@ -228,9 +232,18 @@ interface CopyState {
 /** Bytes read and written at a time: big files are copied without holding them in memory. */
 const COPY_CHUNK = 256 * 1024;
 
-/** Copies one regular file without following a symlink (`O_NOFOLLOW`), keeping its permission bits. */
+/**
+ * Copies one regular file without following a symlink, keeping its permission bits; false (nothing written) when
+ * `src` turned out not to be a regular file after all.
+ */
 async function copyRegularFile(src: string, dst: string): Promise<boolean> {
-  const input = await open(src, constants.O_RDONLY | NO_FOLLOW);
+  let input;
+  try {
+    input = await open(src, READ_FLAGS);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') return false;
+    throw error;
+  }
   try {
     const st = await input.stat();
     if (!st.isFile()) return false;

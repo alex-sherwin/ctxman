@@ -11,6 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -215,6 +216,19 @@ describe('cloneEntry: the copy', () => {
     expect(cloned.files).not.toContain('task/dst-task/outside/index.md');
   });
 });
+
+it.skipIf(process.platform === 'win32')(
+  'cloneEntry skips a special file (a FIFO) with a warning, without blocking on it',
+  async () => {
+    const dir = fixture();
+    execFileSync('mkfifo', [path.join(dir, 'task', 'src-task', 'pipe')]);
+    const cloned = await clone(dir, BODY);
+    expect(cloned.warnings.filter((w) => w.rule === 'clone/special-skipped')).toEqual([
+      expect.objectContaining({ file: 'task/src-task/pipe' }),
+    ]);
+    expect(existsSync(path.join(dir, 'task', 'dst-task', 'pipe'))).toBe(false);
+  },
+);
 
 describe('cloneEntry: the rewritten index.md', () => {
   it('rewrites only the listed keys and the first heading; every other byte stays', async () => {
