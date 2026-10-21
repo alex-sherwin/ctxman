@@ -1,8 +1,8 @@
 // PURE (no DOM, no fetch; browser-safe): the logic behind the Import session / Import plan dialogs
 // (plans/AGENT_HISTORY_SPEC.md §7): agent chip options and labels, short display of a working directory or a file
-// path, relative times from a `now` (the `$now` store), the import path / title rules (the Add file rules of
-// entry-helpers.ts), keyboard selection moves, the Load more merge and the meta lines above the preview. Unit-tested
-// in tests/unit/agent-dialog-helpers.test.ts.
+// path, relative times from a `now` (the `$now` store) and labelled local times, the import path / title rules (the
+// Add file rules of entry-helpers.ts), keyboard selection moves, the Load more merge, the time a session row shows
+// and the plan meta strip. Unit-tested in tests/unit/agent-dialog-helpers.test.ts.
 import { AGENT_IDS, AGENT_LABELS, AGENT_SOURCE_LABELS } from '../../lib/agent-history/types.ts';
 import type {
   AgentId,
@@ -65,15 +65,21 @@ export function shortCwd(cwd: string | undefined): string {
   return segments.slice(-2).join('/');
 }
 
+/** A path segment of at most `max` characters: a longer one keeps its first `max - 1` and `…` (`01a0031b…`). */
+const shortSegment = (segment: string, max = 9): string =>
+  segment.length <= max ? segment : `${segment.slice(0, max - 1)}…`;
+
 /**
- * A file path in a narrow row: the first two segments, `…` and the file name when it has more than four
- * (`~/.codex/plans/<thread>/<turn>/PLAN.md` -> `~/.codex/…/PLAN.md`); shorter paths stay whole.
+ * A file path in a narrow row: the first two segments, `…`, the folder the file is in (cut to 9 characters: it is
+ * what tells two `PLAN.md` of one Codex thread apart) and the file name, when it has more than four segments
+ * (`~/.codex/plans/<thread>/<turn>/PLAN.md` -> `~/.codex/…/01a0031b…/PLAN.md`); shorter paths stay whole.
  */
 export function shortPath(path: string): string {
   const segments = segmentsOf(path);
   if (segments.length <= 4) return path;
   const lead = path.startsWith('/') ? '/' : '';
-  return `${lead}${segments[0]}/${segments[1]}/…/${segments.at(-1) ?? ''}`;
+  const parent = shortSegment(segments.at(-2) ?? '');
+  return `${lead}${segments[0]}/${segments[1]}/…/${parent}/${segments.at(-1) ?? ''}`;
 }
 
 /** "3 hours ago" from the `$now` store; '' before the store has ticked (0) or for no date. */
@@ -85,6 +91,27 @@ export function relativeTime(iso: string | undefined, nowMs: number): string {
 /** `YYYY-MM-DD HH:mm` local; '' for no date. */
 export function absoluteTime(iso: string | undefined): string {
   return iso === undefined || iso === '' ? '' : formatAbsolute(iso);
+}
+
+/** A tooltip that says what a time is and that it is local: "Last activity 2026-10-21 14:03 (local time)". */
+export function localTimeTitle(label: string, iso: string | undefined): string {
+  const time = absoluteTime(iso);
+  return time === '' ? label : `${label} ${time} (local time)`;
+}
+
+/** `MM-DD HH:mm` local: the short date and time a Codex plan row shows (two turns of one thread differ by it). */
+export function shortStamp(iso: string | undefined): string {
+  return absoluteTime(iso).slice(5);
+}
+
+/** The time a session row shows and sorts by: its last activity, else its file's mtime. */
+export const sessionTimeIso = (summary: AgentSessionSummary): string =>
+  summary.lastActivityAt ?? summary.modifiedAt;
+
+/** The thread line of a plan row: its thread when it is not the plan's title too, else null. */
+export function planThreadLine(summary: AgentPlanSummary): string | null {
+  const thread = summary.thread?.trim() ?? '';
+  return thread === '' || thread === summary.title.trim() ? null : thread;
 }
 
 /** "812 B", "12.3 KB", "4.1 MB" (1024 based, one decimal under 100). */
@@ -219,7 +246,7 @@ export function importFailureText(res: ApiFailure, path: string): string {
   return res.message;
 }
 
-// ---------------------------------------------------------------- the meta line above the preview
+// ---------------------------------------------------------------- the plan meta strip above the preview
 
 export interface MetaItem {
   /** Stable id: `data-meta` of the item (tests). */
@@ -230,39 +257,22 @@ export interface MetaItem {
   mono?: boolean;
   /** Tooltip, e.g. the full value. */
   title?: string;
+  /** Takes the room left on the one line (the file path); the others keep their width. */
+  grow?: boolean;
 }
 
-/** Agent, directory, branch, model, started and prompts (once the detail is loaded) of a session. */
-export function sessionMeta(summary: AgentSessionSummary, prompts?: number): MetaItem[] {
-  const items: MetaItem[] = [
-    { id: 'agent', label: 'Agent', value: agentSourceText(summary.agent, summary.source) },
-  ];
-  if (summary.cwd !== undefined && summary.cwd !== '') {
-    items.push({ id: 'cwd', label: 'Dir', value: summary.cwd, mono: true, title: summary.cwd });
-  }
-  if (summary.gitBranch !== undefined && summary.gitBranch !== '') {
-    items.push({ id: 'branch', label: 'Branch', value: summary.gitBranch, mono: true });
-  }
-  if (summary.model !== undefined && summary.model !== '') {
-    items.push({ id: 'model', label: 'Model', value: summary.model, mono: true });
-  }
-  const started = summary.startedAt ?? summary.modifiedAt;
-  items.push({
-    id: 'started',
-    label: summary.startedAt === undefined ? 'Modified' : 'Started',
-    value: absoluteTime(started),
-    title: started,
-  });
-  if (prompts !== undefined)
-    items.push({ id: 'prompts', label: 'Prompts', value: String(prompts) });
-  return items;
-}
-
-/** Agent, file, directory, thread and modified of a plan. */
+/** Agent, file, directory, thread and modified (local, labelled) of a plan: one compact line. */
 export function planMeta(summary: AgentPlanSummary): MetaItem[] {
   const items: MetaItem[] = [
     { id: 'agent', label: 'Agent', value: agentSourceText(summary.agent, summary.source) },
-    { id: 'path', label: 'File', value: summary.path, mono: true, title: summary.path },
+    {
+      id: 'path',
+      label: 'File',
+      value: summary.path,
+      mono: true,
+      title: summary.path,
+      grow: true,
+    },
   ];
   if (summary.cwd !== undefined && summary.cwd !== '') {
     items.push({ id: 'cwd', label: 'Dir', value: summary.cwd, mono: true, title: summary.cwd });
@@ -273,8 +283,8 @@ export function planMeta(summary: AgentPlanSummary): MetaItem[] {
   items.push({
     id: 'modified',
     label: 'Modified',
-    value: absoluteTime(summary.modifiedAt),
-    title: summary.modifiedAt,
+    value: `${absoluteTime(summary.modifiedAt)} local`,
+    title: `${summary.modifiedAt} (UTC)`,
   });
   return items;
 }

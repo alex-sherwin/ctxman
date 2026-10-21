@@ -1,7 +1,8 @@
-/* Import session / Import plan dialogs (src/ui/agent, EntryTools island): Modal size="large" (kit/Dialog.css). The
-   body never scrolls: a toolbar over two columns, the row list (left) and the meta line + preview + import form
-   (right); the list and the preview scroll inside. Placement, size and spacing only: the badges, statuses, notices
-   and the prose keep the kit's colours. Imported by src/styles/global.css. */
+/* Import session / Import plan dialogs (src/ui/agent, EntryTools island): Modal size="xlarge" (kit/Dialog.css). The
+   body never scrolls: a toolbar over two columns, the row list (left, a fixed width) and the preview (a plan's
+   one-line meta strip over it) + the import form (right); the list and the preview scroll inside. Placement, size
+   and spacing only: the badges, statuses, notices and the prose keep the kit's colours. Imported by
+   src/styles/global.css. */
 @layer cx-app {
   .cx-agentdlg__body {
     gap: var(--sp-4);
@@ -21,8 +22,12 @@
     flex: 1 1 14rem;
     min-width: 12rem;
   }
+  /* a fixed width: "Searching…", "0 sessions" and "100+ sessions" never move the search field or the chips */
   .cx-agentdlg__count {
+    flex: none;
+    min-width: 8rem;
     margin-left: auto;
+    text-align: right;
     font-size: var(--fs-xs);
     color: var(--fg-subtle);
     white-space: nowrap;
@@ -34,7 +39,8 @@
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(17rem, 2fr) minmax(0, 3fr);
+    /* the list keeps its width (title, badges, directory, time); the preview takes the rest */
+    grid-template-columns: minmax(20rem, 28rem) minmax(0, 1fr);
     gap: var(--sp-4);
   }
   .cx-agentdlg__list {
@@ -111,6 +117,11 @@
   .cx-agentrow__item {
     flex: 0 1 auto;
   }
+  /* a Codex plan's turn time: never cut, the path gives way first */
+  .cx-agentrow__stamp {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
   .cx-agentrow__time {
     flex: none;
     margin-left: auto;
@@ -127,24 +138,32 @@
     border-radius: var(--r-sm);
     background: var(--bg-subtle);
   }
+  /* a plan's meta strip: one line, every value cut with an ellipsis, the file path gives way first */
   .cx-agentdlg__meta {
     flex: none;
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sp-1) var(--sp-5);
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: var(--sp-5);
     margin: 0;
-    padding: var(--sp-3) var(--sp-4);
+    padding: var(--sp-2) var(--sp-4);
+    overflow: hidden;
     font-size: var(--fs-sm);
+    white-space: nowrap;
     border-bottom: 1px solid var(--border);
     background: var(--bg-deep);
   }
   .cx-agentdlg__metaitem {
+    flex: 0 1 auto;
     display: flex;
     align-items: baseline;
     gap: var(--sp-2);
     min-width: 0;
-    max-width: 100%;
+    max-width: 22rem;
+  }
+  .cx-agentdlg__metaitem[data-grow] {
+    flex: 1 1 8rem;
+    max-width: none;
   }
   .cx-agentdlg__metaitem > dt {
     flex: none;
@@ -162,6 +181,14 @@
   .cx-agentdlg__scroll[data-stale] {
     opacity: 0.6;
   }
+  /* long paths and ids in inline code (the info table's Source) wrap instead of running past the edge; code blocks
+     keep their lines and scroll */
+  .cx-agentdlg__scroll :not(pre) > code {
+    overflow-wrap: anywhere;
+  }
+  .cx-agentdlg__scroll table {
+    width: auto;
+  }
 
   /* ---------- import form ---------- */
   .cx-agentdlg__form {
@@ -174,13 +201,23 @@
   .cx-agentdlg__opts {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--sp-6);
   }
+  /* Path and Title: one full-width row each, the label beside the field, so the whole default path shows */
   .cx-agentdlg__fields {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: var(--sp-4);
-    align-items: start;
+    gap: var(--sp-2);
+  }
+  .cx-agentdlg__fields > .ck-field {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--sp-3);
+    row-gap: var(--sp-1);
+  }
+  .cx-agentdlg__fields > .ck-field > :not(.ck-field__label) {
+    grid-column: 2;
   }
 
   /* ---------- empty state: the searched locations ---------- */
@@ -206,9 +243,6 @@
     .cx-agentdlg__cols {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(8rem, 2fr) minmax(0, 3fr);
-    }
-    .cx-agentdlg__fields {
-      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

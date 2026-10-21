@@ -1,7 +1,8 @@
 // "Agent sessions" dialog (plans/AGENT_HISTORY_SPEC.md §7), opened by `+ Session` in the Files panel of an okf
-// bundle: the agent session histories ctxman finds (Claude Code, Codex, GitHub Copilot CLI + VS Code chat), newest
-// first, filtered by agent chip and server search, 50 per page with Load more. The selected session is previewed as
-// the markdown an import writes (Tool calls / Thinking refetch it); Import writes it to the typed bundle path
+// bundle: the agent session histories ctxman finds (Claude Code, Codex, GitHub Copilot CLI + VS Code chat), most
+// recent activity first, filtered by agent chip and server search, 50 per page with Load more. The selected session
+// is previewed as exactly the markdown an import writes (its info table opens it; Tool calls / Thinking refetch it,
+// a "truncated" badge beside them says when it was cut); Import writes it to the typed bundle path
 // (POST /api/agent-sessions/import) and opens the new doc page. 409 (the path exists) stays here and says so.
 // Browser-only; kit parts by file (no Monaco).
 import { useCallback, useState } from 'react';
@@ -19,7 +20,7 @@ import {
   importTitleProblem,
   keyDelta,
   moveSelection,
-  sessionMeta,
+  sessionTimeIso,
   shortCwd,
   titleOverride,
 } from './agent-helpers.ts';
@@ -221,7 +222,8 @@ export function ImportSessionDialog({ dataset, slug, onClose }: ImportSessionDia
                     agent={s.agent}
                     source={s.source}
                     title={s.title}
-                    timeIso={s.modifiedAt}
+                    timeIso={sessionTimeIso(s)}
+                    timeLabel="Last activity"
                     details={
                       s.cwd !== undefined && s.cwd !== '' ? (
                         <code
@@ -242,17 +244,7 @@ export function ImportSessionDialog({ dataset, slug, onClose }: ImportSessionDia
               <AgentPreview
                 prefix={PREFIX}
                 scrollKey={loaded === null ? null : loaded.summary.key}
-                meta={row === null ? null : sessionMeta(row, loaded?.prompts)}
-                metaExtra={
-                  loaded?.truncated === true ? (
-                    <Badge
-                      tone="warn"
-                      title="Long messages or later prompts were cut to keep the file small"
-                    >
-                      <span data-testid={`${PREFIX}-truncated`}>truncated</span>
-                    </Badge>
-                  ) : undefined
-                }
+                meta={null}
                 state={preview}
               />
               <AgentImportForm
@@ -283,6 +275,14 @@ export function ImportSessionDialog({ dataset, slug, onClose }: ImportSessionDia
                     >
                       Thinking
                     </Checkbox>
+                    {loaded?.truncated === true && (
+                      <Badge
+                        tone="warn"
+                        title="Long messages or later prompts were cut to keep the file small"
+                      >
+                        <span data-testid={`${PREFIX}-truncated`}>truncated</span>
+                      </Badge>
+                    )}
                   </>
                 }
                 onSubmit={() => void submit()}

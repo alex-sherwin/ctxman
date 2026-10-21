@@ -18,9 +18,11 @@ export interface ModalProps extends Omit<ModalOverlayProps, 'className'> {
   /**
    * 'auto' (default) sizes to the content: small confirms and two-field forms. 'large' is a fixed
    * min(60rem, 90vw) x 80vh box for dialogs with a list, an editor or a longer form, so filtering or
-   * switching content never changes its size (the body scrolls inside). Ignored by 'fullscreen'.
+   * switching content never changes its size (the body scrolls inside). 'xlarge' is a fixed
+   * min(100rem, 94vw) x 88vh box for a list beside a reading preview (the agent history dialogs). Ignored
+   * by 'fullscreen'.
    */
-  size?: 'auto' | 'large';
+  size?: 'auto' | 'large' | 'xlarge';
   className?: string;
   /** `data-testid` of the `.ck-modal` element. */
   testId?: string;
@@ -50,6 +52,7 @@ export function Modal({
           'ck-modal',
           fullscreen && 'ck-modal--fullscreen',
           !fullscreen && size === 'large' && 'ck-modal--large',
+          !fullscreen && size === 'xlarge' && 'ck-modal--xlarge',
           tone === 'danger' && 'ck-modal--danger',
           className,
         )}

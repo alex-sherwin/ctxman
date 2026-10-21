@@ -49,6 +49,12 @@
     height: 80vh;
     max-height: calc(100dvh - 2 * var(--sp-6));
   }
+  /* a list beside a reading preview: as wide as a desktop window allows (1300px at the 13px root) */
+  .ck-modal--xlarge {
+    width: min(100rem, 94vw);
+    height: 88vh;
+    max-height: calc(100dvh - 2 * var(--sp-6));
+  }
   .ck-modal[data-entering] {
     animation: ck-zoom-in var(--dur) var(--ease);
   }

@@ -14,6 +14,7 @@ import {
   AGENT_HOME_PLAN_WORD,
   AGENT_HOME_SESSIONS,
   AGENT_HOME_SESSION_WORD,
+  AGENT_HOME_STALE_SESSION,
   AGENT_HOME_UNLISTED_KEYS,
 } from '../fixtures/agent-home.ts';
 import {
@@ -195,11 +196,18 @@ test('the Files panel offers + Session and + Plan on the entry page and on a doc
 
 // ---------------------------------------------------------------- the session dialog
 
-test('the session list is newest first, hides unlisted sessions and previews the first row', async ({
+test('the session list is by last activity, hides unlisted sessions and previews the first row', async ({
   page,
 }) => {
   await openSessions(page);
+  // the stale session's file is the newest of all, its last event three days old: it is last
   await expectOrder(page, ROW, 'data-key', SESSION_KEYS);
+  await expect(page.locator(ROW).last()).toHaveAttribute('data-key', AGENT_HOME_STALE_SESSION.key);
+  await expect(page.locator(ROW).last().locator('time')).toHaveText('3 days ago');
+  await expect(page.locator(ROW).last().locator('time')).toHaveAttribute(
+    'title',
+    /^Last activity \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(local time\)$/,
+  );
   for (const key of AGENT_HOME_UNLISTED_KEYS) {
     await expect(page.locator(`${ROW}[data-key="${key}"]`)).toHaveCount(0);
   }
@@ -210,15 +218,15 @@ test('the session list is newest first, hides unlisted sessions and previews the
   await expect(first).toContainText(NEWEST.title);
   await expect(page.locator(`${ROW}[aria-selected="true"]`)).toHaveCount(1);
 
-  // the preview shows the markdown an import writes: the title as its H1, the meta line, the prefilled form
+  // the preview shows exactly the markdown an import writes (no meta strip of its own): the title as its H1, the
+  // info table, a command as a line (not a prompt), the prefilled form
   const body = previewBody(page, 'session');
   await expect(body.getByRole('heading', { level: 1 })).toHaveText(NEWEST.title);
-  await expect(page.getByTestId('session-meta').locator('[data-meta="agent"]')).toContainText(
-    'Claude Code',
-  );
-  await expect(page.getByTestId('session-meta').locator('[data-meta="prompts"] dd')).toHaveText(
-    String(NEWEST.prompts),
-  );
+  await expect(page.getByTestId('session-meta')).toHaveCount(0);
+  await expect(body.getByRole('row', { name: /^Agent/ })).toContainText('Claude Code');
+  await expect(body.getByRole('row', { name: /^Prompts/ })).toContainText(String(NEWEST.prompts));
+  await expect(body.getByRole('heading', { level: 2, name: /^Prompt 2/ })).toHaveCount(0);
+  await expect(body).toContainText('Command: /compact keep the auth notes');
   await expect(page.getByTestId('session-import-title')).toHaveValue(NEWEST.title);
   await expect(page.getByTestId('session-import-path')).toHaveValue(
     /^sessions\/\d{4}-\d{2}-\d{2}-claude-code-untangle-the-zebra-login-redirect\.md$/,
@@ -612,6 +620,18 @@ test('the plan list is newest first, previews the first plan inertly and filters
     'plans/rollout-plan-for-the-new-feature-flag.md',
   );
 
+  // the plan meta strip is one line and says its time is local; a Codex row adds its thread and turn time
+  await expect(page.getByTestId('plan-meta').locator('[data-meta="modified"] dd')).toHaveText(
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} local$/,
+  );
+  const codexRow = page.locator(`${PLAN_ROW}[data-source="codex"]`);
+  await expect(codexRow.getByTestId('plan-row-thread')).toHaveText(
+    'Thread: Fix flaky payment webhook test',
+  );
+  await expect(codexRow.getByTestId('plan-row-stamp')).toHaveText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
+  await expect(codexRow.locator('code')).toHaveText(/^~\/\.codex\/…\/0c0de000…\/PLAN\.md$/);
+  await expect(page.locator(PLAN_ROW).first().getByTestId('plan-row-stamp')).toHaveCount(0);
+
   const codex = AGENT_HOME_PLANS.filter((p) => p.agent === 'codex');
   const response = listResponse(page, 'plans', (p) => p.get('agent') === 'codex');
   await page.getByTestId('plan-agent-codex').click();
@@ -827,6 +847,16 @@ test.describe('API edges', () => {
       `${API}/agent-plans/${encodeURIComponent('claude-code:nope')}`,
     );
     expect(missingPlan.status()).toBe(404);
+    // a session the list hides (no prompt, commands only, a subagent thread) has no detail and no import either
+    for (const hidden of AGENT_HOME_UNLISTED_KEYS) {
+      const res = await request.get(`${API}/agent-sessions/${encodeURIComponent(hidden)}`);
+      expect(res.status(), hidden).toBe(404);
+      expect((await errorOf(res)).error, hidden).toBe('not-found');
+    }
+    const hiddenImport = await request.post(`${API}/agent-sessions/import`, {
+      data: importBody(AGENT_HOME_UNLISTED_KEYS[0]!, uniquePath('sessions')),
+    });
+    expect(hiddenImport.status()).toBe(404);
     const detail = await request.get(`${API}/agent-sessions/${encodeURIComponent(NEWEST.key)}`);
     expect(detail.status()).toBe(200);
     const body = (await detail.json()) as {

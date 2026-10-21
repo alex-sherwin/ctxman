@@ -1,5 +1,6 @@
 // The PURE parts of the Import session / Import plan dialogs (src/ui/agent): URL builders, labels, short display,
-// relative times, selection moves, the Load more merge, the import form rules and the meta lines.
+// relative and labelled local times, selection moves, the Load more merge, the import form rules, the row times and
+// the plan meta strip.
 import { describe, expect, it } from 'vitest';
 import type { AgentPlanSummary, AgentSessionSummary } from '../../src/lib/agent-history/types.ts';
 import { planListUrl, planUrl, sessionListUrl, sessionUrl } from '../../src/ui/agent/agent-api.ts';
@@ -14,13 +15,16 @@ import {
   importPathState,
   importTitleProblem,
   keyDelta,
+  localTimeTitle,
   mergeByKey,
   moveSelection,
   planMeta,
+  planThreadLine,
   relativeTime,
-  sessionMeta,
+  sessionTimeIso,
   shortCwd,
   shortPath,
+  shortStamp,
   titleOverride,
 } from '../../src/ui/agent/agent-helpers.ts';
 
@@ -109,10 +113,15 @@ describe('display', () => {
     expect(shortCwd('vscode-remote://ssh-remote+box/home/me/app')).toBe('me/app');
   });
 
-  it('shortPath elides the middle of a long path', () => {
+  it('shortPath elides the middle of a long path, keeping the folder of the file (cut to 9)', () => {
     expect(shortPath('~/.claude/plans/fix-login.md')).toBe('~/.claude/plans/fix-login.md');
-    expect(shortPath('~/.codex/plans/t1/turn2/PLAN.md')).toBe('~/.codex/…/PLAN.md');
-    expect(shortPath('/home/me/.copilot/session-state/u1/plan.md')).toBe('/home/me/…/plan.md');
+    expect(shortPath('~/.codex/plans/t1/turn2/PLAN.md')).toBe('~/.codex/…/turn2/PLAN.md');
+    expect(
+      shortPath(
+        '~/.codex/plans/01a002dc-c6b7-74f0-a499-0509fca66eca/01a00315-aaaa-7bbb-8ccc-000000000001/PLAN.md',
+      ),
+    ).toBe('~/.codex/…/01a00315…/PLAN.md');
+    expect(shortPath('/home/me/.copilot/session-state/u1/plan.md')).toBe('/home/me/…/u1/plan.md');
   });
 
   it('relativeTime needs a ticking clock', () => {
@@ -239,36 +248,41 @@ describe('import form', () => {
   });
 });
 
-describe('meta lines', () => {
-  it('sessionMeta lists what is known, prompts once the detail is loaded', () => {
-    const full = session({
-      cwd: '/Users/me/repos/app',
-      gitBranch: 'main',
-      model: 'claude-opus-5-5',
-      startedAt: '2026-10-21T16:13:00.000Z',
-    });
-    expect(sessionMeta(full, 12).map((m) => m.id)).toEqual([
-      'agent',
-      'cwd',
-      'branch',
-      'model',
-      'started',
-      'prompts',
-    ]);
-    expect(sessionMeta(full, 12).find((m) => m.id === 'prompts')?.value).toBe('12');
-    const bare = sessionMeta(session());
-    expect(bare.map((m) => m.id)).toEqual(['agent', 'started']);
-    expect(bare.find((m) => m.id === 'started')?.label).toBe('Modified');
+describe('times and the plan meta strip', () => {
+  it('local times say what they are; a Codex row shows MM-DD HH:mm', () => {
+    const iso = '2026-10-21T16:13:00.000Z';
+    const local = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const hm = `${pad(local.getHours())}:${pad(local.getMinutes())}`;
+    const md = `${pad(local.getMonth() + 1)}-${pad(local.getDate())}`;
+    expect(localTimeTitle('Last activity', iso)).toBe(
+      `Last activity ${local.getFullYear()}-${md} ${hm} (local time)`,
+    );
+    expect(localTimeTitle('Modified', undefined)).toBe('Modified');
+    expect(shortStamp(iso)).toBe(`${md} ${hm}`);
+    expect(shortStamp(undefined)).toBe('');
   });
 
-  it('planMeta', () => {
+  it('a session row shows its last activity, else its mtime', () => {
+    expect(sessionTimeIso(session())).toBe('2026-10-21T18:02:11.000Z');
+    expect(sessionTimeIso(session({ lastActivityAt: '2026-10-19T08:00:00.000Z' }))).toBe(
+      '2026-10-19T08:00:00.000Z',
+    );
+  });
+
+  it('planThreadLine: the thread when it is not the title too', () => {
+    expect(planThreadLine(plan())).toBeNull();
+    expect(planThreadLine(plan({ thread: 'Plan the MCP server' }))).toBe('Plan the MCP server');
+    expect(planThreadLine(plan({ title: 'Same', thread: ' Same ' }))).toBeNull();
+  });
+
+  it('planMeta: one line of agent, file (grows), dir, thread and the local modified time', () => {
     expect(planMeta(plan()).map((m) => m.id)).toEqual(['agent', 'path', 'modified']);
-    expect(planMeta(plan({ cwd: '~/repos/app', thread: 'Login' })).map((m) => m.id)).toEqual([
-      'agent',
-      'path',
-      'cwd',
-      'thread',
-      'modified',
-    ]);
+    const items = planMeta(plan({ cwd: '~/repos/app', thread: 'Login' }));
+    expect(items.map((m) => m.id)).toEqual(['agent', 'path', 'cwd', 'thread', 'modified']);
+    expect(items.find((m) => m.id === 'path')?.grow).toBe(true);
+    const modified = items.find((m) => m.id === 'modified');
+    expect(modified?.value).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} local$/);
+    expect(modified?.title).toMatch(/\(UTC\)$/);
   });
 });

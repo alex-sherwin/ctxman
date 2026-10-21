@@ -1,6 +1,7 @@
 // "Agent plans" dialog (plans/AGENT_HISTORY_SPEC.md §7), opened by `+ Plan` in the Files panel of an okf bundle: the
 // plan markdown files Claude Code, Codex and GitHub Copilot write, most recently modified first, filtered by agent
-// chip and a server search over the whole text. The selected plan is previewed as the markdown an import writes;
+// chip and a server search over the whole text (a Codex row adds its thread and the turn's local time, so two turns
+// of one thread differ). The selected plan is previewed under a one-line meta strip as the markdown an import writes;
 // Import writes it to the typed bundle path (POST /api/agent-plans/import) and opens the new doc page. 409 (the path
 // exists) stays here and says so. Same layout as the session dialog (AgentImportLayout.tsx). Browser-only; kit parts
 // by file (no Monaco).
@@ -16,9 +17,12 @@ import {
   importPathState,
   importTitleProblem,
   keyDelta,
+  localTimeTitle,
   moveSelection,
   planMeta,
+  planThreadLine,
   shortPath,
+  shortStamp,
   titleOverride,
 } from './agent-helpers.ts';
 import {
@@ -191,28 +195,54 @@ export function ImportPlanDialog({ dataset, slug, onClose }: ImportPlanDialogPro
                 onSelect={setPicked}
                 stale={busy}
               >
-                {list.items.map((p) => (
-                  <AgentRow
-                    key={p.key}
-                    id={p.key}
-                    testId={`${PREFIX}-row`}
-                    agent={p.agent}
-                    source={p.source}
-                    title={p.title}
-                    timeIso={p.modifiedAt}
-                    details={
-                      <code className="cx-agentrow__item cx-truncate" title={p.path}>
-                        {shortPath(p.path)}
-                      </code>
-                    }
-                  >
-                    {p.excerpt !== '' && (
-                      <span className="cx-agentrow__excerpt cx-truncate" title={p.excerpt}>
-                        {p.excerpt}
-                      </span>
-                    )}
-                  </AgentRow>
-                ))}
+                {list.items.map((p) => {
+                  // two turns of one Codex thread share title and thread: the thread line and the turn's time
+                  // (with the turn folder in the path) tell them apart
+                  const thread = p.source === 'codex' ? planThreadLine(p) : null;
+                  return (
+                    <AgentRow
+                      key={p.key}
+                      id={p.key}
+                      testId={`${PREFIX}-row`}
+                      agent={p.agent}
+                      source={p.source}
+                      title={p.title}
+                      timeIso={p.modifiedAt}
+                      timeLabel="Modified"
+                      details={
+                        <>
+                          {p.source === 'codex' && (
+                            <span
+                              className="cx-agentrow__stamp"
+                              title={localTimeTitle('Turn written', p.modifiedAt)}
+                              data-testid={`${PREFIX}-row-stamp`}
+                            >
+                              {shortStamp(p.modifiedAt)}
+                            </span>
+                          )}
+                          <code className="cx-agentrow__item cx-truncate" title={p.path}>
+                            {shortPath(p.path)}
+                          </code>
+                        </>
+                      }
+                    >
+                      {thread !== null && (
+                        <span
+                          className="cx-agentrow__excerpt cx-truncate"
+                          title={thread}
+                          data-testid={`${PREFIX}-row-thread`}
+                        >
+                          Thread: {thread}
+                        </span>
+                      )}
+                      {p.excerpt !== '' && (
+                        <span className="cx-agentrow__excerpt cx-truncate" title={p.excerpt}>
+                          {p.excerpt}
+                        </span>
+                      )}
+                    </AgentRow>
+                  );
+                })}
               </AgentList>
             )
           }

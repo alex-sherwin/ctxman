@@ -1,7 +1,9 @@
-// The layout the Import session and Import plan dialogs share (plans/AGENT_HISTORY_SPEC.md §7): a large Modal whose
-// body is a toolbar (search, agent chips, count) over two columns, the selectable list on the left and, on the
-// right, the meta line, the rendered preview and the import form (Path, Title; Cancel + Import in the footer). The
-// body never scrolls; the list and the preview scroll inside. Browser-only; kit parts by file (no Monaco).
+// The layout the Import session and Import plan dialogs share (plans/AGENT_HISTORY_SPEC.md §7): an xlarge Modal whose
+// body is a toolbar (search, agent chips, count) over two columns, the selectable list on the left (a fixed width)
+// and, on the right, the rendered preview (a plan adds a one-line meta strip above it; a session's own info table
+// opens its preview) and the import form under it (options, then Path and Title on full-width rows; Cancel + Import
+// in the footer). The body never scrolls; the list and the preview scroll inside. Times on screen are local and say
+// so; the imported file keeps UTC. Browser-only; kit parts by file (no Monaco).
 import { useStore } from '@nanostores/react';
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
@@ -20,10 +22,10 @@ import { Loading } from '../kit/Loading.tsx';
 import { ErrorText } from '../kit/Status.tsx';
 import type { AgentFilter } from './agent-api.ts';
 import {
-  absoluteTime,
   agentFilterOptions,
   agentSourceText,
   AGENT_SHORT_LABELS,
+  localTimeTitle,
   relativeTime,
 } from './agent-helpers.ts';
 import type { ImportPathState, MetaItem } from './agent-helpers.ts';
@@ -61,7 +63,7 @@ export function AgentImportFrame({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      size="large"
+      size="xlarge"
       testId={`${prefix}-dialog`}
     >
       <Dialog
@@ -213,13 +215,13 @@ export function AgentList({
 }
 
 /**
- * The relative time of a row. It reads the ticking `$now` store itself, so the clock re-renders these spans and not
- * the whole list.
+ * The relative time of a row, its local date and time in the tooltip ("Last activity 2026-10-21 14:03, local time").
+ * It reads the ticking `$now` store itself, so the clock re-renders these spans and not the whole list.
  */
-function RowTime({ iso }: { iso: string }) {
+function RowTime({ iso, label }: { iso: string; label: string }) {
   const now = useStore($now);
   return (
-    <time className="cx-agentrow__time" dateTime={iso} title={absoluteTime(iso)}>
+    <time className="cx-agentrow__time" dateTime={iso} title={localTimeTitle(label, iso)}>
       {relativeTime(iso, now)}
     </time>
   );
@@ -232,8 +234,10 @@ export interface AgentRowProps {
   agent: AgentId;
   source: AgentSource;
   title: string;
-  /** ISO date-time of the row (its mtime), shown relative ("3 hours ago"). */
+  /** ISO date-time of the row (a session's last activity, a plan's mtime), shown relative ("3 hours ago"). */
   timeIso: string;
+  /** What the time is, for its tooltip: "Last activity", "Modified". */
+  timeLabel: string;
   /** Lines between the title and the meta line (a plan's excerpt). */
   children?: ReactNode;
   /** Inline items of the meta line, after the badges (directory, branch, file). */
@@ -251,6 +255,7 @@ export function AgentRow({
   source,
   title,
   timeIso,
+  timeLabel,
   children,
   details,
 }: AgentRowProps) {
@@ -275,7 +280,7 @@ export function AgentRow({
         </Badge>
         {sourceLabel !== '' && <Badge tone="muted">{sourceLabel}</Badge>}
         {details}
-        <RowTime iso={timeIso} />
+        <RowTime iso={timeIso} label={timeLabel} />
       </span>
     </GridListItem>
   );
@@ -392,13 +397,15 @@ export interface AgentPreviewProps {
   prefix: string;
   /** The key the shown content belongs to: a new one scrolls the preview back to the top. */
   scrollKey: string | null;
+  /**
+   * One compact line above the preview (a plan's agent, file, directory, thread, time); null for none (a session's
+   * preview opens with its own info table: the preview shows exactly the imported file).
+   */
   meta: readonly MetaItem[] | null;
-  /** After the meta items (e.g. a "truncated" badge). */
-  metaExtra?: ReactNode;
   state: PreviewState;
 }
 
-export function AgentPreview({ prefix, scrollKey, meta, metaExtra, state }: AgentPreviewProps) {
+export function AgentPreview({ prefix, scrollKey, meta, state }: AgentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -416,14 +423,18 @@ export function AgentPreview({ prefix, scrollKey, meta, metaExtra, state }: Agen
       {meta !== null && (
         <dl className="cx-agentdlg__meta" data-testid={`${prefix}-meta`}>
           {meta.map((m) => (
-            <div key={m.id} className="cx-agentdlg__metaitem" data-meta={m.id}>
+            <div
+              key={m.id}
+              className="cx-agentdlg__metaitem"
+              data-meta={m.id}
+              data-grow={m.grow ? '' : undefined}
+            >
               <dt className="ck-label cx-label">{m.label}</dt>
               <dd className={m.mono ? 'cx-mono cx-truncate' : 'cx-truncate'} title={m.title}>
                 {m.value}
               </dd>
             </div>
           ))}
-          {metaExtra}
         </dl>
       )}
       <div
@@ -474,7 +485,7 @@ export interface AgentImportFormProps {
   error: string | null;
   /** Nothing to import yet (no row selected, its detail not loaded): the fields are disabled. */
   isDisabled: boolean;
-  /** Above the fields (the session's Tool calls / Thinking checkboxes). */
+  /** Above the fields (the session's Tool calls / Thinking checkboxes and its "truncated" badge). */
   options?: ReactNode;
   onSubmit: () => void;
 }
