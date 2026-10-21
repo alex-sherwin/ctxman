@@ -1,0 +1,20 @@
+---
+import Icon from './Icon.astro';
+
+// The Details panel's Log time button of a time-tracked okf entry (task, feature, bug, rca) and of its document
+// pages: rendered disabled, enabled by the EntryTools island (`data-entry-action="log-time"` opens the shared
+// LogTimeDialog), locked while the doc editor is open. The `t` shortcut clicks it (src/lib/shortcuts.ts).
+---
+
+<button
+  type="button"
+  class="ck-button ck-button--ghost ck-button--sm ck-button--icon cx-meta__logtime"
+  disabled
+  data-entry-action="log-time"
+  title="Log time (t)"
+  aria-label="Log time (t)"
+  aria-keyshortcuts="T"
+  data-testid="meta-log-time"
+>
+  <span class="ck-button__label"><Icon name="clock" size={14} /></span>
+</button>

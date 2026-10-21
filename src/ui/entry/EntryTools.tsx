@@ -1,7 +1,8 @@
 // EntryTools island (ROUND3_SPEC §E.5): the dialogs behind the server-rendered `[data-entry-action]` buttons of an
 // okf / skill / reference detail page (and of the doc pages): Edit details (frontmatter), Add relation / child,
 // Remove link, Add to context, Build context from this project, Add file, Import an agent session / plan
-// (src/ui/agent, okf only). It renders only the status line
+// (src/ui/agent, okf only), Log time (task, feature, bug, rca: the shared src/ui/edit/LogTimeDialog.tsx; the Details
+// panel's clock button, which the `t` shortcut clicks). It renders only the status line
 // (`entry-status`) and the open dialog. On mount it enables the SSR buttons (rendered `disabled`) and listens for
 // clicks on the document (delegated, like MarkdownTargets); while a doc editor is open (`$docEditing`: a DocEditor
 // is mounted AND in edit mode; `?edit=1` alone is not enough, the reference form uses it too) it disables every
@@ -9,8 +10,10 @@
 // Mounted by the pages with client:only="react" (no fallback; the buttons are disabled until it mounts).
 import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
+import { isTimeTrackedDatasetId } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import { $docEditing } from '../../stores/doc-editor.ts';
+import { LogTimeDialog } from '../edit/LogTimeDialog.tsx';
 import { Status } from '../kit/Status.tsx';
 import { AddToContextDialog } from './AddToContextDialog.tsx';
 import { afterWrite, STATUS_KEY } from './after-write.ts';
@@ -160,6 +163,13 @@ export default function EntryTools({
       )}
       {dialog?.type === 'import-plan' && kind === 'okf' && (
         <ImportPlanDialog dataset={dataset} slug={slug} onClose={close} />
+      )}
+      {dialog?.type === 'log-time' && kind === 'okf' && isTimeTrackedDatasetId(dataset) && (
+        <LogTimeDialog
+          target={{ dataset, slug, title }}
+          onClose={close}
+          onLogged={(message) => done(message)}
+        />
       )}
     </>
   );

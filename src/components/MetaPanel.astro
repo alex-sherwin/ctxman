@@ -14,11 +14,12 @@ import {
   isInflateTarget,
 } from '../lib/inflate/catalog.ts';
 import type { InflateLayout } from '../lib/inflate/catalog.ts';
-import { timeTotalText } from '../lib/iso8601.ts';
+import { formatSeconds, timeTotalText } from '../lib/iso8601.ts';
 import { formatAbsolute, isStale, toYmd } from '../lib/time.ts';
 import { stringifyYaml } from '../lib/yaml.ts';
 import CopyButton from './CopyButton.astro';
 import Freshness from './Freshness.astro';
+import LogTimeButton from './LogTimeButton.astro';
 import MetaRow from './MetaRow.astro';
 import Panel from './Panel.astro';
 import OkfStatusBadge from './OkfStatusBadge.astro';
@@ -40,9 +41,27 @@ interface Props {
   bundle?: { url: string; title: string };
   /** okf + skill entry pages: an `Edit` button in the panel title opens the EntryTools Details dialog. */
   editable?: boolean;
+  /**
+   * Time-tracked okf entries (task, feature, bug, rca) and their document pages: the Log time button (EntryTools,
+   * the `t` shortcut). An entry page shows it in the Time row (shown even before any time is logged); a document
+   * page (`bundle` set) in an "Entry time" row with the entry's total (`entryTimeSeconds`).
+   */
+  logTime?: boolean;
+  /** Document pages: the entry's logged total (EntrySummary `timeSeconds`: undefined = none, null = no fixed total). */
+  entryTimeSeconds?: number | null | undefined;
 }
 
-const { dataset, kind, data, lastModified, file, bundle, editable = false } = Astro.props;
+const {
+  dataset,
+  kind,
+  data,
+  lastModified,
+  file,
+  bundle,
+  editable = false,
+  logTime = false,
+  entryTimeSeconds,
+} = Astro.props;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date);
@@ -68,6 +87,8 @@ const type = str(data.type);
 // arrives as a Date: a bare date shows as YYYY-MM-DD, a date-time as its ISO string.
 const time = Array.isArray(data.time) ? data.time.filter((t): t is string => typeof t === 'string') : [];
 const timeTotal = timeTotalText(time);
+const timeButton = kind === 'okf' && logTime && bundle === undefined;
+const entryTimeButton = kind === 'okf' && logTime && bundle !== undefined;
 const resolved =
   data.resolved instanceof Date
     ? Number.isNaN(data.resolved.getTime())
@@ -196,20 +217,49 @@ const filePath = `data/${file}`;
       )
     }
     {
-      kind === 'okf' && time.length > 0 && (
+      kind === 'okf' && (time.length > 0 || timeButton) && (
         <MetaRow label="Time">
-          <ul class="cx-meta__time" data-testid="meta-time">
-            {time.map((value) => (
-              <li>
-                <span class="ck-badge ck-badge--muted ck-badge--mono">{value}</span>
-              </li>
-            ))}
-            {timeTotal && (
-              <li class="cx-meta__total cx-subtle" data-testid="meta-time-total">
-                {timeTotal}
-              </li>
+          <div class="cx-meta__timerow">
+            {time.length > 0 ? (
+              <ul class="cx-meta__time" data-testid="meta-time">
+                {time.map((value) => (
+                  <li>
+                    <span class="ck-badge ck-badge--muted ck-badge--mono">{value}</span>
+                  </li>
+                ))}
+                {timeTotal && (
+                  <li class="cx-meta__total cx-subtle" data-testid="meta-time-total">
+                    {timeTotal}
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <span class="cx-subtle">none logged</span>
             )}
-          </ul>
+            {timeButton && <LogTimeButton />}
+          </div>
+        </MetaRow>
+      )
+    }
+    {
+      entryTimeButton && (
+        <MetaRow label="Entry time">
+          <div class="cx-meta__timerow">
+            {entryTimeSeconds === undefined ? (
+              <span class="cx-subtle" data-testid="meta-entry-time">
+                none logged
+              </span>
+            ) : entryTimeSeconds === null ? (
+              <span class="cx-subtle" data-testid="meta-entry-time">
+                no total (a value has years or months)
+              </span>
+            ) : (
+              <span class="cx-mono" data-testid="meta-entry-time">
+                {formatSeconds(entryTimeSeconds)}
+              </span>
+            )}
+            <LogTimeButton />
+          </div>
         </MetaRow>
       )
     }

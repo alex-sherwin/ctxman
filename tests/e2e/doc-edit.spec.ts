@@ -8,7 +8,7 @@
 // Facts this spec relies on: Monaco in Playwright's "Desktop Chrome" profile reports a Windows user agent, so its
 // shortcuts are Control+a / Control+s even on macOS; a 409 always logs a browser console error (excluded from the
 // zero-error assertion); a conflict is simulated by writing the file on disk behind the editor and bumping its mtime.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test as base } from './fixtures.ts';
 import type { Page } from '@playwright/test';
@@ -17,6 +17,7 @@ import {
   afterReload,
   bumpMtime,
   dataPath,
+  deleteEntries,
   nextPageLoad,
   pollUntil,
   readDataText,
@@ -57,7 +58,7 @@ const test = base.extend<{ doc: DocEntry }>({
     try {
       await use(doc);
     } finally {
-      rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
+      await deleteEntries(request, [`kb/${name}`]);
     }
   },
 });
@@ -869,7 +870,7 @@ test.describe('modified stamp', () => {
       // and the skill is still valid: no warning came back
       expect(((await response.json()) as { warnings: unknown[] }).warnings).toEqual([]);
     } finally {
-      rmSync(dataPath(`skill/${name}`), { recursive: true, force: true });
+      await deleteEntries(request, [`skill/${name}`]);
     }
   });
 });

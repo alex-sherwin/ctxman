@@ -450,30 +450,34 @@
   .cx-detail--doc .cx-detail__main {
     max-width: none;
   }
-  .cx-doc__preview {
-    max-width: var(--prose-max);
-  }
-  /* the rendered markdown and, RIGHT of it, the headings nav (DocToc.astro). The column decides (container query):
-     too narrow for both, the nav goes; while editing (the preview is hidden) it goes too. */
+  /* the rendered markdown (at most --prose-max wide, measured in the layout's own 13px `ch`) and, RIGHT of it, the
+     headings nav (DocToc.astro). The nav takes its natural width (its longest entry) with --toc-space on both sides
+     (its padding), capped at --toc-max: 22rem, and never more than a quarter of the column (25cqi of the
+     `.cx-doc__body` container), so a long heading wraps instead of eating the text. The column decides (container
+     query): when the text would get narrower than 60ch next to the widest nav (W - 25% W - 48px < 60ch, so
+     W < 80ch + 64px), the nav goes; while editing (the preview is hidden) it goes too. A query cannot use custom
+     properties, so the breakpoint repeats the numbers. */
   .cx-doc__body {
     container-type: inline-size;
   }
   .cx-doc__layout {
+    --toc-max: min(22rem, 25cqi);
+    --toc-space: 24px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    column-gap: calc(2 * var(--sp-6));
+    grid-template-columns: minmax(0, var(--prose-max));
     align-items: start;
   }
   .cx-doc__layout--toc {
-    --toc-w: 15rem;
-    grid-template-columns: minmax(0, var(--prose-max)) var(--toc-w);
+    grid-template-columns:
+      minmax(0, var(--prose-max))
+      fit-content(calc(var(--toc-max) + 2 * var(--toc-space)));
   }
   .cx-doc__preview[hidden] + .cx-toc {
     display: none;
   }
-  @container (max-width: 52rem) {
+  @container (max-width: calc(80ch + 64px)) {
     .cx-doc__layout--toc {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, var(--prose-max));
     }
     .cx-toc {
       display: none;
@@ -481,6 +485,7 @@
   }
   /* sticky under the header AND the doc toolbar (also sticky), scrolling on its own when long */
   .cx-toc {
+    padding-inline: var(--toc-space);
     position: sticky;
     top: calc(var(--header-h) + var(--bar-h) + var(--sp-5));
     max-height: calc(100dvh - var(--header-h) - var(--bar-h) - 2 * var(--sp-5));
@@ -759,6 +764,21 @@
   }
   .cx-meta__total {
     margin-left: var(--sp-2);
+  }
+  /* the Time (entry page) / Entry time (document page) row of a time-tracked entry: the value, then the Log time
+     button at the right end of the row */
+  .cx-meta__timerow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .cx-meta__timerow > :first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .cx-meta__logtime {
+    flex: none;
+    margin-block: calc(-1 * var(--sp-1));
   }
   .cx-meta__row dd ul.cx-meta__col {
     flex-direction: column;

@@ -17,7 +17,7 @@ test('? opens the shortcuts dialog and Esc closes it', async ({ page }) => {
   await page.keyboard.press('?');
   const dialog = page.getByTestId('shortcuts-dialog');
   await expect(dialog).toBeVisible();
-  expect(await page.getByTestId('shortcut-row').count()).toBe(9);
+  expect(await page.getByTestId('shortcut-row').count()).toBe(10);
   await expect(dialog).toContainText('New entry');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);

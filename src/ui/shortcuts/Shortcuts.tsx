@@ -3,6 +3,8 @@ import {
   EDIT_LINK_SELECTOR,
   EDIT_SHORTCUT_EVENT,
   IDE_BUTTON_SELECTOR,
+  LOG_TIME_BUTTON_SELECTOR,
+  LOG_TIME_SHORTCUT_EVENT,
   SHORTCUTS,
   isTypingTarget,
   shortcutAction,
@@ -21,10 +23,10 @@ function keyLabel(key: string): string {
 }
 
 /**
- * Global keyboard shortcuts (`?` help, `c` create, `l` add link, `.` IDE, `e` edit) and their help dialog. Mounted
- * once in Base.astro as `<Shortcuts client:only="react" />`. The page context comes from `<body data-shortcut-create
- * data-shortcut-link data-shortcut-edit>`; the decision is the pure `shortcutAction`. The window listener is
- * registered in the CAPTURE phase, like the search store's.
+ * Global keyboard shortcuts (`?` help, `c` create, `l` add link, `.` IDE, `e` edit, `t` log time) and their help
+ * dialog. Mounted once in Base.astro as `<Shortcuts client:only="react" />`. The page context comes from `<body
+ * data-shortcut-create data-shortcut-link data-shortcut-edit data-shortcut-time>`; the decision is the pure
+ * `shortcutAction`. The window listener is registered in the CAPTURE phase, like the search store's.
  */
 export function Shortcuts() {
   const [open, setOpen] = useState(false);
@@ -38,6 +40,7 @@ export function Shortcuts() {
         linkShortcut: body.hasAttribute('data-shortcut-link'),
         ideShortcut: document.querySelector(IDE_BUTTON_SELECTOR) !== null,
         editShortcut: body.hasAttribute('data-shortcut-edit'),
+        timeShortcut: body.hasAttribute('data-shortcut-time'),
         typing: isTypingTarget(target),
         dialogOpen: document.querySelector(DIALOG_SELECTOR) !== null,
       });
@@ -51,6 +54,14 @@ export function Shortcuts() {
           new CustomEvent(EDIT_SHORTCUT_EVENT, { cancelable: true }),
         );
         if (!taken) document.querySelector<HTMLElement>(EDIT_LINK_SELECTOR)?.click();
+      } else if (action.kind === 'log-time') {
+        // A time-tracked list takes it for its focused or hovered row (preventDefault); the letter then stops here,
+        // or the focused grid row would also take it as type-to-select. Otherwise the entry page's Log time button.
+        const taken = !window.dispatchEvent(
+          new CustomEvent(LOG_TIME_SHORTCUT_EVENT, { cancelable: true }),
+        );
+        if (taken) e.stopPropagation();
+        else document.querySelector<HTMLElement>(LOG_TIME_BUTTON_SELECTOR)?.click();
       } else document.querySelector<HTMLElement>(action.selector)?.click();
     }
     function onClick(e: MouseEvent) {

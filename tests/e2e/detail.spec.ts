@@ -1,9 +1,9 @@
 // Detail pages (UI_SPEC §F, ROUND2_UI_SPEC §G): rendered markdown, rewritten links, the two-column okf layout,
 // file tree, back-references, context pages (links in context order) and clickable list rows.
-import { appendFileSync, rmSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator } from '@playwright/test';
-import { API, dataPath, uniqueName } from './helpers.ts';
+import { API, dataPath, deleteEntries, uniqueName } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
   test('/kb/ctxman renders the entry markdown, metadata and file tree', async ({ page }) => {
@@ -140,7 +140,13 @@ test.describe('bundle detail pages', () => {
     const content = page.getByTestId('detail-content');
     await expect(toc).toBeVisible();
     const contentBox = (await content.boundingBox())!;
-    expect((await toc.boundingBox())!.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width);
+    const navBox = (await toc.boundingBox())!;
+    expect(navBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width);
+    // its natural width (at most 22rem = 286px) with 24px left and right of the list
+    const listBox = (await toc.locator('ol').boundingBox())!;
+    expect(Math.round(listBox.x - (contentBox.x + contentBox.width))).toBe(24);
+    expect(Math.round(navBox.x + navBox.width - (listBox.x + listBox.width))).toBe(24);
+    expect(listBox.width).toBeLessThanOrEqual(286);
     // the lone h1 (the title) is not listed
     await expect(toc.getByRole('link')).toHaveText([
       'What it holds',
@@ -505,8 +511,13 @@ test.describe('broken links', () => {
     );
   });
 
-  test.afterAll(() => {
-    rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
+  test.afterAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      await deleteEntries(request, [`kb/${name}`]);
+    } finally {
+      await request.dispose();
+    }
   });
 
   test('links to missing entries and files render dashed with a reason; valid ones do not', async ({

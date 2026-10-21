@@ -12,12 +12,21 @@
 // fetched once the arrow is hovered, focused or opened. Chromium rejects clipboard writes from an unfocused page, which
 // the app swallows: every test brings the page to front first. All reads of the seed corpus are read-only; the one
 // editing test works on its own entry (like doc-edit.spec.ts) and never saves.
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { markdownToJira } from '../../src/lib/jira-markup.ts';
 import { expect, test } from './fixtures.ts';
-import { API, dataPath, gate, readDataText, readYaml, SEED_RECIPE, uniqueName } from './helpers.ts';
+import {
+  API,
+  dataPath,
+  deleteEntries,
+  gate,
+  readDataText,
+  readYaml,
+  SEED_RECIPE,
+  uniqueName,
+} from './helpers.ts';
 
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
@@ -227,7 +236,7 @@ test.describe('doc toolbar while editing', () => {
       try {
         await use({ name, note: file, notePage: `/kb/${name}/doc/concepts/e2e-note` });
       } finally {
-        rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
+        await deleteEntries(request, [`kb/${name}`]);
       }
     },
   });

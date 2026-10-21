@@ -45,7 +45,7 @@ Task, feature, bug and rca entries can track work in two optional `index.md` key
 * `time`: a list of ISO 8601 durations, one per stretch of work (`time: [PT1H30M, PT45M, P1D]`; a fraction on the smallest part is fine, `PT0.5H`). The Details panel shows them with their total in hours (a value with years or months has no fixed length, so no total).
 * `resolved`: when the work was resolved, an ISO 8601 date or date-time in any common form: `2026-10-19`, `2026-10`, `2026-W42-1`, `2026-292`, `20261019`, `2026-10-19T14:30`, `2026-10-19T14:30:05.5Z`, `2026-10-19T14:30+02:00`. It is kept as written (ctxman quotes a date-time with seconds, which YAML would otherwise read back as a UTC timestamp).
 
-Both are edited in the Details dialog, `PATCH /api/entry` and the MCP `patch-entry` tool (whose `addTime` appends durations); the clock button of a list row logs one more duration (Log time, see [Editing](/concepts/editing.md)) and the list's Time column shows the total (`1h 30m`; `?` when a value has years or months, sortable); `pnpm run check:okf` reports a value in another form (`okf/entry-schema`).
+Both are edited in the Details dialog, `PATCH /api/entry` and the MCP `patch-entry` tool (whose `addTime` appends durations); the clock button of a list row or of the Details panel, or the `t` key on those pages, logs one more duration (Log time, see [Editing](/concepts/editing.md)) and the list's Time column shows the total (`1h 30m`; `?` when a value has years or months, sortable); `pnpm run check:okf` reports a value in another form (`okf/entry-schema`).
 * Any number of further concept files. Each needs frontmatter with a non-empty `type`.
 
 Two more optional keys work on the entry `index.md` and on every concept file alike:

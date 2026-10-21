@@ -2,10 +2,10 @@
 // list) and the icon buttons of the actions column (Log time on time-tracked datasets, with the Time column that
 // shows the logged total, and Delete…; the delete flow itself is in delete.spec.ts). Every test creates its own
 // e2e-* task through the API and removes it after.
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { API, afterApi, afterReload, dataPath, uniqueName } from './helpers.ts';
+import { API, afterApi, afterReload, dataPath, deleteEntries, uniqueName } from './helpers.ts';
 
 const created: string[] = [];
 
@@ -19,12 +19,13 @@ async function createTask(request: APIRequestContext, prefix: string): Promise<s
   return name;
 }
 
-// After each test, not after all: under fullyParallel the worker may run another file's test (list-table.spec.ts
-// counts the 4 seed tasks) before this file's afterAll.
-test.afterEach(() => {
-  for (const name of created.splice(0)) {
-    rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
-  }
+// Through the API, so the server forgets them at once: the next test of this worker may be list-table.spec.ts,
+// which counts the 4 seed tasks (deleteEntries in helpers.ts says why `rmSync` alone is not enough).
+test.afterEach(async ({ request }) => {
+  await deleteEntries(
+    request,
+    created.splice(0).map((name) => `task/${name}`),
+  );
 });
 
 const rowOf = (page: Page, slug: string) =>

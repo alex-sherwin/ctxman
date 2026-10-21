@@ -4,14 +4,13 @@
 // (the okf / skill ones by deleting their folder, there is no delete API for them).
 // Writes are visible on the next request (everything reads the disk) and the form navigates to the new entry
 // itself (src/stores/data-form.ts); these tests assert the end state.
-import { rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
   API,
   createRecipeCopy,
   dataExists,
-  dataPath,
+  deleteEntries,
   deleteRecipeQuietly,
   readDataText,
   readYaml,
@@ -432,10 +431,13 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     }
   });
 
-  test.afterAll(async () => {
-    rmSync(dataPath(`project/${nProject}`), { recursive: true, force: true });
-    rmSync(dataPath(`task/${nTask}`), { recursive: true, force: true });
-    rmSync(dataPath(`skill/${nSkill}`), { recursive: true, force: true });
+  test.afterAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      await deleteEntries(request, [`project/${nProject}`, `task/${nTask}`, `skill/${nSkill}`]);
+    } finally {
+      await request.dispose();
+    }
   });
 
   test('?parent= prefills the project; Create writes the entry, links the project and opens it', async ({
