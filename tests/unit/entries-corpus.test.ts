@@ -100,6 +100,21 @@ describe('entries.ts on the seed corpus', () => {
     expect(doc?.relPath).toBe('concepts/search.md');
   });
 
+  it('carries the markdown body without frontmatter (the doc toolbar Copy in preview)', async () => {
+    writeTree(dir, {
+      'kb/ctxman/concepts/copy-me.md':
+        '---\r\ntype: Concept\r\n---\r\n\r\n# Copy me\r\n\r\nText.\r\n',
+    });
+    const doc = await getDocDetail('kb', 'ctxman', 'concepts/copy-me');
+    expect(doc?.body).toBe('\n# Copy me\n\nText.\n');
+    const detail = await getEntryDetail('kb', 'ctxman');
+    const body = detail?.kind === 'okf' ? detail.body : '';
+    expect(body).toContain('# ctxman');
+    expect(body).not.toContain('okf_version');
+    const skill = await getEntryDetail('skill', 'ctxman-add-entry');
+    expect(skill?.kind === 'skill' ? skill.body : '').not.toMatch(/^---/);
+  });
+
   it('serves the entry index.md only as the entry page, a nested index.md as a doc', async () => {
     expect(await getDocDetail('kb', 'ctxman', 'index')).toBeNull();
     writeTree(dir, { 'kb/ctxman/concepts/nested/index.md': '# Nested nav\n' });

@@ -1,5 +1,5 @@
-// DocEditor island (ROUND2_UI_SPEC §F.1): the toolbar (Preview | Edit, Delete on okf sub-doc pages, path, Save /
-// Cancel, status) and a lazy Monaco editor for ONE markdown file, mounted next to the server-rendered
+// DocEditor island (ROUND2_UI_SPEC §F.1): the toolbar (Preview | Edit, Delete on okf sub-doc pages, path, Copy,
+// Save / Cancel, status) and a lazy Monaco editor for ONE markdown file, mounted next to the server-rendered
 // `<article id="cx-doc-preview">`.
 // The island never receives rendered HTML: it only toggles `hidden` (and `data-stale` after a save) on the SSR
 // preview element. Mounted by the okf / skill detail and sub-doc pages with client:only="react".
@@ -8,10 +8,12 @@
 // Unsaved text is mirrored to localStorage by the store and every way out asks first: the Preview toggle, Cancel,
 // Back / Forward and link clicks show the in-app "Discard unsaved changes?" dialog (`requestLeave`, `$docLeave`), and
 // whatever else unloads the page (reload, closing the tab) the browser's prompt (`useUnsavedGuard`).
-// "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker.
+// "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker. Copy (never locked) copies the
+// markdown without its frontmatter: the page's `body` in preview, the editor text (frontmatter stripped) while editing.
 import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { OKF_ENTRY_FILE } from '../../datasets/registry.ts';
+import { stripFrontmatter, trimLeadingBlankLines } from '../../lib/frontmatter-patch.ts';
 import { EDIT_SHORTCUT_EVENT } from '../../lib/shortcuts.ts';
 import {
   $docConflict,
@@ -53,6 +55,7 @@ import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { useViewportFill } from '../edit/useViewportFill.ts';
 import { Button } from '../kit/Button.tsx';
 import { ChipToggle } from '../kit/Chip.tsx';
+import { CopyButton } from '../kit/CopyButton.tsx';
 import { Loading } from '../kit/Loading.tsx';
 import { Notice } from '../kit/Notice.tsx';
 import { ErrorText, Status } from '../kit/Status.tsx';
@@ -70,9 +73,18 @@ export interface DocEditorProps {
   previewId: string;
   /** The server's reading of `?edit=1` (the store reads the URL itself; this only avoids a first-paint flip). */
   initialEdit: boolean;
+  /** The file's markdown body as the page rendered it (frontmatter split off): what Copy copies in preview. */
+  body: string;
 }
 
-export default function DocEditor({ dataset, slug, path, previewId, initialEdit }: DocEditorProps) {
+export default function DocEditor({
+  dataset,
+  slug,
+  path,
+  previewId,
+  initialEdit,
+  body,
+}: DocEditorProps) {
   const edit = useStore($docEdit);
   const load = useStore($docLoad);
   const draft = useStore($docDraft);
@@ -155,6 +167,10 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
     requestLeave({ kind: 'preview' });
   }
 
+  // Read at press time: the editor text while it is loaded, else the file as the page rendered it.
+  const copyText = () =>
+    edit && load.status === 'ready' ? stripFrontmatter(draft) : trimLeadingBlankLines(body);
+
   return (
     <>
       <Toolbar className="cx-doctools" aria-label="Document" data-testid="doc-tools">
@@ -173,6 +189,7 @@ export default function DocEditor({ dataset, slug, path, previewId, initialEdit 
           <DeleteDocButton target={{ dataset, slug, path }} locked={edit} />
         )}
         <code className="cx-doctools__path">{path}</code>
+        <CopyButton text={copyText} aria-label="Copy markdown" data-testid="doc-copy" />
         <span className="cx-doctools__spacer" />
         {edit && (
           <Button

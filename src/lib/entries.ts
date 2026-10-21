@@ -137,6 +137,8 @@ export type EntryDetail = {
   | {
       kind: 'okf';
       data: OkfEntry;
+      /** The markdown body as read (frontmatter split off, LF): what the doc toolbar's Copy copies in preview. */
+      body: string;
       html: string;
       /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
       toc: TocEntry[];
@@ -148,6 +150,8 @@ export type EntryDetail = {
   | {
       kind: 'skill';
       data: SkillData;
+      /** The markdown body as read (frontmatter split off, LF). */
+      body: string;
       html: string;
       /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
       toc: TocEntry[];
@@ -191,6 +195,8 @@ export interface DocDetail {
   relPath: string;
   data: DocFrontmatter;
   title: string;
+  /** The markdown body as read (frontmatter split off, LF): what the doc toolbar's Copy copies in preview. */
+  body: string;
   html: string;
   /** The headings nav of the page (src/lib/doc-toc.ts; [] = none). */
   toc: TocEntry[];
@@ -624,6 +630,7 @@ export async function getEntryDetail(
       summary: summaryOf(indexed, nowMs),
       backRefs: backRefs(await safeContexts(dataDir), dataset, slug),
       fileRelPath,
+      body: indexed.body,
       html,
       toc: tocEntries(rendered.headings),
       files: await listBundleFiles(indexed.dataset, slug, dataDir),
@@ -735,6 +742,7 @@ export async function getDocDetail(
     relPath,
     data: disk.data,
     title,
+    body: disk.body,
     html: rewriteRenderedHtml(rendered.html, {
       dataset,
       slug,
