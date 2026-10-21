@@ -750,6 +750,91 @@ describe('saveDoc', () => {
   });
 });
 
+describe('saveDoc stamps modified (okf files)', () => {
+  const FM = '---\ntype: Guide\n---\n# T\n';
+  const T1 = new Date(Date.UTC(2026, 9, 20, 14, 3, 12));
+  const T2 = new Date(Date.UTC(2026, 9, 20, 14, 5, 0));
+
+  it('sets the frontmatter modified to the save time, in the editor text, the PUT and the baseline', async () => {
+    const calls = await openEditor(FM, 'T1');
+    s.setDocDraft(`${FM}\nMore.\n`);
+    await s.saveDoc({ now: T1 });
+    const stamped = '---\ntype: Guide\nmodified: "2026-10-20T14:03:12Z"\n---\n# T\n\nMore.\n';
+    expect(calls.filter((c) => c.method === 'PUT')[0]?.body).toEqual({
+      markdown: stamped,
+      ifUnmodifiedSince: 'T1',
+    });
+    expect(s.$docDraft.get()).toBe(stamped);
+    expect(s.$docBaseline.get()?.text).toBe(stamped);
+    expect(s.$docSave.get().kind).toBe('saved');
+  });
+
+  it('stamps with the current time by default', async () => {
+    const calls = await openEditor(FM, 'T1');
+    s.setDocDraft(`${FM}x\n`);
+    await s.saveDoc();
+    const body = calls.find((c) => c.method === 'PUT')?.body;
+    expect(String(body?.markdown)).toMatch(
+      /^---\ntype: Guide\nmodified: "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"\n---\n/,
+    );
+  });
+
+  it('a 409 keeps the stamped draft (and its backup); Overwrite stamps again with the new time', async () => {
+    let conflicts = 1;
+    const calls = disk({ markdown: FM, lastModified: 'T1' }, (call) =>
+      conflicts-- > 0 && call.body?.ifUnmodifiedSince !== undefined
+        ? { status: 409, body: { error: 'conflict', message: 'x', lastModified: 'T9' } }
+        : { body: { lastModified: 'T10', warnings: [] } },
+    );
+    s.initDoc({ ...TARGET });
+    s.enterEdit();
+    await settle();
+    s.setDocDraft(`${FM}mine\n`);
+    await s.saveDoc({ now: T1 });
+    expect(s.$docConflict.get()).toBe(true);
+    const first = '---\ntype: Guide\nmodified: "2026-10-20T14:03:12Z"\n---\n# T\nmine\n';
+    expect(s.$docDraft.get()).toBe(first);
+    expect(JSON.parse(sessionData.get(`ctxman:draft:${KEY}`) ?? '{}').text).toBe(first);
+    expect(s.$docDirty.get()).toBe(true);
+
+    await s.saveDoc({ force: true, now: T2 });
+    const puts = calls.filter((c) => c.method === 'PUT');
+    expect(puts[1]?.body).toEqual({
+      markdown: '---\ntype: Guide\nmodified: "2026-10-20T14:05:00Z"\n---\n# T\nmine\n',
+    });
+    expect(s.$docSave.get().kind).toBe('saved');
+  });
+
+  it('leaves text without frontmatter (nested index.md, log.md) and SKILL.md alone', async () => {
+    const calls = await openEditor('# Log\n', 'T1');
+    s.setDocDraft('# Log\n\n## 2026-10-20\n');
+    await s.saveDoc({ now: T1 });
+    expect(calls.find((c) => c.method === 'PUT')?.body?.markdown).toBe('# Log\n\n## 2026-10-20\n');
+
+    vi.resetModules();
+    s = await import('../../src/stores/doc-editor.ts');
+    const skill = disk({
+      markdown: '---\nname: demo\ndescription: d\n---\n# S\n',
+      lastModified: 'T1',
+    });
+    s.initDoc({ dataset: 'skill', slug: 'demo', path: 'SKILL.md' });
+    s.enterEdit();
+    await settle();
+    s.setDocDraft('---\nname: demo\ndescription: d\n---\n# S\nmore\n');
+    await s.saveDoc({ now: T1 });
+    expect(skill.find((c) => c.method === 'PUT')?.body?.markdown).toBe(
+      '---\nname: demo\ndescription: d\n---\n# S\nmore\n',
+    );
+  });
+
+  it('a clean draft is still not saved (nothing to stamp)', async () => {
+    const calls = await openEditor(FM, 'T1');
+    await s.saveDoc({ now: T1 });
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([]);
+    expect(s.$docDraft.get()).toBe(FM);
+  });
+});
+
 /** Saves 'x' over 'base' and returns, as `vi.resetModules()` + import would: a fresh page (module instance). */
 async function saveThenFreshPage(warnings: unknown[] = []): Promise<Store> {
   disk({ markdown: 'base', lastModified: 'T1' }, () => ({

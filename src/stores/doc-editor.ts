@@ -12,7 +12,8 @@
 // `$docEdit` is only the URL flag: other pages use `?edit=1` too (the reference DataForm has no DocEditor), so
 // whatever must know that a DocEditor is really open (EntryTools' lock, the post-write reload) reads `$docEditing`.
 //
-// Save model: explicit Save (PUT /api/doc with `ifUnmodifiedSince`), a 409 opens the ConflictDialog, a 200
+// Save model: explicit Save (PUT /api/doc with `ifUnmodifiedSince`; an okf file's frontmatter `modified` is stamped
+// with the save time first, in the editor text too), a 409 opens the ConflictDialog, a 200
 // switches back to the preview, dims it and reloads the page ~150 ms later (RELOAD_AFTER_SAVE_MS): the server
 // renders the file from disk on every request, so the reloaded page is current and no watcher is involved.
 // Unsaved text is mirrored to localStorage (draft-backup.ts, 14 days) on every change, so a reload caused by
@@ -23,6 +24,7 @@
 // that a draft exists ("Resume editing").
 import { atom, computed, onMount } from 'nanostores';
 import type { OkfDatasetId } from '../datasets/registry.ts';
+import { stampModified } from '../lib/frontmatter-patch.ts';
 import { plural } from '../lib/text.ts';
 import { parseEditUrl, withParams } from '../lib/url-state.ts';
 import { getJson, sendJson } from '../ui/edit/api.ts';
@@ -397,15 +399,19 @@ interface DocPutBody {
 
 /**
  * PUT the draft. `force` omits `ifUnmodifiedSince` (the ConflictDialog's "Overwrite"). A clean draft is not
- * saved (Cmd/Ctrl+S on unchanged text does nothing), except when forced.
+ * saved (Cmd/Ctrl+S on unchanged text does nothing), except when forced. An okf file is stamped first: its
+ * frontmatter `modified` becomes the UTC time of this save (`stampModified`), in the editor too (the draft is the
+ * stamped text, so a 409 keeps it and Overwrite stamps again). SKILL.md is never stamped (its frontmatter is strict).
  */
-export async function saveDoc(opts: { force?: boolean } = {}): Promise<void> {
+export async function saveDoc(opts: { force?: boolean; now?: Date } = {}): Promise<void> {
   const target = $docTarget.get();
   const baseline = $docBaseline.get();
   if (target === null || baseline === null || $docSave.get().kind === 'saving') return;
   const force = opts.force === true;
   if (!force && !$docDirty.get()) return;
-  const text = $docDraft.get();
+  const draft = $docDraft.get();
+  const text = target.dataset === 'skill' ? draft : stampModified(draft, opts.now ?? new Date());
+  if (text !== draft) setDocDraft(text);
   $docConflict.set(false);
   $docSave.set({ kind: 'saving' });
   const res = await sendJson<DocPutBody>('PUT', docUrl(target), {

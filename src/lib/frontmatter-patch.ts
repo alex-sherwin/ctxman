@@ -2,7 +2,8 @@
 // Only the given keys are touched; every other byte of the file (comments, folded scalars, flow sequences,
 // timestamps, unknown keys, the body) is returned exactly as it was. The frontmatter is NEVER re-serialized as a
 // whole: `Document.toString()` re-flows folded scalars, re-pads flow sequences and rewrites timestamps, so the
-// parse below is only used to find ranges. Spec: plans/ROUND3_SPEC.md §B.4 (A7).
+// parse below is only used to find ranges. Spec: plans/ROUND3_SPEC.md §B.4 (A7). Also the DocEditor's save stamp
+// (`stampModified`) and copy text (`stripFrontmatter`), both browser-safe.
 import { Document, isMap, isScalar, isSeq, parseDocument } from 'yaml';
 import type { Pair } from 'yaml';
 
@@ -145,6 +146,44 @@ export function patchFrontmatter(source: string, changes: FrontmatterChanges): P
     source: source.slice(0, region.start) + block + source.slice(region.end),
     changed: true,
   };
+}
+
+// ---------------------------------------------------------------- in-browser save stamp, copy text
+
+/** `now` in UTC to the second, ISO 8601 with a `Z`: `2026-10-20T14:03:12Z`. */
+export function modifiedStamp(now: Date): string {
+  return `${now.toISOString().slice(0, 19)}Z`;
+}
+
+/**
+ * `source` with the top-level `modified` key of its frontmatter set to `modifiedStamp(now)`, written QUOTED
+ * (`modified: "2026-10-20T14:03:12Z"`; unquoted, the reader's timestamp tag would turn it into a Date). An existing
+ * `modified` is replaced in place (its trailing comment goes with it), else the line is appended at the end of the
+ * frontmatter; every other byte stays (`patchFrontmatter`), CRLF included. Text without a frontmatter block, or whose
+ * frontmatter does not parse as a mapping (bad YAML, a duplicate key, a list), is returned unchanged; an empty block
+ * gets the key. The DocEditor applies it to okf files on every Save (src/stores/doc-editor.ts).
+ */
+export function stampModified(source: string, now: Date): string {
+  const result = patchFrontmatter(source, { modified: modifiedStamp(now) });
+  return result.ok ? result.source : source;
+}
+
+/** `text` without the blank (or whitespace-only) lines it starts with. */
+export function trimLeadingBlankLines(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, '');
+}
+
+/**
+ * The markdown of a file without its frontmatter: a BOM, the frontmatter block (the same test as `patchFrontmatter`
+ * and `okf.splitFrontmatter`: a leading `---` line up to the next `---` line) and the blank lines after it are
+ * dropped; line endings stay as they are. Text without a closed frontmatter block loses only a BOM and its leading
+ * blank lines. What the doc toolbar's Copy button copies while editing (src/ui/markdown/DocEditor.tsx).
+ */
+export function stripFrontmatter(source: string): string {
+  const region = locateFrontmatter(source);
+  if (region === null) return trimLeadingBlankLines(source.replace(/^\uFEFF/, ''));
+  const nl = source.indexOf('\n', region.end);
+  return nl === -1 ? '' : trimLeadingBlankLines(source.slice(nl + 1));
 }
 
 interface FrontmatterRegion {

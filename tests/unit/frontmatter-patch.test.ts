@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { patchFrontmatter } from '../../src/lib/frontmatter-patch.ts';
+import {
+  modifiedStamp,
+  patchFrontmatter,
+  stampModified,
+  stripFrontmatter,
+  trimLeadingBlankLines,
+} from '../../src/lib/frontmatter-patch.ts';
 import { parseFrontmatter } from '../../src/lib/okf.ts';
 
 const BODY = '\n# Title\n\nBody text with `code` and a [link](/x.md).\n';
@@ -326,5 +332,106 @@ describe('patchFrontmatter: line endings, BOM and failures', () => {
       stale_after: '2027-01-01',
     });
     expect(twice).toEqual({ ok: true, source: once, changed: false });
+  });
+});
+
+describe('stampModified', () => {
+  const NOW = new Date(Date.UTC(2026, 9, 20, 14, 3, 12, 987));
+  const LINE = 'modified: "2026-10-20T14:03:12Z"';
+
+  it('formats UTC to the second with a Z', () => {
+    expect(modifiedStamp(NOW)).toBe('2026-10-20T14:03:12Z');
+    expect(modifiedStamp(new Date('2026-01-02T03:04:05.000+02:00'))).toBe('2026-01-02T01:04:05Z');
+  });
+
+  it('appends the quoted key at the end of the frontmatter, every other byte unchanged', () => {
+    const source = '---\ntype: Guide\ntags: [a,  b]   # keep\n---\n\n# Title\n';
+    expect(stampModified(source, NOW)).toBe(
+      `---\ntype: Guide\ntags: [a,  b]   # keep\n${LINE}\n---\n\n# Title\n`,
+    );
+  });
+
+  it('keeps blank lines before the closing line below the new key', () => {
+    expect(stampModified('---\ntype: Guide\n\n---\nBody\n', NOW)).toBe(
+      `---\ntype: Guide\n${LINE}\n\n---\nBody\n`,
+    );
+  });
+
+  it('replaces an existing modified in place (quoted, unquoted or a block value)', () => {
+    const before = '---\ntype: Guide\nmodified: "2020-01-01T00:00:00Z"\nname: x\n---\nBody\n';
+    expect(stampModified(before, NOW)).toBe(`---\ntype: Guide\n${LINE}\nname: x\n---\nBody\n`);
+    const plain = '---\nmodified: 2020-01-01T00:00:00Z # old\ntype: Guide\n---\n';
+    expect(stampModified(plain, NOW)).toBe(`---\n${LINE}\ntype: Guide\n---\n`);
+    const block = '---\nmodified:\n  - a\n  - b\ntype: Guide\n---\n';
+    expect(stampModified(block, NOW)).toBe(`---\n${LINE}\ntype: Guide\n---\n`);
+  });
+
+  it('is idempotent for the same time and moves forward with a later one', () => {
+    const once = stampModified('---\ntype: Guide\n---\n', NOW);
+    expect(stampModified(once, NOW)).toBe(once);
+    expect(stampModified(once, new Date(NOW.getTime() + 61_000))).toBe(
+      '---\ntype: Guide\nmodified: "2026-10-20T14:04:13Z"\n---\n',
+    );
+  });
+
+  it('reads back as the string that was written (not a Date)', () => {
+    const parsed = parseFrontmatter(stampModified('---\ntype: Guide\n---\n# T\n', NOW));
+    expect(parsed.ok && parsed.doc.data.modified).toBe('2026-10-20T14:03:12Z');
+  });
+
+  it('keeps CRLF line endings and a BOM', () => {
+    const source = '\uFEFF---\r\ntype: Guide\r\n---\r\n# T\r\n';
+    expect(stampModified(source, NOW)).toBe(
+      `\uFEFF---\r\ntype: Guide\r\n${LINE}\r\n---\r\n# T\r\n`,
+    );
+  });
+
+  it('gives an empty frontmatter block the key', () => {
+    expect(stampModified('---\n---\n# T\n', NOW)).toBe(`---\n${LINE}\n---\n# T\n`);
+  });
+
+  it('returns text without frontmatter, or with frontmatter that is not a usable mapping, unchanged', () => {
+    for (const source of [
+      '# No frontmatter\n',
+      '',
+      '---\ntype: Guide\n# never closed\n',
+      '---\n- a\n- b\n---\n# list\n',
+      '---\ntype: [unclosed\n---\n',
+      '---\ntype: A\ntype: B\n---\n',
+      'Text first\n---\ntype: Guide\n---\n',
+    ]) {
+      expect(stampModified(source, NOW)).toBe(source);
+    }
+  });
+});
+
+describe('stripFrontmatter / trimLeadingBlankLines', () => {
+  it('drops the frontmatter block and the blank lines after it', () => {
+    expect(stripFrontmatter('---\ntype: Guide\nname: x\n---\n\n# Title\n\nText.\n')).toBe(
+      '# Title\n\nText.\n',
+    );
+    expect(stripFrontmatter('---\ntype: Guide\n---\n# Title\n')).toBe('# Title\n');
+  });
+
+  it('keeps a thematic break and later --- lines of the body', () => {
+    expect(stripFrontmatter('---\na: 1\n---\nA\n\n---\n\nB\n')).toBe('A\n\n---\n\nB\n');
+  });
+
+  it('keeps CRLF, drops a BOM; a frontmatter-only file copies as empty text', () => {
+    expect(stripFrontmatter('\uFEFF---\r\na: 1\r\n---\r\n\r\n# T\r\n')).toBe('# T\r\n');
+    expect(stripFrontmatter('---\na: 1\n---')).toBe('');
+    expect(stripFrontmatter('---\na: 1\n---\n')).toBe('');
+  });
+
+  it('text without a closed frontmatter block loses only a BOM and its leading blank lines', () => {
+    expect(stripFrontmatter('\n\n# Log\n\n## 2026-10-20\n')).toBe('# Log\n\n## 2026-10-20\n');
+    expect(stripFrontmatter('\uFEFF# T\n')).toBe('# T\n');
+    expect(stripFrontmatter('---\nnot closed\n')).toBe('---\nnot closed\n');
+    expect(stripFrontmatter('')).toBe('');
+  });
+
+  it('trimLeadingBlankLines removes whitespace-only lines only', () => {
+    expect(trimLeadingBlankLines(' \t\n\r\n  indented\n')).toBe('  indented\n');
+    expect(trimLeadingBlankLines('x\n\n')).toBe('x\n\n');
   });
 });
