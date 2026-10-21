@@ -1,5 +1,6 @@
 /* EntryTools island (src/ui/entry): the status line and the dialogs of the detail-page tools (Edit details, relation
-   picker extras, Add to context, Build context, Add file). Imported by src/styles/global.css. */
+   picker extras, Add to context, Build context, Add file) and the Clone… dialog of the detail menu (src/ui/menus).
+   Imported by src/styles/global.css. */
 @layer cx-app {
   /* ---------- status line (header actions) ---------- */
   .cx-entry__status {
@@ -79,5 +80,41 @@
     margin: 0;
     font-size: var(--fs-sm);
     color: var(--fg-muted);
+  }
+
+  /* ---------- Clone… (detail menu, src/ui/menus/CloneEntryDialog.tsx; Modal size="large") ---------- */
+  .cx-clone__lede {
+    margin: 0;
+    color: var(--fg-muted);
+  }
+  /* two fields side by side (Name | State, Tags | Issue key); one column when the dialog is narrow */
+  .cx-clone__row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--sp-4);
+    align-items: start;
+  }
+  .cx-clone__tags {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 0;
+  }
+  .cx-clone__copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .cx-clone__legend {
+    padding: 0;
+    margin-bottom: var(--sp-2);
+  }
+  .cx-clone__note {
+    margin: 0;
+    font-size: var(--fs-sm);
   }
 }
