@@ -30,6 +30,7 @@ import { DataDirError, resolveDataDir, resolveServerOrigin } from '../data-dir.t
 import { appendLog, DocIoError } from '../doc-io.ts';
 import { filterEntries } from '../entry-filter.ts';
 import { getEntryIndex, invalidateEntryIndex } from '../entry-index.ts';
+import { cloneEntry } from '../entry-clone.ts';
 import { EntryCreateError, writePlannedEntry } from '../entry-create.ts';
 import { EntryIoError, createEntry, patchEntry, toJsonSafe } from '../entry-io.ts';
 import {
@@ -1058,6 +1059,59 @@ const createEntryTool = defineTool({
   },
 });
 
+const cloneEntryTool = defineTool({
+  name: 'clone-entry',
+  title: 'Clone okf entry',
+  description:
+    "WRITES. Copy a whole okf bundle (kb, rca, idea, task, bug, feature, project: index.md, log.md and every file and folder) into a NEW entry of the same dataset; never overwrites. The copy's index.md gets the given name, description, title (blank = the name in sentence case), state (default: the dataset's first state), tags and issueKey (omitted = none; read the original with get-entry to keep its tags); everything else stays byte for byte. links (default true) keeps its related / depends-on relations, children (default false) its child links, time (default false; task, feature, bug, rca) its logged time and resolved date. Links TO the original are not copied: the clone is not a child of the original's project. A log.md of the clone gets a dated 'Cloned from' line. Symlinks are not copied (warnings).",
+  readOnly: false,
+  input: type({
+    '+': 'reject',
+    dataset: okfDatasetType,
+    slug: nameType.describe('The entry to clone.'),
+    name: nameType.describe('Slug of the new entry; becomes its directory name.'),
+    description: type('string >= 1').describe('One-line description of the new entry.'),
+    'title?': type('string').describe('Display title; blank = the name in sentence case.'),
+    'state?': type('string').describe(
+      'Lifecycle datasets only; default is the first state (not the original state).',
+    ),
+    'tags?': type('string').array(),
+    'issueKey?': type('string').describe(
+      'The issue tracker key of the new entry (one word); omitted = none (an issue belongs to one entry).',
+    ),
+    'links?': type('boolean').describe('Copy the related / depends-on links (default true).'),
+    'children?': type('boolean').describe('Copy the child links of a project (default false).'),
+    'time?': type('boolean').describe(
+      'task, feature, bug, rca: copy the logged time and resolved date (default false).',
+    ),
+  }),
+  async handler(args, ctx) {
+    const { dataset, slug, ...body } = args;
+    const cloned = await cloneEntry(dataset, slug, body, {
+      dataDir: ctx.dataDir,
+      now: new Date(ctx.nowMs),
+    });
+    const detail = await getEntryDetail(cloned.dataset, cloned.slug, ctx.nowMs, ctx.dataDir);
+    const lines = [
+      `Cloned \`${keyOf(dataset, slug)}\` as \`${keyOf(cloned.dataset, cloned.slug)}\` (${cloned.path}, ${cloned.files.length} file(s)).`,
+      `Page: ${ctx.serverOrigin}${cloned.url}`,
+      ...(cloned.warnings.length > 0
+        ? ['Warnings:', ...cloned.warnings.map((w) => `- ${w.rule}: ${w.message}`)]
+        : []),
+    ];
+    return ok(lines.join('\n'), {
+      dataset: cloned.dataset,
+      slug: cloned.slug,
+      path: cloned.path,
+      url: `${ctx.serverOrigin}${cloned.url}`,
+      resource: entryUri(cloned.dataset, cloned.slug),
+      files: cloned.files,
+      warnings: cloned.warnings,
+      ...(detail === null ? {} : { summary: compactSummary(detail.summary) }),
+    });
+  },
+});
+
 const patchEntryTool = defineTool({
   name: 'patch-entry',
   title: 'Patch entry frontmatter',
@@ -1202,6 +1256,7 @@ export const TOOLS: readonly ToolDef[] = [
   renderRecipeTool,
   checkDataTool,
   createEntryTool,
+  cloneEntryTool,
   patchEntryTool,
   appendContextLinksTool,
   appendLogTool,

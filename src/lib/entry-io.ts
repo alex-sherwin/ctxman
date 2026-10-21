@@ -176,7 +176,7 @@ function parseEntryFrontmatter(source: string, located: LocatedEntry): Record<st
 }
 
 /** Schema problems of parsed frontmatter, plus `name` must equal the directory name. */
-function schemaIssues(
+export function schemaIssues(
   dataset: EntryDatasetId,
   slug: string,
   data: Record<string, unknown>,
@@ -260,7 +260,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** Validates `tags` input: normalized, pattern-checked, deduplicated (order kept). Pushes issues under `key`. */
-function parseTags(value: unknown, key: string, issues: Issue[]): string[] | undefined {
+export function parseTags(value: unknown, key: string, issues: Issue[]): string[] | undefined {
   if (!Array.isArray(value)) {
     issues.push({ path: key, message: 'must be an array of strings' });
     return undefined;
