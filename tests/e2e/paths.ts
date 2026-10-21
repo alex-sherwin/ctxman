@@ -19,6 +19,8 @@ export interface WorkerPaths {
   ideDir: string;
   ideCommand: string;
   ideRecord: string;
+  /** The worker's fake agent home (CTXMAN_AGENT_HOME), built by server.ts with buildAgentHome. */
+  agentHome: string;
   log: string;
 }
 
@@ -31,6 +33,7 @@ export function workerPaths(index: number): WorkerPaths {
     ideDir,
     ideCommand: path.join(ideDir, 'fake-code'),
     ideRecord: path.join(ideDir, 'calls.jsonl'),
+    agentHome: path.join(root, 'agent-home'),
     log: path.join(root, 'server.log'),
   };
 }
@@ -42,6 +45,8 @@ export const E2E_DATA_DIR = current.data;
 export const E2E_IDE_COMMAND = current.ideCommand;
 /** JSON-lines file: one `process.argv.slice(2)` array per fake-code run (CTXMAN_IDE_RECORD). */
 export const E2E_IDE_RECORD = current.ideRecord;
+/** The current worker's fake agent home (what its server lists in the session / plan import dialogs). */
+export const E2E_AGENT_HOME = current.agentHome;
 
 /** Inflate fixtures, shared and read-only (globalSetup creates them once). See plans/INFLATE_V2_SPEC.md §14.2. */
 export const E2E_GIT_DIR = path.join(E2E_ROOT, 'git');

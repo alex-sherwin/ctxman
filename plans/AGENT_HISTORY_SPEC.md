@@ -100,6 +100,7 @@ type: agent-session
 title: Fix the login redirect
 description: Claude Code session in ~/repos/app, 2026-10-21, 12 prompts
 tags: [agent-session, claude-code]
+index: false
 agent: claude-code
 source: claude-code
 session_id: 6b97321c-…
@@ -132,7 +133,8 @@ imported: "2026-10-21T19:00:00Z"
 - `Read` src/lib/auth.ts
 ```
 
-Rules: optional keys left out when unknown; date-times quoted (yaml `stringify` of strings does that only when
+Rules: `index: false` is always written (owner decision 2026-10-21: imported session and plan text never enters the
+search index, widget or MCP `search`; the file still shows in the Files panel, `## Links` and Inflate); optional keys left out when unknown; date-times quoted (yaml `stringify` of strings does that only when
 needed: quote them yourself or keep them strings that never parse as timestamps); `## Prompt N · <UTC time>` per user
 message and `### Response` per assistant turn (thinking, when on, as a `> **Thinking:** …` blockquote); headings inside
 message text shifted down by 3 levels (cap 6; ATX only, never inside fenced code). **Make imported text inert**:
@@ -146,7 +148,7 @@ closing note; `truncated` reports either. `defaultPath` = `sessions/<YYYY-MM-DD 
 of title, max 48>.md`.
 
 Plan file: frontmatter `type: plan`, `title`, `description` (`<Agent> plan, <YYYY-MM-DD>` + `, <thread>` when known),
-`tags: [plan, <agent>]`, `agent`, `source`, `plan_id`, `cwd?`, `thread?`, `source_path`, `imported`; body = the plan
+`tags: [plan, <agent>]`, `index: false`, `agent`, `source`, `plan_id`, `cwd?`, `thread?`, `source_path`, `imported`; body = the plan
 text with its own frontmatter (if any) removed, `# <title>` added when the text has no H1, then the same inert-HTML
 and link-neutralizing passes (headings NOT shifted). `defaultPath` = `plans/<slug of title, max 64>.md`.
 

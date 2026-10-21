@@ -619,21 +619,16 @@ async function updateExistingFile(
 }
 
 /**
- * Creates the NEW concept file `rawPath` in an okf bundle (never overwrites) and lists it in the bundle's root
- * `index.md` (`## Links`) and `log.md` (today, UTC) when those files exist. `body` is untrusted JSON:
- * `{ title, type?, description? }` (`type` defaults to `article`, OKF_DEFAULT_FILE_TYPE). The folders in the path are created inside the
- * bundle (symlinks are followed only while they stay inside it). Throws DocIoError: `bad-dataset` (not an okf
- * dataset), `bad-slug`, `bad-path` (not a concept path: the root index.md (the entry), nested index.md and log.md are reserved),
- * `invalid` (body), `not-found` (no such entry), `exists`.
+ * The address checks of a new concept (no fs): `bad-dataset` (not an okf dataset), `bad-slug`, `bad-path` (not a
+ * relative `.md` path inside the entry, or a reserved one: the root index.md (the entry), nested index.md, log.md).
+ * Callers that do expensive work before `createDocFile` run it first to fail fast.
  */
-export async function createDoc(
+export function checkNewDocTarget(
   dataset: string,
   slug: string,
   rawPath: string | undefined,
-  body: unknown,
   dataDir: string = resolveDataDir(),
-  now: Date = new Date(),
-): Promise<DocCreated> {
+): { dataset: OkfDatasetId; slug: string; path: string; abs: string } {
   if (!isOkfDatasetId(dataset)) {
     throw new DocIoError(
       'bad-dataset',
@@ -647,15 +642,42 @@ export async function createDoc(
       `"${target.path}" is reserved; a new file is any other .md path (e.g. references/my-topic.md)`,
     );
   }
-  const input = parseCreateBody(body);
+  return { dataset, slug: target.slug, path: target.path, abs: target.abs };
+}
 
-  const root = path.join(datasetDir(dataset, dataDir), slug);
+/** What `createDocFile` writes: the whole file, plus the title / description its index.md and log.md lines use. */
+export interface NewDocFile {
+  title: string;
+  description?: string;
+  /** The complete file content (frontmatter and body), written byte for byte. */
+  markdown: string;
+}
+
+/**
+ * Creates the NEW file `rawPath` in an okf bundle with the given content (never overwrites) and lists it in the
+ * bundle's root `index.md` (`## Links`) and `log.md` (today, UTC) when those files exist. The folders in the path are
+ * created inside the bundle (symlinks are followed only while they stay inside it). Throws DocIoError: `bad-dataset`,
+ * `bad-slug`, `bad-path` (see checkNewDocTarget), `not-found` (no such entry), `exists`. The writer of generated
+ * files (the agent history import); `createDoc` is the same with a template file.
+ */
+export async function createDocFile(
+  dataset: string,
+  slug: string,
+  rawPath: string | undefined,
+  file: NewDocFile,
+  dataDir: string = resolveDataDir(),
+  now: Date = new Date(),
+): Promise<DocCreated> {
+  const target = checkNewDocTarget(dataset, slug, rawPath, dataDir);
+  const okfDataset = target.dataset;
+
+  const root = path.join(datasetDir(okfDataset, dataDir), slug);
   let realRoot: string;
   try {
     realRoot = await realpath(root);
     if (!(await stat(realRoot)).isDirectory()) throw new Error('not a directory');
   } catch {
-    throw new DocIoError('not-found', `${dataset} entry "${slug}" does not exist`);
+    throw new DocIoError('not-found', `${okfDataset} entry "${slug}" does not exist`);
   }
 
   const created = await withFileLock(target.abs, async () => {
@@ -665,21 +687,18 @@ export async function createDoc(
       throw error;
     });
     if (existing !== null) {
-      throw new DocIoError('exists', `${target.path} already exists in ${dataset}/${slug}`);
+      throw new DocIoError('exists', `${target.path} already exists in ${okfDataset}/${slug}`);
     }
-    const frontmatter: Record<string, string> = { type: input.type, title: input.title };
-    if (input.description !== undefined) frontmatter.description = input.description;
-    const markdown = `---\n${stringifyYaml(frontmatter)}---\n\n# ${input.title}\n`;
     await mkdir(path.dirname(target.abs), { recursive: true });
-    await writeFileAtomic(target.abs, markdown);
-    return { markdown, lastModified: (await stat(target.abs)).mtime.toISOString() };
+    await writeFileAtomic(target.abs, file.markdown);
+    return { lastModified: (await stat(target.abs)).mtime.toISOString() };
   });
 
-  const warnings = validateDoc(dataset, slug, target.path, created.markdown, dataDir);
+  const warnings = validateDoc(okfDataset, slug, target.path, file.markdown, dataDir);
   const concept = {
-    title: input.title,
+    title: file.title,
     path: target.path,
-    ...(input.description === undefined ? {} : { description: input.description }),
+    ...(file.description === undefined ? {} : { description: file.description }),
   };
   const bookkeeping: [string, (source: string) => string][] = [
     ['index.md', (source) => addConceptToIndex(source, concept)],
@@ -692,7 +711,7 @@ export async function createDoc(
       warnings.push({
         severity: 'warning',
         rule: 'doc/bookkeeping-failed',
-        file: `${dataset}/${slug}/${name}`,
+        file: `${okfDataset}/${slug}/${name}`,
         message: `could not list the new concept in ${name}: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
@@ -700,13 +719,48 @@ export async function createDoc(
   invalidateEntryIndex(dataDir);
 
   return {
-    dataset,
+    dataset: okfDataset,
     slug,
     path: target.path,
-    url: docUrl(dataset, slug, target.path),
+    url: docUrl(okfDataset, slug, target.path),
     lastModified: created.lastModified,
     warnings,
   };
+}
+
+/**
+ * Creates the NEW concept file `rawPath` in an okf bundle (never overwrites) and lists it in the bundle's root
+ * `index.md` (`## Links`) and `log.md` (today, UTC) when those files exist. `body` is untrusted JSON:
+ * `{ title, type?, description? }` (`type` defaults to `article`, OKF_DEFAULT_FILE_TYPE). The folders in the path are created inside the
+ * bundle (symlinks are followed only while they stay inside it). Throws DocIoError: `bad-dataset` (not an okf
+ * dataset), `bad-slug`, `bad-path` (not a concept path: the root index.md (the entry), nested index.md and log.md are reserved),
+ * `invalid` (body), `not-found` (no such entry), `exists`. A template file over `createDocFile`.
+ */
+export async function createDoc(
+  dataset: string,
+  slug: string,
+  rawPath: string | undefined,
+  body: unknown,
+  dataDir: string = resolveDataDir(),
+  now: Date = new Date(),
+): Promise<DocCreated> {
+  checkNewDocTarget(dataset, slug, rawPath, dataDir);
+  const input = parseCreateBody(body);
+  const frontmatter: Record<string, string> = { type: input.type, title: input.title };
+  if (input.description !== undefined) frontmatter.description = input.description;
+  const markdown = `---\n${stringifyYaml(frontmatter)}---\n\n# ${input.title}\n`;
+  return createDocFile(
+    dataset,
+    slug,
+    rawPath,
+    {
+      title: input.title,
+      markdown,
+      ...(input.description === undefined ? {} : { description: input.description }),
+    },
+    dataDir,
+    now,
+  );
 }
 
 // ---------------------------------------------------------------- delete one file (DELETE)

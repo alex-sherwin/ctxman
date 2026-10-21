@@ -1,6 +1,7 @@
 // SERVER: JSON responses and request guards shared by every API route (PLAN §E.19, §G).
 // Every response is JSON with `cache-control: no-store`; errors are `{ error, message, issues? }`.
 // No astro:* imports, so it is unit-testable (tests/unit/http.test.ts).
+import { AgentHistoryError } from './agent-history/errors.ts';
 import { ContextIoError } from './context-io.ts';
 import type { Issue } from './context-io.ts';
 import { DocIoError } from './doc-io.ts';
@@ -233,6 +234,27 @@ export function docErrorResponse(error: unknown): Response {
       return apiError(413, 'too-large', error.message);
     case 'not-text':
       return apiError(422, 'not-text', error.message);
+  }
+}
+
+/**
+ * Maps an agent history failure to its API response (concepts/agent-history.md): bad-agent / bad-key / invalid 400,
+ * not-found 404, too-large 413; a DocIoError of the import's write goes through `docErrorResponse` (bad-dataset /
+ * bad-slug / bad-path 400, not-found 404, exists 409); anything else is a 500.
+ */
+export function agentErrorResponse(error: unknown): Response {
+  if (error instanceof DocIoError) return docErrorResponse(error);
+  if (!(error instanceof AgentHistoryError)) return internalError(error);
+  switch (error.code) {
+    case 'bad-agent':
+    case 'bad-key':
+      return apiError(400, error.code, error.message);
+    case 'invalid':
+      return apiError(400, 'invalid', error.message, error.issues);
+    case 'not-found':
+      return apiError(404, 'not-found', error.message);
+    case 'too-large':
+      return apiError(413, 'too-large', error.message);
   }
 }
 

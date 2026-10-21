@@ -18,7 +18,9 @@ import {
   addCreateToLog,
   appendLog,
   appendLogEntry,
+  checkNewDocTarget,
   createDoc,
+  createDocFile,
   deleteDoc,
   DocIoError,
   isDocDatasetId,
@@ -937,6 +939,82 @@ describe('removeConceptFromIndex', () => {
   it('returns the source unchanged when nothing is listed', () => {
     expect(removeConceptFromIndex(index, 'concepts/none.md')).toBe(index);
     expect(removeConceptFromIndex('# No section\n', 'a.md')).toBe('# No section\n');
+  });
+});
+
+describe('createDocFile', () => {
+  const now = new Date('2026-10-18T09:00:00Z');
+
+  it('writes the given content byte for byte with the same bookkeeping as createDoc', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    const markdown =
+      '---\ntype: agent-session\ntitle: S\nindex: false\n---\n\n# S\n\nBody <kept> as given.\n';
+    const created = await createDocFile(
+      'kb',
+      'demo',
+      'sessions/2026/s.md',
+      { title: 'S', description: 'A session.', markdown },
+      dir,
+      now,
+    );
+    expect(created).toMatchObject({
+      path: 'sessions/2026/s.md',
+      url: '/kb/demo/doc/sessions/2026/s',
+      warnings: [],
+    });
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'sessions', '2026', 's.md'), 'utf8')).toBe(
+      markdown,
+    );
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8')).toContain(
+      '* [S](/sessions/2026/s.md) - A session.\n',
+    );
+    expect(readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8')).toContain(
+      '* **Create**: Created [S](/sessions/2026/s.md).',
+    );
+    expect(
+      (
+        await failure(
+          createDocFile(
+            'kb',
+            'demo',
+            'sessions/2026/s.md',
+            { title: 'S', markdown: 'x' },
+            dir,
+            now,
+          ),
+        )
+      ).code,
+    ).toBe('exists');
+  });
+
+  it('answers the validator findings of the content and refuses what createDoc refuses', async () => {
+    const dir = tmp.make(validKbBundle('demo'));
+    const created = await createDocFile(
+      'kb',
+      'demo',
+      'a.md',
+      { title: 'A', markdown: '# no frontmatter, [x](./gone.md)\n' },
+      dir,
+      now,
+    );
+    expect(ruleIds(created.warnings)).toEqual(expect.arrayContaining(['links/broken']));
+    const code = async (dataset: string, slug: string, rel: string): Promise<string> =>
+      (await failure(createDocFile(dataset, slug, rel, { title: 'X', markdown: 'x' }, dir, now)))
+        .code;
+    expect(await code('skill', 'demo', 'a2.md')).toBe('bad-dataset');
+    expect(await code('kb', 'Bad', 'a2.md')).toBe('bad-slug');
+    expect(await code('kb', 'demo', 'index.md')).toBe('bad-path');
+    expect(await code('kb', 'demo', 'sub/log.md')).toBe('bad-path');
+    expect(await code('kb', 'missing', 'a2.md')).toBe('not-found');
+  });
+
+  it('checkNewDocTarget runs the address checks without touching the disk', () => {
+    expect(checkNewDocTarget('kb', 'demo', 'x/y.md', '/nowhere')).toMatchObject({
+      dataset: 'kb',
+      slug: 'demo',
+      path: 'x/y.md',
+    });
+    expect(() => checkNewDocTarget('kb', 'demo', '../y.md', '/nowhere')).toThrow(DocIoError);
   });
 });
 

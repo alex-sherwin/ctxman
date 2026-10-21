@@ -29,6 +29,12 @@ export interface MdLink {
   /** 1-based line of the link's opening `[` (or of the reference definition / autolink). */
   line: number;
   image: boolean;
+  /** inline link or image, reference definition (`[id]: href`), or `<scheme:…>` autolink. */
+  kind: 'inline' | 'definition' | 'autolink';
+  /** Offset of the link's first character (the `!` of an image, the line's first `[` of a definition). */
+  start: number;
+  /** Offset just after the link (after the closing `)`, the definition's href, the autolink's `>`). */
+  end: number;
 }
 
 // ---------------------------------------------------------------- extraction
@@ -138,13 +144,17 @@ export function extractLinks(markdown: string): MdLink[] {
     if (close === -1 || masked[close + 1] !== '(') continue;
     const dest = parseInlineTail(masked, close + 2);
     if (!dest) continue;
+    const image = masked[i - 1] === '!';
     found.push({
       offset: i,
       link: {
         href: markdown.slice(dest.hrefStart, dest.hrefEnd),
         text: markdown.slice(i + 1, close),
         line: lineOf(i),
-        image: masked[i - 1] === '!',
+        image,
+        kind: 'inline',
+        start: image ? i - 1 : i,
+        end: dest.end,
       },
     });
   }
@@ -163,6 +173,9 @@ export function extractLinks(markdown: string): MdLink[] {
         text: markdown.slice(labelStart, labelStart + (m[1] ?? '').length),
         line: lineOf(offset),
         image: false,
+        kind: 'definition',
+        start: labelStart - 1,
+        end: offset + m[0].length,
       },
     });
   }
@@ -172,7 +185,15 @@ export function extractLinks(markdown: string): MdLink[] {
     const offset = m.index ?? 0;
     found.push({
       offset,
-      link: { href: m[1] ?? '', text: m[1] ?? '', line: lineOf(offset), image: false },
+      link: {
+        href: m[1] ?? '',
+        text: m[1] ?? '',
+        line: lineOf(offset),
+        image: false,
+        kind: 'autolink',
+        start: offset,
+        end: offset + m[0].length,
+      },
     });
   }
 

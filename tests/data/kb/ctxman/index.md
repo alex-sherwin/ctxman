@@ -66,6 +66,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [Keyboard shortcuts](/concepts/keyboard-shortcuts.md) - `?` help, `c` new entry, `l` add a link, `i` open in the IDE, `e` edit, and the editor and search keys.
 * [Editing](/concepts/editing.md) - editing in the browser: the Save model, drafts, markdown editor with link completion, Details dialog and forms, Open in IDE, JSON Schemas.
 * [Jira markup](/concepts/jira-markup.md) - Copy as JIRA Markup: markdown to Jira wiki markup, the mapping and the escaping policy.
+* [Agent history import](/concepts/agent-history.md) - + Session / + Plan: import Claude Code, Codex and GitHub Copilot sessions and plans into a bundle.
 
 ## Quick facts
 
@@ -96,6 +97,7 @@ The tool at `/inflate` expands selected contexts, extra items and your own instr
 * [Search](/concepts/search.md) - The global fuzzy search: what is indexed (built from the disk per request), how it ranks, and its URL parameters.
 * [MCP server](/concepts/mcp.md) - The embedded MCP endpoint at `POST /mcp`: client setup, the read and write tools, the resources, and its loopback-only safety.
 * [Jira markup](/concepts/jira-markup.md) - "Copy as JIRA Markup" on the Copy buttons: how `src/lib/jira-markup.ts` maps every GFM element to Jira wiki markup, when it escapes, and what real Jira renderers cannot show.
+* [Agent history import](/concepts/agent-history.md) - The + Session and + Plan buttons of the Files panel: where the session histories and plan files of Claude Code, Codex and GitHub Copilot (CLI and VS Code) live, how they are read, the generated `agent-session` / `plan` markdown (inert, kept out of search), the safety rules and the API.
 * [Routes and API](/concepts/routes-and-api.md) - Every page route, URL parameter and JSON endpoint, including the entry PATCH and create APIs, the MCP endpoint and the 503 while the data directory is unusable.
 
 ## Working in the repo
