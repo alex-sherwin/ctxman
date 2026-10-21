@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearMarkdownCache, renderMarkdown, renderMarkdownDoc } from '../../src/lib/markdown.ts';
+import {
+  clearMarkdownCache,
+  markdownCacheSize,
+  MEMO_BUDGET_CHARS,
+  renderMarkdown,
+  renderMarkdownDoc,
+} from '../../src/lib/markdown.ts';
 
 beforeEach(() => clearMarkdownCache());
 
@@ -9,6 +15,27 @@ describe('renderMarkdown', () => {
     expect(a).toContain('<h1');
     expect(a).toContain('<strong>bold</strong>');
     expect(await renderMarkdown('# Hello\n\nSome **bold** text.')).toBe(a);
+  });
+
+  it('memo: false renders every time and keeps nothing; highlight: false leaves code blocks plain', async () => {
+    const source = '# Preview\n\n```ts\nconst a = 1;\n```\n';
+    const a = await renderMarkdown(source, { memo: false, highlight: false });
+    expect(markdownCacheSize()).toEqual({ entries: 0, chars: 0 });
+    expect(a).toContain('<h1 id="preview">Preview</h1>');
+    expect(a).not.toContain('astro-code');
+    expect(a).toContain('<div class="cx-codeblock"><pre><code class="language-ts">const a = 1;');
+    expect(await renderMarkdown(source, { memo: false })).toContain('astro-code');
+    expect(markdownCacheSize().entries).toBe(0);
+    await renderMarkdown(source);
+    expect(markdownCacheSize().entries).toBe(1);
+  });
+
+  it('the memo stays within its character budget; a rendering over a quarter of it is not kept', async () => {
+    const big = `${'word '.repeat(MEMO_BUDGET_CHARS / 4 / 5 + 10)}\n`;
+    await renderMarkdown(big);
+    expect(markdownCacheSize()).toEqual({ entries: 0, chars: 0 });
+    const html = await renderMarkdown('Small **one**');
+    expect(markdownCacheSize()).toEqual({ entries: 1, chars: html.length });
   });
 
   it('returns an empty string for blank input', async () => {

@@ -5,7 +5,10 @@
 // sources stay as written; rewriteRenderedHtml (links.ts) points them at the bundle file route. Two plugins of our
 // own: every code block gets a Copy button (`div.cx-codeblock > pre + button[data-copy-code]`, src/scripts/shell.ts
 // copies the block's text) and the headings are collected for the page's headings nav. Results are memoized by the
-// SHA-1 of the source (small FIFO cap) so a re-render of unchanged text is free.
+// SHA-1 of the source (FIFO, at most 256 entries and MEMO_BUDGET_CHARS of html in all) so a re-render of unchanged
+// text is free; a call with `memo: false` (the agent history previews) is rendered every time and never kept. `highlight: false`
+// leaves code blocks unhighlighted: Shiki's regex engine keeps the memory a big render grew it to (the agent history
+// previews, megabytes of session text, render that way).
 import { createHash } from 'node:crypto';
 import {
   satteriCreateHighlightFn,
@@ -40,12 +43,32 @@ export interface RenderedMarkdown {
 
 /** Maximum number of memoized renderings; the oldest key is dropped when the cap is reached. */
 const CACHE_MAX = 256;
+/**
+ * The memoized html stays under this many characters in all (the oldest renderings are dropped first), so 256 big
+ * documents cannot hold hundreds of MB; one rendering over a quarter of it is never memoized.
+ */
+export const MEMO_BUDGET_CHARS = 32 * 1024 * 1024;
 const cache = new Map<string, RenderedMarkdown>();
+let cachedChars = 0;
+
+export interface RenderOptions {
+  /** Keep the result in the memo (default true; see MEMO_BUDGET_CHARS). */
+  memo?: boolean;
+  /** Syntax-highlight code blocks with Shiki (default true). */
+  highlight?: boolean;
+}
 
 /** Empties the memo (tests). */
 export function clearMarkdownCache(): void {
   cache.clear();
+  cachedChars = 0;
 }
+
+/** The memo's size: entries and html characters (tests). */
+export const markdownCacheSize = (): { entries: number; chars: number } => ({
+  entries: cache.size,
+  chars: cachedChars,
+});
 
 /**
  * The wrapper every `<pre>` is moved into (as its first child): the SSR copy button (the markup of
@@ -90,13 +113,19 @@ function collectHeadingsPlugin(out: MarkdownHeading[]): HastPluginDefinition {
  * Render trusted local markdown to an HTML string (GFM, Shiki-highlighted code with a Copy button) plus its headings.
  * Blank input renders to '' with no headings.
  */
-export async function renderMarkdownDoc(markdown: string): Promise<RenderedMarkdown> {
+export async function renderMarkdownDoc(
+  markdown: string,
+  options: RenderOptions = {},
+): Promise<RenderedMarkdown> {
   if (markdown.trim() === '') return { html: '', headings: [] };
-  const key = createHash('sha1').update(markdown).digest('hex');
-  const hit = cache.get(key);
+  const useHighlight = options.highlight !== false;
+  // the memo holds highlighted renderings only
+  const memo = options.memo !== false && useHighlight;
+  const key = memo ? createHash('sha1').update(markdown).digest('hex') : '';
+  const hit = memo ? cache.get(key) : undefined;
   if (hit !== undefined) return hit;
-  highlighter ??= satteriCreateHighlightFn('shiki', SHIKI_CONFIG);
-  const highlight = await highlighter;
+  if (useHighlight) highlighter ??= satteriCreateHighlightFn('shiki', SHIKI_CONFIG);
+  const highlight = useHighlight ? await highlighter : undefined;
   const headings: MarkdownHeading[] = [];
   const { html } = await markdownToHtml(markdown, {
     hastPlugins: [
@@ -108,16 +137,26 @@ export async function renderMarkdownDoc(markdown: string): Promise<RenderedMarkd
     // Astro's defaults (`markdown.gfm`, `markdown.smartypants`).
     features: { gfm: true, smartPunctuation: true },
   });
-  if (cache.size >= CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
   const rendered = { html, headings };
+  if (!memo || html.length > MEMO_BUDGET_CHARS / 4) return rendered;
+  while (
+    cache.size > 0 &&
+    (cache.size >= CACHE_MAX || cachedChars + html.length > MEMO_BUDGET_CHARS)
+  ) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cachedChars -= cache.get(oldest)?.html.length ?? 0;
+    cache.delete(oldest);
+  }
   cache.set(key, rendered);
+  cachedChars += html.length;
   return rendered;
 }
 
 /** Render trusted local markdown to an HTML string (see {@link renderMarkdownDoc}). '' for blank input. */
-export async function renderMarkdown(markdown: string): Promise<string> {
-  return (await renderMarkdownDoc(markdown)).html;
+export async function renderMarkdown(
+  markdown: string,
+  options: RenderOptions = {},
+): Promise<string> {
+  return (await renderMarkdownDoc(markdown, options)).html;
 }

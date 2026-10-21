@@ -1,6 +1,6 @@
 // PURE (no fs; browser-safe): Codex rollout files (`<codex>/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl[.zst]`, the
 // decompressed text) to a ParsedSession, plus the `session_index.jsonl` thread names (concepts/agent-history.md).
-// Lines are `{timestamp, type, payload}`: `session_meta` (id, cwd, git branch; a subagent thread names its parent),
+// Fed one JSON line at a time (LineParser). Lines are `{timestamp, type, payload}`: `session_meta` (id, cwd, git branch; a subagent thread names its parent),
 // `turn_context` (model), `response_item` (messages, reasoning summaries, tool calls) and `event_msg`. The exact typed
 // prompt is an `event_msg` (`user_message`, or an `item_completed` UserMessage item in newer builds); when a file has
 // those, the `response_item` user copies are ignored so nothing counts twice. Injected context (environment, AGENTS.md
@@ -10,15 +10,16 @@ import {
   assignDefined,
   isoTime,
   isRecord,
-  jsonLines,
   oneLine,
+  ownString,
   parseArguments,
+  parseJsonLines,
   str,
   text,
   toolSummary,
   transcriptBuilder,
 } from './parse-util.ts';
-import type { JsonRecord, ParsedSession } from './parse-util.ts';
+import type { JsonRecord, LineParser, ParsedSession, SessionParseOptions } from './parse-util.ts';
 import type { TranscriptBlock } from './types.ts';
 
 /** The trailing uuid of a rollout file name (`rollout-2026-10-21T16-13-00-<uuid>.jsonl[.zst]`), else null. */
@@ -32,22 +33,31 @@ export function codexIdFromFileName(name: string): string | null {
 
 /** `session_index.jsonl` (`{id, thread_name, updated_at}` per line) to id -> thread name; the latest line per id wins. */
 export function parseCodexSessionIndex(source: string): Map<string, string> {
+  return parseJsonLines(codexSessionIndexParser(), source);
+}
+
+/** The `session_index.jsonl` line parser (see parseCodexSessionIndex). */
+export function codexSessionIndexParser(): LineParser<Map<string, string>> {
   const latest = new Map<string, { name: string; at: number; order: number }>();
   let order = 0;
-  for (const line of jsonLines(source)) {
-    order += 1;
-    if (!isRecord(line)) continue;
-    const id = text(line.id);
-    const name = text(line.thread_name);
-    if (id === undefined || name === undefined) continue;
-    const parsed = Date.parse(str(line.updated_at) ?? '');
-    const at = Number.isNaN(parsed) ? -Infinity : parsed;
-    const seen = latest.get(id);
-    if (seen === undefined || at > seen.at || (at === seen.at && order > seen.order)) {
-      latest.set(id, { name: oneLine(name), at, order });
-    }
-  }
-  return new Map([...latest].map(([id, { name }]) => [id, name]));
+  return {
+    line(line) {
+      order += 1;
+      if (!isRecord(line)) return;
+      const id = text(line.id);
+      const name = text(line.thread_name);
+      if (id === undefined || name === undefined) return;
+      const parsed = Date.parse(str(line.updated_at) ?? '');
+      const at = Number.isNaN(parsed) ? -Infinity : parsed;
+      const seen = latest.get(id);
+      if (seen === undefined || at > seen.at || (at === seen.at && order > seen.order)) {
+        latest.set(id, { name: ownString(oneLine(name)), at, order });
+      }
+    },
+    finish() {
+      return new Map([...latest].map(([id, { name }]) => [id, name]));
+    },
+  };
 }
 
 const INJECTED_PREFIXES = [
@@ -169,105 +179,119 @@ type Entry =
   | { kind: 'prompt'; exact: boolean; text: string; timestamp?: string }
   | { kind: 'blocks'; blocks: TranscriptBlock[]; timestamp?: string };
 
-/** `titles`: the session index (thread names by session id). */
-export function parseCodexSession(
-  source: string,
+/** The Codex rollout line parser; `titles` = the session index (thread names by session id). */
+export function codexSessionParser(
   titles: ReadonlyMap<string, string> = new Map(),
-): ParsedSession & { id?: string } {
+  options: SessionParseOptions = {},
+): LineParser<ParsedSession & { id?: string }> {
+  const keep = options.transcript !== false;
   const entries: Entry[] = [];
   let meta: JsonRecord | undefined;
   let model: string | undefined;
   let startedAt: string | undefined;
   let endedAt: string | undefined;
 
-  for (const line of jsonLines(source)) {
-    if (!isRecord(line)) continue;
-    let type = str(line.type);
-    let payload = isRecord(line.payload) ? line.payload : undefined;
-    // Older rollouts: a bare meta first line and bare response items without the wrapper.
-    if (payload === undefined) {
-      if (type === undefined && text(line.id) !== undefined && meta === undefined) {
-        type = 'session_meta';
-        payload = line;
-      } else if (type !== undefined && RESPONSE_ITEM_TYPES.has(type)) {
-        payload = line;
-        type = 'response_item';
-      } else {
-        continue;
-      }
-    }
-    const timestamp = isoTime(line.timestamp) ?? isoTime(payload.timestamp);
-    if (timestamp !== undefined && type !== 'session_meta') {
-      startedAt ??= timestamp;
-      endedAt = timestamp;
-    }
-    switch (type) {
-      case 'session_meta':
-        if (meta === undefined) {
-          meta = payload;
-          startedAt ??= isoTime(payload.timestamp) ?? timestamp;
-        }
-        break;
-      case 'turn_context':
-        model ??= text(payload.model);
-        break;
-      case 'event_msg': {
-        let prompt: string | null = null;
-        if (payload.type === 'user_message') {
-          const value = str(payload.message);
-          prompt =
-            value === undefined || value.trim() === '' || isInjectedContext(value)
-              ? null
-              : value.trim();
-        } else if (
-          payload.type === 'item_completed' &&
-          isRecord(payload.item) &&
-          payload.item.type === 'UserMessage'
-        ) {
-          prompt = promptFromParts(payload.item.content);
-        }
-        if (prompt !== null) entries.push({ kind: 'prompt', exact: true, text: prompt, timestamp });
-        break;
-      }
-      case 'response_item': {
-        if (payload.type === 'message' && payload.role === 'user') {
-          const prompt = promptFromParts(payload.content);
-          if (prompt !== null)
-            entries.push({ kind: 'prompt', exact: false, text: prompt, timestamp });
+  return {
+    line(line) {
+      if (!isRecord(line)) return;
+      let type = str(line.type);
+      let payload = isRecord(line.payload) ? line.payload : undefined;
+      // Older rollouts: a bare meta first line and bare response items without the wrapper.
+      if (payload === undefined) {
+        if (type === undefined && text(line.id) !== undefined && meta === undefined) {
+          type = 'session_meta';
+          payload = line;
+        } else if (type !== undefined && RESPONSE_ITEM_TYPES.has(type)) {
+          payload = line;
+          type = 'response_item';
         } else {
-          const blocks = itemBlocks(payload);
-          if (blocks.length > 0) entries.push({ kind: 'blocks', blocks, timestamp });
+          return;
         }
-        break;
       }
-      default:
-        break;
-    }
-  }
-
-  const exact = entries.some((entry) => entry.kind === 'prompt' && entry.exact);
-  const builder = transcriptBuilder();
-  for (const entry of entries) {
-    if (entry.kind === 'prompt') {
-      if (entry.exact === exact) builder.prompt(entry.text, entry.timestamp);
-    } else {
-      builder.assistant(entry.blocks, entry.timestamp);
-    }
-  }
-  const id = meta === undefined ? undefined : text(meta.id);
-  const git = meta !== undefined && isRecord(meta.git) ? meta.git : {};
-  return assignDefined<ParsedSession & { id?: string }>(
-    { messages: builder.messages, prompts: builder.prompts },
-    {
-      id,
-      title: id === undefined ? undefined : titles.get(id),
-      firstPrompt: builder.firstPrompt,
-      cwd: meta === undefined ? undefined : text(meta.cwd),
-      gitBranch: text(git.branch),
-      model,
-      startedAt,
-      endedAt,
-      subagent: meta !== undefined && isSubagentMeta(meta) ? true : undefined,
+      const timestamp = isoTime(line.timestamp) ?? isoTime(payload.timestamp);
+      if (timestamp !== undefined && type !== 'session_meta') {
+        startedAt ??= timestamp;
+        endedAt = timestamp;
+      }
+      switch (type) {
+        case 'session_meta':
+          if (meta === undefined) {
+            meta = payload;
+            startedAt ??= isoTime(payload.timestamp) ?? timestamp;
+          }
+          break;
+        case 'turn_context':
+          model ??= text(payload.model);
+          break;
+        case 'event_msg': {
+          let prompt: string | null = null;
+          if (payload.type === 'user_message') {
+            const value = str(payload.message);
+            prompt =
+              value === undefined || value.trim() === '' || isInjectedContext(value)
+                ? null
+                : value.trim();
+          } else if (
+            payload.type === 'item_completed' &&
+            isRecord(payload.item) &&
+            payload.item.type === 'UserMessage'
+          ) {
+            prompt = promptFromParts(payload.item.content);
+          }
+          if (prompt !== null)
+            entries.push({ kind: 'prompt', exact: true, text: prompt, timestamp });
+          break;
+        }
+        case 'response_item': {
+          if (payload.type === 'message' && payload.role === 'user') {
+            const prompt = promptFromParts(payload.content);
+            if (prompt !== null)
+              entries.push({ kind: 'prompt', exact: false, text: prompt, timestamp });
+          } else {
+            const blocks = keep ? itemBlocks(payload) : [];
+            if (blocks.length > 0) entries.push({ kind: 'blocks', blocks, timestamp });
+          }
+          break;
+        }
+        default:
+          break;
+      }
     },
-  );
+    finish() {
+      const exact = entries.some((entry) => entry.kind === 'prompt' && entry.exact);
+      const builder = transcriptBuilder(keep);
+      for (const entry of entries) {
+        if (entry.kind === 'prompt') {
+          if (entry.exact === exact) builder.prompt(entry.text, entry.timestamp);
+        } else {
+          builder.assistant(entry.blocks, entry.timestamp);
+        }
+      }
+      const id = meta === undefined ? undefined : text(meta.id);
+      const git = meta !== undefined && isRecord(meta.git) ? meta.git : {};
+      return assignDefined<ParsedSession & { id?: string }>(
+        { messages: builder.messages, prompts: builder.prompts },
+        {
+          id,
+          title: id === undefined ? undefined : titles.get(id),
+          firstPrompt: builder.firstPrompt,
+          cwd: meta === undefined ? undefined : text(meta.cwd),
+          gitBranch: text(git.branch),
+          model,
+          startedAt,
+          endedAt,
+          subagent: meta !== undefined && isSubagentMeta(meta) ? true : undefined,
+        },
+      );
+    },
+  };
+}
+
+/** A whole (or bounded) Codex rollout text; `titles` = the session index (thread names by session id). */
+export function parseCodexSession(
+  source: string,
+  titles: ReadonlyMap<string, string> = new Map(),
+  options: SessionParseOptions = {},
+): ParsedSession & { id?: string } {
+  return parseJsonLines(codexSessionParser(titles, options), source);
 }

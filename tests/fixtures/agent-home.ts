@@ -1,7 +1,9 @@
 // Test fixture shared by unit tests and the e2e servers: a fake home directory holding the session histories and plan
 // files of every agent format ctxman imports (concepts/agent-history.md). Every path derives from `agentRoots` with
 // CTXMAN_AGENT_HOME pointed at the directory, every file gets an explicit, distinct mtime (`utimesSync`), so every
-// order is deterministic. The exported lists say what a listing must return, newest first.
+// order is deterministic. The exported lists say what a listing must return, most recent activity first: sessions
+// sort by their last event (never later than the file mtime), plans by mtime. One Claude session was touched long
+// after its last event (its mtime is the newest of all) and must sort last.
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { zstdCompressSync } from 'node:zlib';
@@ -14,6 +16,8 @@ import type { AgentId, AgentSource } from '../../src/lib/agent-history/types.ts'
 const CLAUDE_NEWEST = 'c1a0de00-0000-4000-8000-000000000001';
 const CLAUDE_OLDER = 'c1a0de00-0000-4000-8000-000000000002';
 const CLAUDE_NO_PROMPT = 'c1a0de00-0000-4000-8000-000000000003';
+const CLAUDE_STALE = 'c1a0de00-0000-4000-8000-000000000004';
+const CLAUDE_COMMANDS_ONLY = 'c1a0de00-0000-4000-8000-000000000005';
 const CODEX_JSONL = '0c0de000-0000-4000-8000-00000000000a';
 const CODEX_ZST = '0c0de000-0000-4000-8000-00000000000b';
 const CODEX_ARCHIVED = '0c0de000-0000-4000-8000-00000000000c';
@@ -39,11 +43,12 @@ export interface FixtureSession {
 /** The sessions a listing returns, newest first (sessions without a prompt and subagent threads are left out). */
 export const AGENT_HOME_SESSIONS: readonly FixtureSession[] = [
   {
+    // one prompt: its `/compact keep the auth notes` and `! git log -1` are commands, not prompts
     key: `claude-code:${CLAUDE_NEWEST}`,
     title: 'Untangle the zebra login redirect',
     agent: 'claude-code',
     source: 'claude-code',
-    prompts: 2,
+    prompts: 1,
     cwd: '/Users/me/repos/app',
   },
   {
@@ -102,14 +107,30 @@ export const AGENT_HOME_SESSIONS: readonly FixtureSession[] = [
     prompts: 1,
     cwd: '/Users/me/repos/legacy',
   },
+  {
+    // the NEWEST file (touched after the fact) whose last event is three days old: sorted last
+    key: `claude-code:${CLAUDE_STALE}`,
+    title: 'Revisit the walrus feature flags',
+    agent: 'claude-code',
+    source: 'claude-code',
+    prompts: 1,
+    cwd: '/Users/me/repos/flags',
+  },
 ];
+
+/** The session whose file mtime is the newest of all although its last event is three days old (sorted last). */
+export const AGENT_HOME_STALE_SESSION = AGENT_HOME_SESSIONS.at(-1) as FixtureSession;
 
 /** The newest session: distinctive title, a `<script>` and a relative link in its first prompt, tool calls, thinking. */
 export const AGENT_HOME_NEWEST_SESSION = AGENT_HOME_SESSIONS[0] as FixtureSession;
 
-/** Session files that exist but are never listed: no user prompt (Claude), a subagent thread (Codex). */
+/**
+ * Session files that exist but are never listed (and whose detail is a 404): no user prompt (Claude), commands only
+ * (Claude: a slash command and a shell escape are not prompts), a subagent thread (Codex).
+ */
 export const AGENT_HOME_UNLISTED_KEYS: readonly string[] = [
   `claude-code:${CLAUDE_NO_PROMPT}`,
+  `claude-code:${CLAUDE_COMMANDS_ONLY}`,
   `codex:${CODEX_SUBAGENT}`,
 ];
 
@@ -295,6 +316,12 @@ export function buildAgentHome(
           role: 'user',
           content: '<local-command-stdout>Compacted.</local-command-stdout>',
         }),
+        at('user', 44, { role: 'user', content: '<bash-input>git log -1</bash-input>' }),
+        at('user', 44, {
+          role: 'user',
+          content:
+            '<bash-stdout>commit abc123 (HEAD -> main)</bash-stdout><bash-stderr></bash-stderr>',
+        }),
         at('user', 44, { role: 'user', content: 'A sidechain prompt' }, { isSidechain: true }),
         at(
           'user',
@@ -322,6 +349,15 @@ export function buildAgentHome(
       path.join(project('/Users/me/repos/api'), `${CLAUDE_OLDER}.jsonl`),
       lines([
         { type: 'summary', summary: 'Rate limiting', leafUuid: 'x' },
+        at('user', 401, {
+          role: 'user',
+          content:
+            '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>',
+        }),
+        at('user', 401, {
+          role: 'user',
+          content: '<local-command-stdout>Set model to sonnet</local-command-stdout>',
+        }),
         at('user', 400, {
           role: 'user',
           content: [
@@ -395,6 +431,25 @@ export function buildAgentHome(
       ]),
       minutes(5),
     );
+    // Commands only (a typed slash command, a shell escape and its output): no prompt, never listed.
+    const cmd = claudeLine(CLAUDE_COMMANDS_ONLY, '/Users/me/repos/app', 'main');
+    write(
+      path.join(project('/Users/me/repos/app'), `${CLAUDE_COMMANDS_ONLY}.jsonl`),
+      lines([
+        cmd('user', 290, { role: 'user', content: '/add-dir ~/repos/shared' }),
+        cmd('user', 289, { role: 'user', content: '<bash-input>pwd</bash-input>' }),
+        cmd('user', 289, {
+          role: 'user',
+          content: '<bash-stdout>/Users/me/repos/app</bash-stdout>',
+        }),
+        cmd('assistant', 288, {
+          model: 'claude-opus-5-5',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Added the directory.' }],
+        }),
+      ]),
+      minutes(13),
+    );
     // A subagent transcript beside the sessions and one in a session sub-dir: never listed.
     write(
       path.join(project('/Users/me/repos/app'), 'agent-a1b2c3.jsonl'),
@@ -405,6 +460,25 @@ export function buildAgentHome(
       path.join(project('/Users/me/repos/app'), CLAUDE_NEWEST, 'subagents', 'agent-x.jsonl'),
       lines([at('user', 297, { role: 'user', content: 'nested subagent task' })]),
       minutes(12),
+    );
+  }
+
+  {
+    // Touched long after its last event (three days ago): the newest mtime of all, sorted last by activity.
+    const days = 3 * 24 * 60;
+    const at = claudeLine(CLAUDE_STALE, '/Users/me/repos/flags', 'main');
+    write(
+      path.join(project('/Users/me/repos/flags'), `${CLAUDE_STALE}.jsonl`),
+      lines([
+        at('user', days + 5, { role: 'user', content: 'Which feature flags are stale?' }),
+        at('assistant', days, {
+          model: 'claude-opus-5-5',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Three flags are stale.' }],
+        }),
+        { type: 'ai-title', aiTitle: AGENT_HOME_STALE_SESSION.title, sessionId: CLAUDE_STALE },
+      ]),
+      new Date(now.getTime() - 30_000),
     );
   }
 
@@ -505,15 +579,15 @@ export function buildAgentHome(
     zstdCompressSync(
       Buffer.from(
         lines([
-          meta(CODEX_ZST, '/Users/me/repos/cache', 100, {
+          meta(CODEX_ZST, '/Users/me/repos/cache', 60, {
             git: { branch: 'main' },
             source: 'vscode',
             originator: 'Codex Desktop',
           }),
-          { timestamp: iso(100), type: 'turn_context', payload: { model: 'gpt-5.5' } },
-          userItem(100, '# AGENTS.md instructions for /Users/me/repos/cache\n\nBe brief.'),
-          userItem(100, 'Why are cache hits so low?'),
-          event(100, {
+          { timestamp: iso(60), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+          userItem(60, '# AGENTS.md instructions for /Users/me/repos/cache\n\nBe brief.'),
+          userItem(60, 'Why are cache hits so low?'),
+          event(60, {
             type: 'item_completed',
             thread_id: CODEX_ZST,
             turn_id: 't1',
@@ -523,19 +597,19 @@ export function buildAgentHome(
               content: [{ type: 'text', text: 'Why are cache hits so low?', text_elements: [] }],
             },
           }),
-          item(99, {
+          item(59, {
             type: 'custom_tool_call',
             name: 'exec',
             input: "const r = await sh('rg evict src')",
             call_id: 'x1',
           }),
-          item(99, {
+          item(59, {
             type: 'agent_message',
             author: '/root',
             recipient: '/root/worker',
             content: [{ type: 'input_text', text: 'check the eviction policy' }],
           }),
-          item(98, {
+          item(58, {
             type: 'message',
             role: 'assistant',
             content: [{ type: 'output_text', text: 'Eviction runs on every request.' }],
@@ -574,7 +648,7 @@ export function buildAgentHome(
     path.join(roots.codex, 'session_index.jsonl'),
     lines([
       { id: CODEX_JSONL, thread_name: 'Old name of the webhook thread', updated_at: iso(190) },
-      { id: CODEX_ZST, thread_name: AGENT_HOME_SESSIONS[1]?.title, updated_at: iso(90) },
+      { id: CODEX_ZST, thread_name: AGENT_HOME_SESSIONS[1]?.title, updated_at: iso(55) },
       { id: CODEX_JSONL, thread_name: AGENT_HOME_SESSIONS[4]?.title, updated_at: iso(150) },
     ]),
     minutes(30),
@@ -666,13 +740,13 @@ export function buildAgentHome(
       JSON.stringify({
         version: 3,
         sessionId: VSCODE_JSON,
-        creationDate: minutes(150).getTime(),
-        lastMessageDate: minutes(140).getTime(),
+        creationDate: minutes(250).getTime(),
+        lastMessageDate: minutes(240).getTime(),
         requests: [
           {
             requestId: 'r1',
             message: { text: AGENT_HOME_SESSIONS[5]?.title, parts: [] },
-            timestamp: minutes(150).getTime(),
+            timestamp: minutes(250).getTime(),
             modelId: 'copilot/gpt-5',
             response: [
               { value: 'Check the ', supportHtml: false },
@@ -733,7 +807,7 @@ export function buildAgentHome(
           v: {
             version: 3,
             sessionId: VSCODE_JSONL,
-            creationDate: minutes(70).getTime(),
+            creationDate: minutes(90).getTime(),
             requests: [],
             inputState: { inputText: '' },
           },
@@ -745,7 +819,7 @@ export function buildAgentHome(
             {
               requestId: 'r1',
               message: { text: 'Refactor the date picker into a hook', parts: [] },
-              timestamp: minutes(70).getTime(),
+              timestamp: minutes(90).getTime(),
               modelId: 'copilot/claude-sonnet-5',
               response: [],
             },
@@ -767,7 +841,7 @@ export function buildAgentHome(
             {
               requestId: 'r2',
               message: { text: 'Add keyboard support', parts: [] },
-              timestamp: minutes(65).getTime(),
+              timestamp: minutes(85).getTime(),
               response: [{ value: 'Arrow keys now move the day.' }],
             },
           ],

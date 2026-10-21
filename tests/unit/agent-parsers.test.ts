@@ -1,6 +1,11 @@
 // The per-agent history parsers (PURE: text in, ParsedSession out) and their shared helpers.
 import { describe, expect, it } from 'vitest';
-import { claudePromptText, parseClaudeSession } from '../../src/lib/agent-history/claude.ts';
+import {
+  claudePromptText,
+  claudeUserInput,
+  isTypedCommand,
+  parseClaudeSession,
+} from '../../src/lib/agent-history/claude.ts';
 import {
   codexIdFromFileName,
   isInjectedContext,
@@ -13,16 +18,23 @@ import {
 } from '../../src/lib/agent-history/copilot-cli.ts';
 import {
   clip,
+  eachJsonLine,
+  isListable,
   isoTime,
   jsonLines,
+  ownString,
   toolSummary,
   transcriptBuilder,
 } from '../../src/lib/agent-history/parse-util.ts';
 import {
+  lastVscodeActivity,
   parseVscodeSession,
   replayVscodeLog,
   scanVscodeHead,
+  stripJsonKeys,
   uriToDisplay,
+  vscodeJsonState,
+  vscodeLogLine,
   vscodeWorkspaceFolder,
 } from '../../src/lib/agent-history/vscode.ts';
 
@@ -32,6 +44,25 @@ const lines = (items: readonly unknown[]): string =>
 describe('parse helpers', () => {
   it('jsonLines skips blank, broken and non-JSON lines', () => {
     expect(jsonLines('{"a":1}\n\nnot json\n{"b":\n[1]\n')).toEqual([{ a: 1 }, [1]]);
+  });
+
+  it('eachJsonLine yields the JSON lines one at a time, the last line without a newline too', () => {
+    const it = eachJsonLine('{"a":1}\n\n{"b":2}');
+    expect(it.next().value).toEqual({ a: 1 });
+    expect([...it]).toEqual([{ b: 2 }]);
+    expect([...eachJsonLine('')]).toEqual([]);
+  });
+
+  it('ownString copies a string (equal value)', () => {
+    const long = `${'x'.repeat(40)}y`;
+    expect(ownString(long.slice(5, 30))).toBe('x'.repeat(25));
+    expect(ownString('')).toBe('');
+  });
+
+  it('isListable: a prompt and not a subagent', () => {
+    expect(isListable({ messages: [], prompts: 1 })).toBe(true);
+    expect(isListable({ messages: [], prompts: 0 })).toBe(false);
+    expect(isListable({ messages: [], prompts: 2, subagent: true })).toBe(false);
   });
 
   it('isoTime accepts ISO strings and epoch ms, refuses the rest', () => {
@@ -64,6 +95,40 @@ describe('parse helpers', () => {
     const long = toolSummary('Bash', { command: 'x'.repeat(500) });
     expect(long).toHaveLength(160);
     expect(long.endsWith('…')).toBe(true);
+  });
+
+  it('the transcript builder keeps commands in the flow without counting them', () => {
+    const b = transcriptBuilder();
+    b.command('/model', '2026-10-21T00:00:00.000Z');
+    b.prompt('ask');
+    b.assistant([{ kind: 'text', text: 'a' }]);
+    b.command('! pwd');
+    b.assistant([{ kind: 'text', text: 'b' }]);
+    expect(b.prompts).toBe(1);
+    expect(b.firstPrompt).toBe('ask');
+    expect(b.messages.map((m) => m.role)).toEqual([
+      'command',
+      'user',
+      'assistant',
+      'command',
+      'assistant',
+    ]);
+    expect(b.messages[0]).toEqual({
+      role: 'command',
+      timestamp: '2026-10-21T00:00:00.000Z',
+      blocks: [{ kind: 'text', text: '/model' }],
+    });
+  });
+
+  it('a summary builder (keep false) counts prompts and keeps the first, nothing else', () => {
+    const b = transcriptBuilder(false);
+    b.command('/model');
+    b.prompt('one');
+    b.assistant([{ kind: 'text', text: 'a' }]);
+    b.prompt('two');
+    expect(b.prompts).toBe(2);
+    expect(b.firstPrompt).toBe('one');
+    expect(b.messages).toEqual([]);
   });
 
   it('the transcript builder merges consecutive assistant blocks into one turn', () => {
@@ -102,6 +167,34 @@ describe('Claude Code', () => {
       claudePromptText('<system-reminder>be nice</system-reminder>\nReal ask\nCaveat: generated'),
     ).toBe('Real ask');
     expect(claudePromptText('[Request interrupted by user for tool use]')).toBeNull();
+  });
+
+  it('slash commands and shell escapes are commands, not prompts (wrapped or typed as one line)', () => {
+    expect(
+      claudeUserInput('<command-name>/model</command-name><command-args></command-args>'),
+    ).toEqual({ kind: 'command', text: '/model' });
+    expect(claudeUserInput('<bash-input>pwd</bash-input>')).toEqual({
+      kind: 'command',
+      text: '! pwd',
+    });
+    expect(claudeUserInput('/add-dir ~/repos/x')).toEqual({
+      kind: 'command',
+      text: '/add-dir ~/repos/x',
+    });
+    expect(claudeUserInput('! git status')).toEqual({ kind: 'command', text: '! git status' });
+    expect(claudeUserInput('/plugin:review now')).toEqual({
+      kind: 'command',
+      text: '/plugin:review now',
+    });
+    // a path, several lines, plain text: prompts
+    expect(claudeUserInput('/Users/me/app/x.ts is broken')?.kind).toBe('prompt');
+    expect(claudeUserInput('/etc/hosts')?.kind).toBe('prompt');
+    expect(claudeUserInput('/review\nplease look at the auth module')?.kind).toBe('prompt');
+    expect(claudeUserInput('Run /model for me')?.kind).toBe('prompt');
+    expect(claudeUserInput('<bash-stdout>out</bash-stdout><bash-stderr></bash-stderr>')).toBeNull();
+    expect(isTypedCommand('/model')).toBe(true);
+    expect(isTypedCommand('/model.ts')).toBe(false);
+    expect(isTypedCommand('!')).toBe(false);
   });
 
   const user = (content: unknown, extra: Record<string, unknown> = {}) => ({
@@ -166,6 +259,49 @@ describe('Claude Code', () => {
     expect(session.messages[2]?.blocks).toEqual([
       { kind: 'text', text: 'Second ask\n\n_(image)_' },
     ]);
+  });
+
+  it('commands are neither prompts nor the first prompt; a session of commands only has no prompt', () => {
+    const session = parseClaudeSession(
+      lines([
+        user('<command-name>/model</command-name><command-args>opus</command-args>'),
+        user('<local-command-stdout>Set model to opus</local-command-stdout>'),
+        user('/add-dir ~/x'),
+        user('<bash-input>pwd</bash-input>'),
+        user('<bash-stdout>/repo</bash-stdout><bash-stderr></bash-stderr>'),
+        user('The real ask'),
+        assistant([{ type: 'text', text: 'Done.' }]),
+        user('! git status'),
+        assistant([{ type: 'text', text: 'Clean.' }]),
+      ]),
+    );
+    expect(session.prompts).toBe(1);
+    expect(session.firstPrompt).toBe('The real ask');
+    expect(session.title).toBeUndefined();
+    expect(
+      session.messages.map((m) => [m.role, m.blocks[0]?.kind === 'text' ? m.blocks[0].text : '']),
+    ).toEqual([
+      ['command', '/model opus'],
+      ['command', '/add-dir ~/x'],
+      ['command', '! pwd'],
+      ['user', 'The real ask'],
+      ['assistant', 'Done.'],
+      ['command', '! git status'],
+      ['assistant', 'Clean.'],
+    ]);
+    const commandsOnly = parseClaudeSession(
+      lines([user('/model'), user('<bash-input>ls</bash-input>')]),
+    );
+    expect(commandsOnly.prompts).toBe(0);
+    expect(isListable(commandsOnly)).toBe(false);
+    // the summary parse keeps no transcript
+    const summary = parseClaudeSession(
+      lines([user('Ask'), assistant([{ type: 'text', text: 'A' }])]),
+      {
+        transcript: false,
+      },
+    );
+    expect(summary).toMatchObject({ prompts: 1, firstPrompt: 'Ask', messages: [] });
   });
 
   it('titles: last custom-title, else last ai-title, else a summary line, else none', () => {
@@ -434,6 +570,115 @@ describe('VS Code chat', () => {
       fresh: [1],
     });
     expect(replayVscodeLog('{"kind":1,"k":["a"],"v":1}')).toBeNull();
+  });
+
+  it('a replay leaves out the request keys nothing reads (attachments, result metadata, the input box)', () => {
+    const state = replayVscodeLog(
+      lines([
+        {
+          kind: 0,
+          v: {
+            sessionId: 's',
+            requests: [
+              { message: { text: 'q' }, variableData: { variables: [1] }, result: { t: 1 } },
+            ],
+            inputState: { attachments: [] },
+          },
+        },
+        { kind: 1, k: ['requests', 0, 'result'], v: { timings: {} } },
+        { kind: 1, k: ['requests', 0, 'variableData', 'variables'], v: [2] },
+        {
+          kind: 2,
+          k: ['requests'],
+          v: [{ message: { text: 'r' }, followups: [], response: [{ value: 'x' }] }],
+        },
+        { kind: 1, k: ['requests', 1, 'response', 0, 'value'], v: 'y' },
+      ]),
+    );
+    expect(state).toEqual({
+      sessionId: 's',
+      requests: [
+        { message: { text: 'q' } },
+        { message: { text: 'r' }, response: [{ value: 'y' }] },
+      ],
+      inputState: { attachments: [] },
+    });
+  });
+
+  it('stripJsonKeys drops members at any depth without parsing; strings never match', () => {
+    const enc = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+    const keys = new Set(['variableData', 'result']);
+    const cases: [unknown, unknown][] = [
+      [
+        { a: 1, variableData: { x: [1, '"}]', { y: 'variableData' }] }, b: 2 },
+        { a: 1, b: 2 },
+      ],
+      [{ variableData: 1 }, {}],
+      [
+        { a: 'say "variableData": 1', result: null, c: [{ result: 'x' }, { d: true }] },
+        { a: 'say "variableData": 1', c: [{}, { d: true }] },
+      ],
+      [
+        { m: { text: 'hi \\"q' }, variableData: { v: 's\\' }, result: { t: 1 } },
+        { m: { text: 'hi \\"q' } },
+      ],
+      [{ result: [1, 2], variableData: 'é ü 😀', z: 'ü' }, { z: 'ü' }],
+    ];
+    for (const [input, expected] of cases) {
+      expect(JSON.parse(dec(stripJsonKeys(enc(input), keys)))).toEqual(expected);
+    }
+    expect(
+      dec(stripJsonKeys(new TextEncoder().encode('{"a": 1 , "result" : {"x": 2} }'), keys)),
+    ).toBe('{"a": 1  }');
+    const torn = new TextEncoder().encode('{"a":"torn');
+    expect(stripJsonKeys(torn, keys)).toBe(torn);
+  });
+
+  it('vscodeLogLine skips big operations on unread keys and strips big lines; small lines pass as they are', () => {
+    const enc = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    const big = 'x'.repeat(70 * 1024);
+    expect(vscodeLogLine(enc({ kind: 1, k: ['requests', 0, 'result'], v: { big } }))).toBeNull();
+    expect(vscodeLogLine(enc({ kind: 1, k: ['inputState', 'attachments'], v: [big] }))).toBeNull();
+    const append = vscodeLogLine(
+      enc({ kind: 2, k: ['requests'], v: [{ message: { text: 'q' }, variableData: { big } }] }),
+    );
+    expect(JSON.parse(append ?? '')).toEqual({
+      kind: 2,
+      k: ['requests'],
+      v: [{ message: { text: 'q' } }],
+    });
+    const small = { kind: 1, k: ['requests', 0, 'result'], v: 1 };
+    expect(vscodeLogLine(enc(small))).toBe(JSON.stringify(small));
+    // a whole .json state, stripped the same way
+    expect(
+      vscodeJsonState(
+        enc({ sessionId: 's', requests: [{ message: { text: 'q' }, result: { big } }] }),
+      ),
+    ).toEqual({ sessionId: 's', requests: [{ message: { text: 'q' } }] });
+    expect(vscodeJsonState(new TextEncoder().encode('{"sessionId":"s"}\n{torn'))).toEqual({
+      sessionId: 's',
+    });
+    expect(vscodeJsonState(new TextEncoder().encode('nope'))).toBeNull();
+  });
+
+  it('the last activity: the later of lastMessageDate and the last request; a tail by pattern', () => {
+    const session = parseVscodeSession({
+      lastMessageDate: Date.UTC(2026, 9, 21, 7, 0),
+      requests: [{ message: { text: 'q' }, timestamp: Date.UTC(2026, 9, 21, 8, 0), response: [] }],
+    });
+    expect(session.endedAt).toBe('2026-10-21T08:00:00.000Z');
+    expect(
+      lastVscodeActivity(
+        `"timestamp":${Date.UTC(2026, 9, 1)},"x":1}\n{"kind":1,"k":["lastMessageDate"],"v":${Date.UTC(2026, 9, 2)}}`,
+      ),
+    ).toBe('2026-10-02T00:00:00.000Z');
+    expect(
+      lastVscodeActivity(
+        `{"timestamp":${Date.UTC(2026, 9, 1)},"lastMessageDate": ${Date.UTC(2026, 9, 3)}}`,
+      ),
+    ).toBe('2026-10-03T00:00:00.000Z');
+    expect(lastVscodeActivity('nothing here')).toBeUndefined();
   });
 
   it('turns workspace URIs into display paths', () => {

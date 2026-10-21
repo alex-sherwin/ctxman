@@ -101,7 +101,13 @@ export interface AgentSessionSummary {
   model?: string;
   /** ISO date-time of the first event, when known. */
   startedAt?: string;
-  /** ISO date-time: the file's mtime (the list is sorted by it, newest first). */
+  /**
+   * ISO date-time of the last event found (Claude: the tail of the file; Codex, Copilot: the last line; VS Code: the
+   * last message date), never later than `modifiedAt`. The list is sorted by `lastActivityAt ?? modifiedAt`, newest
+   * first: an agent may touch a file long after its last event.
+   */
+  lastActivityAt?: string;
+  /** ISO date-time: the file's mtime. */
   modifiedAt: string;
   /** File size in bytes. */
   bytes: number;
@@ -109,9 +115,9 @@ export interface AgentSessionSummary {
 
 /** `GET /api/agent-sessions?agent=&q=&offset=&limit=` */
 export interface AgentSessionList {
-  /** Newest first; sessions without any user prompt are left out. */
+  /** Most recent activity first; sessions without any user prompt (a command is not one) are left out. */
   items: AgentSessionSummary[];
-  /** The `offset` of the next page, null when this was the last. */
+  /** The `offset` of the next page (the number of items returned so far), null when this was the last. */
   next: number | null;
   sources: AgentSourceStatus[];
 }
@@ -123,13 +129,17 @@ export type TranscriptBlock =
   | { kind: 'tool'; name: string; summary: string };
 
 export interface TranscriptMessage {
-  role: 'user' | 'assistant';
+  /**
+   * `user` = a prompt; `assistant` = one turn of the agent; `command` = a slash command or shell escape the user ran
+   * (`/model`, `! pwd`): shown in the flow, never a prompt (not counted, never the title or the first prompt).
+   */
+  role: 'user' | 'assistant' | 'command';
   /** ISO date-time, when known. */
   timestamp?: string;
   blocks: TranscriptBlock[];
 }
 
-/** A session normalized across agents: user prompts and the assistant turns between them. */
+/** A session normalized across agents: user prompts, commands and the assistant turns between them. */
 export interface AgentTranscript {
   summary: AgentSessionSummary;
   messages: TranscriptMessage[];

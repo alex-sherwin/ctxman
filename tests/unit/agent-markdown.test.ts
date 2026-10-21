@@ -11,6 +11,7 @@ import {
 } from '../../src/lib/agent-history/inert.ts';
 import {
   BODY_MAX_BYTES,
+  COMMAND_MAX,
   firstHeading,
   hasH1,
   indexLineText,
@@ -279,6 +280,32 @@ describe('sessionMarkdown', () => {
     expect(file.body).toContain('## Prompt 2\n\nThanks\n');
     expect(file.body.trimEnd().endsWith('Thanks')).toBe(true);
     expect(file.title).toBe('Other');
+  });
+
+  it('commands are compact inert lines in the flow, consecutive ones one list; never prompts', () => {
+    const flow: TranscriptMessage[] = [
+      { role: 'command', blocks: [{ kind: 'text', text: '/add-dir ~/x' }] },
+      { role: 'command', blocks: [{ kind: 'text', text: '! echo `<b>` [a](b.md)' }] },
+      ...messages.slice(0, 2),
+      { role: 'command', blocks: [{ kind: 'text', text: `/model ${'y'.repeat(COMMAND_MAX)}` }] },
+      { role: 'assistant', blocks: [{ kind: 'text', text: 'Model set.' }] },
+      ...messages.slice(2),
+    ];
+    const file = sessionMarkdown(
+      { ...input, messages: flow },
+      { tools: true, thinking: false },
+      { title: summary.title, now, inert: INERT },
+    );
+    expect(file.body).toContain(
+      '| Source | `~/.claude/projects/-Users-me-repos-app/abc.jsonl` |\n\n- Command: `/add-dir ~/x`\n- Command: ``! echo `<b>` [a](b.md)``\n\n## Prompt 1 · ',
+    );
+    expect(file.body).toMatch(
+      /Because\.\n\n- Command: `\/model y+…`\n\n### Response\n\nModel set\.\n\n## Prompt 2\n/,
+    );
+    expect(file.body.match(/## Prompt \d/g)).toEqual(['## Prompt 1', '## Prompt 2']);
+    expect(file.markdown).toContain('\nprompts: 2\n');
+    // inert: the command text stays a code span (no tag, no link)
+    expect(file.body).not.toContain('](b.md)\n');
   });
 
   it('cuts long blocks and leaves out the prompts after 1.5 MB', () => {

@@ -3,10 +3,8 @@
 // `<codex>/plans/<thread>/<turn>/*.md`, Copilot CLI `<copilot>/session-state/<uuid>/plan.md` and, best effort, the
 // VS Code Copilot memory files named `*plan*`. Listed newest first (at most 500); the text of each is read (at most
 // 1 MB, cached by path, mtime and size) so a search matches the whole plan.
-import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { renderMarkdown } from '../markdown.ts';
-import { parseCodexSessionIndex } from './codex.ts';
 import { parseCopilotWorkspace } from './copilot-cli.ts';
 import { AgentHistoryError } from './errors.ts';
 import { readHead, readSmallText } from './files.ts';
@@ -22,7 +20,7 @@ import type { GeneratedFile } from './markdown.ts';
 import { assignDefined, clipLine } from './parse-util.ts';
 import { agentRoots, displayPath } from './roots.ts';
 import type { AgentRoots } from './roots.ts';
-import { matchesQuery, queryTokens } from './sessions.ts';
+import { codexTitles, matchesQuery, queryTokens } from './sessions.ts';
 import {
   byMtimeDesc,
   PLAN_SOURCES,
@@ -50,10 +48,21 @@ interface PlanText {
 
 const texts = new Map<string, PlanText>();
 const TEXT_CACHE_MAX = 600;
+/** The cached plan texts stay under about this many characters in all (the oldest are dropped first). */
+const TEXT_CACHE_CHARS = 16 * MB;
+let cachedChars = 0;
 
 /** Empties the plan text cache (tests). */
 export function clearPlanCache(): void {
   texts.clear();
+  cachedChars = 0;
+}
+
+function forgetText(abs: string): void {
+  const old = texts.get(abs);
+  if (old === undefined) return;
+  cachedChars -= old.text.length;
+  texts.delete(abs);
 }
 
 async function planText(candidate: PlanCandidate): Promise<string> {
@@ -67,23 +76,18 @@ async function planText(candidate: PlanCandidate): Promise<string> {
   } catch {
     text = '';
   }
-  if (texts.size >= TEXT_CACHE_MAX) {
+  forgetText(candidate.abs);
+  while (
+    texts.size > 0 &&
+    (texts.size >= TEXT_CACHE_MAX || cachedChars + text.length > TEXT_CACHE_CHARS)
+  ) {
     const oldest = texts.keys().next().value;
-    if (oldest !== undefined) texts.delete(oldest);
+    if (oldest === undefined) break;
+    forgetText(oldest);
   }
-  texts.delete(candidate.abs);
   texts.set(candidate.abs, { mtimeMs: candidate.mtimeMs, size: candidate.size, text });
+  cachedChars += text.length;
   return text;
-}
-
-async function codexThreadNames(roots: AgentRoots): Promise<Map<string, string>> {
-  const abs = path.join(roots.codex, 'session_index.jsonl');
-  try {
-    const st = await stat(abs);
-    return parseCodexSessionIndex(await readHead(abs, st.size, 32 * MB));
-  } catch {
-    return new Map();
-  }
 }
 
 /** Where a plan was written: the Copilot workspace (cwd + summary) or the VS Code workspace folder. */
@@ -157,7 +161,7 @@ export async function listAgentPlans(
   const [statuses, candidates, threads] = await Promise.all([
     sourceStatuses(roots, sources, planDir),
     allPlanCandidates(roots, query.agent),
-    codexThreadNames(roots),
+    codexTitles(roots),
   ]);
   const tokens = queryTokens(query.q);
   const items = await Promise.all(
@@ -202,7 +206,7 @@ export async function readAgentPlan(
       `plan ${key} is larger than ${PLAN_MAX_BYTES / MB} MB`,
     );
   }
-  const [text, threads] = await Promise.all([planText(candidate), codexThreadNames(roots)]);
+  const [text, threads] = await Promise.all([planText(candidate), codexTitles(roots)]);
   const context = await planContext(candidate, threads);
   return { roots, candidate, summary: summaryOf(roots, candidate, text, context), text };
 }
@@ -226,7 +230,8 @@ export async function agentPlanDetail(
   return {
     summary: read.summary,
     markdown: file.markdown,
-    html: await renderMarkdown(file.body),
+    // Not memoized (a plan can be a megabyte; the memo is for doc pages) and not highlighted, like a session preview.
+    html: await renderMarkdown(file.body, { memo: false, highlight: false }),
     defaultPath: planDefaultPath(read.summary.title),
   };
 }

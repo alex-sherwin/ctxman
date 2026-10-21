@@ -1,6 +1,6 @@
 // PURE (no fs; browser-safe): the markdown files an agent history import writes (concepts/agent-history.md): a session
-// as `type: agent-session` (frontmatter, an info table, `## Prompt N · <UTC time>` per prompt and `### Response` per
-// assistant turn) and a plan as `type: plan`. Imported text goes through an injected InertTransform (inert.ts: raw HTML
+// as `type: agent-session` (frontmatter, an info table, `## Prompt N · <UTC time>` per prompt, `### Response` per
+// assistant turn and a `- Command: \`/model\`` line per command the user ran) and a plan as `type: plan`. Imported text goes through an injected InertTransform (inert.ts: raw HTML
 // escaped, bundle links neutralized, headings shifted) so this module stays parser-free. Sizes: every text block is cut
 // at 40 000 characters, and once the body passes 1.5 MB the remaining prompts are left out with a closing note.
 import { Document, isScalar, isSeq } from 'yaml';
@@ -157,6 +157,18 @@ function thinkingQuote(markdown: string): string {
   return quoted.join('\n');
 }
 
+/** A command line is cut to this many characters (one line, an inline code span). */
+export const COMMAND_MAX = 500;
+
+/** `- Command: \`/model\``: one line per command the user ran (inert: a code span). */
+const commandLine = (message: TranscriptMessage): string => {
+  const text = message.blocks
+    .filter((block) => block.kind === 'text')
+    .map((block) => block.text)
+    .join(' ');
+  return `- Command: ${inlineCode(clipLine(text, COMMAND_MAX) || '/')}`;
+};
+
 const toolLine = (block: Extract<TranscriptBlock, { kind: 'tool' }>): string =>
   `- ${inlineCode(oneLine(block.name) || 'tool')}${block.summary === '' ? '' : ` ${inlineCode(oneLine(block.summary))}`}`;
 
@@ -273,7 +285,15 @@ export function sessionMarkdown(
     const message = messages[index] as TranscriptMessage;
     index += 1;
     let part = '';
-    if (message.role === 'user') {
+    if (message.role === 'command') {
+      // consecutive commands are one list
+      const lines = [commandLine(message)];
+      while (messages[index]?.role === 'command') {
+        lines.push(commandLine(messages[index] as TranscriptMessage));
+        index += 1;
+      }
+      part = lines.join('\n');
+    } else if (message.role === 'user') {
       prompt += 1;
       const when = message.timestamp === undefined ? '' : ` · ${minute(message.timestamp)}`;
       const textOf = message.blocks

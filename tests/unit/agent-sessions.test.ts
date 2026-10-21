@@ -1,11 +1,18 @@
 // Listing, paging, filtering and details of agent sessions and plans against the shared fake home
 // (tests/fixtures/agent-home.ts), plus the route parameter helpers and the API error mapping.
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { zstdCompressSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AgentHistoryError } from '../../src/lib/agent-history/errors.ts';
-import { readHeadTail, readZstdHead } from '../../src/lib/agent-history/files.ts';
+import {
+  byteLineStream,
+  jsonLineStream,
+  lineStream,
+  readHeadTail,
+  readZstdHeadTail,
+} from '../../src/lib/agent-history/files.ts';
 import {
   agentPlanDetail,
   clearPlanCache,
@@ -30,6 +37,7 @@ import {
   AGENT_HOME_PLAN_WORD,
   AGENT_HOME_PLANS,
   AGENT_HOME_SESSIONS,
+  AGENT_HOME_STALE_SESSION,
   AGENT_HOME_UNLISTED_KEYS,
   buildAgentHome,
 } from '../fixtures/agent-home.ts';
@@ -59,7 +67,7 @@ async function failure(promise: Promise<unknown>): Promise<AgentHistoryError> {
 }
 
 describe('listAgentSessions', () => {
-  it('lists every format newest first, leaving out prompt-less sessions, subagents and agent-* files', async () => {
+  it('lists every format by last activity, leaving out prompt-less and command-only sessions, subagents and agent-* files', async () => {
     const list = await listAgentSessions({}, env);
     expect(list.items.map((i) => [i.key, i.title])).toEqual(
       AGENT_HOME_SESSIONS.map((s) => [s.key, s.title]),
@@ -75,6 +83,8 @@ describe('listAgentSessions', () => {
       gitBranch: 'main',
       model: 'claude-opus-5-5',
       modifiedAt: '2026-10-21T11:59:00.000Z',
+      // the last event (an assistant line 43 minutes before now), not the mtime
+      lastActivityAt: '2026-10-21T11:17:00.000Z',
     });
     expect(newest?.firstPrompt).toBe(
       'Why does the login redirect twice? See [guide](docs/guide.md) first. <script>alert(1)</script>',
@@ -90,15 +100,81 @@ describe('listAgentSessions', () => {
     expect(list.sources[0]?.path).toBe('~/.claude/projects');
   });
 
-  it('pages with offset / limit and next', async () => {
+  it('pages with offset / limit and next (offset = the items returned so far)', async () => {
     const first = await listAgentSessions({ limit: 3 }, env);
     expect(first.items.map((i) => i.key)).toEqual(
       AGENT_HOME_SESSIONS.slice(0, 3).map((s) => s.key),
     );
-    expect(first.next).not.toBeNull();
-    const rest = await listAgentSessions({ offset: first.next ?? 0, limit: 200 }, env);
-    expect(rest.items.map((i) => i.key)).toEqual(AGENT_HOME_SESSIONS.slice(3).map((s) => s.key));
+    expect(first.next).toBe(3);
+    const second = await listAgentSessions({ offset: 3, limit: 3 }, env);
+    expect(second.items.map((i) => i.key)).toEqual(
+      AGENT_HOME_SESSIONS.slice(3, 6).map((s) => s.key),
+    );
+    expect(second.next).toBe(6);
+    const rest = await listAgentSessions({ offset: 6, limit: 200 }, env);
+    expect(rest.items.map((i) => i.key)).toEqual(AGENT_HOME_SESSIONS.slice(6).map((s) => s.key));
     expect(rest.next).toBeNull();
+    // exactly a page left: no next
+    const last = await listAgentSessions({ offset: AGENT_HOME_SESSIONS.length - 2, limit: 2 }, env);
+    expect(last.items).toHaveLength(2);
+    expect(last.next).toBeNull();
+    expect((await listAgentSessions({ offset: 99 }, env)).items).toEqual([]);
+  });
+
+  it('sorts by the last event, not the mtime: a file touched days after its last event sorts below later sessions', async () => {
+    const list = await listAgentSessions({}, env);
+    const stale = list.items.find((i) => i.key === AGENT_HOME_STALE_SESSION.key);
+    // its mtime is the newest of all ...
+    expect(stale?.modifiedAt).toBe('2026-10-21T11:59:30.000Z');
+    expect(Math.max(...list.items.map((i) => Date.parse(i.modifiedAt)))).toBe(
+      Date.parse('2026-10-21T11:59:30.000Z'),
+    );
+    // ... its last event three days old: it is last
+    expect(stale?.lastActivityAt).toBe('2026-10-18T12:00:00.000Z');
+    expect(list.items.at(-1)?.key).toBe(AGENT_HOME_STALE_SESSION.key);
+    const times = list.items.map((i) => Date.parse(i.lastActivityAt ?? i.modifiedAt));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+    for (const item of list.items) {
+      expect(Date.parse(item.lastActivityAt ?? '')).toBeLessThanOrEqual(
+        Date.parse(item.modifiedAt),
+      );
+    }
+    // the first page of one is the session with the latest event, although another file is newer
+    expect((await listAgentSessions({ limit: 1 }, env)).items.map((i) => i.key)).toEqual([
+      AGENT_HOME_NEWEST_SESSION.key,
+    ]);
+    // filtered to Claude: the stale session is still last
+    expect(
+      (await listAgentSessions({ agent: 'claude-code' }, env)).items.map((i) => i.key),
+    ).toEqual(AGENT_HOME_SESSIONS.filter((s) => s.agent === 'claude-code').map((s) => s.key));
+  });
+
+  it('a last event later than the mtime (a skewed clock) counts as the mtime', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ctxman-agent-skew-'));
+    try {
+      const { roots: r } = buildAgentHome(dir, { now: new Date('2026-10-21T12:00:00Z') });
+      const file = path.join(
+        r.claude,
+        'projects',
+        '-skew',
+        'c1a0de00-0000-4000-8000-0000000000aa.jsonl',
+      );
+      mkdirSync(path.dirname(file), { recursive: true });
+      const user = {
+        type: 'user',
+        timestamp: '2026-10-22T09:00:00Z',
+        message: { content: 'From the future' },
+      };
+      writeFileSync(file, `${JSON.stringify(user)}\n`);
+      const mtime = new Date('2026-10-21T11:30:00Z');
+      utimesSync(file, mtime, mtime);
+      const item = (await listAgentSessions({}, { CTXMAN_AGENT_HOME: dir })).items.find(
+        (i) => i.title === 'From the future',
+      );
+      expect(item?.lastActivityAt).toBe('2026-10-21T11:30:00.000Z');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('filters by agent and by every token of q (title, prompt, cwd, branch)', async () => {
@@ -137,7 +213,7 @@ describe('listAgentSessions', () => {
       );
       const user = {
         type: 'user',
-        timestamp: '2026-10-21T11:00:00Z',
+        timestamp: '2026-10-21T12:20:00Z',
         message: { content: 'Changed ask' },
       };
       writeFileSync(file, `${JSON.stringify(user)}\n`);
@@ -165,7 +241,7 @@ describe('agentSessionDetail', () => {
       env,
       new Date('2026-10-21T12:00:00Z'),
     );
-    expect(detail.prompts).toBe(2);
+    expect(detail.prompts).toBe(1);
     expect(detail.truncated).toBe(false);
     expect(detail.defaultPath).toBe(
       'sessions/2026-10-21-claude-code-untangle-the-zebra-login-redirect.md',
@@ -175,9 +251,13 @@ describe('agentSessionDetail', () => {
     expect(detail.markdown).toContain('- `Bash` `git status`\n- `Read` `src/lib/auth.ts`');
     expect(detail.markdown).toContain('guide (`docs/guide.md`)');
     expect(detail.markdown).toContain('&lt;script>alert(1)&lt;/script>');
+    // a slash command and a shell escape are commands in the flow, not prompts; the shell output is dropped
     expect(detail.markdown).toContain(
-      '## Prompt 2 · 2026-10-21 11:15\n\n/compact keep the auth notes',
+      '\n\n- Command: `/compact keep the auth notes`\n- Command: `! git log -1`\n\n### Response\n\nCompacted; the auth notes are kept.\n',
     );
+    expect(detail.markdown).not.toContain('## Prompt 2');
+    expect(detail.markdown).not.toContain('abc123');
+    expect(detail.markdown).toContain('prompts: 1\n');
     expect(detail.markdown).not.toContain('Thinking');
     expect(detail.markdown).not.toContain('sidechain');
     expect(detail.html).toContain('<h1');
@@ -206,6 +286,21 @@ describe('agentSessionDetail', () => {
       '- `agent message` `/root → /root/worker: check the eviction policy`',
     );
     expect(zst.markdown).not.toContain('AGENTS.md instructions');
+  });
+
+  it('a session the list hides (no prompt, commands only, a subagent thread) is not found', async () => {
+    for (const key of AGENT_HOME_UNLISTED_KEYS) {
+      expect((await failure(agentSessionDetail(key, undefined, env))).code, key).toBe('not-found');
+    }
+  });
+
+  it('a slash command first message is neither the title nor the first prompt', async () => {
+    const older = AGENT_HOME_SESSIONS.find((s) => s.title === 'Add rate limiting to the API');
+    const list = await listAgentSessions({ q: 'rate limiting' }, env);
+    expect(list.items[0]?.firstPrompt).toBe('Add a token bucket limiter to /api/*');
+    const detail = await agentSessionDetail(older?.key ?? '', undefined, env);
+    expect(detail.prompts).toBe(2);
+    expect(detail.markdown).toMatch(/\| Source \|[^\n]*\n\n- Command: `\/model`\n\n## Prompt 1 · /);
   });
 
   it('refuses bad keys and unknown sessions', async () => {
@@ -313,15 +408,87 @@ describe('bounded reads', () => {
     }
   });
 
-  it('readZstdHead stops after the requested decompressed size', async () => {
+  it('readZstdHeadTail keeps the decompressed head and tail, cut to complete lines', async () => {
     const zst = path.join(roots.codex, 'sessions', '2026', '10', '20');
     const name = (await import('node:fs')).readdirSync(zst).find((f) => f.endsWith('.zst')) ?? '';
-    const whole = await readZstdHead(path.join(zst, name), 1_000_000);
-    const head = await readZstdHead(path.join(zst, name), 900);
-    expect(head.length).toBeLessThanOrEqual(900);
-    expect(head.length).toBeLessThan(whole.length);
-    expect(whole.startsWith(head)).toBe(true);
-    expect(head.endsWith('}')).toBe(true);
+    const whole = await readZstdHeadTail(path.join(zst, name), 1_000_000, 1_000_000);
+    const lines = whole.trimEnd().split('\n');
+    expect(lines.length).toBeGreaterThan(4);
+    const cut = await readZstdHeadTail(path.join(zst, name), 900, 400);
+    const [head, ...rest] = cut.split('\n');
+    expect(head).toBe(lines[0]);
+    expect(rest.filter((l) => l !== '').at(-1)).toBe(lines.at(-1));
+    expect(cut.length).toBeLessThan(whole.length);
+    for (const line of cut.split('\n').filter((l) => l !== '')) expect(lines).toContain(line);
+  });
+});
+
+describe('streamed reads', () => {
+  it('jsonLineStream yields the JSON lines (zstd too), lineStream stops at an offset, byteLineStream joins long lines', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ctxman-agent-stream-'));
+    try {
+      const file = path.join(dir, 'x.jsonl');
+      const long = 'y'.repeat(200_000);
+      writeFileSync(file, `{"a":1}\n\nnot json\n{"b":"${long}"}\r\n{"c":3}`);
+      const values: unknown[] = [];
+      for await (const value of jsonLineStream(file, false)) values.push(value);
+      expect(values).toEqual([{ a: 1 }, { b: long }, { c: 3 }]);
+      const zst = path.join(dir, 'x.jsonl.zst');
+      writeFileSync(zst, zstdCompressSync(Buffer.from('{"z":1}\n{"z":2}\n')));
+      const zvalues: unknown[] = [];
+      for await (const value of jsonLineStream(zst, true)) zvalues.push(value);
+      expect(zvalues).toEqual([{ z: 1 }, { z: 2 }]);
+      const head: string[] = [];
+      for await (const line of lineStream(file, false, 12)) head.push(line);
+      expect(head).toEqual(['{"a":1}', '', 'not']); // 12 bytes
+      const bytes: number[] = [];
+      for await (const line of byteLineStream(file)) bytes.push(line.length);
+      expect(bytes).toEqual([7, 0, 8, long.length + 9, 7]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a Claude summary reads on past the head until the first prompt (commands and a huge first line before it)', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ctxman-agent-deep-'));
+    try {
+      const { roots: r } = buildAgentHome(dir, { now: new Date('2026-10-21T12:00:00Z') });
+      const file = path.join(
+        r.claude,
+        'projects',
+        '-deep',
+        'c1a0de00-0000-4000-8000-0000000000bb.jsonl',
+      );
+      mkdirSync(path.dirname(file), { recursive: true });
+      const line = (content: unknown, minute: number) =>
+        JSON.stringify({
+          type: 'user',
+          timestamp: `2026-10-21T11:${String(minute).padStart(2, '0')}:00Z`,
+          cwd: '/deep',
+          message: { role: 'user', content },
+        });
+      const pasted = 'z'.repeat(300 * 1024);
+      const lines = [
+        line('/add-dir ~/x', 1),
+        line(`Look at this log first:\n${pasted}`, 2),
+        ...Array.from({ length: 60 }, (_, i) =>
+          JSON.stringify({
+            type: 'assistant',
+            timestamp: '2026-10-21T11:03:00Z',
+            message: { content: [{ type: 'text', text: `${i} ${'w'.repeat(4000)}` }] },
+          }),
+        ),
+        line('Second ask', 4),
+      ];
+      writeFileSync(file, `${lines.join('\n')}\n`);
+      const mtime = new Date('2026-10-21T11:50:00Z');
+      utimesSync(file, mtime, mtime);
+      const item = (await listAgentSessions({ q: 'deep' }, { CTXMAN_AGENT_HOME: dir })).items[0];
+      expect(item?.firstPrompt?.startsWith('Look at this log first: zzz')).toBe(true);
+      expect(item?.lastActivityAt).toBe('2026-10-21T11:04:00.000Z');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
