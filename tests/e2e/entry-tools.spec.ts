@@ -3,10 +3,10 @@
 // redirect. Every test
 // works on its own e2e-* kb entry / contexts (created through the API, removed in afterAll); the seed entries are
 // only read. The island enables the SSR buttons on mount, so each test waits for an enabled button first.
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
-import { API, afterApi, dataPath, readDataText, uniqueName } from './helpers.ts';
+import { API, afterApi, dataPath, deleteEntries, readDataText, uniqueName } from './helpers.ts';
 
 const kb = uniqueName('e2e-et-kb');
 const task = uniqueName('e2e-et-task');
@@ -56,10 +56,9 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 });
 
 test.afterAll(async ({ playwright, baseURL }) => {
-  rmSync(dataPath(`kb/${kb}`), { recursive: true, force: true });
-  rmSync(dataPath(`task/${task}`), { recursive: true, force: true });
   const request = await playwright.request.newContext({ baseURL });
   try {
+    await deleteEntries(request, [`kb/${kb}`, `task/${task}`]);
     for (const name of [ctxOld, ctxNew]) await request.delete(`${API}/context/${name}`);
   } finally {
     await request.dispose();

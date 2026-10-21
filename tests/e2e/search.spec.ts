@@ -1,8 +1,7 @@
 // Global search widget (UI_SPEC §G): open paths, URL sync (?search=1&sq=&in=), Esc semantics, navigation.
-import { rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
-import { API, dataPath, modKey, openSearch, readDataText, uniqueName } from './helpers.ts';
+import { API, deleteEntries, modKey, openSearch, readDataText, uniqueName } from './helpers.ts';
 
 /**
  * Keyboard shortcuts are listened to by the search island, which mounts after hydration (a few hundred ms after
@@ -141,7 +140,7 @@ test.describe('global search', () => {
       await page.goto(`/${base}/doc/concepts/hidden`);
       await expect(page.getByTestId('detail-content')).toContainText('E2E hidden');
     } finally {
-      rmSync(dataPath(base), { recursive: true, force: true });
+      await deleteEntries(request, [base]);
     }
   });
 

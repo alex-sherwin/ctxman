@@ -2,10 +2,10 @@
 //   GET|PATCH /api/entry/<ds>/<slug>, POST /api/entry/<ds>, POST /api/doc/<ds>/<slug>/<path> (create a concept)
 //   and POST /api/context/<slug>/links. Every spec uses its own e2e-* entries (created through the API, removed in
 //   afterAll); the seed entries are never written. The API reads and writes the files directly.
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
-import { API, dataPath, readDataText, uniqueName } from './helpers.ts';
+import { API, dataPath, deleteEntries, readDataText, uniqueName } from './helpers.ts';
 
 interface ErrorBody {
   error: string;
@@ -37,15 +37,9 @@ const jsonHeaders = { 'content-type': 'application/json' };
 test.describe.configure({ mode: 'serial' });
 
 test.afterAll(async ({ playwright, baseURL }) => {
-  for (const [ds, slug] of [
-    ['task', task],
-    ['task', child],
-    ['project', project],
-  ] as const) {
-    rmSync(dataPath(`${ds}/${slug}`), { recursive: true, force: true });
-  }
   const request = await playwright.request.newContext({ baseURL });
   try {
+    await deleteEntries(request, [`task/${task}`, `task/${child}`, `project/${project}`]);
     await request.delete(`${API}/context/${ctx}`);
   } finally {
     await request.dispose();

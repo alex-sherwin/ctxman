@@ -119,6 +119,23 @@ export async function deleteRecipeQuietly(request: APIRequestContext, name: stri
   await request.delete(`${API}/recipe/${name}`);
 }
 
+/**
+ * Removes okf / skill entries (`'task/e2e-x'` keys) through `DELETE /api/entry/<ds>/<slug>`; 404 (already gone) is
+ * fine. Cleanup of an entry goes through the server, never `rmSync` alone: the server memoizes its entry index for
+ * 200 ms (src/lib/entry-index.ts) and only a write route drops that memo, so a folder removed behind its back is
+ * still listed to the next test of the worker that asks within 200 ms (list-table.spec.ts saw a leftover `e2e-*`
+ * task sorted before the seed tasks).
+ */
+export async function deleteEntries(
+  request: APIRequestContext,
+  keys: readonly string[],
+): Promise<void> {
+  for (const key of keys) {
+    const response = await request.delete(`${API}/entry/${key}`);
+    expect([204, 404]).toContain(response.status());
+  }
+}
+
 /** The saved YAML of recipe `name` (`recipe/<name>.yaml` in the data copy). */
 export function readRecipeYaml(name: string): RecipeBody {
   return readYaml(`recipe/${name}.yaml`) as RecipeBody;

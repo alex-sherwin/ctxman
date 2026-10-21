@@ -1,9 +1,9 @@
 // Detail pages (UI_SPEC §F, ROUND2_UI_SPEC §G): rendered markdown, rewritten links, the two-column okf layout,
 // file tree, back-references, context pages (links in context order) and clickable list rows.
-import { appendFileSync, rmSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator } from '@playwright/test';
-import { API, dataPath, uniqueName } from './helpers.ts';
+import { API, dataPath, deleteEntries, uniqueName } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
   test('/kb/ctxman renders the entry markdown, metadata and file tree', async ({ page }) => {
@@ -505,8 +505,13 @@ test.describe('broken links', () => {
     );
   });
 
-  test.afterAll(() => {
-    rmSync(dataPath(`kb/${name}`), { recursive: true, force: true });
+  test.afterAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      await deleteEntries(request, [`kb/${name}`]);
+    } finally {
+      await request.dispose();
+    }
   });
 
   test('links to missing entries and files render dashed with a reason; valid ones do not', async ({

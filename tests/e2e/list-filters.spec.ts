@@ -1,9 +1,9 @@
 // Dataset list filters: chips, text, sort and clear all live in the URL (UI_SPEC §E). The filter form is
 // a plain GET form enhanced by a script: every chip / sort change is a real navigation, so history works.
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
-import { API, afterReload, chipOf, dataPath, uniqueName } from './helpers.ts';
+import { API, afterReload, chipOf, dataPath, deleteEntries, uniqueName } from './helpers.ts';
 
 /** `data-slug` of every rendered row, in display order, once the client-only ListTable has mounted. */
 async function rowSlugs(page: Page): Promise<string[]> {
@@ -153,9 +153,12 @@ test.describe('state select and invalid files (own e2e tasks)', () => {
     writeFileSync(file, readFileSync(file, 'utf8').replace('state: pending', 'state: done'));
   });
 
-  test.afterAll(() => {
-    for (const name of [pending, broken]) {
-      rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
+  test.afterAll(async ({ playwright, baseURL }) => {
+    const request = await playwright.request.newContext({ baseURL });
+    try {
+      await deleteEntries(request, [`task/${pending}`, `task/${broken}`]);
+    } finally {
+      await request.dispose();
     }
   });
 

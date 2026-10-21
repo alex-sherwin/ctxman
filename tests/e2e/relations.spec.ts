@@ -2,10 +2,10 @@
 // "Linked from" / "Links to" panels of its children, adding and removing links through the EntryTools dialogs, the
 // `?project=` list filter and "Build context". Everything runs on an e2e-* project with its own tasks (never the seed
 // project, so `/task?project=ctxman-v1` stays the 4 seed tasks); each write is followed by a page load (the page reloads itself).
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
-import { API, dataPath, readDataText, readYaml, uniqueName } from './helpers.ts';
+import { API, dataPath, deleteEntries, readDataText, readYaml, uniqueName } from './helpers.ts';
 
 const project = uniqueName('e2e-rel-proj');
 const taskA = uniqueName('e2e-rel-a'); // created with `parent`
@@ -50,15 +50,9 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 });
 
 test.afterAll(async ({ playwright, baseURL }) => {
-  for (const [ds, slug] of [
-    ['task', taskA],
-    ['task', taskB],
-    ['project', project],
-  ] as const) {
-    rmSync(dataPath(`${ds}/${slug}`), { recursive: true, force: true });
-  }
   const request = await playwright.request.newContext({ baseURL });
   try {
+    await deleteEntries(request, [`task/${taskA}`, `task/${taskB}`, `project/${project}`]);
     await request.delete(`${API}/context/${project}`);
   } finally {
     await request.dispose();
