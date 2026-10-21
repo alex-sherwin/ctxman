@@ -87,9 +87,9 @@ async function write(
     target.slug,
     target.path,
     {
-      // index.md and log.md lines are markdown: no raw HTML, no link syntax from the history.
+      // index.md and log.md lines are markdown: no raw HTML from the history. The title only, no description: the
+      // entry index.md is searchable, and its ## Links line must not carry the session's cwd, dates or prompt counts.
       title: indexLineText(file.title, { brackets: false }),
-      description: indexLineText(file.description, { brackets: true }),
       markdown: file.markdown,
     },
     dataDir,

@@ -98,9 +98,11 @@ describe('importAgentSession', () => {
 
     const index = read('kb', 'ctxman', 'index.md');
     expect(index).not.toBe(indexBefore);
+    // the title only: the entry index.md is searchable, the session's cwd, dates and counts stay out of it
     expect(index).toContain(
-      `* [${AGENT_HOME_NEWEST_SESSION.title}](/sessions/login.md) - Claude Code session in /Users/me/repos/app, 2026-10-21, 2 prompts`,
+      `* [${AGENT_HOME_NEWEST_SESSION.title}](/sessions/login.md) - ${AGENT_HOME_NEWEST_SESSION.title}`,
     );
+    expect(index).not.toContain('Claude Code session in');
     expect(read('kb', 'ctxman', 'log.md')).toContain(
       `* **Create**: Created [${AGENT_HOME_NEWEST_SESSION.title}](/sessions/login.md).`,
     );
@@ -189,7 +191,7 @@ describe('importAgentPlan', () => {
     const detail = await agentPlanDetail(plan?.key ?? '', env, NOW);
     expect(read('project', 'ctxman-v1', 'plans', 'rollout.md')).toBe(detail.markdown);
     expect(read('project', 'ctxman-v1', 'index.md')).toContain(
-      `* [${plan?.title}](/plans/rollout.md) - Claude Code plan, 2026-10-21`,
+      `* [${plan?.title}](/plans/rollout.md) - ${plan?.title}`,
     );
     const links = await checkLinks(dataDir);
     const okf = await checkOkf(dataDir);

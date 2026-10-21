@@ -12,7 +12,7 @@ generated:
 
 Coding agents keep a record of every session and of the plans they write. The Files panel of every okf entry and okf doc page has two buttons after `+ Add file` that bring those records into the bundle as markdown concept files: **+ Session** (an agent session, `type: agent-session`) and **+ Plan** (a plan file, `type: plan`). ctxman only ever reads the agents' directories; the import is a new file in the bundle, written like [Add file](/concepts/editing.md) writes one (never overwriting, listed under `## Links` of the entry `index.md` and in an existing `log.md`).
 
-Imported files carry `index: false`, so session and plan text never enters [search](/concepts/search.md) (the widget, `#tag` queries and the MCP `search` tool); they still show in the Files panel, the `## Links` section, the doc pages and [Context inflate](/concepts/context-inflate.md) like any other file of the bundle.
+Imported files carry `index: false`, so session and plan text never enters [search](/concepts/search.md) (the widget, `#tag` queries and the MCP `search` tool); they still show in the Files panel, the `## Links` section (title only), the doc pages and [Context inflate](/concepts/context-inflate.md) like any other file of the bundle.
 
 The code is `src/lib/agent-history/` (contract `types.ts`; readers, listing and markdown beside it) behind the routes `src/pages/api/agent-sessions/*` and `src/pages/api/agent-plans/*`; the dialogs are `src/ui/agent/` in the EntryTools island.
 
@@ -101,7 +101,7 @@ A title given in the dialog replaces the agent's own (frontmatter, H1 and the `#
 * **Read-only**: nothing under the agents' directories is ever written or deleted, and a request never names a path. The detail of a session file over 256 MB answers 413, a plan over 1 MB too.
 * **Inert text**: session and plan text can carry fetched web content, and the renderer passes raw HTML through, so every `<` outside code (fenced, indented, inline) becomes `&lt;`, except an `http(s)` / `mailto` autolink. What counts as code comes from satteri's own mdast (`markdownToMdast`, the parser that renders the doc page), and the whole body is checked again after assembly, so no raw HTML node survives.
 * **No new link findings**: a link, image or reference definition whose destination is not `http(s)`, `mailto` or a `#fragment` becomes ``text (`dest`)`` (an image ``alt (`src`)``; a definition is escaped), so `javascript:`, `file:`, relative and `ctxman:` links never become links and an import adds no `links/*` finding to `pnpm run check`. The body is also run through the checker's own link model (`links.ts#extractLinks`), which reads links inside indented or nested code that CommonMark keeps literal.
-* **Bookkeeping lines**: the `## Links` and `log.md` lines get the title and description with `<` escaped (and, for the description, brackets escaped), so they add no HTML and no link.
+* **Bookkeeping lines**: the `## Links` and `log.md` lines get the title only, with `<` escaped, so they add no HTML; no description: the entry `index.md` is searchable, so the session's directory, dates and prompt count stay out of it.
 * **Writer**: `doc-io#createDocFile` (the same checks and bookkeeping as `POST /api/doc`, never overwriting: 409 `exists`); the frontmatter passes the okf concept schema.
 
 ## API
