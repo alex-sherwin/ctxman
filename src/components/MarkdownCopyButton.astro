@@ -1,0 +1,60 @@
+---
+import { COPY_FORMATS } from '../lib/copy-formats.ts';
+import CopyButton from './CopyButton.astro';
+import Icon from './Icon.astro';
+
+// SSR twin of the React split Copy of markdown (src/ui/markdown/MarkdownCopyButton.tsx on the kit `CopySplitButton`):
+// the CopyButton.astro Copy joined to a narrow arrow whose menu offers one item per `COPY_FORMATS` row
+// (src/lib/copy-formats.ts: "Copy as JIRA Markup"). src/scripts/shell.ts drives it: the arrow opens the HTML `popover`
+// (popovertarget: light dismiss on an outside click), moves it to <body> first (like the react-aria Popover portal) and
+// places it under the arrow, end-aligned; arrows / Home / End move between items, Enter / Space / a click copy the
+// `data-copy` text converted and confirm on the Copy part, Esc and Tab close. No island: the island count is fixed.
+interface Props {
+  /** The markdown. */
+  text: string;
+  /** Accessible name of the Copy part. Default "Copy markdown". */
+  ariaLabel?: string;
+  /** Visible label. Default "Copy". */
+  label?: string;
+  /** The Copy part's test id; the arrow gets `<id>-more`, the menu `<id>-menu`, each item `<id>-<format id>`. */
+  testid?: string;
+}
+
+const { text, ariaLabel = 'Copy markdown', label = 'Copy', testid } = Astro.props;
+const moreLabel = 'More copy options';
+// ids for popovertarget / aria-controls; random, so two buttons on one page never share one
+const menuId = `copy-menu-${crypto.randomUUID().slice(0, 8)}`;
+const popoverId = `${menuId}-popover`;
+const sub = (suffix: string) => (testid === undefined ? undefined : `${testid}-${suffix}`);
+---
+
+<span class="ck-split" data-copy-split
+  ><CopyButton text={text} ariaLabel={ariaLabel} label={label} testid={testid} class="ck-split__main" /><button
+    type="button"
+    class="ck-button ck-button--ghost ck-button--sm ck-button--icon ck-split__more"
+    aria-label={moreLabel}
+    aria-haspopup="menu"
+    aria-expanded="false"
+    aria-controls={menuId}
+    popovertarget={popoverId}
+    data-copy-more
+    data-testid={sub('more')}
+    ><span class="ck-button__label"><Icon name="chevron" class="ck-split__chevron" /></span></button
+  ><span id={popoverId} class="ck-popover" popover="auto" data-copy-popover
+    ><span id={menuId} class="ck-menu" role="menu" aria-label={moreLabel} data-testid={sub('menu')}
+      >{
+        COPY_FORMATS.map((format) => (
+          <span
+            class="ck-menu__item"
+            role="menuitem"
+            tabindex="-1"
+            data-copy-format={format.id}
+            data-testid={sub(format.id)}
+          >
+            {format.label}
+          </span>
+        ))
+      }</span
+    ></span
+  ></span
+>

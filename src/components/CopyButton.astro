@@ -11,14 +11,15 @@ interface Props {
   /** Visible label. Default "Copy". */
   label?: string;
   testid?: string;
+  class?: string;
 }
 
-const { text, ariaLabel, label = 'Copy', testid } = Astro.props;
+const { text, ariaLabel, label = 'Copy', testid, class: className } = Astro.props;
 ---
 
 <button
   type="button"
-  class="ck-button ck-button--ghost ck-button--sm ck-button--glow ck-copy"
+  class:list={['ck-button ck-button--ghost ck-button--sm ck-button--glow ck-copy', className]}
   data-copy={text}
   aria-label={ariaLabel}
   data-testid={testid}

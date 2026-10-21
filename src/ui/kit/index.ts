@@ -8,7 +8,14 @@ export {
   type ButtonVariant,
   type ButtonSize,
 } from './Button.tsx';
-export { CopyButton, COPIED_MS, type CopyButtonProps } from './CopyButton.tsx';
+export {
+  CopyButton,
+  COPIED_MS,
+  useCopyFeedback,
+  type CopyButtonProps,
+  type CopyFeedback,
+} from './CopyButton.tsx';
+export { CopySplitButton, type CopyOption, type CopySplitButtonProps } from './CopySplitButton.tsx';
 export {
   Chip,
   ChipGroup,

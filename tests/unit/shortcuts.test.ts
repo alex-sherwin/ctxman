@@ -121,8 +121,15 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget(stub([]))).toBe(false);
   });
 
-  it('is true for inputs, textareas, selects, contenteditable and Monaco', () => {
-    for (const m of ['input', 'textarea', 'select', '[contenteditable]', '.monaco-editor']) {
+  it('is true for inputs, textareas, selects, contenteditable, Monaco and menus', () => {
+    for (const m of [
+      'input',
+      'textarea',
+      'select',
+      '[contenteditable]',
+      '.monaco-editor',
+      '[role="menu"]',
+    ]) {
       expect(isTypingTarget(stub([m]))).toBe(true);
     }
   });
@@ -136,7 +143,14 @@ describe('isTypingTarget', () => {
       },
     });
     expect(selectors).toHaveLength(1);
-    for (const part of ['input', 'textarea', 'select', '[contenteditable]', '.monaco-editor']) {
+    for (const part of [
+      'input',
+      'textarea',
+      'select',
+      '[contenteditable]',
+      '.monaco-editor',
+      '[role="menu"]',
+    ]) {
       expect(selectors[0]).toContain(part);
     }
   });

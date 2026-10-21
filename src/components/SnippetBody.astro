@@ -1,11 +1,12 @@
 ---
 import { SNIPPET_TARGET_ID } from '../ui/markdown/targets.ts';
-import CopyButton from './CopyButton.astro';
+import MarkdownCopyButton from './MarkdownCopyButton.astro';
 import MdEditButton from './MdEditButton.astro';
 import Panel from './Panel.astro';
 
-// The main column of a snippet page: its markdown rendered, with Copy (the raw markdown) and the pencil that opens the
-// MarkdownTargets popup (`snippet-markdown` target, src/ui/markdown/targets.ts).
+// The main column of a snippet page: its markdown rendered, with the split Copy (the raw markdown; its arrow menu:
+// "Copy as JIRA Markup") and the pencil that opens the MarkdownTargets popup (`snippet-markdown` target,
+// src/ui/markdown/targets.ts).
 interface Props {
   markdown: string;
   markdownHtml: string;
@@ -16,7 +17,7 @@ const { markdown, markdownHtml } = Astro.props;
 
 <Panel title="Markdown" id="h-snippet-markdown" testid="snippet-markdown">
   <Fragment slot="actions">
-    <CopyButton text={markdown} ariaLabel="Copy markdown" testid="snippet-copy" />
+    <MarkdownCopyButton text={markdown} testid="snippet-copy" />
     <MdEditButton id={SNIPPET_TARGET_ID} label="markdown" testid="snippet-edit-markdown" />
   </Fragment>
   <div class="cx-snippet__body cx-prose" set:html={markdownHtml} />

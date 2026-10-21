@@ -1,0 +1,80 @@
+/* Split button `[ COPY | v ]`: the kit `CopySplitButton` (CopySplitButton.tsx) and its SSR twin
+   (src/components/MarkdownCopyButton.astro, driven by src/scripts/shell.ts). Both parts keep their own Button look
+   (ghost, sm, glow) and their own hover / focus / pressed states; the group joins them into one control: square inner
+   corners, a thin divider, a narrow arrow. While its menu is open the arrow stays lit and its chevron points up. */
+@layer cx-kit {
+  .ck-split {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+  .ck-split > .ck-split__main {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+  .ck-split > .ck-split__more {
+    width: 18px;
+    min-width: 0;
+    aspect-ratio: auto;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+  /* the divider: drawn on the arrow's left edge, over the seam */
+  .ck-split > .ck-split__more::before {
+    content: '';
+    position: absolute;
+    inset-block: 5px;
+    inset-inline-start: calc(-1 * var(--border-w));
+    width: 1px;
+    background: var(--border-strong);
+    pointer-events: none;
+  }
+  /* no divider next to a lit part: its own border takes the seam */
+  .ck-split:has(
+      > .ck-button:is(
+        [data-hovered],
+        [data-focus-visible],
+        [aria-expanded='true'],
+        :not([data-rac]):hover,
+        :not([data-rac]):focus-visible
+      )
+    )
+    > .ck-split__more::before {
+    opacity: 0;
+  }
+  .ck-split__more .ck-split__chevron {
+    width: 12px;
+    height: 12px;
+    transition: transform var(--dur-fast) var(--ease);
+  }
+  /* menu open (react-aria and the SSR twin both set aria-expanded): the icon-button glow stays on */
+  .ck-split > .ck-split__more[aria-expanded='true'] {
+    color: var(--icon-hot);
+    background: var(--icon-hot-bg);
+    border-color: var(--icon-hot-line);
+    box-shadow: var(--icon-hot-glow);
+    filter: none;
+  }
+  .ck-split__more[aria-expanded='true'] .ck-split__chevron {
+    transform: rotate(180deg);
+    filter: var(--icon-hot-drop);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ck-split__more .ck-split__chevron {
+      transition: none;
+    }
+  }
+
+  /* SSR twin: the menu is an HTML `popover` (top layer) that shell.ts places under the arrow. Drop the UA popover
+     box (centered by `inset: 0` + `margin: auto`, padded); `.ck-popover` gives the rest. Its menu is a <span>
+     (the markup starts inside a panel heading). */
+  .ck-popover[popover] {
+    inset: auto;
+    margin: 0;
+    padding: 0;
+  }
+  .ck-popover[popover] > .ck-menu {
+    display: block;
+  }
+}

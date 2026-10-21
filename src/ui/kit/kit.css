@@ -2,6 +2,7 @@
    Imported once from src/styles/global.css (kit .tsx files never import CSS: UI_SPEC §0.2). */
 @import './Button.css';
 @import './CopyButton.css';
+@import './SplitButton.css';
 @import './Chip.css';
 @import './Field.css';
 @import './Select.css';

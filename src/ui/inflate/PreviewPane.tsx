@@ -23,7 +23,6 @@ import {
   ChipToggle,
   CodeEditor,
   Column,
-  CopyButton,
   ErrorText,
   Notice,
   Row,
@@ -33,6 +32,7 @@ import {
   TableHeader,
   TextField,
 } from '../kit/index.ts';
+import { MarkdownCopyButton } from '../markdown/MarkdownCopyButton.tsx';
 import { formatBytes } from './format.ts';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -84,7 +84,11 @@ function download(name: string, text: string): void {
 function PreviewActions({ name, markdown }: { name: string; markdown: string | null }) {
   return (
     <>
-      <CopyButton text={markdown ?? ''} isDisabled={markdown === null} data-testid="inflate-copy" />
+      <MarkdownCopyButton
+        text={markdown ?? ''}
+        isDisabled={markdown === null}
+        data-testid="inflate-copy"
+      />
       <Button
         size="sm"
         onPress={() => {

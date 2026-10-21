@@ -92,7 +92,7 @@ markdown: |
   1. Run the full suite.
 ```
 
-`markdown` is written last, as a literal block, exactly as typed. A snippet is linkable, so a context links it and a recipe includes it like any other entry; [Context inflate](/concepts/context-inflate.md) writes its markdown into the document under the item heading. The snippet page renders the markdown in a panel with Copy (the raw text) and a pencil popup editor; `/new/snippet` and `?edit=1` use the form, with the markdown in a Monaco field. The API is `GET|PUT|DELETE /api/snippet/<slug>` and `POST /api/snippet`, and `src/lib/snippet-io.ts` writes the file atomically (key order `name`, `description`, `tags`, `markdown`). Like a reference, an invalid snippet file is listed flagged and its page is a 404 until it is fixed. `ctxman:` links in a snippet are not checked by `check:links` (Inflate warns about unresolved ones).
+`markdown` is written last, as a literal block, exactly as typed. A snippet is linkable, so a context links it and a recipe includes it like any other entry; [Context inflate](/concepts/context-inflate.md) writes its markdown into the document under the item heading. The snippet page renders the markdown in a panel with Copy (the raw text; its arrow menu also offers Copy as JIRA Markup) and a pencil popup editor; `/new/snippet` and `?edit=1` use the form, with the markdown in a Monaco field. The API is `GET|PUT|DELETE /api/snippet/<slug>` and `POST /api/snippet`, and `src/lib/snippet-io.ts` writes the file atomically (key order `name`, `description`, `tags`, `markdown`). Like a reference, an invalid snippet file is listed flagged and its page is a 404 until it is fixed. `ctxman:` links in a snippet are not checked by `check:links` (Inflate warns about unresolved ones).
 
 ## Contexts
 

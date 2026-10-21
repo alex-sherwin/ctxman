@@ -9,7 +9,8 @@
 // Back / Forward and link clicks show the in-app "Discard unsaved changes?" dialog (`requestLeave`, `$docLeave`), and
 // whatever else unloads the page (reload, closing the tab) the browser's prompt (`useUnsavedGuard`).
 // "Insert link…" (button + Mod+Alt+K in the editor) opens the shared EntryPicker. Copy (never locked) copies the
-// markdown without its frontmatter: the page's `body` in preview, the editor text (frontmatter stripped) while editing.
+// markdown without its frontmatter: the page's `body` in preview, the editor text (frontmatter stripped) while editing;
+// its arrow menu copies that same text converted (MarkdownCopyButton: "Copy as JIRA Markup").
 import { useStore } from '@nanostores/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { OKF_ENTRY_FILE } from '../../datasets/registry.ts';
@@ -55,7 +56,6 @@ import { useUnsavedGuard } from '../edit/useUnsavedGuard.ts';
 import { useViewportFill } from '../edit/useViewportFill.ts';
 import { Button } from '../kit/Button.tsx';
 import { ChipToggle } from '../kit/Chip.tsx';
-import { CopyButton } from '../kit/CopyButton.tsx';
 import { Loading } from '../kit/Loading.tsx';
 import { Notice } from '../kit/Notice.tsx';
 import { ErrorText, Status } from '../kit/Status.tsx';
@@ -63,6 +63,7 @@ import { Toolbar } from '../kit/Toolbar.tsx';
 import { EntryPicker } from '../pickers/EntryPicker.tsx';
 import { useInsertLink } from '../pickers/useInsertLink.ts';
 import { DeleteDocButton } from './DeleteDocButton.tsx';
+import { MarkdownCopyButton } from './MarkdownCopyButton.tsx';
 
 export interface DocEditorProps {
   dataset: DocDataset;
@@ -189,7 +190,7 @@ export default function DocEditor({
           <DeleteDocButton target={{ dataset, slug, path }} locked={edit} />
         )}
         <code className="cx-doctools__path">{path}</code>
-        <CopyButton text={copyText} aria-label="Copy markdown" data-testid="doc-copy" />
+        <MarkdownCopyButton text={copyText} data-testid="doc-copy" />
         <span className="cx-doctools__spacer" />
         {edit && (
           <Button

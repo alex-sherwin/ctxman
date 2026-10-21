@@ -1,5 +1,9 @@
 // Vanilla shell behaviour loaded by Base.astro on every page (UI_SPEC §C.1). No framework, no state:
 // everything is event delegation on `document`, so it also covers markup swapped in later.
+// Imports stay small: the copy format converters are dynamic imports inside src/lib/copy-formats.ts.
+import { writeClipboard } from '../lib/clipboard.ts';
+import { copyFormat, preloadCopyFormats } from '../lib/copy-formats.ts';
+import { isMenuNavKey, menuFocusIndex, placeMenu } from '../lib/menu-popup.ts';
 
 const MAC = /Mac|iPhone|iPad/;
 const COPIED_MS = 1200;
@@ -27,7 +31,7 @@ if (MAC.test(navigator.platform || navigator.userAgent)) {
 // 2. Copy buttons (src/components/CopyButton.astro): <button data-copy="text">, and the Copy button of every rendered
 //    code block (src/lib/markdown.ts): <div class="cx-codeblock"><pre>…</pre><button data-copy-code>, which copies
 //    the text of that `<pre>`. For a moment `data-copied` swaps the label for a centered check (CSS, same width)
-//    and the sibling `[data-copy-status]` live region says "Copied".
+//    and the sibling `[data-copy-status]` live region says "Copied" (or what a menu format says, see 2b).
 const copyTimers = new WeakMap<HTMLElement, number>();
 
 function copyTextOf(button: HTMLElement): string {
@@ -35,18 +39,18 @@ function copyTextOf(button: HTMLElement): string {
   return button.closest('.cx-codeblock')?.querySelector('pre')?.textContent ?? '';
 }
 
-async function copyFrom(button: HTMLElement): Promise<void> {
-  const text = copyTextOf(button);
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    return; // clipboard unavailable (insecure context / permission): leave the button untouched
-  }
+async function copyAndConfirm(
+  button: HTMLElement,
+  text: string | Promise<string>,
+  done = 'Copied',
+): Promise<void> {
+  // clipboard unavailable (insecure context / permission) or the text failed: leave the button untouched
+  if (!(await writeClipboard(text))) return;
   const next = button.nextElementSibling;
   const status = next instanceof HTMLElement && next.matches('[data-copy-status]') ? next : null;
   window.clearTimeout(copyTimers.get(button));
   button.dataset.copied = '';
-  if (status) status.textContent = 'Copied';
+  if (status) status.textContent = done;
   copyTimers.set(
     button,
     window.setTimeout(() => {
@@ -56,6 +60,172 @@ async function copyFrom(button: HTMLElement): Promise<void> {
     }, COPIED_MS),
   );
 }
+
+// 2b. Split Copy of markdown (src/components/MarkdownCopyButton.astro): `[data-copy-split]` holds the Copy above and
+//     an arrow <button data-copy-more popovertarget> whose `[data-copy-popover]` (an HTML `popover="auto"`: top layer,
+//     closed by an outside click and Esc) holds a role="menu" of `[data-copy-format]` items (src/lib/copy-formats.ts).
+//     The browser toggles the popover on an arrow click (Enter, Space); before that the popover moves to <body> (out
+//     of the panel heading, like the react-aria Popover portal) and the converters start loading (also on hover and
+//     focus). Opened, it sits under the arrow, end-aligned (`placeMenu`), and the first item (ArrowUp: the last) takes
+//     focus; ArrowUp / ArrowDown / Home / End move it, Enter / Space / a click copy the Copy part's `data-copy`
+//     converted, Esc closes, Tab closes and moves on from the arrow. Closing with focus inside returns it to the arrow.
+const MENU_ITEM = '[data-copy-popover] [role="menuitem"]';
+let openCopyMenu: { popover: HTMLElement; more: HTMLButtonElement } | null = null;
+
+function popoverOf(more: HTMLButtonElement): HTMLElement | null {
+  const el = more.popoverTargetElement;
+  return el instanceof HTMLElement && el.matches('[data-copy-popover]') ? el : null;
+}
+
+function moreOf(popover: HTMLElement): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(
+    `[data-copy-more][popovertarget="${CSS.escape(popover.id)}"]`,
+  );
+}
+
+function menuItems(popover: HTMLElement): HTMLElement[] {
+  return [...popover.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+}
+
+function hideCopyMenu(popover: HTMLElement): void {
+  if (popover.matches(':popover-open')) popover.hidePopover();
+}
+
+function placeCopyMenu(popover: HTMLElement, more: HTMLElement): void {
+  const root = document.documentElement;
+  const { top, left } = placeMenu(more.getBoundingClientRect(), popover.getBoundingClientRect(), {
+    width: root.clientWidth,
+    height: root.clientHeight,
+  });
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+}
+
+function onViewportChange(): void {
+  if (openCopyMenu) placeCopyMenu(openCopyMenu.popover, openCopyMenu.more);
+}
+
+function onCopyMenuToggle(event: Event): void {
+  const popover = event.target;
+  if (!(event instanceof ToggleEvent) || !(popover instanceof HTMLElement)) return;
+  if (!popover.matches('[data-copy-popover]')) return;
+  const more = moreOf(popover);
+  if (!more) return;
+  if (event.newState === 'open') {
+    more.setAttribute('aria-expanded', 'true');
+    preloadCopyFormats();
+    // the kit .ck-popover / .ck-menu rules read what the react-aria Popover sets
+    popover.style.setProperty('--trigger-width', `${more.offsetWidth}px`);
+    popover.style.setProperty(
+      '--visual-viewport-height',
+      `${window.visualViewport?.height ?? window.innerHeight}px`,
+    );
+    placeCopyMenu(popover, more); // provisional: the menu has no size before it shows
+    openCopyMenu = { popover, more };
+    window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
+    window.addEventListener('resize', onViewportChange);
+    // runs once the popover shows, before it is painted
+    requestAnimationFrame(() => {
+      if (!popover.matches(':popover-open')) return;
+      placeCopyMenu(popover, more);
+      const items = menuItems(popover);
+      const last = popover.dataset.openFocus === 'last';
+      delete popover.dataset.openFocus;
+      (last ? items.at(-1) : items[0])?.focus({ preventScroll: true });
+    });
+    return;
+  }
+  more.setAttribute('aria-expanded', 'false');
+  if (popover.contains(document.activeElement)) more.focus();
+  if (openCopyMenu?.popover === popover) {
+    openCopyMenu = null;
+    window.removeEventListener('scroll', onViewportChange, { capture: true });
+    window.removeEventListener('resize', onViewportChange);
+  }
+}
+
+function chooseCopyFormat(item: HTMLElement): void {
+  const popover = item.closest<HTMLElement>('[data-copy-popover]');
+  const more = popover ? moreOf(popover) : null;
+  const button = more?.closest('[data-copy-split]')?.querySelector<HTMLElement>('[data-copy]');
+  const format = copyFormat(item.dataset.copyFormat);
+  if (!popover || !button || !format) return;
+  // still inside the click / key press: the clipboard write starts before the conversion is awaited
+  void copyAndConfirm(button, format.convert(button.dataset.copy ?? ''), format.copied);
+  hideCopyMenu(popover);
+}
+
+function onCopyMenuKey(event: KeyboardEvent): void {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || event.defaultPrevented) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const more = target.closest<HTMLButtonElement>('[data-copy-more]');
+  if (more) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const popover = popoverOf(more);
+    if (!popover || more.disabled) return;
+    event.preventDefault();
+    const edge = event.key === 'ArrowUp' ? 'last' : 'first';
+    if (popover.matches(':popover-open')) {
+      const items = menuItems(popover);
+      (edge === 'last' ? items.at(-1) : items[0])?.focus();
+    } else {
+      popover.dataset.openFocus = edge;
+      more.click(); // through popovertarget, so the browser knows the arrow as the invoker
+    }
+    return;
+  }
+  const popover = target.closest<HTMLElement>('[data-copy-popover]');
+  if (!popover) return;
+  if (isMenuNavKey(event.key)) {
+    event.preventDefault();
+    const items = menuItems(popover);
+    const index = menuFocusIndex(event.key, items.indexOf(target), items.length);
+    if (index !== null) items[index]?.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    const item = target.closest<HTMLElement>('[data-copy-format]');
+    if (item) chooseCopyFormat(item);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    hideCopyMenu(popover);
+  } else if (event.key === 'Tab') {
+    hideCopyMenu(popover); // focus is back on the arrow before the browser moves it on
+  }
+}
+
+document.addEventListener('beforetoggle', onCopyMenuToggle, true); // toggle events do not bubble
+document.addEventListener('keydown', onCopyMenuKey);
+// an arrow click: portal the popover before the browser opens it (the click's default action)
+document.addEventListener(
+  'click',
+  (event) => {
+    const target = event.target;
+    const more =
+      target instanceof Element ? target.closest<HTMLButtonElement>('[data-copy-more]') : null;
+    const popover = more ? popoverOf(more) : null;
+    if (popover && popover.parentElement !== document.body) document.body.append(popover);
+  },
+  true,
+);
+// hover focuses an item, like the react-aria menu; `data-focused` gives the kit .ck-menu__item focus look
+document.addEventListener('pointerover', (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest('[data-copy-more]')) preloadCopyFormats();
+  const item = target.closest<HTMLElement>(MENU_ITEM);
+  if (item && document.activeElement !== item) item.focus({ preventScroll: true });
+});
+document.addEventListener('focusin', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.matches('[data-copy-more]')) preloadCopyFormats();
+  if (target.matches(MENU_ITEM)) target.dataset.focused = '';
+});
+document.addEventListener('focusout', (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && target.matches(MENU_ITEM)) delete target.dataset.focused;
+});
 
 // 3. Search trigger: <a data-search-trigger href="…?search=1">. A plain click opens the search island
 //    through a window event; modified clicks keep their normal link behaviour. If no island answered
@@ -249,9 +419,15 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  const format = target.closest<HTMLElement>('[data-copy-format]');
+  if (format) {
+    chooseCopyFormat(format);
+    return;
+  }
+
   const copy = target.closest<HTMLElement>('[data-copy], [data-copy-code]');
   if (copy) {
-    void copyFrom(copy);
+    void copyAndConfirm(copy, copyTextOf(copy));
     return;
   }
 

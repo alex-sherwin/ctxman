@@ -63,8 +63,9 @@ export const EDIT_LINK_SELECTOR = '[data-shortcut-edit-link]';
  */
 export const EDIT_SHORTCUT_EVENT = 'ctxman:edit-shortcut';
 
-/** Elements that take typed text: shortcuts never fire there. */
-export const TYPING_SELECTOR = 'input, textarea, select, [contenteditable], .monaco-editor';
+/** Elements that take typed text (a menu: its typeahead letters): shortcuts never fire there. */
+export const TYPING_SELECTOR =
+  'input, textarea, select, [contenteditable], .monaco-editor, [role="menu"]';
 
 /** The subset of `KeyboardEvent` the matcher needs. */
 export interface KeyInfo {

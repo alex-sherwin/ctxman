@@ -34,7 +34,7 @@ Press `?` on any page, or the **?** button in the footer, for the list. It is a 
 
 ## When keys are ignored
 
-`?`, `c`, `l`, `.` and `e` do nothing while you type (an input, textarea, select, contenteditable element or a Monaco editor has focus), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c`, `l`, `.` and `e` also need Shift released. `e` does nothing on a page that is already in edit mode or has none (lists, dashboard, tools).
+`?`, `c`, `l`, `.` and `e` do nothing while you type (an input, textarea, select, contenteditable element, a Monaco editor or an open menu has focus: a menu jumps to an item by its first letter), while any dialog is open, with Cmd, Ctrl or Alt held, during IME composition, or when another handler already handled the key. `c`, `l`, `.` and `e` also need Shift released. `e` does nothing on a page that is already in edit mode or has none (lists, dashboard, tools).
 
 ## How it works
 
