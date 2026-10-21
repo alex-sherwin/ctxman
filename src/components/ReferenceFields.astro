@@ -69,7 +69,7 @@ const root = uriKind === 'archive' ? 'archive root' : data.type === 'local-folde
   </Fragment>
   {
     infoHtml !== undefined ? (
-      <div class="cx-refinfo__body cx-prose cx-prose--compact" set:html={infoHtml} />
+      <div class="cx-refinfo__body cx-prose" set:html={infoHtml} />
     ) : (
       <EmptyState compact title="None" />
     )

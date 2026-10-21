@@ -19,5 +19,5 @@ const { markdown, markdownHtml } = Astro.props;
     <CopyButton text={markdown} ariaLabel="Copy markdown" testid="snippet-copy" />
     <MdEditButton id={SNIPPET_TARGET_ID} label="markdown" testid="snippet-edit-markdown" />
   </Fragment>
-  <div class="cx-snippet__body cx-prose cx-prose--compact" set:html={markdownHtml} />
+  <div class="cx-snippet__body cx-prose" set:html={markdownHtml} />
 </Panel>

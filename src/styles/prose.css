@@ -11,9 +11,10 @@
   .cx-prose > :last-child {
     margin-bottom: 0;
   }
-  /* cybercore's reset zeroed every margin; prose re-adds block rhythm (dense) */
+  /* cybercore's reset zeroed every margin; prose re-adds block rhythm: one line-ish (16px) between blocks. The
+     space above a heading (below) stays larger, so a section still reads as one. */
   .cx-prose :where(p, ul, ol, dl, blockquote, pre, table, figure, hr, details, .cx-codeblock) {
-    margin: 0 0 var(--sp-5);
+    margin: 0 0 var(--sp-6);
   }
 
   /* the space above a heading grows with its size (em of the heading's own font size) */
@@ -169,7 +170,7 @@
     border-left: 2px solid var(--border-strong);
     background: var(--bg-subtle);
   }
-  .cx-prose blockquote > :last-child {
+  .cx-prose :where(blockquote, details) > :last-child {
     margin-bottom: 0;
   }
 
@@ -308,16 +309,17 @@
     scroll-margin-top: calc(var(--header-h) + var(--bar-h) + var(--sp-5));
   }
 
-  /* compact variant: context link notes */
+  /* compact variant: the short markdown fields of a page (context link notes, a recipe's preamble and blocks);
+     whole documents (snippet markdown, reference info) use the full .cx-prose */
   .cx-prose--compact {
     font-size: var(--fs-md);
     line-height: var(--lh);
   }
-  .cx-prose--compact :where(p, ul, ol, pre, blockquote, table, .cx-codeblock) {
-    margin-bottom: var(--sp-2);
+  .cx-prose--compact :where(p, ul, ol, dl, pre, blockquote, table, figure, details, .cx-codeblock) {
+    margin-bottom: var(--sp-5);
   }
   .cx-prose--compact :where(h1, h2, h3, h4) {
-    margin: var(--sp-3) 0 var(--sp-1);
+    margin: var(--sp-6) 0 var(--sp-2);
     font-size: var(--fs-md);
     border: 0;
     border-image: none;
