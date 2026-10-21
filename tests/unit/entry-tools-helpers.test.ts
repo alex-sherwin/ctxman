@@ -352,6 +352,7 @@ describe('dialogFor', () => {
     expect(dialogFor({ action: 'add-file', path: ' ' })).toEqual({ type: 'add-file' });
     expect(dialogFor({ action: 'import-session' })).toEqual({ type: 'import-session' });
     expect(dialogFor({ action: 'import-plan' })).toEqual({ type: 'import-plan' });
+    expect(dialogFor({ action: 'log-time' })).toEqual({ type: 'log-time' });
     // the import buttons carry no data-path: a stray one changes nothing
     expect(dialogFor({ action: 'import-plan', path: 'plans/x.md' })).toEqual({
       type: 'import-plan',

@@ -1,29 +1,34 @@
-// "Log time" dialog of a ListTable row (task, feature, bug, rca: registry TIME_TRACKED_DATASETS). One duration
-// field, focused when the dialog opens; Enter (or Add) appends it to the entry's `time` list with
-// PATCH /api/entry/<ds>/<slug> { addTime: [duration] }, then the list reloads and says what was logged
-// (list-flash.ts). The duration is ISO 8601 (PT1H30M; `pt45m` is upper-cased), checked before the request
-// (time-input.ts) and again by the server. Monaco-free: kit parts by file.
+// The "Log time" dialog of a time-tracked entry (task, feature, bug, rca: registry TIME_TRACKED_DATASETS), shared by
+// a ListTable row (its clock button, or `t` on the hovered / focused row) and an entry or document page (the Details
+// panel's clock button, or `t`: the EntryTools island). One duration field, focused when the dialog opens; Enter (or
+// Add) appends it to the entry's `time` list with PATCH /api/entry/<ds>/<slug> { addTime: [duration] }, then hands
+// the caller the message ("Logged PT1H on “X” (total 2h 30m)", log-time.ts): the list leaves it for the reloaded
+// list (list-flash.ts), an entry page shows it in the EntryTools status line and reloads. The dialog stays pending
+// until the caller closes it or the page reloads. The duration is ISO 8601 (PT1H30M; `pt45m` is upper-cased),
+// checked before the request (time-input.ts) and again by the server. Monaco-free: kit parts by file.
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Form } from 'react-aria-components';
-import type { DatasetId } from '../../datasets/registry.ts';
-import { formatSeconds, totalDurationSeconds } from '../../lib/iso8601.ts';
-import { addTimeInput } from '../edit/time-input.ts';
 import { patchEntry } from '../entry/entry-api.ts';
 import { Dialog, FormDialogFooter, Modal } from '../kit/Dialog.tsx';
 import { TextField } from '../kit/Field.tsx';
 import { ErrorText } from '../kit/Status.tsx';
-import { setListFlash } from './list-flash.ts';
+import { loggedMessage, logTimeError } from './log-time.ts';
+import type { LogTimeTarget } from './log-time.ts';
+import { addTimeInput } from './time-input.ts';
 
-export interface LogTimeTarget {
-  dataset: DatasetId;
-  slug: string;
-  title: string;
-}
+export type { LogTimeTarget } from './log-time.ts';
 
 const FORM_ID = 'log-time-form';
 
-export function LogTimeDialog({ target, onClose }: { target: LogTimeTarget; onClose: () => void }) {
+export interface LogTimeDialogProps {
+  target: LogTimeTarget;
+  onClose: () => void;
+  /** The PATCH succeeded: what was logged, for the caller to show (it reloads the page). */
+  onLogged: (message: string) => void;
+}
+
+export function LogTimeDialog({ target, onClose, onLogged }: LogTimeDialogProps) {
   const [text, setText] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -42,22 +47,11 @@ export function LogTimeDialog({ target, onClose }: { target: LogTimeTarget; onCl
     setError(null);
     const res = await patchEntry(target.dataset, target.slug, { addTime: [duration] });
     if (res.ok) {
-      const time = res.body.frontmatter.time;
-      const total = Array.isArray(time)
-        ? totalDurationSeconds(time.filter((t): t is string => typeof t === 'string'))
-        : null;
-      setListFlash(
-        `Logged ${duration} on “${target.title}”${total === null ? '' : ` (total ${formatSeconds(total)})`}`,
-      );
-      location.reload();
-      return; // stays pending until the reload
+      onLogged(loggedMessage(duration, target.title, res.body.frontmatter.time));
+      return; // stays pending until the caller closes it or the page reloads
     }
     setPending(false);
-    setError(
-      res.issues && res.issues.length > 0
-        ? res.issues.map((i) => `${i.path === '' ? '' : `${i.path}: `}${i.message}`).join('; ')
-        : res.message,
-    );
+    setError(logTimeError(res));
   }
 
   return (

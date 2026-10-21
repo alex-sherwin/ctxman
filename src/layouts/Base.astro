@@ -18,6 +18,11 @@ interface Props {
   linkShortcut?: boolean;
   /** The page has an edit mode (DocEditor, or an Edit link to `?edit=1`): the `e` shortcut enters it. */
   editShortcut?: boolean;
+  /**
+   * An entry, document or list page of a time-tracked dataset (task, feature, bug, rca): the `t` shortcut opens Log
+   * time (the Details panel button of the entry, or the focused / hovered list row).
+   */
+  timeShortcut?: boolean;
 }
 
 const {
@@ -27,6 +32,7 @@ const {
   createHref,
   linkShortcut = false,
   editShortcut = false,
+  timeShortcut = false,
 } = Astro.props;
 
 const favicon = `data:image/svg+xml,${encodeURIComponent(
@@ -48,6 +54,7 @@ const favicon = `data:image/svg+xml,${encodeURIComponent(
     data-shortcut-create={createHref}
     data-shortcut-link={linkShortcut ? '' : undefined}
     data-shortcut-edit={editShortcut ? '' : undefined}
+    data-shortcut-time={timeShortcut ? '' : undefined}
   >
     <a class="cx-skip ck-sr-only" href="#main">Skip to content</a>
     <Header active={active} />

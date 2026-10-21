@@ -11,11 +11,14 @@
 // - The state select is the native one src/scripts/shell.ts saves (StateSelect.tsx); `keyboardNavigationBehavior
 //   ="tab"` keeps arrow keys and Enter inside it instead of moving through the grid, and its cell keeps the events
 //   of a change from pressing the row (a change saves and reloads the list, it never opens the entry).
-// - The last column holds the row's actions as icon buttons: Log time (task, feature, bug, rca: LogTimeDialog.tsx)
-//   and Delete… (the confirm dialog of EntryMenu.tsx, shared with the EntryMenus island of detail pages). A write
-//   reloads the list; Log time leaves a message for the reloaded page (list-flash.ts).
+// - The last column holds the row's actions as icon buttons: Log time (task, feature, bug, rca: the shared
+//   src/ui/edit/LogTimeDialog.tsx) and Delete… (the confirm dialog of EntryMenu.tsx, shared with the EntryMenus
+//   island of detail pages). A write reloads the list; Log time leaves a message for the reloaded page
+//   (list-flash.ts). On those lists the `t` shortcut opens Log time too, for the row with the keyboard focus, else
+//   the row under the pointer (shortcut-row.ts): the island answers the Shortcuts island's cancelable
+//   `ctxman:log-time-shortcut` event.
 import { useStore } from '@nanostores/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Key } from 'react-aria-components';
 import { getDataset, isTimeTrackedDatasetId, OWNER_LABELS } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
@@ -25,10 +28,13 @@ import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { TARGETS } from '../../lib/inflate/catalog.ts';
 import { formatSeconds } from '../../lib/iso8601.ts';
 import { rememberListSort } from '../../lib/list-sort-memory.ts';
+import { LOG_TIME_SHORTCUT_EVENT } from '../../lib/shortcuts.ts';
 import { formatAbsolute, formatRelative } from '../../lib/time.ts';
 import { listSortHref } from '../../lib/url-state.ts';
 import type { ListSort } from '../../lib/url-state.ts';
 import { $now } from '../../stores/now.ts';
+import { LogTimeDialog } from '../edit/LogTimeDialog.tsx';
+import type { LogTimeTarget } from '../edit/LogTimeDialog.tsx';
 import { Button } from '../kit/Button.tsx';
 import { Icon } from '../kit/Icon.tsx';
 import { Menu, MenuItem, MenuSection, MenuTrigger } from '../kit/Menu.tsx';
@@ -42,9 +48,8 @@ import { listColumns } from './columns.ts';
 import type { ListColumn, ListColumnId } from './columns.ts';
 import { readListData } from './list-data.ts';
 import type { ListData } from './list-data.ts';
-import { clearListFlash, readListFlash } from './list-flash.ts';
-import { LogTimeDialog } from './LogTimeDialog.tsx';
-import type { LogTimeTarget } from './LogTimeDialog.tsx';
+import { clearListFlash, readListFlash, setListFlash } from './list-flash.ts';
+import { shortcutRow } from './shortcut-row.ts';
 import { StateSelect } from './StateSelect.tsx';
 import {
   DEFAULT_TABLE_PREFS,
@@ -100,6 +105,24 @@ function ListTableView({ data }: { data: ListData }) {
   useEffect(() => clearListFlash(), []);
   const timeTracked = isTimeTrackedDatasetId(dataset);
   const actionsWidth = ACTIONS_WIDTH + (timeTracked ? ACTION_STEP : 0);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // `t` (src/lib/shortcuts.ts): Log time on the focused row, else the hovered one. Unanswered (no such row, or not a
+  // time-tracked list) the key does nothing here.
+  useEffect(() => {
+    if (!timeTracked) return;
+    const onShortcut = (event: Event) => {
+      const root = rootRef.current;
+      if (root === null) return;
+      const row = shortcutRow<HTMLElement>(root, document.activeElement);
+      const entry = entries.find((e) => e.slug === row?.dataset.slug);
+      if (entry === undefined) return;
+      event.preventDefault();
+      setLogging({ dataset: entry.dataset, slug: entry.slug, title: entry.title ?? entry.name });
+    };
+    window.addEventListener(LOG_TIME_SHORTCUT_EVENT, onShortcut);
+    return () => window.removeEventListener(LOG_TIME_SHORTCUT_EVENT, onShortcut);
+  }, [timeTracked, entries]);
 
   const allColumns = useMemo(() => listColumns(dataset), [dataset]);
   // The data columns the layout shows; the table renders them plus the actions column.
@@ -132,7 +155,12 @@ function ListTableView({ data }: { data: ListData }) {
   }
 
   return (
-    <div className="cx-ltable" data-testid="list-results" data-sorting={sorting || undefined}>
+    <div
+      ref={rootRef}
+      className="cx-ltable"
+      data-testid="list-results"
+      data-sorting={sorting || undefined}
+    >
       <div className="cx-ltable__bar">
         {flash !== null && (
           <Status kind="ok" className="cx-ltable__flash" testId="list-flash">
@@ -246,7 +274,16 @@ function ListTableView({ data }: { data: ListData }) {
         </Table>
       </ResizableTable>
       {asking !== null && <DeleteEntryDialog target={asking} onClose={() => setAsking(null)} />}
-      {logging !== null && <LogTimeDialog target={logging} onClose={() => setLogging(null)} />}
+      {logging !== null && (
+        <LogTimeDialog
+          target={logging}
+          onClose={() => setLogging(null)}
+          onLogged={(message) => {
+            setListFlash(message);
+            location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -267,7 +304,7 @@ function RowActions({ entry: e, timeTracked, onLogTime, onDelete }: RowActionsPr
   return (
     <span className="cx-ltable__actions" data-testid="row-actions">
       {timeTracked && (
-        <Tooltip content="Log time">
+        <Tooltip content="Log time (t)">
           <Button
             variant="ghost"
             size="sm"

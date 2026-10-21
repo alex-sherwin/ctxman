@@ -760,6 +760,21 @@
   .cx-meta__total {
     margin-left: var(--sp-2);
   }
+  /* the Time (entry page) / Entry time (document page) row of a time-tracked entry: the value, then the Log time
+     button at the right end of the row */
+  .cx-meta__timerow {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .cx-meta__timerow > :first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .cx-meta__logtime {
+    flex: none;
+    margin-block: calc(-1 * var(--sp-1));
+  }
   .cx-meta__row dd ul.cx-meta__col {
     flex-direction: column;
     flex-wrap: nowrap;

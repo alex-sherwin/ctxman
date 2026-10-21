@@ -336,6 +336,7 @@ export const ENTRY_ACTIONS = [
   'add-file',
   'import-session',
   'import-plan',
+  'log-time',
 ] as const;
 export type EntryAction = (typeof ENTRY_ACTIONS)[number];
 
@@ -352,7 +353,8 @@ export type EntryDialog =
   | { type: 'build-context' }
   | { type: 'add-file'; path?: string }
   | { type: 'import-session' }
-  | { type: 'import-plan' };
+  | { type: 'import-plan' }
+  | { type: 'log-time' };
 
 /** What the island reads from a clicked button: `data-entry-action` plus its `data-key`, `data-rel`, `data-path`, `data-title`. */
 export interface ActionTrigger {
@@ -399,5 +401,7 @@ export function dialogFor(trigger: ActionTrigger): EntryDialog | null {
       return { type: 'import-session' };
     case 'import-plan':
       return { type: 'import-plan' };
+    case 'log-time':
+      return { type: 'log-time' };
   }
 }

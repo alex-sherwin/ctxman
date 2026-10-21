@@ -15,7 +15,12 @@ import ReferenceFields from '../../../components/ReferenceFields.astro';
 import SnippetBody from '../../../components/SnippetBody.astro';
 import StaleBadge from '../../../components/StaleBadge.astro';
 import StateSelect from '../../../components/StateSelect.astro';
-import { entryUrl, getDataset, isLinkableDatasetId } from '../../../datasets/registry.ts';
+import {
+  entryUrl,
+  getDataset,
+  isLinkableDatasetId,
+  isTimeTrackedDatasetId,
+} from '../../../datasets/registry.ts';
 import type { OkfDatasetId } from '../../../datasets/registry.ts';
 import { getEntryDetail } from '../../../lib/entries.ts';
 import { isYamlDatasetId } from '../../../lib/forms/fields.ts';
@@ -82,6 +87,7 @@ const tools =
   createHref={createHref}
   linkShortcut={detail.kind === 'okf'}
   editShortcut={isDoc || (isYamlDatasetId(def.id) && !edit)}
+  timeShortcut={detail.kind === 'okf' && isTimeTrackedDatasetId(def.id)}
 >
   <Breadcrumbs
     items={[

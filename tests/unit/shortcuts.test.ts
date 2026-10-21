@@ -3,6 +3,8 @@ import {
   EDIT_LINK_SELECTOR,
   IDE_BUTTON_SELECTOR,
   LINK_BUTTON_SELECTOR,
+  LOG_TIME_BUTTON_SELECTOR,
+  LOG_TIME_SHORTCUT_EVENT,
   SHORTCUTS,
   isTypingTarget,
   shortcutAction,
@@ -24,6 +26,7 @@ const ctx = (extra: Partial<ShortcutContext> = {}): ShortcutContext => ({
   linkShortcut: true,
   ideShortcut: true,
   editShortcut: true,
+  timeShortcut: true,
   typing: false,
   dialogOpen: false,
   ...extra,
@@ -80,6 +83,23 @@ describe('shortcutAction', () => {
     expect(EDIT_LINK_SELECTOR).toBe('[data-shortcut-edit-link]');
   });
 
+  it('t asks for Log time only on pages of time-tracked datasets', () => {
+    expect(shortcutAction(key('t'), ctx())).toEqual({ kind: 'log-time' });
+    expect(shortcutAction(key('t'), ctx({ timeShortcut: false }))).toBeNull();
+    expect(shortcutAction(key('T', { shiftKey: true }), ctx())).toBeNull();
+    expect(shortcutAction(key('t', { shiftKey: true }), ctx())).toBeNull();
+    // the other page flags do not matter
+    expect(
+      shortcutAction(
+        key('t'),
+        ctx({ createHref: null, linkShortcut: false, ideShortcut: false, editShortcut: false }),
+      ),
+    ).toEqual({ kind: 'log-time' });
+    expect(LOG_TIME_SHORTCUT_EVENT).toBe('ctxman:log-time-shortcut');
+    // a disabled button (EntryTools locks it while the doc editor is open) is never clicked
+    expect(LOG_TIME_BUTTON_SELECTOR).toBe('[data-entry-action="log-time"]:not([disabled])');
+  });
+
   it('c and l do not fire with shift', () => {
     expect(shortcutAction(key('C', { shiftKey: true }), ctx())).toBeNull();
     expect(shortcutAction(key('c', { shiftKey: true }), ctx())).toBeNull();
@@ -87,7 +107,7 @@ describe('shortcutAction', () => {
   });
 
   it.each(['metaKey', 'ctrlKey', 'altKey'] as const)('ignores %s for every key', (mod) => {
-    for (const k of ['?', 'c', 'l', 'e']) {
+    for (const k of ['?', 'c', 'l', 'e', 't']) {
       expect(shortcutAction(key(k, { [mod]: true }), ctx())).toBeNull();
     }
   });
@@ -95,10 +115,12 @@ describe('shortcutAction', () => {
   it('ignores defaultPrevented and IME composition', () => {
     expect(shortcutAction(key('c', { defaultPrevented: true }), ctx())).toBeNull();
     expect(shortcutAction(key('?', { isComposing: true }), ctx())).toBeNull();
+    expect(shortcutAction(key('t', { defaultPrevented: true }), ctx())).toBeNull();
+    expect(shortcutAction(key('t', { isComposing: true }), ctx())).toBeNull();
   });
 
   it('ignores typing targets and open dialogs', () => {
-    for (const k of ['?', 'c', 'l', 'e']) {
+    for (const k of ['?', 'c', 'l', 'e', 't']) {
       expect(shortcutAction(key(k), ctx({ typing: true }))).toBeNull();
       expect(shortcutAction(key(k), ctx({ dialogOpen: true }))).toBeNull();
     }
@@ -162,8 +184,14 @@ describe('SHORTCUTS', () => {
     for (const s of SHORTCUTS) expect(s.keys.length).toBeGreaterThan(0);
   });
 
-  it('lists ?, Mod+K, c, l, ., e, Mod+S, Mod+Alt+K and Esc', () => {
+  it('lists ?, Mod+K, c, l, ., e, t, Mod+S, Mod+Alt+K and Esc', () => {
     const combos = SHORTCUTS.map((s) => s.keys.join('+'));
-    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', '.', 'e', 'Mod+S', 'Mod+Alt+K', 'Esc']);
+    expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', '.', 'e', 't', 'Mod+S', 'Mod+Alt+K', 'Esc']);
+  });
+
+  it('says where t works: the time-tracked entry pages and lists only', () => {
+    const t = SHORTCUTS.find((s) => s.id === 'log-time');
+    expect(t?.keys).toEqual(['t']);
+    expect(t?.where).toBe('Task, feature, bug and rca entry pages and lists');
   });
 });

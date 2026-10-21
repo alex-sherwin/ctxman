@@ -11,7 +11,13 @@ import MetaPanel from '../../../../components/MetaPanel.astro';
 import OkfStatusBadge from '../../../../components/OkfStatusBadge.astro';
 import PageHeader from '../../../../components/PageHeader.astro';
 import StaleBadge from '../../../../components/StaleBadge.astro';
-import { docUrl, entryUrl, getDataset, isOkfDatasetId } from '../../../../datasets/registry.ts';
+import {
+  docUrl,
+  entryUrl,
+  getDataset,
+  isOkfDatasetId,
+  isTimeTrackedDatasetId,
+} from '../../../../datasets/registry.ts';
 import { normalizeDocPath } from '../../../../lib/doc-io.ts';
 import { getEntryIndex } from '../../../../lib/entry-index.ts';
 import { getDocDetail } from '../../../../lib/entries.ts';
@@ -110,6 +116,7 @@ const breadcrumbs = [
       active={def.id}
       createHref={`/new/${def.id}`}
       editShortcut
+      timeShortcut={isTimeTrackedDatasetId(def.id)}
     >
       <Breadcrumbs items={breadcrumbs} />
       <PageHeader title={doc.title}>
@@ -147,6 +154,8 @@ const breadcrumbs = [
             lastModified={doc.lastModified}
             file={`${def.id}/${slug}/${doc.relPath}`}
             bundle={{ url: doc.entry.url, title: bundleTitle }}
+            logTime={isTimeTrackedDatasetId(def.id)}
+            entryTimeSeconds={doc.entry.timeSeconds}
           />
           <BackRefs dataset={def.id} slug={slug} refs={doc.backRefs} />
         </aside>

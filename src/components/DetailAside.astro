@@ -1,5 +1,5 @@
 ---
-import { datasetDef } from '../datasets/registry.ts';
+import { datasetDef, isTimeTrackedDatasetId } from '../datasets/registry.ts';
 import type { DatasetId, OkfDatasetId } from '../datasets/registry.ts';
 import type { EntryDetail } from '../lib/entries.ts';
 import BackRefs from './BackRefs.astro';
@@ -61,6 +61,7 @@ const linksTo =
     lastModified={detail.summary.lastModified}
     file={detail.fileRelPath}
     editable={detail.kind === 'okf' || detail.kind === 'skill'}
+    logTime={detail.kind === 'okf' && isTimeTrackedDatasetId(dataset)}
   />
   {
     relations && (

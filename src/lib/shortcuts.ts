@@ -38,6 +38,12 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
       'Edit: the markdown editor of an entry or document, the form of a reference, context or recipe',
     where: 'Entry and document pages',
   },
+  {
+    id: 'log-time',
+    keys: ['t'],
+    label: 'Log time on the entry, or on the hovered or focused list row',
+    where: 'Task, feature, bug and rca entry pages and lists',
+  },
   { id: 'save', keys: ['Mod', 'S'], label: 'Save', where: 'Editors' },
   {
     id: 'insert-link',
@@ -63,6 +69,17 @@ export const EDIT_LINK_SELECTOR = '[data-shortcut-edit-link]';
  */
 export const EDIT_SHORTCUT_EVENT = 'ctxman:edit-shortcut';
 
+/** The Details panel's Log time button of a time-tracked entry, which `t` clicks when no list row takes the key. */
+export const LOG_TIME_BUTTON_SELECTOR = '[data-entry-action="log-time"]:not([disabled])';
+
+/**
+ * The window event `t` dispatches first (cancelable). The ListTable island of a time-tracked list answers it with
+ * `preventDefault()` when a row has the keyboard focus or the pointer and opens Log time for that row; unanswered,
+ * the Shortcuts island clicks `LOG_TIME_BUTTON_SELECTOR` (an entry or document page; disabled while the doc editor
+ * is open, so `t` does nothing there).
+ */
+export const LOG_TIME_SHORTCUT_EVENT = 'ctxman:log-time-shortcut';
+
 /** Elements that take typed text (a menu: its typeahead letters): shortcuts never fire there. */
 export const TYPING_SELECTOR =
   'input, textarea, select, [contenteditable], .monaco-editor, [role="menu"]';
@@ -87,6 +104,8 @@ export interface ShortcutContext {
   ideShortcut: boolean;
   /** `data-shortcut-edit` is present: the page has an edit mode it is not in yet. */
   editShortcut: boolean;
+  /** `data-shortcut-time` is present: an entry, document or list page of a time-tracked dataset. */
+  timeShortcut: boolean;
   /** The event target is a typing target (see {@link isTypingTarget}). */
   typing: boolean;
   /** Some `[role="dialog"]` / `[role="alertdialog"]` is open. */
@@ -97,7 +116,8 @@ export type ShortcutAction =
   | { kind: 'help' }
   | { kind: 'navigate'; href: string }
   | { kind: 'click'; selector: string }
-  | { kind: 'edit' };
+  | { kind: 'edit' }
+  | { kind: 'log-time' };
 
 /** True for an element (or a descendant of one) that takes typed text. `null` is not a typing target. */
 export function isTypingTarget(el: { closest(selector: string): unknown } | null): boolean {
@@ -121,5 +141,6 @@ export function shortcutAction(e: KeyInfo, ctx: ShortcutContext): ShortcutAction
   if (e.key === '.')
     return ctx.ideShortcut ? { kind: 'click', selector: IDE_BUTTON_SELECTOR } : null;
   if (e.key === 'e') return ctx.editShortcut ? { kind: 'edit' } : null;
+  if (e.key === 't') return ctx.timeShortcut ? { kind: 'log-time' } : null;
   return null;
 }
