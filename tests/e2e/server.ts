@@ -1,9 +1,11 @@
-// One built ctxman server per Playwright worker: a fresh copy of tests/data, a private fake IDE command, its own port.
+// One built ctxman server per Playwright worker: a fresh copy of tests/data, a private fake IDE command, a fake agent
+// home (tests/fixtures/agent-home.ts: the session histories and plans the import dialogs list), its own port.
 // Readiness is the adapter's "Server listening on" line (an event, no polling); a server that exits first fails fast.
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { chmodSync, copyFileSync, cpSync, createWriteStream, mkdirSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { buildAgentHome } from '../fixtures/agent-home.ts';
 import {
   E2E_BASE_PORT,
   E2E_GIT_FIXTURE,
@@ -27,6 +29,7 @@ export async function startWorkerServer(index: number): Promise<WorkerServer> {
   mkdirSync(p.ideDir, { recursive: true });
   copyFileSync(FAKE_CODE_SOURCE, p.ideCommand);
   chmodSync(p.ideCommand, 0o755);
+  buildAgentHome(p.agentHome);
   const port = E2E_BASE_PORT + index;
   const child = spawn(process.execPath, [SERVER_ENTRY], {
     cwd: process.cwd(), // the repo root: /api/scripts runs scripts/*.ts relative to it
@@ -38,6 +41,7 @@ export async function startWorkerServer(index: number): Promise<WorkerServer> {
       CTXMAN_SERVER_ORIGIN: E2E_SERVER_ORIGIN,
       CTXMAN_IDE_COMMAND: p.ideCommand,
       CTXMAN_IDE_RECORD: p.ideRecord,
+      CTXMAN_AGENT_HOME: p.agentHome,
       CTXMAN_TEST_HOOKS: '1',
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: `url.${pathToFileURL(E2E_GIT_FIXTURE).href}.insteadOf`,

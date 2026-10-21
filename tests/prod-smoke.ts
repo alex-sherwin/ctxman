@@ -1,9 +1,10 @@
 // Prod smoke test: starts the BUILT server (dist/server/entry.mjs) against a temp copy of tests/data and
-// exercises the paths that only break in a production build (origin check, disk-truth reads, schemas, MCP).
+// exercises the paths that only break in a production build (origin check, disk-truth reads, schemas, MCP, the agent
+// history routes against an EMPTY fake agent home, so the real home directory is never read).
 // Run with `pnpm run build && pnpm run test:prod`. Node 24 runs this file directly; no test framework.
 // Exit codes: 0 all checks ok, 1 a check failed, 2 dist/server/entry.mjs is missing.
 import { spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -50,13 +51,21 @@ function assert(condition: unknown, message: string): asserts condition {
 const tempDir = mkdtempSync(path.join(tmpdir(), 'ctxman-prod-smoke-'));
 const dataDir = path.join(tempDir, 'data');
 cpSync(SEED, dataDir, { recursive: true });
+const agentHome = path.join(tempDir, 'agent-home');
+mkdirSync(agentHome);
 
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
 const origin = base;
 let serverLog = '';
 const child = spawn(process.execPath, [ENTRY], {
-  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), CTXMAN_DATA_DIR: dataDir },
+  env: {
+    ...process.env,
+    HOST: '127.0.0.1',
+    PORT: String(port),
+    CTXMAN_DATA_DIR: dataDir,
+    CTXMAN_AGENT_HOME: agentHome,
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
   shell: false,
 });
@@ -192,6 +201,43 @@ try {
         });
         assert(res.status === 201, `status ${res.status}: ${await res.text()}`);
         await getText('/task/prod-smoke-task');
+      },
+    );
+    await check('GET /api/agent-sessions -> 200 { items: [] } (empty agent home)', async () => {
+      const body = await getJson<{ items?: unknown; next?: unknown; sources?: unknown }>(
+        '/api/agent-sessions',
+      );
+      assert(Array.isArray(body.items) && body.items.length === 0, 'no empty items array');
+      assert(body.next === null, `next ${String(body.next)}`);
+      assert(Array.isArray(body.sources) && body.sources.length > 0, 'no sources');
+    });
+    await check(
+      'GET /api/agent-plans -> 200, an encoded key -> 404, import is its own route',
+      async () => {
+        const plans = await getJson<{ items?: unknown }>('/api/agent-plans');
+        assert(Array.isArray(plans.items), 'no plan items array');
+        const detail = await fetch(
+          `${base}/api/agent-sessions/${encodeURIComponent('claude-code:nope')}`,
+        );
+        const detailBody = (await detail.json()) as { error?: string };
+        assert(
+          detail.status === 404 && detailBody.error === 'not-found',
+          `detail ${detail.status}`,
+        );
+        const bad = await fetch(`${base}/api/agent-sessions/not-a-key`);
+        await bad.text();
+        assert(bad.status === 400, `bad key ${bad.status}`);
+        const res = await sendJson('POST', '/api/agent-sessions/import', {
+          key: 'claude-code:nope',
+          dataset: 'kb',
+          slug: 'ctxman',
+          path: 'sessions/x.md',
+        });
+        const body = (await res.json()) as { error?: string };
+        assert(
+          res.status === 404 && body.error === 'not-found',
+          `import ${res.status} ${body.error}`,
+        );
       },
     );
     await check('GET /api/schemas/reference is application/schema+json', async () => {
