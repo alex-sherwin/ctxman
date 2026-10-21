@@ -17,7 +17,7 @@ Run through this before finishing work on a bundle.
 
 - [ ] Each has frontmatter starting on line 1 with `---`.
 - [ ] Each has a non-empty `type`.
-- [ ] Each is listed in the entry `index.md` (`## Concepts`) with a description.
+- [ ] Each is listed in the entry `index.md` (`## Links`) with a description.
 
 ## Provenance and lifecycle
 

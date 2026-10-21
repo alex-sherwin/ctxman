@@ -23,6 +23,11 @@ export type DatasetKind = 'okf' | 'skill' | 'data';
 
 /** The entry file of every okf bundle: the bundle-root `index.md` (entry frontmatter + `okf_version` + body). */
 export const OKF_ENTRY_FILE = 'index.md';
+/**
+ * The OKF `type` a new bundle file gets when none is given: the Add file dialog's default and the fallback of
+ * `POST /api/doc` (src/lib/doc-io.ts). The new file is listed under `## Links` of the entry index.md.
+ */
+export const OKF_DEFAULT_FILE_TYPE = 'article';
 
 export const OKF_DATASET_IDS = ['kb', 'rca', 'idea', 'task', 'bug', 'feature', 'project'] as const;
 export type OkfDatasetId = (typeof OKF_DATASET_IDS)[number];

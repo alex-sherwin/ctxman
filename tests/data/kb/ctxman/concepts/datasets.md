@@ -35,7 +35,7 @@ State values are stored kebab-case in the files; the UI shows labels such as "in
 
 Seven datasets are Open Knowledge Format v0.2 bundles. A bundle folder contains:
 
-* `index.md`: the entry. Frontmatter starts with `okf_version: "0.2"` and holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`; the body is the entry content and may end with a `## Concepts` navigation section that lists the concept files (new concepts are added there for you). Nested `index.md` files are frontmatter-free navigation.
+* `index.md`: the entry. Frontmatter starts with `okf_version: "0.2"` and holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`; the body is the entry content and may end with a `## Links` navigation section that lists the bundle's files (a file added in the UI or through the API is listed there for you; an older `## Concepts` section is renamed to `## Links` the first time a file is added to it). Nested `index.md` files are frontmatter-free navigation.
 * `log.md` (optional): update history, newest first, under `## YYYY-MM-DD` headings. New bundles do not get one (the scripts, the `/new` forms and the API write `index.md` only); the MCP `append-log` tool creates it on request.
 
 Task, feature, bug and rca entries can track work in two optional `index.md` keys (registry `TIME_TRACKED_DATASETS`):

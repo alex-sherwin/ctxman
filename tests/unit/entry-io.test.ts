@@ -135,7 +135,7 @@ describe('readEntry', () => {
 describe('patchEntry: single keys, every other byte untouched', () => {
   it('keeps okf_version (first key) and the navigation sections of the entry index.md', async () => {
     const source =
-      '---\nokf_version: "0.2"\ntype: Task\nname: nav\ndescription: d\nstate: pending\n---\n\n# Nav\n\n## Concepts\n\n* [A](/concepts/a.md) - a\n';
+      '---\nokf_version: "0.2"\ntype: Task\nname: nav\ndescription: d\nstate: pending\n---\n\n# Nav\n\n## Links\n\n* [A](/concepts/a.md) - a\n';
     const dir = tmp.make({ 'task/nav/index.md': source });
     await patchEntry('task', 'nav', { state: 'complete' }, dir);
     expect(readFileSync(path.join(dir, 'task', 'nav', 'index.md'), 'utf8')).toBe(

@@ -55,7 +55,7 @@ Starter sections by dataset: kb has Overview and Details; rca has Summary, Timel
 ## After scaffolding
 
 1. Fill in the description, tags and sections. Keep tags lowercase kebab-case.
-2. Add concept files under the bundle if the entry needs more than one page. Each needs frontmatter with a `type`; list it in the entry `index.md` (under `## Concepts`; the forms and the API do this for you).
+2. Add concept files under the bundle if the entry needs more than one page. Each needs frontmatter with a `type`; list it in the entry `index.md` (under `## Links`; the Add file dialog and the API do this for you, renaming an old `## Concepts` heading).
 3. Link related entries with `ctxman:<dataset>/<slug>` and bundle files with `/path.md`, and record typed relations (a project's children, `depends-on`) in the `links` frontmatter, or from the entry's Links and Children panels. See [Datasets](/concepts/datasets.md) and [Relations](/concepts/relations.md).
 4. If the bundle keeps a `log.md` (optional; ctxman never creates one, the MCP `append-log` tool does on request), append a dated line, newest first.
 5. Run `pnpm run check`; fix every finding. [Compliance checks](/concepts/compliance-checks.md) lists the rules.

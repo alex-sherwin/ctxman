@@ -2,7 +2,11 @@
 // frontmatter form (draft <-> API shape, changed keys only, local checks, mapping server issues onto fields),
 // date arithmetic for `stale_after`, context link lists, the Add file path/title rules and the
 // data-attribute contract between the SSR buttons and the island. Unit-tested in tests/unit/entry-tools-helpers.test.ts.
-import { isLinkableDatasetId, isValidName } from '../../datasets/registry.ts';
+import {
+  isLinkableDatasetId,
+  isValidName,
+  OKF_DEFAULT_FILE_TYPE,
+} from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
 import type { OkfStatus } from '../../lib/entry-summary.ts';
 import { isIsoDateTime } from '../../lib/iso8601.ts';
@@ -234,7 +238,8 @@ export function buildContextLinks(self: LinkTarget, keys: readonly string[]): Li
 
 // ---------------------------------------------------------------- Add file
 
-export const DEFAULT_CONCEPT_TYPE = 'Concept';
+/** The Type field's initial value in the Add file dialog (the server's own fallback is the same). */
+export const DEFAULT_CONCEPT_TYPE = OKF_DEFAULT_FILE_TYPE;
 
 /** Longest path the bundle file routes accept (bundles.ts). */
 const FILE_PATH_MAX = 512;

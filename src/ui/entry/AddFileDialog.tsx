@@ -131,7 +131,7 @@ export function AddFileDialog({ dataset, slug, fixedPath, onClose }: AddFileDial
             mono
             value={type}
             onChange={setType}
-            description="The OKF type of the file, e.g. Concept, Guide, Reference, Decision."
+            description="The OKF type of the file, e.g. article, guide, reference, decision."
             inputTestId="add-file-type"
           />
           <TextField

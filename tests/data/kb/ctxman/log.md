@@ -1,5 +1,11 @@
 # Update log
 
+## 2026-10-20
+* **Update**: The navigation section of an okf entry `index.md` is now `## Links` (was `## Concepts`): Add file and `POST /api/doc` list a new file there, rename a legacy `## Concepts` heading the first time, and append the section when there is none; Delete removes the line from either. A new file's type defaults to `article`. [Editing](/concepts/editing.md), [Datasets](/concepts/datasets.md), [Adding entries](/concepts/adding-entries.md) and [Routes and API](/concepts/routes-and-api.md) follow; the seed bundles were migrated.
+* **Add**: Frontmatter `index: false` on an okf file keeps it out of search (on the entry `index.md`: the whole bundle), for agent session histories and other bulky files; lists and pages still show it. [Search](/concepts/search.md), [Datasets](/concepts/datasets.md) and [MCP server](/concepts/mcp.md) follow.
+* **Add**: Saving an okf markdown file in the browser stamps its frontmatter `modified` with the UTC save time to the second (`modified: "2026-10-20T14:03:12Z"`), in the editor text too; the doc toolbar has a Copy button after the file name that copies the markdown without its frontmatter. [Editing](/concepts/editing.md) and [Datasets](/concepts/datasets.md) follow.
+* **Update**: More vertical space in rendered markdown (16px between blocks, 12px in the compact notes of contexts and recipes); snippet markdown and reference info render like a full page.
+
 ## 2026-10-19
 * **Update**: The Files panel's "+ New concept" is now "+ Add file": the path is free (folders and a file name, such as `references/abc.md`; missing folders are created), no longer forced under `concepts/`. [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.
 * **Add**: Delete a single file of an okf bundle: a Delete button right of the Preview | Edit toggle of every sub-doc page (not the entry `index.md`, which is the whole bundle) and `DELETE /api/doc/<dataset>/<slug>/<path>`, which also drops the file's `## Concepts` line and the folders it leaves empty and reports the links still pointing at it. [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.

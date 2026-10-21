@@ -472,9 +472,9 @@ describe('addConceptToIndex', () => {
   const concept = { title: 'New one', path: 'concepts/new-one.md', description: 'Brand new.' };
   const line = '[New one](/concepts/new-one.md) - Brand new.';
 
-  it('inserts after the last list item of ## Concepts, using the section bullet', () => {
+  it('inserts after the last list item of ## Links, using the section bullet', () => {
     const source =
-      '---\nokf_version: "0.2"\n---\n# T\n\n## Entry\n\n* [T](/index.md) - E.\n\n## Concepts\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n\n* x\n';
+      '---\nokf_version: "0.2"\n---\n# T\n\n## Entry\n\n* [T](/index.md) - E.\n\n## Links\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n\n* x\n';
     expect(addConceptToIndex(source, concept)).toBe(
       source.replace('- [B](/concepts/b.md) - B.\n', `- [B](/concepts/b.md) - B.\n- ${line}\n`),
     );
@@ -482,47 +482,70 @@ describe('addConceptToIndex', () => {
 
   it('matches the heading case-insensitively, ignores headings in code and keeps deeper headings in the section', () => {
     const source =
-      '# T\n\n```\n## Concepts\n```\n\n## CONCEPTS\n\n### Sub\n\n* [A](/concepts/a.md) - A.\n';
+      '# T\n\n```\n## Links\n```\n\n## LINKS\n\n### Sub\n\n* [A](/concepts/a.md) - A.\n';
     expect(addConceptToIndex(source, concept)).toBe(`${source}* ${line}\n`);
   });
 
   it('keeps continuation lines of the last item attached', () => {
-    const source = '## Concepts\n\n* [A](/concepts/a.md) - A long\n  description.\n\n## Next\n';
+    const source = '## Links\n\n* [A](/concepts/a.md) - A long\n  description.\n\n## Next\n';
     expect(addConceptToIndex(source, concept)).toBe(
-      '## Concepts\n\n* [A](/concepts/a.md) - A long\n  description.\n' + `* ${line}\n\n## Next\n`,
+      '## Links\n\n* [A](/concepts/a.md) - A long\n  description.\n' + `* ${line}\n\n## Next\n`,
     );
   });
 
   it('a section without a list gets the item after the heading and one blank line', () => {
-    expect(addConceptToIndex('# T\n\n## Concepts\n', concept)).toBe(
-      `# T\n\n## Concepts\n\n* ${line}\n`,
+    expect(addConceptToIndex('# T\n\n## Links\n', concept)).toBe(`# T\n\n## Links\n\n* ${line}\n`);
+    expect(addConceptToIndex('# T\n\n## Links\n\n## Next\n', concept)).toBe(
+      `# T\n\n## Links\n\n* ${line}\n\n## Next\n`,
     );
-    expect(addConceptToIndex('# T\n\n## Concepts\n\n## Next\n', concept)).toBe(
-      `# T\n\n## Concepts\n\n* ${line}\n\n## Next\n`,
-    );
-    expect(addConceptToIndex('# T\n## Concepts\n## Next\n', concept)).toBe(
-      `# T\n## Concepts\n\n* ${line}\n\n## Next\n`,
+    expect(addConceptToIndex('# T\n## Links\n## Next\n', concept)).toBe(
+      `# T\n## Links\n\n* ${line}\n\n## Next\n`,
     );
   });
 
-  it('without the heading appends one, with exactly one blank line before it', () => {
-    expect(addConceptToIndex('# T\n', concept)).toBe(`# T\n\n## Concepts\n\n* ${line}\n`);
-    expect(addConceptToIndex('# T\n\n\n\n', concept)).toBe(`# T\n\n## Concepts\n\n* ${line}\n`);
-    expect(addConceptToIndex('', concept)).toBe(`## Concepts\n\n* ${line}\n`);
+  it('a legacy ## Concepts section is renamed to ## Links, its items kept, and gets the line', () => {
+    const source =
+      '# T\n\n## Concepts\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n\n## Other\n';
+    expect(addConceptToIndex(source, concept)).toBe(
+      `# T\n\n## Links\n\n- [A](/concepts/a.md) - A.\n- [B](/concepts/b.md) - B.\n- ${line}\n\n## Other\n`,
+    );
+    // any case and closing hashes; the rest of the heading line stays as written
+    expect(addConceptToIndex('##  CONCEPTS ##\n', concept)).toBe(`##  Links ##\n\n* ${line}\n`);
+    expect(addConceptToIndex('# T\r\n\r\n## Concepts\r\n', concept)).toBe(
+      `# T\r\n\r\n## Links\r\n\r\n* ${line}\r\n`,
+    );
+    // a heading inside code is not the section
+    expect(addConceptToIndex('```\n## Concepts\n```\n', concept)).toBe(
+      `\`\`\`\n## Concepts\n\`\`\`\n\n## Links\n\n* ${line}\n`,
+    );
+  });
+
+  it('prefers ## Links over a legacy ## Concepts section, which then stays as it is', () => {
+    const source =
+      '# T\n\n## Concepts\n\nWhat a concept is.\n\n## Links\n\n* [A](/concepts/a.md) - A.\n';
+    expect(addConceptToIndex(source, concept)).toBe(`${source}* ${line}\n`);
+  });
+
+  it('without either heading appends ## Links, with exactly one blank line before it', () => {
+    expect(addConceptToIndex('# T\n', concept)).toBe(`# T\n\n## Links\n\n* ${line}\n`);
+    expect(addConceptToIndex('# T\n\n\n\n', concept)).toBe(`# T\n\n## Links\n\n* ${line}\n`);
+    expect(addConceptToIndex('', concept)).toBe(`## Links\n\n* ${line}\n`);
+    // `## Concept map`, `### Links` are other sections
+    expect(addConceptToIndex('## Concept map\n\n### Links\n', concept)).toBe(
+      `## Concept map\n\n### Links\n\n## Links\n\n* ${line}\n`,
+    );
   });
 
   it('uses the title as the description text when none is given, escapes link text and encodes the path', () => {
-    expect(
-      addConceptToIndex('## Concepts\n', { title: 'A [b] c', path: 'concepts/a b (1).md' }),
-    ).toBe('## Concepts\n\n* [A \\[b\\] c](/concepts/a%20b%20%281%29.md) - A [b] c\n');
+    expect(addConceptToIndex('## Links\n', { title: 'A [b] c', path: 'concepts/a b (1).md' })).toBe(
+      '## Links\n\n* [A \\[b\\] c](/concepts/a%20b%20%281%29.md) - A [b] c\n',
+    );
   });
 
   it('keeps CRLF files CRLF', () => {
-    const source = '# T\r\n\r\n## Concepts\r\n\r\n* [A](/concepts/a.md) - A.\r\n';
+    const source = '# T\r\n\r\n## Links\r\n\r\n* [A](/concepts/a.md) - A.\r\n';
     expect(addConceptToIndex(source, concept)).toBe(`${source}* ${line}\r\n`);
-    expect(addConceptToIndex('# T\r\n', concept)).toBe(
-      `# T\r\n\r\n## Concepts\r\n\r\n* ${line}\r\n`,
-    );
+    expect(addConceptToIndex('# T\r\n', concept)).toBe(`# T\r\n\r\n## Links\r\n\r\n* ${line}\r\n`);
   });
 });
 
@@ -650,8 +673,8 @@ describe('createDoc', () => {
     expect(created.lastModified).toBe(statSync(file).mtime.toISOString());
     const index = readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8');
     expect(index).toBe(
-      // The entry has no `## Concepts` section yet: one is appended.
-      `${validKbBundle('demo')['kb/demo/index.md']!}\n## Concepts\n\n* [W2 new](/concepts/w2-new.md) - A new guide.\n`,
+      // The entry has no `## Links` section yet: one is appended.
+      `${validKbBundle('demo')['kb/demo/index.md']!}\n## Links\n\n* [W2 new](/concepts/w2-new.md) - A new guide.\n`,
     );
     expect(readFileSync(path.join(dir, 'kb', 'demo', 'log.md'), 'utf8')).toBe(
       '# Update log\n\n## 2026-10-18\n* **Create**: Created [W2 new](/concepts/w2-new.md).\n* **Update**: Edited.\n\n## 2026-10-17\n* **Create**: Created [Demo](/index.md).\n',
@@ -664,7 +687,7 @@ describe('createDoc', () => {
     expect(ruleIds(validateDoc('kb', 'demo', 'index.md', index, dir))).toEqual([]);
   });
 
-  it('defaults type to Concept, omits a blank description and creates missing folders', async () => {
+  it('defaults type to article, omits a blank description and creates missing folders', async () => {
     const dir = tmp.make(bundle());
     await createDoc(
       'kb',
@@ -676,7 +699,7 @@ describe('createDoc', () => {
     );
     expect(
       readFileSync(path.join(dir, 'kb', 'demo', 'concepts', 'deep', 'er', 'x.md'), 'utf8'),
-    ).toBe('---\ntype: Concept\ntitle: A title\n---\n\n# A title\n');
+    ).toBe('---\ntype: article\ntitle: A title\n---\n\n# A title\n');
     expect(readFileSync(path.join(dir, 'kb', 'demo', 'index.md'), 'utf8')).toContain(
       '* [A title](/concepts/deep/er/x.md) - A title\n',
     );
@@ -823,7 +846,7 @@ describe('removeConceptFromIndex', () => {
     '',
     'See [one](/concepts/one.md) in the text.',
     '',
-    '## Concepts',
+    '## Links',
     '',
     '* [One](/concepts/one.md) - The first.',
     '  continued line of one',
@@ -836,7 +859,7 @@ describe('removeConceptFromIndex', () => {
     '',
   ].join('\n');
 
-  it('drops the Concepts items (and their continuation lines) that link to the file, nothing else', () => {
+  it('drops the Links items (and their continuation lines) that link to the file, nothing else', () => {
     const out = removeConceptFromIndex(index, 'concepts/one.md');
     expect(out).not.toContain('* [One](/concepts/one.md)');
     expect(out).not.toContain('continued line of one');
@@ -845,6 +868,19 @@ describe('removeConceptFromIndex', () => {
     expect(out).toContain('* [One again](/concepts/one.md)');
     expect(removeConceptFromIndex(index, 'concepts/two.md')).not.toContain('[Two]');
     expect(removeConceptFromIndex(index, 'notes/a b.md')).not.toContain('[Space]');
+  });
+
+  it('handles a legacy ## Concepts section too, and leaves its heading as written', () => {
+    const legacy = index.replace('## Links', '## Concepts');
+    const out = removeConceptFromIndex(legacy, 'concepts/one.md');
+    expect(out).toContain('## Concepts\n');
+    expect(out).not.toContain('* [One](/concepts/one.md)');
+    expect(out).toContain('* [One again](/concepts/one.md)');
+    // with both, ## Links is the section
+    const both = `# X\n\n## Concepts\n\n* [One](/concepts/one.md)\n\n## Links\n\n* [One](/concepts/one.md) - The first.\n`;
+    expect(removeConceptFromIndex(both, 'concepts/one.md')).toBe(
+      '# X\n\n## Concepts\n\n* [One](/concepts/one.md)\n\n## Links\n\n',
+    );
   });
 
   it('returns the source unchanged when nothing is listed', () => {
@@ -856,7 +892,7 @@ describe('removeConceptFromIndex', () => {
 describe('deleteDoc', () => {
   const now = new Date('2026-10-19T09:00:00Z');
 
-  it('removes the file, its Concepts line and the folders left empty, and logs it in an existing log.md', async () => {
+  it('removes the file, its Links line and the folders left empty, and logs it in an existing log.md', async () => {
     const dir = tmp.make(validKbBundle('demo'));
     await createDoc('kb', 'demo', 'references/deep/abc.md', { title: 'Abc' }, dir, now);
     const deleted = await deleteDoc('kb', 'demo', 'references/deep/abc.md', dir, now);

@@ -27,7 +27,7 @@ Do not use it for `skill`, `reference` or `context` entries; those are not OKF b
 3. **Write concept files** for anything that deserves its own page. Each begins with frontmatter containing a non-empty `type` such as `Concept` or `Reference`.
 4. **Link correctly.** Inside the bundle use `/path/to/concept.md` or `./relative.md`. To reference another entry use `ctxman:<dataset>/<slug>`. Never use `/dataset/slug` for entries.
 5. **Record provenance only when true.** Add `sources` (with an `id` when a footnote cites it), `generated` with `by` and an ISO 8601 `at`, and `stale_after` as `YYYY-MM-DD` when content expires. Do not invent verification.
-6. **Maintain navigation.** List every concept under `## Concepts` in the bundle-root `index.md` (the entry; only a nested `index.md` is navigation without frontmatter). Add a dated line to `log.md`, newest first; `log.md` has no frontmatter.
+6. **Maintain navigation.** List every concept under `## Links` in the bundle-root `index.md` (the entry; only a nested `index.md` is navigation without frontmatter). Add a dated line to `log.md`, newest first; `log.md` has no frontmatter.
 7. **Verify.** Run `pnpm run check`. Fix every error and warning; the goal is zero of both.
 
 ## Quick reference

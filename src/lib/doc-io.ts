@@ -11,6 +11,7 @@ import {
   isOkfDatasetId,
   isValidName,
   OKF_DATASET_IDS,
+  OKF_DEFAULT_FILE_TYPE,
   OKF_ENTRY_FILE,
 } from '../datasets/registry.ts';
 import type { OkfDatasetId } from '../datasets/registry.ts';
@@ -355,8 +356,8 @@ function parseCreateBody(body: unknown): { title: string; type: string; descript
     throw new DocIoError('invalid', 'request body is invalid', issues);
   }
   return description === undefined
-    ? { title, type: type ?? 'Concept' }
-    : { title, type: type ?? 'Concept', description };
+    ? { title, type: type ?? OKF_DEFAULT_FILE_TYPE }
+    : { title, type: type ?? OKF_DEFAULT_FILE_TYPE, description };
 }
 
 const isInside = (root: string, candidate: string): boolean => {
@@ -409,14 +410,28 @@ const destinationOf = (relPath: string): string =>
     .map((segment) => encodeURIComponent(segment).replaceAll('(', '%28').replaceAll(')', '%29'))
     .join('/');
 
-/** `## Concepts` (ATX, any case) of an entry index.md, as a masked line. */
-const CONCEPTS_HEADING = /^##[ \t]+concepts[ \t]*#*[ \t]*\r?$/i;
+/** `## Links` (ATX, any case) of an entry index.md, as a masked line: the section that lists the bundle's files. */
+const LINKS_HEADING = /^##[ \t]+links[ \t]*#*[ \t]*\r?$/i;
+/** The section's legacy name, `## Concepts`: still read, renamed to `## Links` when a file is added to it. */
+const LEGACY_LINKS_HEADING = /^##[ \t]+concepts[ \t]*#*[ \t]*\r?$/i;
 
 /**
- * `index.md` text with the new concept listed under its `## Concepts` section (ATX heading, any case, outside code):
+ * Line index of the files section of an entry index.md (masked lines): the first `## Links` heading, else the first
+ * legacy `## Concepts` one (`legacy: true`); null when there is neither.
+ */
+function linksSection(masked: readonly string[]): { heading: number; legacy: boolean } | null {
+  const links = masked.findIndex((line) => LINKS_HEADING.test(line));
+  if (links !== -1) return { heading: links, legacy: false };
+  const legacy = masked.findIndex((line) => LEGACY_LINKS_HEADING.test(line));
+  return legacy === -1 ? null : { heading: legacy, legacy: true };
+}
+
+/**
+ * `index.md` text with the new file listed under its `## Links` section (ATX heading, any case, outside code):
  * `* [title](/path) - description` after the section's last list item, using the section's own bullet character;
- * a section without a list gets the line after the heading and one blank line; without the heading, a
- * `## Concepts` section is appended. CRLF files get CRLF lines. Pure text in, text out.
+ * a section without a list gets the line after the heading and one blank line. Without `## Links`, a legacy
+ * `## Concepts` section is used and its heading renamed to `## Links` (level, spacing and items kept); with neither,
+ * a `## Links` section is appended. CRLF files get CRLF lines. Pure text in, text out.
  */
 export function addConceptToIndex(
   source: string,
@@ -436,12 +451,14 @@ export function addConceptToIndex(
     masked.pop();
   }
   const isBlank = (line: string | undefined): boolean => line === undefined || line.trim() === '';
-  const heading = masked.findIndex((line) => CONCEPTS_HEADING.test(line));
+  const section = linksSection(masked);
 
-  if (heading === -1) {
+  if (section === null) {
     const body = source.replace(/(\r?\n)*$/, '');
-    return `${body === '' ? '' : body + eol + eol}## Concepts${eol}${eol}* ${text}${eol}`;
+    return `${body === '' ? '' : body + eol + eol}## Links${eol}${eol}* ${text}${eol}`;
   }
+  const { heading } = section;
+  if (section.legacy) lines[heading] = (lines[heading] ?? '').replace(/concepts/i, 'Links');
 
   // The section runs to the next `#` / `##` heading (deeper headings belong to it).
   let end = masked.length;
@@ -527,15 +544,17 @@ export function addCreateToLog(
 }
 
 /**
- * `index.md` text without the list items of its `## Concepts` section that link to `relPath` (the bookkeeping
- * `addConceptToIndex` added, undone when the file is deleted); an item's continuation lines go with it. Links
- * elsewhere in the file are left alone. Pure text in, text out.
+ * `index.md` text without the list items of its `## Links` section (or, without one, the legacy `## Concepts`) that
+ * link to `relPath` (the bookkeeping `addConceptToIndex` added, undone when the file is deleted); an item's
+ * continuation lines go with it. Links elsewhere in the file are left alone, and so is the heading. Pure text in,
+ * text out.
  */
 export function removeConceptFromIndex(source: string, relPath: string): string {
   const lines = source.split('\n');
   const masked = maskMarkdownCode(source).split('\n');
-  const heading = masked.findIndex((line) => CONCEPTS_HEADING.test(line));
-  if (heading === -1) return source;
+  const section = linksSection(masked);
+  if (section === null) return source;
+  const { heading } = section;
   let end = masked.length;
   for (let i = heading + 1; i < masked.length; i++) {
     if (/^#{1,2}[ \t]/.test(masked[i] ?? '')) {
@@ -598,8 +617,8 @@ async function updateExistingFile(
 
 /**
  * Creates the NEW concept file `rawPath` in an okf bundle (never overwrites) and lists it in the bundle's root
- * `index.md` (`## Concepts`) and `log.md` (today, UTC) when those files exist. `body` is untrusted JSON:
- * `{ title, type?, description? }` (`type` defaults to `Concept`). The folders in the path are created inside the
+ * `index.md` (`## Links`) and `log.md` (today, UTC) when those files exist. `body` is untrusted JSON:
+ * `{ title, type?, description? }` (`type` defaults to `article`, OKF_DEFAULT_FILE_TYPE). The folders in the path are created inside the
  * bundle (symlinks are followed only while they stay inside it). Throws DocIoError: `bad-dataset` (not an okf
  * dataset), `bad-slug`, `bad-path` (not a concept path: the root index.md (the entry), nested index.md and log.md are reserved),
  * `invalid` (body), `not-found` (no such entry), `exists`.
@@ -754,7 +773,7 @@ async function linksTo(
  * Deletes ONE markdown file of an okf bundle that is not its entry: any concept, a nested `index.md` or `log.md` (the
  * root `index.md` is the bundle itself: `DELETE /api/entry`). A symlinked file is unlinked, never followed, and the
  * folders the removal leaves empty go too (never the bundle root). `createDoc`'s bookkeeping is undone: the file's line
- * under `## Concepts` of the root `index.md` is removed, and an existing `log.md` gets a `Delete` line (never created).
+ * under `## Links` (or the legacy `## Concepts`) of the root `index.md` is removed, and an existing `log.md` gets a `Delete` line (never created).
  * Links that still point at the file come back as warnings. Throws DocIoError: `bad-dataset` (not okf), `bad-slug`,
  * `bad-path` (not a .md path inside the bundle, or the entry `index.md`), `not-found`.
  */

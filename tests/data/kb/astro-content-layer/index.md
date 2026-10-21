@@ -49,6 +49,6 @@ This entry is deliberately marked stale (its `stale_after` is in the past) so th
 
 The runtime failure mode that shaped the `context` collection is analysed in [astro-dev-full-reload-on-save](ctxman:rca/astro-dev-full-reload-on-save).
 
-## Concepts
+## Links
 
 * [Glob loader](/concepts/glob-loader.md) - Options, id generation and path rules of the glob loader (draft).

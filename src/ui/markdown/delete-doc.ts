@@ -14,7 +14,7 @@ const NAMED_MAX = 3;
 
 /** What the confirmation says the delete removes. */
 export function deleteDocSummary(dataset: string, slug: string, path: string): string {
-  return `This removes ${dataset}/${slug}/${path}, the folders it leaves empty and its line in the entry's Concepts list. It can't be undone.`;
+  return `This removes ${dataset}/${slug}/${path}, the folders it leaves empty and its line in the entry's Links list. It can't be undone.`;
 }
 
 /**

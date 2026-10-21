@@ -5,10 +5,10 @@
 //   PUT  body { markdown, ifUnmodifiedSince? } -> 200 { path, bytes, lastModified, warnings }
 //   POST body { title, type?, description? } -> 201 { path, url, lastModified, warnings }: creates the concept file
 //        (okf datasets only; the root index.md (the entry) / nested index.md / log.md are reserved) and lists it in the bundle's root
-//        index.md (## Concepts) and, when the bundle has one, log.md (today; never created here); missing folders of
+//        index.md (## Links) and, when the bundle has one, log.md (today; never created here); missing folders of
 //        the path are created
 //   DELETE -> 200 { path, url, warnings }: removes the file (okf only; not the root index.md, which is the entry: DELETE
-//        /api/entry), the folders it leaves empty and its ## Concepts line in index.md; an existing log.md gets a Delete
+//        /api/entry), the folders it leaves empty and its ## Links line in index.md; an existing log.md gets a Delete
 //        line. A body, unlike other DELETE routes: `warnings` lists the links that still point at the file; `url` is the
 //        entry page.
 //   400 bad-dataset | bad-slug | bad-path | bad-json | invalid (issues), 403 forbidden-origin, 404 not-found,

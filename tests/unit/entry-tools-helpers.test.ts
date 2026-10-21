@@ -4,6 +4,7 @@ import {
   buildContextLinks,
   conceptBody,
   conceptTitleFromPath,
+  DEFAULT_CONCEPT_TYPE,
   dialogFor,
   draftFromFrontmatter,
   draftProblems,
@@ -300,6 +301,10 @@ describe('add file', () => {
       type: 'Guide',
       description: 'd',
     });
+  });
+
+  it('the Add file dialog starts with the type article (the server fallback of POST /api/doc too)', () => {
+    expect(DEFAULT_CONCEPT_TYPE).toBe('article');
   });
 });
 
