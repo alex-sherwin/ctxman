@@ -30,28 +30,36 @@ The goal: what Jira shows looks like the markdown preview. The output is written
 | hard break (two spaces, `\`, `<br>`) | a newline | `\\` inside a table cell, a space in a heading or link text |
 | `**strong**`, `*em*`, `~~del~~`, `~del~` | `*strong*`, `_em_`, `-del-` | nested freely; the same effect nested in itself is flattened; whitespace at the edges moves outside; an effect is closed and reopened around a line break |
 | `foo**bar**baz` | `foo{*}bar{*}baz` | Jira ignores a marker that touches a letter or digit, and Cloud counts every non-ASCII character as one: the `{*}` form then |
+| `x~~kebab-case~~y`, `x**a\*b**y` | `xkebab-casey`, `xa*by` | Cloud closes a `{*}` effect at the first `*` after it: an effect of that form whose text holds its own marker keeps its text without the effect |
 | `` `code` `` | `{{code}}` | content escaped like text (Jira Server renders effects inside `{{ }}`), braces always; spaces at the edges go outside |
-| `` `Foo`s `` | `{{Foos}}` | `{{x}}s` does not render, so a touching word moves inside the code span |
+| `` `Foo`s ``, `` `x`— ``, `` C:\\`dir` `` | `{{Foos}}`, `{{x—}}`, `C:{{\dir}}` | `{{x}}s` does not render (in Cloud neither does `{{x}}—`, `“{{q}}”`: any non-ASCII character counts as a letter), so a touching word, non-ASCII run or `\` moves inside the code span |
 | fenced code with a known language | `{code:<lang>}` … `{code}` | body literal; languages below |
 | fenced code without or with an unknown language, indented code | `{noformat}` … `{noformat}` | a bare `{code}` would highlight as Java, an unknown language shows an error box |
 | `> quote` | `{quote}` … `{quote}` | several paragraphs and blocks inside; a nested quote is flattened (`{quote}` cannot nest); an empty quote is dropped |
-| `> [!NOTE]` and TIP, IMPORTANT, WARNING, CAUTION | `{panel:title=Note\|bgColor=#deebff}` … `{panel}` | Jira Server has no `{info}`/`{note}`/`{warning}` macros; the colour picks Cloud's panel type (info, success, note, warning, error) and tints the Server panel |
+| `> [!NOTE]` and TIP, IMPORTANT, WARNING, CAUTION | `{panel:title=Note\|bgColor=#deebff}` … `{panel}` | Jira Server has no `{info}`/`{note}`/`{warning}` macros; the colour picks Cloud's panel type (info, success, note, warning, error) and tints the Server panel; only a marker that is the whole first line of the source counts (`> \[!NOTE]` and `> [!NOTE]<br>text` stay quotes) |
 | `- item`, `1. item`, nested | `* item`, `# item`, `** sub`, `#* sub` | markers repeat for depth and mix bullet and number; a start number cannot be expressed |
-| more blocks in an item | on the lines right after the item | Jira continues an item until a blank line or the next marker, so paragraphs, code, quotes and panels stay in the item; a heading becomes bold text, a rule is dropped |
+| more blocks in an item | on the lines right after the item | Jira continues an item until a blank line or the next marker, so paragraphs, code, quotes and panels stay in the item; a heading anywhere in the item (also in its quote or panel) becomes bold text, a rule there is dropped (either line would end the list) |
 | a table in an item | the list ends, the table follows, the list resumes | a table line cannot live in a Jira list (numbering restarts after it) |
 | `- [ ] todo`, `- [x] done` | `* ☐ todo`, `* ☑ done` | Jira wiki markup has no checkbox; `(x)` would be the red error icon |
 | an item without text | `*` and a no-break space | a bare marker is not an item in Jira |
 | table | `\|\|h\|\|h\|\|` then `\|c\|c\|` | alignment cannot be expressed; the header sets the column count (short rows padded with a space cell, extra cells dropped) |
 | `[text](https://…)` | `[text\|https://…]` | http, https, ftp, ftps, sftp and mailto only; effects and code allowed in the text |
 | `<https://…>`, `www.…`, `me@x.y` | `[https://…]`, `[www.…\|http://www.…]`, `[me@x.y\|mailto:me@x.y]` | an autolink whose URL Jira would read as markup (an `(x)`, `-a-`) gets the escaped URL as its text |
-| link text with `[`, `]` or `\|` | the text, then ` ([url])` | Jira's link syntax cannot escape them |
+| link text with `[`, `]` or `\|`, with an odd number of `!` from three on, or with an image | the text, then ` ([url])` | Jira's link syntax cannot escape `[`, `]`, `\|`; it reads `!`s before the `\|` as image markers (an odd count hides the `\|`); Cloud shows an image in link text on its own with the `!…!` as the link text |
+| `[![CI](https://…/badge.svg)](https://…/actions)` (README badges) | `!https://…/badge.svg\|alt=CI! ([https://…/actions])` | the image, then the link |
 | `[t](ctxman:task/x)`, `[t](./x.md)`, `[t](/x.md)`, `[t](#a)`, other schemes | `t` | cannot resolve in Jira: the text stays, the link goes |
 | reference links and images | resolved through their definition | the first definition of a label wins |
-| `![alt](https://…/i.png)` | `!https://…/i.png\|alt=alt!` | http(s) only; the alt text loses `,` `=` `\|` `!` brackets and braces; no `alt` inside a link or a table cell |
+| `![alt](https://…/i.png)` | `!https://…/i.png\|alt=alt!` | http(s) only; the alt text loses `,` `=` `\|` `!` brackets and braces; no `alt` in a table cell; a letter, digit or other non-ASCII character touching it gets a space between (Cloud shows no image whose `!` touches one, and Cloud shows every image as a block) |
 | `![alt](./i.png)`, `data:` images | `alt` (else the file name) | Jira cannot load them |
 | `---`, `***`, `___` | `----` | |
 | `Text[^1]` + `[^1]: Note` | `Text¹` … a rule, then `# Note` | superscript numbers in first-reference order; the notes follow the document as a numbered list in the same order, unreferenced notes last, nothing dropped |
-| HTML | its text | comments, declarations and processing instructions go; tags are stripped; `<br>` and block-level tags (`p`, `div`, `li`, `tr`, `details`, …) break the line; entities in HTML blocks are decoded |
+| `<b>`/`<strong>`, `<i>`/`<em>`, `<s>`/`<del>`/`<strike>` | `*…*`, `_…_`, `-…-` | inline HTML (one `html` node per tag around the text nodes) and HTML blocks alike |
+| `<u>`/`<ins>`, `<sub>`, `<sup>` | `+…+`, `~…~`, `^…^` | the `{+}` form between letters, as for the effects above |
+| `<code>`, `<kbd>`, `<samp>`, `<tt>` | `{{…}}` | the plain text of the content |
+| `<a href="…">`, `<img src="…" alt="…">` | as a markdown link / image | the same scheme rules; attribute entities decoded; `<a>` without `href` keeps its text |
+| `<br>`, `<hr>` | a line break, a `----` line | `<hr>` is a break in a table cell, a space in a heading or link text, dropped in a list item |
+| `<script>`, `<style>`, `<template>` | nothing | with their content |
+| other HTML | its text | comments, declarations and processing instructions go; any other tag, or one without its partner, keeps only its content; in an HTML block block-level tags (`p`, `div`, `li`, `tr`, `details`, …) and the source's line breaks break the line, and entities are decoded (`&nbsp;` stays a no-break space) |
 
 Code block languages are mapped onto the set Jira Server/DC knows: actionscript, ada, applescript, bash, c, c#, c++, css, erlang, go, groovy, haskell, html, java, javascript, json, lua, nyan, objc, perl, php, python, r, rainbow, ruby, scala, sql, swift, visualbasic, xml, yaml. Common aliases go to them (`ts`, `tsx`, `typescript`, `jsx`, `mjs` to javascript; `sh`, `shell`, `zsh`, `console` to bash; `yml` to yaml; `py` to python; `rb` to ruby; `cpp` to c++; `cs` to c#; `kotlin` to java; `svg` to xml; `vue`, `astro` to html; `scss` to css; dialects of SQL to sql; …; `jiraCodeLanguage` holds the table). Only the first word of the info string counts, in any case. Cloud knows fewer of these names (no bash, yaml, c#) and shows those as Java, without an error. A body that contains the macro's own closing tag (`{code}` or `{noformat}`) switches to the other macro; when it holds both, the closing tag inside is broken with a zero-width space.
 
@@ -59,18 +67,21 @@ Code block languages are mapped onto the set Jira Server/DC knows: actionscript,
 
 Jira reads a lot of plain text as markup. The converter puts a `\` in front of a character only where Jira Server or Cloud could read it as markup, and leaves it alone where neither could, so snake_case names, `2 * 3 * 4`, `a - b`, `C++` and `What??` stay as written.
 
-* `{` (macros, `{{`) and `[` (links, `[~user]` mentions) are always escaped, in text and in inline code. `}` is escaped inside inline code only, `]` never.
+* `{` (macros, `{{`) and `[` (links, `[~user]` mentions) are always escaped, in text and in inline code. `}` is escaped inside inline code and as the end of `{quote}` / `{panel}` text (Cloud ends a quote or panel at the next `{quote}` / `{panel}` without reading escapes; a code block inside a quote or panel gets those tags broken with a zero-width space instead), `]` never.
 * Effect markers `*` `_` `-` `+` `^` `~` (and `??`, `!` for images) are escaped when they could open an effect (no letter or digit before, no space after) and a later marker on the same line could close it, or when they could close an effect of ours that is open (`**2 * 3**` becomes `*2 \* 3*`). The checks use the union of both renderers' rules, so they err on the side of an extra backslash.
 * At a line start (a paragraph line, a list item, a heading, a table cell): `*`, `#` or `-` before a space (a list), `|` (a table), four dashes (a rule).
 * `--` and `---` between spaces would become an en or em dash: the first dash is escaped, so the text shows what the markdown shows.
 * `|` is escaped in table cells.
 * Emoticons stay text: `(y)` `(n)` `(i)` `(/)` `(x)` `(!)` `(+)` `(-)` `(?)` `(on)` `(off)` `(*)` `(*r)` `(*g)` `(*b)` `(*y)` `(flag)` `(flagoff)` get `\(`; `:)` `:(` `;)` and their `-` forms get the bracket or the dash escaped.
-* Jira has no escape for some text: a literal `\` (before a markup character it would escape it, and `\\` is a line break), `:P` `:p` `:D` and a line that starts with `h1.` … `h6.` or `bq.`. These get an invisible zero-width space (U+200B) in between instead, which shows nothing but stays in text copied back out of Jira.
+* Jira has no escape for some text: a literal `\` (before a markup character it would escape it, and `\\` is a line break), `:P` `:p` `:D` (before anything but an ASCII letter or digit: Cloud takes `:Pé` as the emoticon too) and a line that starts with `h1.` … `h6.` or `bq.`. These get an invisible zero-width space (U+200B) in between instead, which shows nothing but stays in text copied back out of Jira.
+* Inside an effect (`*…*`, `_…_`, …) Jira Cloud reads the text a second time with its escapes removed, and as the start of a line. So there an escaped `{`, `[` or emoticon `(` is also followed by a zero-width space (written ⟨ZWSP⟩ here: `*See \{⟨ZWSP⟩panel\}*`, `*\(⟨ZWSP⟩x)*`), an escaped marker that could pair up inside the effect (`+…+`, `!…!`, `??…??`) or an emoticon's face is preceded by one, and effect text that starts with a list, heading, quote or rule marker starts with one. Inline code inside an effect gets one after a `{` and between `}` and `}` (`*{{\{⟨ZWSP⟩dataset\}⟨ZWSP⟩}}*`). None goes right before `{{` or right after `}}` (Cloud would not read the code then): where one is needed there, the effect loses its markers (see Limits).
+* A table-cell line break `\\` is followed by a space when a backslash follows in the same word, ours included (`a\\ \{x}`): Jira reads `\\` as a break only when no `\` follows before the next space.
 
 ## Limits
 
 * Jira Cloud's paste parser does not honour `\|` inside a table cell (the cell splits there); Jira Server does. A pipe in a table cell is rare enough that the Server form wins.
-* Jira Cloud's panels cannot hold a code block (Cloud moves it after the panel), and its list items flatten a `{quote}` into a paragraph.
+* Jira Cloud's panels cannot hold a code block (Cloud moves it after the panel), its list items flatten a `{quote}` into a paragraph, and a panel in a list item ends the list there (the items after it start a new list).
 * A paragraph that follows a nested list inside the same item joins the nested list's last item (Jira has no way back to the outer item).
 * An ordered list that is split by a table, and a list whose start number is not 1, restart at 1.
-* The `{*}` form of an effect whose text contains the same marker (`a**b*c**d`) is read differently by Cloud.
+* Cloud cannot keep some text of an effect literal, so that effect keeps its text but loses its markers: a `{*}`-form effect whose text holds its own marker (`x~~kebab-case~~y`), an effect around a literal `[…]` that holds `|` or `^` (Cloud reads it as a link or an attachment there, whatever the escapes), and an effect where an escaped marker right after inline code could pair up (`` **`a`\*b\*** ``: a zero-width space after `}}` would stop the code).
+* Cloud shows every image as a block of its own, also one inside a sentence.

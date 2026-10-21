@@ -175,6 +175,20 @@ describe('markdownToJira: effects, more', () => {
     expect(jira('~~x -y~~')).toBe(r`-x \-y-`);
   });
 
+  it('guards escapes in nested effects, link text and table cells, where Cloud re-reads the effect text', () => {
+    expect(jira('***a (x) b***')).toBe(`_*a \\(${Z}x) b*_`);
+    expect(jira('[**a {b}**](https://x.y)')).toBe(`[*a \\{${Z}b}*|https://x.y]`);
+    expect(jira('| h |\n|---|\n| **a :) b** |')).toBe(`||h||\n|*a :${Z}\\) b*|`);
+    // outside an effect a backslash is enough
+    expect(jira('a (x) {b} [c] :)')).toBe(r`a \(x) \{b} \[c] :\)`);
+  });
+
+  it('drops the {*} form of an HTML effect whose text holds its marker', () => {
+    expect(jira('x<sup>a^b</sup>y and H<sub>2~3</sub>O and x<u>a+b</u>y')).toBe(
+      'xa^by and H2~3O and xa+by',
+    );
+  });
+
   it('closes and reopens an effect around a line break in a table cell', () => {
     expect(jira('| h |\n|---|\n| **a<br>b** |')).toBe(r`||h||
 |*a*\\*b*|`);
@@ -215,6 +229,15 @@ describe('markdownToJira: inline code, more', () => {
     expect(jira('`a\nb`')).toBe('{{a b}}');
     expect(jira('`a  b   c`')).toBe('{{a  b   c}}');
     expect(jira('`é` `日本語` `😀`')).toBe('{{é}} {{日本語}} {{😀}}');
+  });
+
+  it('keeps code whose text ends in braces whole inside an effect and a link', () => {
+    expect(jira('**see `{dataset}/{slug}` here**')).toBe(
+      `*see {{\\{${Z}dataset\\}/\\{${Z}slug\\}${Z}}} here*`,
+    );
+    expect(jira('[`{x}`](https://x.y) and [**`{x}`**](https://x.y)')).toBe(
+      `[{{\\{x\\}}}|https://x.y] and [*{{\\{${Z}x\\}${Z}}}*|https://x.y]`,
+    );
   });
 
   it('keeps a code span in a table cell with its escaped pipe and braces', () => {
@@ -369,6 +392,21 @@ describe('markdownToJira: links, more', () => {
     );
     expect(jira('[a]: https://x.y/unused\n\ntext')).toBe('text');
     expect(jira('[a]\n\n[a]: <https://x.y/a b>')).toBe('[a|https://x.y/a%20b]');
+  });
+
+  it('puts the link after link text with an odd number of `!` from three on, also in a cell', () => {
+    expect(jira('| h |\n|---|\n| [a!b!c!](https://x.y) |')).toBe(r`||h||
+|a\!b\!c! ([https://x.y])|`);
+    expect(jira('[a!!b!!](https://x.y) [!!!!!](https://x.y)')).toBe(
+      r`[a\!\!b!!|https://x.y] \!\!\!!! ([https://x.y])`,
+    );
+  });
+
+  it('writes a link around an image reference as the image, then the link', () => {
+    expect(jira('[![b][i]](https://x.y)\n\n[i]: https://x.y/b.svg')).toBe(
+      '!https://x.y/b.svg|alt=b! ([https://x.y])',
+    );
+    expect(jira('[![b][i]](https://x.y)\n\n[i]: ./b.svg')).toBe('[b|https://x.y]');
   });
 
   it('keeps footnote references and effects in link text', () => {
@@ -532,9 +570,21 @@ describe('markdownToJira: quotes and alerts, more', () => {
     expect(jira('> [!NOTE]text')).toBe('{quote}\n\\[!NOTE]text\n{quote}');
     expect(jira('> [! NOTE]\n> text')).toBe('{quote}\n\\[! NOTE] text\n{quote}');
     expect(jira('> [!NOTE ]\n> text')).toBe('{quote}\n\\[!NOTE ] text\n{quote}');
-    expect(jira('> **[!NOTE]**\n> text')).toBe('{quote}\n*\\[!NOTE]* text\n{quote}');
+    // (inside an effect Cloud re-reads `[` without its escape: a zero-width space keeps it text)
+    expect(jira('> **[!NOTE]**\n> text')).toBe(`{quote}\n*\\[${Z}!NOTE]* text\n{quote}`);
     expect(jira('> [!NOTE]\n> a\n>\n> [!TIP]\n> b')).toBe(
       '{panel:title=Note|bgColor=#deebff}\na\n\n\\[!TIP] b\n{panel}',
+    );
+  });
+
+  it('reads an alert marker from the source in a list item too', () => {
+    expect(jira('- > \\[!NOTE]\n  > x')).toBe(`* ${NBSP}\n{quote}\n\\[!NOTE] x\n{quote}`);
+    expect(jira('- > [!NOTE]\\\n  > x')).toBe(`* ${NBSP}\n{quote}\n\\[!NOTE]\nx\n{quote}`);
+  });
+
+  it('keeps a code block that holds {quote} or {panel} from closing a quote or panel around it in a list', () => {
+    expect(jira('- a\n  > ```\n  > {quote}\n  > ```')).toBe(
+      `* a\n{quote}\n{noformat}\n{${Z}quote}\n{noformat}\n{quote}`,
     );
   });
 
@@ -723,7 +773,7 @@ describe('markdownToJira: HTML, more', () => {
   it('keeps the text of tables, lists and paragraphs, one per line', () => {
     expect(jira('<table><tr><td>cell1</td><td>cell2</td></tr></table>')).toBe('cell1\ncell2');
     expect(jira('<ul><li>one</li><li>two</li></ul>')).toBe('one\ntwo');
-    expect(jira('<p>para <b>bold {x}</b></p>')).toBe(r`para bold \{x}`);
+    expect(jira('<p>para <b>bold {x}</b></p>')).toBe(`para *bold \\{${Z}x}*`);
     expect(jira('text <span>a</span><span>b</span> text')).toBe('text ab text');
   });
 
@@ -736,6 +786,31 @@ describe('markdownToJira: HTML, more', () => {
   it('re-reads markdown between block tags as markdown', () => {
     expect(jira('<details><summary>S</summary>\n\n**md** inside\n\n</details>')).toBe(
       'S\n\n*md* inside',
+    );
+  });
+
+  it('keeps entity names of Object.prototype as text', () => {
+    expect(jira('<div>\n&constructor; &toString; &amp;\n</div>')).toBe(
+      '&constructor; &toString; &',
+    );
+  });
+
+  it('keeps a `<` that starts no tag, and an unterminated tag, as text', () => {
+    expect(jira('<div>\na < b and <x\n</div>')).toBe('a < b and <x');
+    expect(jira('<div>\n1 <2> 3\n</div>')).toBe('1 <2> 3');
+  });
+
+  it('reads attributes in any quoting and case and decodes their entities', () => {
+    expect(
+      jira("<div>\n<A HREF='https://x.y/?a=1&amp;b=2'>l</A> <a href=https://x.y/u>u</a>\n</div>"),
+    ).toBe('[l|https://x.y/?a=1&b=2] [u|https://x.y/u]');
+  });
+
+  it('maps tags in a heading and a table cell', () => {
+    expect(jira('## Title <sup>beta</sup> <code>x</code>')).toBe('h2. Title ^beta^ {{x}}');
+    expect(jira('| h |\n|---|\n| a <b>b</b> <a href="https://x.y">l</a><br>c |')).toBe(
+      r`||h||
+|a *b* [l|https://x.y]\\c|`,
     );
   });
 

@@ -33,6 +33,25 @@ describe('markdownToJira: the document', () => {
   it('separates blocks with one blank line and ends without a trailing newline', () => {
     expect(jira('# T\n\n\n\npara\n\n\n- a\n')).toBe('h1. T\n\npara\n\n* a');
   });
+
+  it('escapes long runs of markers in linear time (each took 7 to 20 s when a check looked ahead per character)', () => {
+    const lines: [string, string][] = [
+      // (a later `!` or `??` could close all but the last one)
+      ['x!'.repeat(150000), r`x\!`.repeat(149999) + 'x!'],
+      [' ??x'.repeat(30000), r`\??x `.repeat(29999) + '??x'],
+      // (no `*` can close: each one touches the letter after it)
+      [r`(\*a `.repeat(30000), '(*a '.repeat(29999) + '(*a'],
+      // (a space after every `\\` but the last: another `\\` follows in the same word)
+      [`| h |\n|---|\n| ${'a<br>'.repeat(20000)} |`, `||h||\n|${r`a\\ `.repeat(19998)}${r`a\\a`}|`],
+    ];
+    for (const [md, expected] of lines) {
+      const start = performance.now();
+      const out = jira(md);
+      // (about 0.1 s each, also under load far below the bound)
+      expect(performance.now() - start, md.slice(0, 12)).toBeLessThan(3000);
+      expect(out).toBe(expected);
+    }
+  });
 });
 
 describe('markdownToJira: headings, paragraphs, breaks and rules', () => {
@@ -115,6 +134,59 @@ describe('markdownToJira: text effects', () => {
     expect(jira('*one\\\ntwo three*')).toBe('_one_\n_two three_');
   });
 
+  it('keeps escapes inside an effect working in Cloud, which re-reads effect text without its escapes', () => {
+    // (a zero-width space after `{`, `[` or an emoticon `(`, before a marker that could open or an emoticon face)
+    expect(jira('**Done (x) and (/)**')).toBe(`*Done \\(${Z}x) and \\(${Z}/)*`);
+    expect(jira('**See {panel} for details** and **{code}**')).toBe(
+      `*See \\{${Z}panel\\} for details* and *\\{${Z}code}*`,
+    );
+    expect(jira('**Note: use [~user] here**')).toBe(`*Note: use \\[${Z}~user] here*`);
+    expect(jira('**a +b+ c** and **a \\^x\\^ and \\~y\\~ z**')).toBe(
+      `*a ${Z}\\+b+ c* and *a ${Z}\\^x^ and ${Z}\\~y~ z*`,
+    );
+    expect(jira('**ok :) (y)** and **!img! and ??cite?? done**')).toBe(
+      `*ok :${Z}\\) \\(${Z}y)* and *${Z}\\!img! and ${Z}\\??cite?? done*`,
+    );
+    // an inner effect of the marker's kind is a closer too
+    expect(jira('_a \\*b **c**_')).toBe(`_a ${Z}\\*b *c*_`);
+  });
+
+  it('starts effect text that Cloud would read as a line start (list, heading, quote, rule) with a zero-width space', () => {
+    expect(
+      jira('**\\- x** and **\\* x** and **\\# x** and **h1\\. x** and **bq\\.** and ***h2\\. x***'),
+    ).toBe(
+      `*${Z}- x* and *${Z}\\* x* and *${Z}# x* and *${Z}h1. x* and *${Z}bq.* and _*${Z}h2. x*_`,
+    );
+    expect(jira('**\\---- x**')).toBe(`*${Z}\\-${Z}\\--- x*`);
+  });
+
+  it('drops an effect around a literal [...] that holds | or ^ (Cloud reads it as a link or attachment there)', () => {
+    expect(jira('**see [a|b] here** and *x [a^b] y*')).toBe(
+      `see \\[${Z}a|b] here and x \\[${Z}a^b] y`,
+    );
+    expect(jira('_a **[x|y]** b_ and **[a] |b|**')).toBe(`a \\[${Z}x|y] b and *\\[${Z}a] |b|*`);
+  });
+
+  it('puts no zero-width space next to our {{ or }}, and drops the effect where one would be needed there', () => {
+    // (Cloud reads no code after a letter-like character or before one, and a ZWSP counts as one)
+    expect(jira('**[`opt`]**')).toBe(r`*\[{{opt}}]*`);
+    expect(jira('**`a`\\*b\\*** and ~~`x`!a `y`!~~ and **{`x`}**')).toBe(
+      r`{{a}}\*b\* and {{x}}\!a {{y}}! and \{{{x}}}`,
+    );
+  });
+
+  it('adds no zero-width space when the marker cannot pair up inside the effect', () => {
+    expect(jira('**\\*x** and ~~x -y~~ and **a \\* b**')).toBe(r`*\*x* and -x \-y- and *a \* b*`);
+  });
+
+  it('drops the {*} form of an effect whose text holds its marker (Cloud closes it there) and keeps the text', () => {
+    expect(jira('x~~kebab-case~~y')).toBe('xkebab-casey');
+    expect(jira('foo**a \\* b** and x**a\\*b**y')).toBe(r`fooa \* b and xa*by`);
+    expect(jira('x**a [**b**](https://x.y) c**y')).toBe('xa [*b*|https://x.y] cy');
+    // other markers inside are fine
+    expect(jira('x**a_b-c**y')).toBe('x{*}a_b-c{*}y');
+  });
+
   it('keeps an effect around inline code, links and images', () => {
     expect(jira('**`x`**')).toBe('*{{x}}*');
     expect(jira('**[a](https://x.y)**')).toBe('*[a|https://x.y]*');
@@ -159,6 +231,17 @@ describe('markdownToJira: inline code', () => {
     );
   });
 
+  it('keeps code inside an effect whole in Cloud (a zero-width space after `{` and between `}` and `}`)', () => {
+    expect(jira('**`{dataset}`**')).toBe(`*{{\\{${Z}dataset\\}${Z}}}*`);
+    expect(jira('*`{a}/{b}`* and **`a}} b`** and **`{}`**')).toBe(
+      `_{{\\{${Z}a\\}/\\{${Z}b\\}${Z}}}_ and *{{a\\}${Z}\\} b}}* and *{{\\{${Z}\\}${Z}}}*`,
+    );
+  });
+
+  it('takes a backslash that touches the code into it (`\\{{` would escape the brace)', () => {
+    expect(jira('C:\\\\`dir` and x\\\\\\\\`y`')).toBe(`C:{{\\dir}} and {{x\\${Z}\\y}}`);
+  });
+
   it('does not escape a pipe in code outside a table', () => {
     expect(jira('`a|b` and `GET|PUT`')).toBe('{{a|b}} and {{GET|PUT}}');
   });
@@ -170,6 +253,12 @@ describe('markdownToJira: escaping text', () => {
       r`a \{curly} and \{\{double}} and \[square] and \[~user] and \{code} b`,
     );
     expect(jira('a ] b } c')).toBe('a ] b } c');
+  });
+
+  it('escapes the closing brace of {quote} and {panel} text (Cloud finds their closer without reading escapes)', () => {
+    expect(jira('use {quote} and {Panel} but {quotes} and {quote:x}')).toBe(
+      r`use \{quote\} and \{Panel\} but \{quotes} and \{quote:x}`,
+    );
   });
 
   it('escapes effect markers that could open and close an effect', () => {
@@ -253,6 +342,10 @@ describe('markdownToJira: escaping text', () => {
       r`:\) :\( ;\) :\-) :\-( ;\-) :\-P :\-p :\-D`,
     );
     expect(jira(':P :p :D. a:D')).toBe(`:${Z}P :${Z}p :${Z}D. a:${Z}D`);
+    // (Cloud takes `:P` as an emoticon before anything but an ASCII letter or digit)
+    expect(jira('x :Pé and :D日本 and :P😀 and :Px')).toBe(
+      `x :${Z}Pé and :${Z}D日本 and :${Z}P😀 and :Px`,
+    );
   });
 
   it('leaves text that only looks like an emoticon alone', () => {
@@ -321,6 +414,15 @@ describe('markdownToJira: links', () => {
     );
   });
 
+  it('puts the link after link text with an odd number of `!` from three on (Jira reads them as image markers)', () => {
+    expect(jira("[Wow! Really! Yes!](https://x.y) and [Don't panic!!!](https://x.y)")).toBe(
+      r`Wow! Really! Yes! ([https://x.y]) and Don't panic\!!! ([https://x.y])`,
+    );
+    expect(jira('[Hi!](https://x.y) and [Hi! Bye!](https://x.y)')).toBe(
+      '[Hi!|https://x.y] and [Hi! Bye!|https://x.y]',
+    );
+  });
+
   it('percent-encodes what Jira would read inside the link target', () => {
     expect(jira('[x](<https://x.y/a b|c{d}e^f!g\\h[i]>)')).toBe(
       '[x|https://x.y/a%20b%7Cc%7Bd%7De%5Ef%21g%5Ch%5Bi%5D]',
@@ -354,6 +456,20 @@ describe('markdownToJira: images', () => {
     );
   });
 
+  it('keeps a space between an image and a letter, digit or other non-ASCII character it touches', () => {
+    // (Cloud shows no image whose `!` touches one, and a later `!` would take the text into the image URL)
+    expect(
+      jira(
+        'a ![i](https://x.y/i.png)word and word![j](https://x.y/j.png)! and é![k](https://x.y/k.png)é',
+      ),
+    ).toBe(
+      'a !https://x.y/i.png|alt=i! word and word !https://x.y/j.png|alt=j!! and é !https://x.y/k.png|alt=k! é',
+    );
+    expect(jira('**![i](https://x.y/i.png)\\-x\\-**')).toBe(
+      `*!https://x.y/i.png|alt=i! ${Z}\\-x-*`,
+    );
+  });
+
   it('writes the alt text (else the file name) of an image Jira cannot load', () => {
     expect(jira('![diagram](./diagram.png) and ![](img/a%20b.png?x=1#y) and ![](./)')).toBe(
       'diagram and a b.png and',
@@ -366,10 +482,21 @@ describe('markdownToJira: images', () => {
     expect(jira('![](bad%E0name.png)')).toBe('bad%E0name.png');
   });
 
-  it('nests an image in a link without the alt attribute', () => {
+  it('writes an image link (README badges) as the image, then the link', () => {
+    // (Cloud shows an image in link text on its own and the `!…!` as the link text)
     expect(jira('[![logo](https://i.example/l.png)](https://home.example)')).toBe(
-      '[!https://i.example/l.png!|https://home.example]',
+      '!https://i.example/l.png|alt=logo! ([https://home.example])',
     );
+    expect(
+      jira('[![CI](https://x/b.svg)](https://x/a) [![Cov](https://y/c.svg)](https://y/d)'),
+    ).toBe('!https://x/b.svg|alt=CI! ([https://x/a]) !https://y/c.svg|alt=Cov! ([https://y/d])');
+    expect(jira('[![i](https://x.y/i.png) Click here!](https://z.z)')).toBe(
+      '!https://x.y/i.png|alt=i! Click here! ([https://z.z])',
+    );
+    expect(jira('[**![i](https://x.y/i.png)**](https://z.z)')).toBe(
+      '*!https://x.y/i.png|alt=i!* ([https://z.z])',
+    );
+    // an image Jira cannot load is its alt text, which stays the link text
     expect(jira('[![logo](./l.png)](https://home.example)')).toBe('[logo|https://home.example]');
   });
 });
@@ -401,6 +528,15 @@ describe('markdownToJira: lists', () => {
 
   it('writes a heading in an item in bold and drops a rule in an item', () => {
     expect(jira('- a\n  # Head *x*\n- b\n\n  ---\n- c')).toBe('* a\n*Head _x_*\n* b\n* c');
+  });
+
+  it('writes a heading in bold and drops a rule anywhere inside an item, also inside its quote or alert', () => {
+    expect(jira('- a\n  > ## Head\n  > text\n  >\n  > ---\n  >\n  > more\n- b')).toBe(
+      '* a\n{quote}\n*Head*\ntext\nmore\n{quote}\n* b',
+    );
+    expect(jira('1. a\n   > [!NOTE]\n   > ### Note head\n   > body')).toBe(
+      '# a\n{panel:title=Note|bgColor=#deebff}\n*Note head*\nbody\n{panel}',
+    );
   });
 
   it('ends the list around a table (a table cannot live in a Jira list)', () => {
@@ -469,6 +605,28 @@ describe('markdownToJira: blockquotes and alerts', () => {
     expect(jira('> [!NOTE] same line')).toBe('{quote}\n\\[!NOTE] same line\n{quote}');
     expect(jira('> [!UNKNOWN]\n> text')).toBe('{quote}\n\\[!UNKNOWN] text\n{quote}');
     expect(jira('> text\n> [!NOTE]')).toBe('{quote}\ntext \\[!NOTE]\n{quote}');
+  });
+
+  it('reads an alert marker only from the source: an escaped marker or one with more on its line is text', () => {
+    expect(jira('> \\[!NOTE]\n> escaped')).toBe('{quote}\n\\[!NOTE] escaped\n{quote}');
+    expect(jira('> [!NOTE]<br>text')).toBe('{quote}\n\\[!NOTE]\ntext\n{quote}');
+    expect(jira('> &#91;!NOTE]\n> entity')).toBe('{quote}\n\\[!NOTE] entity\n{quote}');
+  });
+
+  it('keeps {quote} and {panel} inside a quote or panel from closing it early', () => {
+    expect(jira('> use {quote} here')).toBe('{quote}\nuse \\{quote\\} here\n{quote}');
+    expect(jira('> [!NOTE]\n> use {panel} and {quote}')).toBe(
+      '{panel:title=Note|bgColor=#deebff}\nuse \\{panel\\} and \\{quote\\}\n{panel}',
+    );
+    // in a code block the tag of the open macro is broken with a zero-width space
+    expect(jira('> ```\n> {quote} and {panel}\n> ```')).toBe(
+      `{quote}\n{noformat}\n{${Z}quote} and {panel}\n{noformat}\n{quote}`,
+    );
+    expect(
+      jira('> [!TIP]\n> ```js\n> x = "{panel}{Quote}"\n> ```\n>\n> > ```\n> > {QUOTE}\n> > ```'),
+    ).toBe(
+      `{panel:title=Tip|bgColor=#e3fcef}\n{code:javascript}\nx = "{${Z}panel}{Quote}"\n{code}\n\n{quote}\n{noformat}\n{${Z}QUOTE}\n{noformat}\n{quote}\n{panel}`,
+    );
   });
 
   it('nests a quote in a panel and a panel in a quote, and flattens a panel in a panel', () => {
@@ -641,6 +799,28 @@ describe('markdownToJira: tables', () => {
     );
   });
 
+  it('puts a space after a cell line break before any backslash, an escape of ours too', () => {
+    expect(
+      jira(
+        '| h |\n|---|\n| a<br>{x} |\n| a<br>[x] |\n| a<br>(x) |\n| a<br>-b- |\n| a<br>+b+ |\n| a<br>^c^ |\n| a<br>!i! |',
+      ),
+    ).toBe(r`||h||
+|a\\ \{x}|
+|a\\ \[x]|
+|a\\ \(x)|
+|a\\ \-b-|
+|a\\ \+b+|
+|a\\ \^c^|
+|a\\ \!i!|`);
+    expect(jira('| h |\n|---|\n| a<br>b<br>c |\n| a<br><br>b |')).toBe(r`||h||
+|a\\ b\\c|
+|a\\ \\b|`);
+  });
+
+  it('drops a line break at either end of a cell', () => {
+    expect(jira('| h |\n|---|\n| <br>a<br> |\n| <br> |')).toBe('||h||\n|a|\n| |');
+  });
+
   it('fills empty cells and short rows with a space and drops extra cells', () => {
     expect(jira('| a | b |\n|---|---|\n|  | x |\n| 1 |\n| 1 | 2 | 3 |')).toBe(
       '||a||b||\n| |x|\n|1| |\n|1|2|',
@@ -665,12 +845,80 @@ describe('markdownToJira: HTML', () => {
     expect(jira('a\n\n<!-- block\ncomment -->\n\nb <!-- inline --> c')).toBe('a\n\nb  c');
   });
 
-  it('strips tags and keeps their text, block-level tags and <br> as line breaks', () => {
-    expect(jira('<div align="center">\n<b>Bold</b> text\n</div>')).toBe('Bold text');
+  it('keeps the text of other tags, block-level tags and <br> as line breaks', () => {
+    expect(jira('<div align="center">\n<b>Bold</b> text\n</div>')).toBe('*Bold* text');
     expect(jira('<p>one</p><p>two</p>')).toBe('one\ntwo');
     expect(jira('<details>\n<summary>Sum</summary>\ninner\n</details>')).toBe('Sum\ninner');
     expect(jira('<div>\na<br>b\n</div>')).toBe('a\nb');
-    expect(jira('a <kbd>Ctrl</kbd>+<kbd>K</kbd> b')).toBe('a Ctrl+K b');
+    expect(jira('a <kbd>Ctrl</kbd>+<kbd>K</kbd> b')).toBe('a {{Ctrl}}+{{K}} b');
+  });
+
+  it('maps inline effect and code tags', () => {
+    expect(
+      jira(
+        'a <b>b</b> <strong>s</strong> <i>i</i> <em>e</em> <s>s</s> <del>d</del> <strike>k</strike>',
+      ),
+    ).toBe('a *b* *s* _i_ _e_ -s- -d- -k-');
+    expect(jira('<u>under</u>line, <ins>ins</ins>, x<sup>2</sup>, H<sub>2</sub>O')).toBe(
+      '{+}under{+}line, +ins+, x{^}2{^}, H{~}2{~}O',
+    );
+    expect(jira('a <code>x {y}</code> <samp>out</samp> <tt>tt</tt>')).toBe(
+      r`a {{x \{y\}}} {{out}} {{tt}}`,
+    );
+  });
+
+  it('maps <a href> like a markdown link and <img> like a markdown image', () => {
+    expect(
+      jira(
+        'a <a href="https://x.y/a?b=1&amp;c=2">link <b>b</b></a>, <a href="./r.md">rel</a>, <a name="n">n</a>',
+      ),
+    ).toBe('a [link *b*|https://x.y/a?b=1&c=2], rel, n');
+    expect(
+      jira(
+        '<img src="https://x.y/i.png" alt="Logo"> <img src="./l.png" alt="local"> <IMG SRC="https://x.y/j.png">',
+      ),
+    ).toBe('!https://x.y/i.png|alt=Logo! local !https://x.y/j.png!');
+    expect(
+      jira(
+        '<p align="center">\n  <a href="https://x/a"><img src="https://x/b.svg" alt="CI"></a>\n</p>',
+      ),
+    ).toBe('!https://x/b.svg|alt=CI! ([https://x/a])');
+  });
+
+  it('writes <hr> as a rule line (none in a list item) and in a cell or heading as a break or space', () => {
+    expect(jira('a <hr> b')).toBe('a\n----\nb');
+    expect(jira('<hr>')).toBe('----');
+    expect(jira('- a\n  <hr>\n- b')).toBe('* a\n* b');
+    expect(jira('| h |\n|---|\n| a <hr/> b |\n\n## x <hr> y')).toBe(r`||h||
+|a \\ b|
+
+h2. x   y`);
+  });
+
+  it('keeps a no-break space of an HTML block (a line start after it is no markup)', () => {
+    expect(jira('<div>\n&nbsp;h1. x\n&nbsp;- y\n</div>')).toBe(`${NBSP}h1. x\n${NBSP}- y`);
+  });
+
+  it('drops <script>, <style> and <template> with their content', () => {
+    expect(jira('a <script>x()</script> b <style>.x{}</style> c <template>t</template> d')).toBe(
+      'a  b  c  d',
+    );
+    expect(
+      jira(
+        '<div>\nkeep\n<script>\nif (a < b) { w("</div>"); }\n</script>\n<style>p { }</style>\nend\n</div>',
+      ),
+    ).toBe('keep\nend');
+  });
+
+  it('keeps only the text of unbalanced tags', () => {
+    expect(jira('a <b>unclosed and </i>stray')).toBe('a unclosed and stray');
+    expect(jira('x <b>a<i>b</b>c</i> y')).toBe('x {*}ab{*}c y');
+    expect(jira('<div>\na <b>b\n</div>')).toBe('a b');
+  });
+
+  it('flattens elements nested in their own kind, however deep', () => {
+    expect(jira('x <b><strong>y</strong></b> z')).toBe('x *y* z');
+    expect(jira(`x ${'<b>'.repeat(5000)}y${'</b>'.repeat(5000)} z`)).toBe('x *y* z');
   });
 
   it('drops processing instructions, declarations and an unclosed comment in a block', () => {
