@@ -1,0 +1,214 @@
+/* Import session / Import plan dialogs (src/ui/agent, EntryTools island): Modal size="large" (kit/Dialog.css). The
+   body never scrolls: a toolbar over two columns, the row list (left) and the meta line + preview + import form
+   (right); the list and the preview scroll inside. Placement, size and spacing only: the badges, statuses, notices
+   and the prose keep the kit's colours. Imported by src/styles/global.css. */
+@layer cx-app {
+  .cx-agentdlg__body {
+    gap: var(--sp-4);
+    overflow: hidden;
+    padding: var(--sp-4) var(--sp-5);
+  }
+
+  /* ---------- toolbar: search, agent chips, count ---------- */
+  .cx-agentdlg__toolbar {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-3) var(--sp-4);
+  }
+  .cx-agentdlg__search {
+    flex: 1 1 14rem;
+    min-width: 12rem;
+  }
+  .cx-agentdlg__count {
+    margin-left: auto;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- columns ---------- */
+  .cx-agentdlg__cols {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(17rem, 2fr) minmax(0, 3fr);
+    gap: var(--sp-4);
+  }
+  .cx-agentdlg__list {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg-subtle);
+  }
+  .cx-agentdlg__list[data-stale] {
+    opacity: 0.6;
+  }
+  .cx-agentdlg__pad {
+    padding: var(--sp-4);
+  }
+  .cx-agentdlg__more {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+  }
+  .cx-agentdlg__side {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+
+  /* ---------- rows ---------- */
+  .cx-agentrow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    min-height: 0;
+    padding: var(--sp-2) var(--sp-4);
+  }
+  .cx-agentrow[data-selected] {
+    background: var(--accent-bg);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .cx-agentrow[data-selected] .cx-agentrow__title {
+    color: var(--accent-text);
+  }
+  /* the title has its own line: the list column is narrow */
+  .cx-agentrow__title {
+    display: block;
+    font-weight: var(--fw-medium);
+    color: var(--fg);
+  }
+  .cx-agentrow__excerpt {
+    display: block;
+    font-size: var(--fs-sm);
+    color: var(--fg-muted);
+  }
+  /* the meta line: badges, directory / branch / file, time at the end */
+  .cx-agentrow__sub {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+    font-size: var(--fs-xs);
+    color: var(--fg-subtle);
+  }
+  /* row badges: one size smaller than the kit default */
+  .cx-agentrow__sub > .ck-badge {
+    flex: none;
+    height: 16px;
+    padding: 0 var(--sp-2);
+    font-size: var(--fs-xs);
+  }
+  .cx-agentrow__item {
+    flex: 0 1 auto;
+  }
+  .cx-agentrow__time {
+    flex: none;
+    margin-left: auto;
+    padding-left: var(--sp-3);
+  }
+
+  /* ---------- preview ---------- */
+  .cx-agentdlg__preview {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg-subtle);
+  }
+  .cx-agentdlg__meta {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-5);
+    margin: 0;
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--fs-sm);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-deep);
+  }
+  .cx-agentdlg__metaitem {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    min-width: 0;
+    max-width: 100%;
+  }
+  .cx-agentdlg__metaitem > dt {
+    flex: none;
+  }
+  .cx-agentdlg__metaitem > dd {
+    margin: 0;
+  }
+  .cx-agentdlg__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-4) var(--sp-5);
+  }
+  .cx-agentdlg__scroll[data-stale] {
+    opacity: 0.6;
+  }
+
+  /* ---------- import form ---------- */
+  .cx-agentdlg__form {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: 0;
+  }
+  .cx-agentdlg__opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-6);
+  }
+  .cx-agentdlg__fields {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--sp-4);
+    align-items: start;
+  }
+
+  /* ---------- empty state: the searched locations ---------- */
+  .cx-agentdlg__empty {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .cx-agentdlg__sources {
+    width: 100%;
+  }
+  .cx-agentdlg__caption {
+    padding: 0 0 var(--sp-2);
+    text-align: left;
+    caption-side: top;
+  }
+
+  /* a narrow window: the list over the preview */
+  @media (max-width: 760px) {
+    .cx-agentdlg__cols {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(8rem, 2fr) minmax(0, 3fr);
+    }
+    .cx-agentdlg__fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

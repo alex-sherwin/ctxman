@@ -350,6 +350,12 @@ describe('dialogFor', () => {
       path: 'references/x.md',
     });
     expect(dialogFor({ action: 'add-file', path: ' ' })).toEqual({ type: 'add-file' });
+    expect(dialogFor({ action: 'import-session' })).toEqual({ type: 'import-session' });
+    expect(dialogFor({ action: 'import-plan' })).toEqual({ type: 'import-plan' });
+    // the import buttons carry no data-path: a stray one changes nothing
+    expect(dialogFor({ action: 'import-plan', path: 'plans/x.md' })).toEqual({
+      type: 'import-plan',
+    });
     expect(dialogFor({ action: 'new-concept' })).toBeNull();
   });
 
@@ -376,6 +382,9 @@ describe('dialogFor', () => {
     expect(dialogFor({ action: 'explode' })).toBeNull();
     expect(dialogFor({ action: undefined })).toBeNull();
     expect(isEntryAction('frontmatter')).toBe(true);
+    expect(isEntryAction('import-session')).toBe(true);
+    expect(isEntryAction('import-plan')).toBe(true);
+    expect(isEntryAction('import')).toBe(false);
     expect(isEntryAction('x')).toBe(false);
   });
 });

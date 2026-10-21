@@ -1,7 +1,7 @@
 // PURE (no DOM, no fetch; browser-safe): the logic behind the EntryTools dialogs (ROUND3_SPEC §E.5): the
 // frontmatter form (draft <-> API shape, changed keys only, local checks, mapping server issues onto fields),
-// date arithmetic for `stale_after`, context link lists, the Add file path/title rules and the
-// data-attribute contract between the SSR buttons and the island. Unit-tested in tests/unit/entry-tools-helpers.test.ts.
+// date arithmetic for `stale_after`, context link lists, the Add file path/title rules (the agent session / plan
+// imports reuse them) and the data-attribute contract between the SSR buttons and the island. Unit-tested in tests/unit/entry-tools-helpers.test.ts.
 import {
   isLinkableDatasetId,
   isValidName,
@@ -334,6 +334,8 @@ export const ENTRY_ACTIONS = [
   'add-to-context',
   'build-context',
   'add-file',
+  'import-session',
+  'import-plan',
 ] as const;
 export type EntryAction = (typeof ENTRY_ACTIONS)[number];
 
@@ -348,7 +350,9 @@ export type EntryDialog =
   | { type: 'remove'; key: string; rel: string; title: string }
   | { type: 'add-to-context' }
   | { type: 'build-context' }
-  | { type: 'add-file'; path?: string };
+  | { type: 'add-file'; path?: string }
+  | { type: 'import-session' }
+  | { type: 'import-plan' };
 
 /** What the island reads from a clicked button: `data-entry-action` plus its `data-key`, `data-rel`, `data-path`, `data-title`. */
 export interface ActionTrigger {
@@ -391,5 +395,9 @@ export function dialogFor(trigger: ActionTrigger): EntryDialog | null {
       const path = trigger.path?.trim();
       return path === undefined || path === '' ? { type: 'add-file' } : { type: 'add-file', path };
     }
+    case 'import-session':
+      return { type: 'import-session' };
+    case 'import-plan':
+      return { type: 'import-plan' };
   }
 }

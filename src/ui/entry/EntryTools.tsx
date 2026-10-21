@@ -1,6 +1,7 @@
 // EntryTools island (ROUND3_SPEC §E.5): the dialogs behind the server-rendered `[data-entry-action]` buttons of an
 // okf / skill / reference detail page (and of the doc pages): Edit details (frontmatter), Add relation / child,
-// Remove link, Add to context, Build context from this project, Add file. It renders only the status line
+// Remove link, Add to context, Build context from this project, Add file, Import an agent session / plan
+// (src/ui/agent, okf only). It renders only the status line
 // (`entry-status`) and the open dialog. On mount it enables the SSR buttons (rendered `disabled`) and listens for
 // clicks on the document (delegated, like MarkdownTargets); while a doc editor is open (`$docEditing`: a DocEditor
 // is mounted AND in edit mode; `?edit=1` alone is not enough, the reference form uses it too) it disables every
@@ -22,6 +23,8 @@ import { $entryStatus, initEntryStatus, showEntryStatus } from './entry-status.t
 import { FrontmatterDialog } from './FrontmatterDialog.tsx';
 import { AddFileDialog } from './AddFileDialog.tsx';
 import { RelationDialog, RemoveRelationDialog } from './RelationDialog.tsx';
+import { ImportPlanDialog } from '../agent/ImportPlanDialog.tsx';
+import { ImportSessionDialog } from '../agent/ImportSessionDialog.tsx';
 
 export interface EntryToolsProps {
   dataset: LinkableDatasetId;
@@ -151,6 +154,12 @@ export default function EntryTools({
           {...(dialog.path === undefined ? {} : { fixedPath: dialog.path })}
           onClose={close}
         />
+      )}
+      {dialog?.type === 'import-session' && kind === 'okf' && (
+        <ImportSessionDialog dataset={dataset} slug={slug} onClose={close} />
+      )}
+      {dialog?.type === 'import-plan' && kind === 'okf' && (
+        <ImportPlanDialog dataset={dataset} slug={slug} onClose={close} />
       )}
     </>
   );
