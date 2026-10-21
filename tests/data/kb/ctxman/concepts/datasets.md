@@ -46,6 +46,11 @@ Task, feature, bug and rca entries can track work in two optional `index.md` key
 Both are edited in the Details dialog, `PATCH /api/entry` and the MCP `patch-entry` tool; `pnpm run check:okf` reports a value in another form (`okf/entry-schema`).
 * Any number of further concept files. Each needs frontmatter with a non-empty `type`.
 
+Two more optional keys work on the entry `index.md` and on every concept file alike:
+
+* `index: false` leaves the file out of [search](/concepts/search.md) (on the entry `index.md`: the whole bundle), for agent session histories and other bulky files; only the boolean counts. Skills have no such key (their frontmatter is strict).
+* `modified`: the time of the last in-browser save, written by the [markdown editor](/concepts/editing.md) on every Save as a quoted UTC date-time to the second (`modified: "2026-10-20T14:03:12Z"`). It is informational; freshness stays the file modification time.
+
 Freshness is the newest file modification time in the bundle, computed at request time. A bundle whose `stale_after` date has arrived is flagged stale.
 
 ## Skills

@@ -760,9 +760,14 @@ export async function getDocDetail(
 
 const DATASET_ORDER: ReadonlyMap<string, number> = new Map(DATASET_IDS.map((id, i) => [id, i]));
 
+/** Frontmatter `index: false` (the boolean only): the file stays out of the search index. */
+const unindexed = (data: Record<string, unknown>): boolean => data.index === false;
+
 /**
  * The whole fuse corpus: okf entries + every other okf markdown file + skills + references + snippets +
- * contexts + recipes.
+ * contexts + recipes. `index: false` in an okf entry's index.md leaves out the whole bundle (entry and every file);
+ * in any other bundle markdown file, that file alone. The widget (`/api/search-index.json`, `#tag` too) and the MCP
+ * `search` tool read this index; lists, details, relations, pickers and Forge do not.
  */
 export async function buildSearchIndex(
   dataDir: string = resolveDataDir(),
@@ -779,6 +784,7 @@ export async function buildSearchIndex(
       continue;
     }
     const dataset = entry.dataset;
+    if (unindexed(entry.data)) continue;
     docs.push(
       okfDocToSearchDoc({
         dataset,
@@ -803,6 +809,7 @@ export async function buildSearchIndex(
         continue;
       }
       const disk = parseDiskMarkdown(source);
+      if (unindexed(disk.data)) continue;
       docs.push(
         okfDocToSearchDoc({
           dataset,

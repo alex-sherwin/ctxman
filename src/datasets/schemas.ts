@@ -140,6 +140,11 @@ const okfSharedShape = {
   'verified?': okfEventSchema.or(okfEventSchema.array()),
   'status?': type.enumerated(...OKF_STATUSES),
   'stale_after?': dateSchema,
+  /**
+   * `false` leaves the file out of the search index (`entries.ts#buildSearchIndex`; on the entry index.md: the whole
+   * bundle), e.g. agent session histories. Only the boolean counts; absent or `true` = indexed.
+   */
+  'index?': 'boolean',
 } as const;
 
 /** Any non-reserved OKF concept file (not index.md / log.md). */

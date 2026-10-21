@@ -382,6 +382,23 @@ describe('tools on a private corpus copy (tests that write)', () => {
     });
   });
 
+  describe('search', () => {
+    it('leaves out files with index: false (a whole bundle when its entry says so)', async () => {
+      writeFileSync(
+        path.join(dir, 'kb', 'ctxman', 'concepts', 'session-history.md'),
+        '---\ntype: Session log\nindex: false\ntags: [quuxhistory]\n---\n# Session\n\nflorbwazzle transcript\n',
+      );
+      invalidateEntryIndex();
+      expect(data(await ok('search', { query: 'florbwazzle' })).count).toBe(0);
+      expect(data(await ok('search', { query: '#quuxhistory' })).count).toBe(0);
+      // still a file of the bundle: listed and readable
+      const files = data<{ files: { path: string }[] }>(
+        await ok('list-bundle-files', { dataset: 'kb', slug: 'ctxman' }),
+      );
+      expect(files.files.map((f) => f.path)).toContain('concepts/session-history.md');
+    });
+  });
+
   describe('bundle files', () => {
     it('reads one file and pages a long one', async () => {
       const result = await ok('read-bundle-file', {

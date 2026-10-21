@@ -134,6 +134,30 @@ describe('entries.ts on the seed corpus', () => {
     expect(index.docs.some((d) => d.id === 'kb/ctxman/concepts/fresh-one')).toBe(true);
   });
 
+  it('leaves index: false files out of the search index; on the entry, the whole bundle', async () => {
+    writeTree(dir, {
+      'kb/hidden-bundle/index.md':
+        '---\nokf_version: "0.2"\ntype: Knowledge Base\nname: hidden-bundle\ndescription: Hidden.\nindex: false\n---\n# Hidden\n',
+      'kb/hidden-bundle/concepts/a.md': '---\ntype: Concept\n---\n# A\n',
+      'kb/ctxman/concepts/history.md': '---\ntype: Session log\nindex: false\n---\n# History\n',
+      'kb/ctxman/concepts/kept.md': '---\ntype: Concept\nindex: true\n---\n# Kept\n',
+      // only the boolean counts: a string is a schema issue, and the file stays indexed
+      'kb/ctxman/concepts/quoted.md': '---\ntype: Concept\nindex: "false"\n---\n# Quoted\n',
+      'kb/ctxman/concepts/no.md': '---\ntype: Concept\nindex: no\n---\n# No\n',
+    });
+    const ids = new Set((await buildSearchIndex()).docs.map((d) => d.id));
+    expect(ids.has('kb/hidden-bundle')).toBe(false);
+    expect(ids.has('kb/hidden-bundle/concepts/a')).toBe(false);
+    expect(ids.has('kb/ctxman/concepts/history')).toBe(false);
+    expect(ids.has('kb/ctxman')).toBe(true);
+    expect(ids.has('kb/ctxman/concepts/kept')).toBe(true);
+    expect(ids.has('kb/ctxman/concepts/quoted')).toBe(true);
+    expect(ids.has('kb/ctxman/concepts/no')).toBe(true);
+    // the rest of the app still sees them: lists and pages
+    expect((await listEntries('kb')).some((e) => e.slug === 'hidden-bundle')).toBe(true);
+    expect((await getDocDetail('kb', 'ctxman', 'concepts/history'))?.title).toBe('History');
+  });
+
   it('builds the search index from disk: entries, concepts, skills, references, snippets, contexts, recipes', async () => {
     const { docs } = await buildSearchIndex();
     expect(docs.length).toBeGreaterThan(40);

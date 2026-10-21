@@ -238,6 +238,21 @@ describe('okf entries (kb, rca, idea, task, bug, feature, project)', () => {
     expect(validate(okfEventSchema, { by: 'human:alex', at: '2026-10-17' }).success).toBe(true);
   });
 
+  it('index (search opt-out) is an optional boolean on concepts and okf entries', () => {
+    expect(validate(okfConceptSchema, { type: 'Concept', index: false }).success).toBe(true);
+    expect(validate(okfConceptSchema, { type: 'Concept', index: true }).success).toBe(true);
+    expect(validate(okfConceptSchema, { type: 'Concept', index: 'no' }).success).toBe(false);
+    const entry = { type: 'Task', name: 'x', description: 'd', state: 'pending' };
+    expect(validate(DATASET_SCHEMAS.task, { ...entry, index: false }).success).toBe(true);
+    expect(
+      validate(DATASET_SCHEMAS.kb, { type: 'KB', name: 'x', description: 'd', index: 0 }).success,
+    ).toBe(false);
+    // skills are strict: no index key
+    expect(
+      validate(DATASET_SCHEMAS.skill, { name: 'x', description: 'd', index: false }).success,
+    ).toBe(false);
+  });
+
   it('okfEntrySchema accepts okf_version "0.2" only', () => {
     const entry = { type: 'Knowledge Base', name: 'x', description: 'd' };
     expect(validate(kbSchema, entry).success).toBe(true);

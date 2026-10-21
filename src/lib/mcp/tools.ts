@@ -293,7 +293,7 @@ const searchTool = defineTool({
   name: 'search',
   title: 'Search entries',
   description:
-    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, snippet, context, recipe), the same search as the ctxman UI. A `#tag` token keeps only files whose frontmatter tags include that tag exactly (several = all of them); the other words are the fuzzy query, and `#tag` alone lists every file with the tag. Returns ranked hits with an excerpt. Start here, then call get-entry or read-bundle-file.',
+    'Fuzzy-search every entry and every concept file of every dataset (kb, rca, idea, task, bug, feature, project, skill, reference, snippet, context, recipe), the same search as the ctxman UI (a file whose frontmatter says `index: false` is left out, a whole okf bundle when its index.md says so). A `#tag` token keeps only files whose frontmatter tags include that tag exactly (several = all of them); the other words are the fuzzy query, and `#tag` alone lists every file with the tag. Returns ranked hits with an excerpt. Start here, then call get-entry or read-bundle-file.',
   readOnly: true,
   input: type({
     '+': 'reject',
