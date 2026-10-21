@@ -687,3 +687,189 @@ test.describe('conflicts', () => {
     expect(saved).not.toContain('Other writer.');
   });
 });
+
+test.describe('Copy markdown', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+
+  /** The file's text without its frontmatter block, as the data copy has it on disk. */
+  const bodyOnDisk = (rel: string): string =>
+    readDataText(rel).replace(/^---\n[\s\S]*?\n---\n\s*/, '');
+
+  /**
+   * Presses the toolbar's Copy and returns what landed on the clipboard. Chromium rejects clipboard writes from an
+   * unfocused page, which the app swallows: bring the page to front so the press is the only thing that decides.
+   */
+  async function copied(page: Page): Promise<string> {
+    await page.bringToFront();
+    await page.getByTestId('doc-copy').click();
+    await expect(page.getByTestId('doc-copy')).toHaveAttribute('data-copied', '');
+    return page.evaluate(() => navigator.clipboard.readText());
+  }
+
+  test('a sub-doc page copies its body without the frontmatter; the button follows the file name', async ({
+    page,
+    doc,
+  }) => {
+    await page.goto(doc.notePage);
+    const copy = page.getByTestId('doc-copy');
+    await expect(copy).toBeVisible();
+    await expect(copy).toHaveAccessibleName('Copy markdown');
+    const path = (await page.getByTestId('doc-tools').locator('.cx-doctools__path').boundingBox())!;
+    const button = (await copy.boundingBox())!;
+    expect(button.x).toBeGreaterThanOrEqual(path.x + path.width);
+
+    const text = await copied(page);
+    expect(text).toBe('# E2E note\n\nOriginal text.\n');
+    expect(text).not.toContain('---');
+    expect(text).not.toContain('type: Concept');
+  });
+
+  test('the entry page copies the index.md body: no frontmatter, no okf_version', async ({
+    page,
+    doc,
+  }) => {
+    await page.goto(`/kb/${doc.name}`);
+    const text = await copied(page);
+    expect(text).toBe(bodyOnDisk(doc.main));
+    expect(text.startsWith('---')).toBe(false);
+    expect(text).not.toContain('okf_version');
+    expect(text).not.toContain(`name: ${doc.name}`);
+    expect(text.length).toBeGreaterThan(0);
+  });
+
+  test('while editing it copies the current editor text, unsaved line included, without frontmatter', async ({
+    page,
+    doc,
+  }) => {
+    await openEditor(page, doc.notePage);
+    const line = `Unsaved copy line ${Math.random().toString(36).slice(2, 8)}.`;
+    await typeAtEnd(page, line);
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    const text = await copied(page);
+    expect(text).toContain('Original text.');
+    expect(text).toContain(line);
+    expect(text.startsWith('# E2E note')).toBe(true);
+    expect(text).not.toContain('type: Concept');
+    expect(text).not.toContain('---');
+    // copying changes nothing: the editor is still dirty and the file untouched
+    await expect(page.getByTestId('doc-save')).toBeEnabled();
+    expect(readDataText(doc.note)).toBe(NOTE_TEXT);
+  });
+
+  test('a skill page copies SKILL.md without its frontmatter', async ({ page }) => {
+    await page.goto('/skill/ctxman-add-entry');
+    const text = await copied(page);
+    expect(text).toBe(bodyOnDisk('skill/ctxman-add-entry/SKILL.md'));
+    expect(text.startsWith('---')).toBe(false);
+    expect(text).not.toContain('allowed-tools');
+    expect(text).not.toContain('name: ctxman-add-entry');
+  });
+});
+
+/** The `modified:` lines of a file's frontmatter block (null when there is none). */
+function modifiedLines(source: string): string[] | null {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(source);
+  if (match === null) return null;
+  return (match[1] ?? '').split('\n').filter((line) => line.startsWith('modified:'));
+}
+
+test.describe('modified stamp', () => {
+  test('saving an entry index.md appends one quoted UTC `modified`, leaving the other frontmatter lines alone', async ({
+    page,
+    doc,
+  }) => {
+    const before = readDataText(doc.main);
+    const beforeFrontmatter = /^---\n([\s\S]*?)\n---\n/.exec(before)![1]!;
+    expect(modifiedLines(before)).toEqual([]);
+
+    await openEditor(page, `/kb/${doc.name}`);
+    await typeAtEnd(page, '\n\nStamped.');
+    const startedAt = Date.now();
+    const put = waitForApi(page, 'PUT', `/api/doc/${doc.main}`);
+    await pressSave(page);
+    expect((await put).status()).toBe(200);
+
+    const saved = readDataText(doc.main);
+    const lines = modifiedLines(saved)!;
+    expect(lines).toHaveLength(1);
+    const stamp = /^modified: "(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)"$/.exec(lines[0]!);
+    expect(stamp).not.toBeNull();
+    // the save time, UTC, to the second (clock of the browser and of the test are the same machine's)
+    expect(Math.abs(Date.parse(stamp![1]!) - startedAt)).toBeLessThan(60_000);
+    // appended as the LAST frontmatter line; everything before it is byte-for-byte what was there
+    const afterFrontmatter = /^---\n([\s\S]*?)\n---\n/.exec(saved)![1]!;
+    expect(afterFrontmatter).toBe(`${beforeFrontmatter}\n${lines[0]!}`);
+    expect(saved).toContain('Stamped.');
+  });
+
+  test('the next save replaces the stamp instead of adding another', async ({ page, doc }) => {
+    // fixed browser time (timers keep running): the stamps are exact
+    await page.clock.setFixedTime(new Date('2031-01-02T03:04:05Z'));
+    await openEditor(page, doc.notePage);
+    await typeAtEnd(page, 'First save.');
+    const reloaded = nextPageLoad(page);
+    const put = waitForApi(page, 'PUT', `/api/doc/${doc.note}`);
+    await pressSave(page);
+    expect((await put).status()).toBe(200);
+    await reloaded;
+    expect(readDataText(doc.note)).toBe(
+      NOTE_TEXT.replace('\n---\n#', '\nmodified: "2031-01-02T03:04:05Z"\n---\n#') + 'First save.',
+    );
+
+    await page.clock.setFixedTime(new Date('2032-05-06T07:08:09Z'));
+    await openEditor(page, doc.notePage);
+    await typeAtEnd(page, ' Second save.');
+    const put2 = waitForApi(page, 'PUT', `/api/doc/${doc.note}`);
+    await pressSave(page);
+    expect((await put2).status()).toBe(200);
+    const saved = readDataText(doc.note);
+    expect(modifiedLines(saved)).toEqual(['modified: "2032-05-06T07:08:09Z"']);
+    expect(saved).toContain('First save. Second save.');
+    expect(saved).not.toContain('2031-01-02');
+  });
+
+  test('an existing `modified` is replaced where it stands', async ({ page, doc }) => {
+    const seeded = NOTE_TEXT.replace(
+      'type: Concept\n',
+      'type: Concept\nmodified: "2020-01-01T00:00:00Z"\n',
+    );
+    writeFileSync(dataPath(doc.note), seeded);
+    await page.clock.setFixedTime(new Date('2033-03-04T05:06:07Z'));
+    await openEditor(page, doc.notePage);
+    await typeAtEnd(page, 'Edited.');
+    const put = waitForApi(page, 'PUT', `/api/doc/${doc.note}`);
+    await pressSave(page);
+    expect((await put).status()).toBe(200);
+    expect(readDataText(doc.note)).toBe(
+      `${seeded.replace('2020-01-01T00:00:00Z', '2033-03-04T05:06:07Z')}Edited.`,
+    );
+  });
+
+  test('a skill save is not stamped: SKILL.md keeps its strict frontmatter', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-docedit-skill');
+    const created = await request.post(`${API}/entry/skill`, {
+      data: { name, description: 'Skill for the save stamp spec.' },
+    });
+    expect(created.status()).toBe(201);
+    try {
+      const main = `skill/${name}/SKILL.md`;
+      await openEditor(page, `/skill/${name}`);
+      await typeAtEnd(page, '\n\nSkill edited.');
+      const put = waitForApi(page, 'PUT', `/api/doc/${main}`);
+      await pressSave(page);
+      const response = await put;
+      expect(response.status()).toBe(200);
+      const saved = readDataText(main);
+      expect(saved).toContain('Skill edited.');
+      expect(modifiedLines(saved)).toEqual([]);
+      expect(saved).not.toContain('modified');
+      // and the skill is still valid: no warning came back
+      expect(((await response.json()) as { warnings: unknown[] }).warnings).toEqual([]);
+    } finally {
+      rmSync(dataPath(`skill/${name}`), { recursive: true, force: true });
+    }
+  });
+});

@@ -1,7 +1,8 @@
 // Global search widget (UI_SPEC §G): open paths, URL sync (?search=1&sq=&in=), Esc semantics, navigation.
+import { rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { Locator, Page } from '@playwright/test';
-import { API, modKey, openSearch } from './helpers.ts';
+import { API, dataPath, modKey, openSearch, readDataText, uniqueName } from './helpers.ts';
 
 /**
  * Keyboard shortcuts are listened to by the search island, which mounts after hydration (a few hundred ms after
@@ -73,6 +74,63 @@ test.describe('global search', () => {
     await page.getByTestId('search-input').fill('#workflow forge');
     await expect(resultTo(page, '/kb/ctxman/doc/concepts/context-forge')).toBeVisible();
     await expect(resultTo(page, '/feature/context-forge')).toHaveCount(0);
+  });
+
+  test('`index: false` keeps a file, then a whole bundle, out of the widget; the entry stays in its list', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-noindex-ui');
+    const tag = uniqueName('e2enoindex'); // an exact `#tag` match: no fuzzy noise
+    const base = `kb/${name}`;
+    const put = async (rel: string, markdown: string): Promise<void> => {
+      expect(
+        (await request.put(`${API}/doc/${base}/${rel}`, { data: { markdown } })).status(),
+      ).toBe(200);
+    };
+    try {
+      expect(
+        (
+          await request.post(`${API}/entry/kb`, {
+            data: { name, title: 'E2E no index ui', description: 'Widget spec.', tags: [tag] },
+          })
+        ).status(),
+      ).toBe(201);
+      for (const c of ['seen', 'hidden']) {
+        const created = await request.post(`${API}/doc/${base}/concepts/${c}.md`, {
+          data: { title: `E2E ${c}` },
+        });
+        expect(created.status()).toBe(201);
+      }
+      const concept = (title: string, extra: string): string =>
+        `---\ntype: article\ntitle: ${title}\ntags: [${tag}]\n${extra}---\n\n# ${title}\n`;
+      await put('concepts/seen.md', concept('E2E seen', ''));
+      await put('concepts/hidden.md', concept('E2E hidden', 'index: false\n'));
+
+      await page.goto('/');
+      await openSearch(page);
+      await page.getByTestId('search-input').fill(`#${tag}`);
+      await expect(resultTo(page, `/${base}`)).toBeVisible();
+      await expect(resultTo(page, `/${base}/doc/concepts/seen`)).toBeVisible();
+      await expect(page.getByTestId('search-result')).toHaveCount(2);
+      await expect(resultTo(page, `/${base}/doc/concepts/hidden`)).toHaveCount(0);
+
+      // `index: false` on the entry index.md leaves the whole bundle out (the index is built per request)
+      const entry = readDataText(`${base}/index.md`);
+      await put('index.md', entry.replace('\n---\n', '\nindex: false\n---\n'));
+      await page.goto(`/?search=1&sq=${encodeURIComponent(`#${tag}`)}`);
+      await expect(page.getByTestId('search-input')).toHaveValue(`#${tag}`);
+      await expect(page.locator('.cx-search__empty')).toContainText('No results');
+      await expect(page.getByTestId('search-result')).toHaveCount(0);
+
+      // lists and details do not read the search index
+      await page.goto(`/kb?q=${name}`);
+      await expect(page.locator(`a[href="/kb/${name}"]`).first()).toBeVisible();
+      await page.goto(`/${base}/doc/concepts/hidden`);
+      await expect(page.getByTestId('detail-content')).toContainText('E2E hidden');
+    } finally {
+      rmSync(dataPath(base), { recursive: true, force: true });
+    }
   });
 
   test('Escape clears the query first, then closes and drops the search params', async ({

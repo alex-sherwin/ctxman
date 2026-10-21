@@ -2,6 +2,7 @@
 // file tree, back-references, context pages (links in context order) and clickable list rows.
 import { appendFileSync, rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
+import type { Locator } from '@playwright/test';
 import { API, dataPath, uniqueName } from './helpers.ts';
 
 test.describe('bundle detail pages', () => {
@@ -532,5 +533,32 @@ test.describe('broken links', () => {
       .locator('[data-testid="relation-row"][data-key="task/e2e-no-such-task"]');
     await expect(missing).toBeVisible();
     await expect(missing.getByTestId('relation-missing')).toHaveText('missing');
+  });
+});
+
+test.describe('prose rhythm', () => {
+  const marginBottom = (block: Locator): Promise<string> =>
+    block.evaluate((el) => getComputedStyle(el).marginBottom);
+
+  test('a markdown document keeps 16px between its blocks', async ({ page }) => {
+    await page.goto('/kb/ctxman/doc/concepts/datasets');
+    // the preview article is the `.cx-prose` element itself
+    const content = page.getByTestId('detail-content');
+    await expect(content).toHaveClass(/cx-prose/);
+    const paragraph = content.locator(':scope > p:not(:last-child)').first();
+    await expect(paragraph).toBeVisible();
+    expect(await marginBottom(paragraph)).toBe('16px');
+  });
+
+  test('a snippet page renders its markdown as full prose (16px), not the compact variant', async ({
+    page,
+  }) => {
+    await page.goto('/snippet/conventional-commits');
+    const body = page.getByTestId('snippet-markdown').locator('.cx-snippet__body');
+    await expect(body).toHaveClass(/cx-prose/);
+    await expect(body).not.toHaveClass(/cx-prose--compact/);
+    // a paragraph and the list below it, both followed by another block
+    expect(await marginBottom(body.locator(':scope > p').first())).toBe('16px');
+    expect(await marginBottom(body.locator(':scope > ul').first())).toBe('16px');
   });
 });

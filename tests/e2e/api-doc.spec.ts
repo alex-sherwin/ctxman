@@ -246,7 +246,7 @@ test('guards: text/plain is 415, a foreign Origin is 403, other methods are 405'
   expect(existsSync(path.join(entryDir, 'concepts', 'a b.md'))).toBe(true);
 });
 
-test('POST creates the missing folders of a nested path; DELETE removes the file, its Concepts line and empty folders', async ({
+test('POST creates the missing folders of a nested path; DELETE removes the file, its Links line and empty folders', async ({
   request,
 }) => {
   const rel = 'references/deep/e2e-ref.md';
@@ -314,7 +314,7 @@ test('POST creates a concept (201), a second POST is 409 exists, reserved paths 
   expect(body.url).toBe(`/task/${name}/doc/concepts/e2e-doc-created`);
   expect(body.warnings).toEqual([]);
   expect(readFileSync(path.join(entryDir, 'concepts', 'e2e-doc-created.md'), 'utf8')).toBe(
-    '---\ntype: Concept\ntitle: Created by the doc spec\ndescription: Doc API POST.\n---\n\n# Created by the doc spec\n',
+    '---\ntype: article\ntitle: Created by the doc spec\ndescription: Doc API POST.\n---\n\n# Created by the doc spec\n',
   );
 
   const again = await request.post(docUrl('concepts/e2e-doc-created.md'), { data: { title: 'T' } });

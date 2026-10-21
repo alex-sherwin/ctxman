@@ -1,9 +1,9 @@
 // API contracts (PLAN §G, UI_SPEC §0.5) over Playwright's request context: status codes and error codes of the
 // JSON routes. No browser: these tests exercise the same server as the UI, on the same e2e data copy.
-import { unlinkSync, writeFileSync } from 'node:fs';
+import { rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIResponse } from '@playwright/test';
-import { API, dataExists, dataPath, readYaml } from './helpers.ts';
+import { API, dataExists, dataPath, readDataText, readYaml } from './helpers.ts';
 
 interface ErrorBody {
   error: string;
@@ -129,6 +129,76 @@ test.describe('entries and search index', () => {
     });
     expect(byId.get('context/ctxman-dev')?.url).toBe('/context/ctxman-dev');
     expect(byId.get('reference/astro-docs')?.url).toBe('/reference/astro-docs');
+  });
+
+  test('frontmatter `index: false` leaves one file, or a whole bundle, out of the search index only', async ({
+    request,
+  }) => {
+    const name = uniqueName('e2e-noindex');
+    const base = `kb/${name}`;
+    const docApi = (rel: string): string => `${API}/doc/${base}/${rel}`;
+    const indexIds = async (): Promise<string[]> => {
+      const response = await request.get(`${API}/search-index.json`);
+      expect(response.status()).toBe(200);
+      const body = (await response.json()) as { docs: { id: string }[] };
+      return body.docs.map((d) => d.id).filter((id) => id === base || id.startsWith(`${base}/`));
+    };
+    const put = async (rel: string, markdown: string): Promise<void> => {
+      expect((await request.put(docApi(rel), { data: { markdown } })).status()).toBe(200);
+    };
+    try {
+      expect(
+        (
+          await request.post(`${API}/entry/kb`, {
+            data: { name, title: 'E2E no index', description: 'Search index spec.' },
+          })
+        ).status(),
+      ).toBe(201);
+      const concepts = ['visible', 'hidden', 'explicit', 'quoted'];
+      for (const c of concepts) {
+        expect(
+          (
+            await request.post(docApi(`concepts/${c}.md`), { data: { title: `E2E ${c}` } })
+          ).status(),
+        ).toBe(201);
+      }
+      const concept = (title: string, extra: string): string =>
+        `---\ntype: article\ntitle: ${title}\n${extra}---\n\n# ${title}\n`;
+      await put('concepts/hidden.md', concept('E2E hidden', 'index: false\n'));
+      await put('concepts/explicit.md', concept('E2E explicit', 'index: true\n'));
+      // only the boolean counts: the string "false" does not hide the file
+      await put('concepts/quoted.md', concept('E2E quoted', 'index: "false"\n'));
+
+      // one file out, the entry and the other files stay
+      expect(await indexIds()).toEqual([
+        base,
+        `${base}/concepts/explicit`,
+        `${base}/concepts/quoted`,
+        `${base}/concepts/visible`,
+      ]);
+
+      // on the entry index.md the whole bundle goes, but the entry is still listed, readable and served
+      const entry = readDataText(`${base}/index.md`);
+      await put('index.md', entry.replace('\n---\n', '\nindex: false\n---\n'));
+      expect(await indexIds()).toEqual([]);
+      const listed = (await (await request.get(`${API}/entries?dataset=kb`)).json()) as {
+        entries: { slug: string }[];
+      };
+      expect(listed.entries.map((e) => e.slug)).toContain(name);
+      expect((await request.get(`/kb/${name}`)).status()).toBe(200);
+      expect((await request.get(`/kb/${name}/doc/concepts/hidden`)).status()).toBe(200);
+
+      // `index: false` removed again: back in the index (the index is built per request)
+      await put('index.md', entry);
+      expect(await indexIds()).toEqual([
+        base,
+        `${base}/concepts/explicit`,
+        `${base}/concepts/quoted`,
+        `${base}/concepts/visible`,
+      ]);
+    } finally {
+      rmSync(dataPath(base), { recursive: true, force: true });
+    }
   });
 });
 

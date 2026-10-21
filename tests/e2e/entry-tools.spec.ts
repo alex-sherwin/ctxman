@@ -237,6 +237,8 @@ test('files-add-file creates a file at a typed folder path (folders created), li
   await expect(page.getByTestId('files-add-file')).toHaveText('+ Add file');
   await page.getByTestId('files-add-file').click();
   await expect(page.getByTestId('add-file-dialog')).toBeVisible();
+  // the OKF type starts as `article`
+  await expect(page.getByTestId('add-file-type')).toHaveValue('article');
   // a bad path is refused before anything is sent
   await page.getByTestId('add-file-name').fill('references/');
   await expect(page.getByTestId('add-file-dialog')).toContainText(
@@ -251,6 +253,11 @@ test('files-add-file creates a file at a typed folder path (folders created), li
   await expect(page).toHaveURL(new RegExp(`/kb/${kb}/doc/references/deep/${name}\\?edit=1$`));
   expect(existsSync(dataPath(`kb/${kb}/references/deep/${name}.md`))).toBe(true);
   expect(readDataText(`kb/${kb}/index.md`)).toContain(`](/references/deep/${name}.md)`);
+  // the file is typed `article` and listed under `## Links` (the entry has no `## Concepts` to reuse)
+  expect(readDataText(`kb/${kb}/references/deep/${name}.md`)).toMatch(/^---\ntype: article\n/);
+  const index = readDataText(`kb/${kb}/index.md`);
+  expect(index).toContain('\n## Links\n');
+  expect(index).not.toContain('## Concepts');
 
   await page.goto(`/kb/${kb}`);
   // the new folder of the file tree starts closed on the entry page

@@ -404,7 +404,7 @@ test('POST /api/doc creates a concept, lists it in index.md (log.md only when th
     '---\ntype: Guide\ntitle: E2E new concept\ndescription: Created by the entry API spec.\n---\n\n# E2E new concept\n',
   );
   expect(readDataText(`task/${task}/index.md`)).toContain(
-    '\n## Concepts\n\n* [E2E new concept](/concepts/e2e-entry-new.md) - Created by the entry API spec.\n',
+    '\n## Links\n\n* [E2E new concept](/concepts/e2e-entry-new.md) - Created by the entry API spec.\n',
   );
   // the bundle was created without a log.md, and listing a concept does not create one
   expect(existsSync(dataPath(`task/${task}/log.md`))).toBe(false);
@@ -424,7 +424,7 @@ test('POST /api/doc creates a concept, lists it in index.md (log.md only when th
   });
   expect(second.status()).toBe(201);
   const index = readDataText(`task/${task}/index.md`);
-  expect(index.match(/## Concepts/g)).toHaveLength(1);
+  expect(index.match(/## Links/g)).toHaveLength(1);
   expect(index).toContain('* [Second](/concepts/e2e-entry-second.md) - Second\n');
 });
 
