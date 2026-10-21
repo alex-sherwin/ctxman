@@ -115,7 +115,7 @@ describe('renderPlan golden document', () => {
       '',
       '> Prepared by ctxman for a Claude Code session.',
       '> Paths are absolute paths on this machine. Read the referenced files and run the listed commands only when the task needs them.',
-      '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+      '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
       '',
       'Follow the repo rules.',
       '',
@@ -220,7 +220,7 @@ describe('renderPlan structure', () => {
         '',
         '> Prepared by ctxman for a Claude Code session.',
         '> Paths are absolute paths on this machine. Read the referenced files and run the listed commands only when the task needs them.',
-        '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+        '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
         '',
       ].join('\n'),
     );
@@ -1732,8 +1732,7 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '',
       '> Prepared by ctxman for a Claude Code session.',
       `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
-      '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
-      '> `CLAUDE.md` in this directory loads this file.',
+      '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
       '',
       'You are working on ctxman.',
       '',
@@ -1743,7 +1742,6 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '',
       '```text',
       'AGENTS.md                         this file',
-      'CLAUDE.md                         loads this file',
       '.gitignore                        ignores the machine-specific paths below',
       'repos/',
       '  astro-docs/                     git clone, sparse · primary · editable · The Astro documentation source, English content. Consul…',
@@ -2055,6 +2053,28 @@ describe('renderPlan with output: header', () => {
     );
   });
 
+  it('claude-code: no CLAUDE.md anywhere; with another context file name the AGENTS.md stub points to it', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(w, flatDir(['skill/foo']));
+    expect(result.markdown).not.toContain('CLAUDE.md');
+    const named = await renderDir(
+      w,
+      flatDir(['skill/foo'], [], {
+        // the deprecated claudeMd of an older recipe changes nothing
+        output: { dir: WD, contextFile: 'LLM_CONTEXT.md', stubs: { claudeMd: true } },
+      }),
+    );
+    expect((named.result.markdown.split('\n\n## ')[0] ?? '').split('\n')).toEqual([
+      '# ctxman-dev-brief',
+      '',
+      '> Prepared by ctxman for a Claude Code session.',
+      `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
+      '> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
+      '> `AGENTS.md` in this directory points to this file.',
+    ]);
+    expect(named.result.markdown).not.toContain('CLAUDE.md');
+  });
+
   it('generic: no skills line; no stub line when the stubs are off', async () => {
     const w = dirWorld();
     const { result } = await renderDir(
@@ -2117,7 +2137,6 @@ describe('renderPlan with output: working directory map', () => {
         '',
         '```text',
         'AGENTS.md           this file',
-        'CLAUDE.md           loads this file',
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
         '  lr/               symlink · editable · Desc lr.',
@@ -2513,7 +2532,6 @@ describe('renderPlan with output: local folders', () => {
         '',
         '```text',
         'AGENTS.md   this file',
-        'CLAUDE.md   loads this file',
         '.gitignore  ignores the machine-specific paths below',
         'repos/',
         '  lr/       symlink · Desc lr.',
@@ -3419,7 +3437,6 @@ describe('renderPlan with output: realistic working directory', () => {
         '',
         '```text',
         'AGENTS.md           this file',
-        'CLAUDE.md           loads this file',
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
         '  rr/               git clone · primary · editable · Desc rr.',

@@ -7,12 +7,12 @@ import {
   CONTEXT_FILE_MESSAGE,
   CONTEXT_FILE_PATTERN,
   DEFAULT_CONTEXT_FILE,
-  STUB_FILES,
+  STUB_DEFAULTS,
   STUB_IDS,
   STUB_LABELS,
   defaultDirFor,
+  isContextStub,
   isPortableAbsoluteDir,
-  stubDefaults,
 } from '../../lib/inflate/catalog.ts';
 import {
   $plan,
@@ -72,7 +72,6 @@ export function OutputPanel({ working }: { working: RecipeData }) {
   const output = working.output;
   const dir = output?.dir ?? null;
   const contextFile = output?.contextFile ?? DEFAULT_CONTEXT_FILE;
-  const defaults = stubDefaults(working.target);
   const askAllow =
     output?.allowNonEmpty === true ||
     (dirPlan.result?.blocking ?? []).some(
@@ -111,11 +110,11 @@ export function OutputPanel({ working }: { working: RecipeData }) {
           <legend className="cx-label">Generated files</legend>
           {STUB_IDS.map((id) => {
             // a stub named like the context file is never written: the context file itself is that file
-            const isContext = STUB_FILES[id].toLowerCase() === contextFile.toLowerCase();
+            const isContext = isContextStub(id, contextFile);
             return (
               <Checkbox
                 key={id}
-                isSelected={!isContext && (output?.stubs?.[id] ?? defaults[id])}
+                isSelected={!isContext && (output?.stubs?.[id] ?? STUB_DEFAULTS[id])}
                 isDisabled={isContext}
                 onChange={(on) => setStub(id, on)}
                 data-testid={`inflate-output-stub-${id}`}
@@ -124,7 +123,7 @@ export function OutputPanel({ working }: { working: RecipeData }) {
               </Checkbox>
             );
           })}
-          {STUB_IDS.some((id) => STUB_FILES[id].toLowerCase() === contextFile.toLowerCase()) && (
+          {STUB_IDS.some((id) => isContextStub(id, contextFile)) && (
             <p className="cx-subtle" data-testid="inflate-output-stub-note">
               No {contextFile} stub is written: the context file is {contextFile} itself.
             </p>

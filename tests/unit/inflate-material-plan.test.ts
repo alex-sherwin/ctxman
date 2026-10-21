@@ -6,9 +6,9 @@ import {
   archiveFormat,
   cleanSubpath,
   createPathMapper,
+  agentsMdText,
   gitignoreText,
   planMaterialization,
-  stubText,
 } from '../../src/lib/inflate/material-plan.ts';
 import type {
   InflateDirManifest,
@@ -147,7 +147,7 @@ const file = (
 // ---------------------------------------------------------------- the seed (spec §6.4)
 
 describe('planMaterialization: seed-shaped recipe', () => {
-  it('produces exactly the 15 step ids of spec §6.4 in order', async () => {
+  it('produces exactly the 14 step ids of spec §6.4 in order (no CLAUDE.md stub)', async () => {
     const w = world();
     const p = await plan(w, seedRecipe());
     expect(ids(p)).toEqual([
@@ -163,7 +163,6 @@ describe('planMaterialization: seed-shaped recipe', () => {
       'skill:skill/ctxman-add-entry',
       'clone:reference/astro-docs',
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);
@@ -229,16 +228,6 @@ describe('planMaterialization: seed-shaped recipe', () => {
       label: 'Write AGENTS.md',
       expect: 'write',
       after: [],
-    });
-    expect(step('stub:CLAUDE.md')).toEqual({
-      kind: 'writeFile',
-      id: 'stub:CLAUDE.md',
-      path: 'CLAUDE.md',
-      label: 'Write CLAUDE.md',
-      expect: 'write',
-      after: [],
-      role: 'claude-md',
-      content: stubText('claude-md', 'ctxman-dev-brief', 'AGENTS.md'),
     });
     expect(step('stub:.gitignore')).toMatchObject({
       role: 'gitignore',
@@ -323,7 +312,6 @@ describe('planMaterialization: seed-shaped recipe', () => {
     });
     expect(p.files).toEqual([
       { path: 'AGENTS.md', role: 'context' },
-      { path: 'CLAUDE.md', role: 'claude-md' },
       { path: '.gitignore', role: 'gitignore' },
     ]);
   });
@@ -347,7 +335,7 @@ describe('planMaterialization: seed-shaped recipe', () => {
     const p = await plan(w, seedRecipe({ output: undefined }));
     expect(p.primary).toBeNull();
     expect(ids(p)).toContain('context');
-    expect(ids(p)).toContain('stub:CLAUDE.md');
+    expect(ids(p).filter((id) => id.startsWith('stub:'))).toEqual(['stub:.gitignore']);
   });
 });
 
@@ -443,20 +431,22 @@ describe('planMaterialization: previous manifest', () => {
     const removed = p.steps.filter((s) => s.kind === 'remove');
     expect(removed.map((s) => s.id)).toEqual([
       'rm:.claude/skills/gone',
+      'rm:CLAUDE.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
       'rm:LLM_CONTEXT.md',
     ]);
-    expect(ids(p).slice(0, 4)).toEqual([
+    expect(ids(p).slice(0, 5)).toEqual([
       'dir',
       'rm:.claude/skills/gone',
+      'rm:CLAUDE.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
     ]);
     // the old context file is stale, but it goes only once the new one (where the old AGENTS.md stub was) is written
     const contextAt = ids(p).indexOf('context');
     expect(ids(p)[contextAt + 1]).toBe('rm:LLM_CONTEXT.md');
-    expect(removed[3]).toEqual({
+    expect(removed[4]).toEqual({
       kind: 'remove',
       id: 'rm:LLM_CONTEXT.md',
       path: 'LLM_CONTEXT.md',
@@ -468,24 +458,60 @@ describe('planMaterialization: previous manifest', () => {
     expect(removed[0]?.after).toEqual([]);
     expect(ids(p)).not.toContain('rm:AGENTS.md');
     expect(p.steps.find((s) => s.id === 'context')?.path).toBe('AGENTS.md');
-    // owned paths (context file, CLAUDE.md, kb/ctxman) are not removed
-    expect(ids(p)).not.toContain('rm:CLAUDE.md');
+    // owned paths (context file, kb/ctxman) are not removed; the CLAUDE.md stub of an older ctxman is stale
     expect(ids(p)).not.toContain('rm:kb/ctxman');
     expect(ids(p)).not.toContain('rm:kb/ctxman/nested');
   });
 
   it('removes the recorded stub when it is switched off and the old context file when it is renamed', async () => {
     const w = world();
-    const previous = manifest([file('LLM_CONTEXT.md', 'context'), claudeStub]);
+    const previous = manifest([file('LLM_CONTEXT.md', 'context'), file('AGENTS.md', 'agents-md')]);
     const p = await plan(
       w,
-      seedRecipe({ output: { dir: W, contextFile: 'CONTEXT.md', stubs: { claudeMd: false } } }),
+      seedRecipe({ output: { dir: W, contextFile: 'CONTEXT.md', stubs: { agentsMd: false } } }),
       { previous },
     );
     expect(p.steps.filter((s) => s.kind === 'remove').map((s) => s.path)).toEqual([
-      'CLAUDE.md',
+      'AGENTS.md',
       'LLM_CONTEXT.md',
     ]);
+  });
+
+  it('the CLAUDE.md stub of an older ctxman is a stale path for every target, also with the deprecated stubs.claudeMd on', async () => {
+    const w = world();
+    for (const target of ['claude-code', 'codex', 'generic'] as const) {
+      const p = await plan(
+        w,
+        seedRecipe({
+          target,
+          output: { dir: W, contextFile: 'AGENTS.md', stubs: { claudeMd: true } },
+        }),
+        { previous: manifest([file('AGENTS.md', 'context'), claudeStub]) },
+      );
+      expect(
+        p.steps.find((s) => s.id === 'rm:CLAUDE.md'),
+        target,
+      ).toEqual({
+        kind: 'remove',
+        id: 'rm:CLAUDE.md',
+        path: 'CLAUDE.md',
+        label: 'Remove CLAUDE.md',
+        expect: 'remove',
+        after: [],
+        entry: claudeStub,
+      });
+      expect(ids(p), target).not.toContain('stub:CLAUDE.md');
+      expect(
+        p.files.map((f) => f.path),
+        target,
+      ).toEqual(['AGENTS.md', '.gitignore']);
+    }
+    // a context file named CLAUDE.md takes the old stub's place (the executor replaces it while unedited)
+    const named = await plan(w, seedRecipe({ output: { dir: W, contextFile: 'CLAUDE.md' } }), {
+      previous: manifest([file('AGENTS.md', 'context'), claudeStub]),
+    });
+    expect(ids(named)).not.toContain('rm:CLAUDE.md');
+    expect(named.steps.find((s) => s.id === 'context')?.path).toBe('CLAUDE.md');
   });
 
   it('removes nothing when there is no previous manifest', async () => {
@@ -764,7 +790,6 @@ describe('planMaterialization: step groups', () => {
       'skill:reference/rs-git-root',
       'stage-cleanup',
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);
@@ -917,7 +942,7 @@ describe('planMaterialization: step groups', () => {
         { key: 'skill/foo', material: 'none' },
       ]),
     );
-    expect(ids(p)).toEqual(['dir', 'context', 'stub:CLAUDE.md', 'manifest']);
+    expect(ids(p)).toEqual(['dir', 'context', 'manifest']);
     expect(p.materials['kb/ctxman']).toMatchObject({ material: 'none', dest: null });
     expect(p.warnings).toEqual([]);
   });
@@ -1033,7 +1058,6 @@ describe('planMaterialization: skill symlink and local-repo copy', () => {
       'link:reference/lr',
       'clone:reference/rr',
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);
@@ -1124,7 +1148,6 @@ describe('planMaterialization: local folders', () => {
       'link:reference/lr',
       'link:reference/lf',
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);
@@ -1405,33 +1428,29 @@ describe('planMaterialization: context file and stubs', () => {
       label: 'Write CONTEXT.md',
     });
     expect(p.files[0]).toEqual({ path: 'CONTEXT.md', role: 'context' });
-    expect(p.steps.find((s) => s.id === 'stub:CLAUDE.md')).toMatchObject({
-      content: expect.stringContaining('@CONTEXT.md\n'),
+    expect(p.steps.find((s) => s.id === 'stub:AGENTS.md')).toMatchObject({
+      content: agentsMdText('ctxman-dev-brief', 'CONTEXT.md'),
     });
   });
 
   it('a stub whose name equals the context file (case-insensitive) is not written', async () => {
     const w = world();
-    const p = await plan(w, seedRecipe({ output: { dir: W, contextFile: 'CLAUDE.md' } }));
-    expect(ids(p)).not.toContain('stub:CLAUDE.md');
-    expect(p.files.map((f) => f.path)).toEqual(['CLAUDE.md', '.gitignore']);
-    const lower = await plan(w, seedRecipe({ output: { dir: W, contextFile: 'claude.md' } }));
-    expect(ids(lower)).not.toContain('stub:CLAUDE.md');
+    const p = await plan(w, seedRecipe({ output: { dir: W, stubs: { agentsMd: true } } }));
+    expect(ids(p)).not.toContain('stub:AGENTS.md');
+    expect(p.files.map((f) => f.path)).toEqual(['AGENTS.md', '.gitignore']);
+    const lower = await plan(w, seedRecipe({ output: { dir: W, contextFile: 'agents.md' } }));
+    expect(ids(lower)).not.toContain('stub:AGENTS.md');
+    expect(lower.files.map((f) => f.path)).toEqual(['agents.md', '.gitignore']);
   });
 
-  it('claude-code gets CLAUDE.md, codex and generic get AGENTS.md; both can be switched', async () => {
+  it('every target: no CLAUDE.md, the AGENTS.md stub only with another context file name; both can be switched off', async () => {
     const w = world();
-    const claude = await plan(w, seedRecipe());
-    expect(ids(claude).filter((id) => id.startsWith('stub:'))).toEqual([
-      'stub:CLAUDE.md',
-      'stub:.gitignore',
-    ]);
-    // the default context file IS AGENTS.md: there is no AGENTS.md stub, even when it is switched on
-    for (const target of ['codex', 'generic']) {
+    for (const target of ['claude-code', 'codex', 'generic']) {
+      // the default context file IS AGENTS.md: there is no AGENTS.md stub, even when it is switched on
       const p = await plan(w, seedRecipe({ target }));
       expect(ids(p).filter((id) => id.startsWith('stub:'))).toEqual(['stub:.gitignore']);
       expect(p.files.map((f) => f.path)).toEqual(['AGENTS.md', '.gitignore']);
-      // with another context file name the AGENTS.md stub points to it
+      // with another context file name the AGENTS.md stub points to it (every harness reads AGENTS.md)
       const named = await plan(
         w,
         seedRecipe({ target, output: { dir: W, contextFile: 'LLM_CONTEXT.md' } }),
@@ -1442,41 +1461,42 @@ describe('planMaterialization: context file and stubs', () => {
       ]);
       expect(named.steps.find((s) => s.id === 'stub:AGENTS.md')).toMatchObject({
         role: 'agents-md',
-        content: stubText('agents-md', 'ctxman-dev-brief', 'LLM_CONTEXT.md'),
+        content: agentsMdText('ctxman-dev-brief', 'LLM_CONTEXT.md'),
       });
+      expect(named.files.map((f) => f.role)).toEqual(['context', 'agents-md', 'gitignore']);
     }
-    const on = await plan(
-      w,
-      seedRecipe({ output: { dir: W, stubs: { agentsMd: true, gitignore: false } } }),
-    );
-    expect(ids(on).filter((id) => id.startsWith('stub:'))).toEqual(['stub:CLAUDE.md']);
-    const both = await plan(
+    // the deprecated claudeMd of an older recipe is ignored
+    const old = await plan(
       w,
       seedRecipe({
         output: {
           dir: W,
           contextFile: 'LLM_CONTEXT.md',
-          stubs: { agentsMd: true, gitignore: false },
+          stubs: { claudeMd: true, gitignore: false },
         },
       }),
     );
-    expect(ids(both).filter((id) => id.startsWith('stub:'))).toEqual([
-      'stub:CLAUDE.md',
-      'stub:AGENTS.md',
-    ]);
-    expect(both.files.map((f) => f.role)).toEqual(['context', 'claude-md', 'agents-md']);
+    expect(ids(old).filter((id) => id.startsWith('stub:'))).toEqual(['stub:AGENTS.md']);
+    expect(old.files.map((f) => f.path)).toEqual(['LLM_CONTEXT.md', 'AGENTS.md']);
     const off = await plan(
       w,
-      seedRecipe({ output: { dir: W, stubs: { claudeMd: false, gitignore: false } } }),
+      seedRecipe({
+        output: {
+          dir: W,
+          contextFile: 'LLM_CONTEXT.md',
+          stubs: { agentsMd: false, gitignore: false },
+        },
+      }),
     );
     expect(ids(off).filter((id) => id.startsWith('stub:'))).toEqual([]);
+    expect(off.files.map((f) => f.role)).toEqual(['context']);
   });
 
   it('.gitignore is written only when something is placed', async () => {
     const w = world();
     const none = await plan(w, adhoc(['kb/ctxman'], {}, [{ key: 'kb/ctxman', material: 'none' }]));
     expect(ids(none)).not.toContain('stub:.gitignore');
-    expect(none.files.map((f) => f.role)).toEqual(['context', 'claude-md']);
+    expect(none.files.map((f) => f.role)).toEqual(['context']);
     const some = await plan(w, adhoc(['kb/ctxman']));
     expect(ids(some)).toContain('stub:.gitignore');
   });
@@ -1657,21 +1677,8 @@ describe('planMaterialization: worktree, reference folder and new branch', () =>
 // ---------------------------------------------------------------- pure helpers
 
 describe('stub texts', () => {
-  it('CLAUDE.md imports the context file with a bare @line', () => {
-    expect(stubText('claude-md', 'demo', 'LLM_CONTEXT.md')).toBe(
-      [
-        '# demo',
-        '',
-        'Generated by ctxman from the recipe `demo`. LLM_CONTEXT.md maps the repositories, skills and knowledge in this directory; read it first.',
-        '',
-        '@LLM_CONTEXT.md',
-        '',
-      ].join('\n'),
-    );
-  });
-
   it('AGENTS.md points to the context file', () => {
-    expect(stubText('agents-md', 'demo', 'CONTEXT.md')).toBe(
+    expect(agentsMdText('demo', 'CONTEXT.md')).toBe(
       [
         '# demo',
         '',

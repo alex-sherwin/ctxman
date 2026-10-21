@@ -220,7 +220,6 @@ test.describe('plan (dry run)', () => {
             `link:reference/${LOCAL_REF}`,
             `clone:reference/${REPO_REF}`,
             'context',
-            'stub:CLAUDE.md',
             'stub:.gitignore',
             'manifest',
           ]
@@ -230,7 +229,6 @@ test.describe('plan (dry run)', () => {
             'skill:skill/okf-authoring',
             `link:reference/${LOCAL_REF}`,
             'context',
-            'stub:CLAUDE.md',
             'stub:.gitignore',
             'manifest',
           ],
@@ -375,7 +373,8 @@ test.describe('run', () => {
     expect(context).toContain('[`kb/okf-format/index.md`](kb/okf-format/index.md)');
     expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
-    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@AGENTS.md\n')).toBe(true);
+    // no CLAUDE.md: Claude Code reads AGENTS.md like every other harness
+    expect(existsSync(path.join(dir, 'CLAUDE.md'))).toBe(false);
     expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toContain('/.ctxman-inflate.json');
 
     const manifest = readManifest(dir);
@@ -384,7 +383,6 @@ test.describe('run', () => {
       [
         '.claude/skills/okf-authoring',
         '.gitignore',
-        'CLAUDE.md',
         'AGENTS.md',
         'kb/okf-format',
         ...(HAS_GIT ? [`repos/${REPO_REF}`] : []),
@@ -416,7 +414,6 @@ test.describe('run', () => {
     expect(status[`link:reference/${LOCAL_REF}`]).toBe('unchanged');
     if (HAS_GIT) expect(status[`clone:reference/${REPO_REF}`]).toBe('unchanged');
     expect(status['context']).toBe('unchanged');
-    expect(status['stub:CLAUDE.md']).toBe('unchanged');
     expect(status['stub:.gitignore']).toBe('unchanged');
     // a symlinked skill is idempotent like an okf link (v3 default); a skill COPY is replaced (own test below)
     expect(status['skill:skill/okf-authoring']).toBe('unchanged');
@@ -518,12 +515,12 @@ test.describe('busy and cancel', () => {
     expect(statuses['manifest']).toBe('ok');
     const manifest = readManifest(dir);
     expect(manifest.format).toBe('ctxman-inflate');
-    expect(manifest.entries.length).toBeLessThan(7);
+    expect(manifest.entries.length).toBeLessThan(6);
 
     // the slot is free again
     const next = await runToEnd(request, { recipe: recipe(dir) });
     expect(next.status).toBe('done');
-    expect(readManifest(dir).entries.length).toBeGreaterThanOrEqual(HAS_GIT ? 7 : 6);
+    expect(readManifest(dir).entries.length).toBeGreaterThanOrEqual(HAS_GIT ? 6 : 5);
   });
 });
 
@@ -729,19 +726,25 @@ test.describe('safety', () => {
     mkdirSync(path.join(occupied, 'kb'), { recursive: true });
     writeFileSync(path.join(occupied, 'precious.txt'), 'keep me');
     writeFileSync(path.join(occupied, 'CLAUDE.md'), 'my own instructions\n');
+    writeFileSync(path.join(occupied, '.gitignore'), 'my own ignores\n');
     const job = await runToEnd(request, {
       recipe: recipe(occupied),
       overrides: { allowNonEmpty: true },
     });
     expect(job.status).toBe('done');
     expect(readFileSync(path.join(occupied, 'precious.txt'), 'utf8')).toBe('keep me');
-    // an existing CLAUDE.md that ctxman did not write is kept, with the step saying so
+    // a CLAUDE.md is a foreign file like any other: ctxman never writes one, no step touches it
     expect(readFileSync(path.join(occupied, 'CLAUDE.md'), 'utf8')).toBe('my own instructions\n');
-    expect(job.steps.find((s) => s.id === 'stub:CLAUDE.md')).toMatchObject({
+    expect(job.steps.filter((s) => s.id.includes('CLAUDE.md'))).toEqual([]);
+    // an existing .gitignore that ctxman did not write is kept, with the step saying so
+    expect(readFileSync(path.join(occupied, '.gitignore'), 'utf8')).toBe('my own ignores\n');
+    expect(job.steps.find((s) => s.id === 'stub:.gitignore')).toMatchObject({
       status: 'skipped',
       action: 'kept',
     });
-    expect(readManifest(occupied).entries.map((e) => e.path)).not.toContain('CLAUDE.md');
+    const paths = readManifest(occupied).entries.map((e) => e.path);
+    expect(paths).not.toContain('CLAUDE.md');
+    expect(paths).not.toContain('.gitignore');
   });
 
   test('a path that already exists and is not ours fails that step only', async ({ request }) => {
@@ -1191,7 +1194,7 @@ test.describe('AGENTS.md as the context file', () => {
     output: { dir },
   });
 
-  test('a claude-code directory made with LLM_CONTEXT.md: the unedited file goes, CLAUDE.md imports @AGENTS.md', async ({
+  test('a claude-code directory made with LLM_CONTEXT.md and a CLAUDE.md stub: both unedited files go', async ({
     request,
   }) => {
     const dir = path.join(base, 'old-claude');
@@ -1201,27 +1204,58 @@ test.describe('AGENTS.md as the context file', () => {
     ).json()) as PlanBody;
     expect(planned.blocking).toEqual([]);
     expect(planned.warnings.map((w) => w.code)).not.toContain('context-file-exists');
-    expect(planned.steps.find((s) => s.id === 'rm:LLM_CONTEXT.md')).toMatchObject({
-      kind: 'remove',
-      expect: 'remove',
-    });
+    for (const id of ['rm:LLM_CONTEXT.md', 'rm:CLAUDE.md']) {
+      expect(planned.steps.find((s) => s.id === id)).toMatchObject({
+        kind: 'remove',
+        expect: 'remove',
+      });
+    }
+    expect(planned.steps.map((s) => s.id)).not.toContain('stub:CLAUDE.md');
 
     const job = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
     expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
     expect(existsSync(path.join(dir, 'LLM_CONTEXT.md'))).toBe(false);
     expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain('## Working directory map');
-    const claude = readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude.endsWith('@AGENTS.md\n')).toBe(true);
-    expect(claude).not.toContain('LLM_CONTEXT.md');
+    // Claude Code reads AGENTS.md itself: the old CLAUDE.md stub is removed, not rewritten
+    expect(job.steps.find((s) => s.id === 'rm:CLAUDE.md')).toMatchObject({
+      status: 'ok',
+      action: 'removed',
+    });
+    expect(existsSync(path.join(dir, 'CLAUDE.md'))).toBe(false);
     const manifest = readManifest(dir) as Manifest & { contextFile: string };
     expect(manifest.contextFile).toBe('AGENTS.md');
     expect(manifest.entries.map((e) => e.path)).not.toContain('LLM_CONTEXT.md');
+    expect(manifest.entries.map((e) => e.path)).not.toContain('CLAUDE.md');
 
     // and it settles: the next run changes nothing
     const next = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
     expect(next.status).toBe('done');
     expect(next.steps.find((s) => s.id === 'context')?.status).toBe('unchanged');
-    expect(next.steps.find((s) => s.id === 'stub:CLAUDE.md')?.status).toBe('unchanged');
+    expect(next.steps.filter((s) => s.id.includes('CLAUDE.md'))).toEqual([]);
+  });
+
+  test('an edited CLAUDE.md of an older claude-code directory is kept and reported once, then left alone', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'old-claude-edited');
+    oldLayout(dir, 'claude-code');
+    const mine = '@LLM_CONTEXT.md\n\nMy own instructions.\n';
+    writeFileSync(path.join(dir, 'CLAUDE.md'), mine);
+
+    const job = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(job.steps.find((s) => s.id === 'rm:CLAUDE.md')).toMatchObject({
+      status: 'skipped',
+      action: 'kept',
+      message: 'kept CLAUDE.md: edited since ctxman wrote it',
+    });
+    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe(mine);
+    // the user's file now: the manifest forgets it, so the next run does not mention it
+    expect(readManifest(dir).entries.map((e) => e.path)).not.toContain('CLAUDE.md');
+    const next = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
+    expect(next.status).toBe('done');
+    expect(next.steps.filter((s) => s.id.includes('CLAUDE.md'))).toEqual([]);
+    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe(mine);
   });
 
   test('a codex directory whose AGENTS.md was an unedited stub: the context file replaces it', async ({

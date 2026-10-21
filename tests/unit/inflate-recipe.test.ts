@@ -435,7 +435,12 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
     ]);
     expect(parseRecipe({ ...base, output: { primary: 'reference/Bad' } }).ok).toBe(false);
     expect(parseRecipe({ ...base, output: { extra: 1 } }).ok).toBe(false);
-    expect(parseRecipe({ ...base, output: { stubs: { claudeMd: 'yes' } } }).ok).toBe(false);
+    expect(issues({ output: { stubs: { claudeMd: 'yes' } } })).toEqual([
+      [
+        'output.stubs.claudeMd',
+        'must be a boolean (deprecated and ignored: ctxman no longer writes CLAUDE.md) (was "yes")',
+      ],
+    ]);
     expect(parseRecipe({ ...base, output: { stubs: { other: true } } }).ok).toBe(false);
     expect(parseRecipe({ ...base, output: { allowNonEmpty: 1 } }).ok).toBe(false);
     // reachability of the primary is a check warning, not a schema rule
@@ -719,12 +724,24 @@ defaults:
     expect(out({ dir: '/x', allowNonEmpty: false })).toEqual({ dir: '/x' });
     expect(out({ dir: '/x', stubs: {} })).toEqual({ dir: '/x' });
     expect(out({ dir: '/x', stubs: { gitignore: undefined } })).toEqual({ dir: '/x' });
-    expect(out({ stubs: { claudeMd: true, agentsMd: false } })).toEqual({
-      stubs: { agentsMd: false, claudeMd: true },
+    expect(out({ stubs: { gitignore: false, agentsMd: false } })).toEqual({
+      stubs: { agentsMd: false, gitignore: false },
     });
     expect(out({})).toBeUndefined();
     expect(recipeToYamlObject(parse({ output: {} }))).not.toHaveProperty('output');
     expect(out({ contextFile: 'AGENTS.md', stubs: {} })).toBeUndefined();
+  });
+
+  it('an old recipe with the deprecated stubs.claudeMd stays valid; the next save drops it', () => {
+    for (const claudeMd of [true, false]) {
+      const parsed = parseRecipe({ ...base, output: { dir: '/x', stubs: { claudeMd } } });
+      expect(parsed.ok).toBe(true);
+      const r = parse({ output: { dir: '/x', stubs: { claudeMd, gitignore: false } } });
+      expect(recipeToYamlObject(r).output).toEqual({ dir: '/x', stubs: { gitignore: false } });
+      expect(serializeRecipe(r)).not.toContain('claudeMd');
+      const alone = parse({ output: { dir: '/x', stubs: { claudeMd } } });
+      expect(recipeToYamlObject(alone).output).toEqual({ dir: '/x' });
+    }
   });
 
   it('keeps an override or default that only has a material or material options', () => {

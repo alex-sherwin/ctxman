@@ -188,11 +188,10 @@ test.describe('Run view', () => {
       `link:reference/${LOCAL_REF}`,
       `clone:reference/${REPO_REF}`,
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);
-    await expect(planStatus(page)).toHaveText('9 steps · 0 warnings');
+    await expect(planStatus(page)).toHaveText('8 steps · 0 warnings');
     await expect(page.getByTestId('inflate-dirplan-blocking')).toHaveCount(0);
     await expect(page.getByTestId('inflate-run-start')).toBeEnabled();
     await expect(page.getByTestId('inflate-run-dir')).toHaveValue(workDir());
@@ -218,7 +217,7 @@ test.describe('Run view', () => {
     ).toBeVisible();
     await expect(page.getByTestId('inflate-job-cancel')).toBeVisible();
     await expect(page.getByTestId('inflate-job-status')).toHaveText(
-      /^(Queued|Running step \d+ of 9)/,
+      /^(Queued|Running step \d+ of 8)/,
     );
 
     await jobEnds(page);
@@ -229,7 +228,7 @@ test.describe('Run view', () => {
     for (const id of ['dir', 'okf:kb/okf-format', `clone:reference/${REPO_REF}`, 'manifest']) {
       await expect(jobStep(page, id)).toHaveAttribute('data-status', 'ok');
     }
-    await expect(page.getByTestId('inflate-job-step')).toHaveCount(9);
+    await expect(page.getByTestId('inflate-job-step')).toHaveCount(8);
     // the clone shows what git printed
     await expect(
       jobStep(page, `clone:reference/${REPO_REF}`).getByTestId('inflate-job-step-tail'),
@@ -257,11 +256,12 @@ test.describe('Run view', () => {
     expect(context).toContain(`[\`repos/${REPO_REF}/\`](repos/${REPO_REF}/)`);
     expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
-    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@AGENTS.md\n')).toBe(true);
+    // no CLAUDE.md: Claude Code reads AGENTS.md like every other harness
+    expect(existsSync(path.join(dir, 'CLAUDE.md'))).toBe(false);
     const manifest = readManifest(dir);
     expect(manifest.recipe).toBe(recipeName);
     expect(manifest.jobId).toBe(firstJobId);
-    expect(manifest.entries).toHaveLength(7); // 4 materials + AGENTS.md + CLAUDE.md + .gitignore
+    expect(manifest.entries).toHaveLength(6); // 4 materials + AGENTS.md + .gitignore
   });
 
   test('Open in IDE starts the editor on the directory; Copy path copies it', async ({ page }) => {
@@ -287,12 +287,12 @@ test.describe('Run view', () => {
   }) => {
     await openInflate(page, `&view=run&job=${firstJobId}`);
     await jobEnds(page);
-    await expect(page.getByTestId('inflate-job-step')).toHaveCount(9);
+    await expect(page.getByTestId('inflate-job-step')).toHaveCount(8);
     await expect(page.getByTestId('inflate-job-summary')).toBeVisible();
 
     await page.reload();
     await jobEnds(page);
-    await expect(page.getByTestId('inflate-job-step')).toHaveCount(9);
+    await expect(page.getByTestId('inflate-job-step')).toHaveCount(8);
 
     await page.goto(
       `/inflate?recipe=${recipeName}&view=run&job=11111111-1111-4111-8111-111111111111`,
@@ -317,7 +317,6 @@ test.describe('Run view', () => {
       `link:reference/${LOCAL_REF}`,
       `clone:reference/${REPO_REF}`,
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
     ]) {
       await expect(jobStep(page, id), id).toHaveAttribute('data-status', 'unchanged');

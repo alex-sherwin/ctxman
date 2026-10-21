@@ -638,6 +638,28 @@ describe('remove step', () => {
     expect(manifest?.entries.map((e) => e.path)).toEqual(['AGENTS.md']);
   });
 
+  it('an edited CLAUDE.md stub of an older ctxman is kept and forgotten: no claude-md entry in the new manifest', async () => {
+    const h = harness();
+    mkdirSync(h.dir, { recursive: true });
+    writeFileSync(path.join(h.dir, 'CLAUDE.md'), 'my own instructions\n');
+    const claude: ManifestEntry = {
+      path: 'CLAUDE.md',
+      type: 'file',
+      role: 'claude-md',
+      sha256: sha256Of('generated'),
+    };
+    const { results, manifest } = await h.run([dirStep(), removeStep(claude), manifestStep()], {
+      previous: previousOf([claude]),
+    });
+    expect(find(results, 'rm:CLAUDE.md')).toMatchObject({
+      status: 'skipped',
+      action: 'kept',
+      message: 'kept CLAUDE.md: edited since ctxman wrote it',
+    });
+    expect(readFileSync(path.join(h.dir, 'CLAUDE.md'), 'utf8')).toBe('my own instructions\n');
+    expect(manifest?.entries).toEqual([]);
+  });
+
   describe.skipIf(!HAS_GIT)('clones', () => {
     const cloneEntry = (uri: string): ManifestEntry => ({
       path: 'repos/r',
@@ -970,7 +992,7 @@ describe('download step', () => {
 describe('writeContext and writeFile', () => {
   const ctxStep = (): MaterialStep =>
     step('writeContext', 'context', 'LLM_CONTEXT.md', { expect: 'write' });
-  const stubStep = (rel: string, content: string, role = 'claude-md'): MaterialStep =>
+  const stubStep = (rel: string, content: string, role = 'agents-md'): MaterialStep =>
     step('writeFile', `stub:${rel}`, rel, { expect: 'write', role, content });
 
   it('writes the rendered context atomically, then reports unchanged for the same text', async () => {
@@ -1151,46 +1173,46 @@ describe('writeContext and writeFile', () => {
 
   it('writes a stub when absent, keeps it when unchanged, rewrites an unedited recorded stub', async () => {
     const h = harness();
-    const steps = (content: string) => [dirStep(), stubStep('CLAUDE.md', content), manifestStep()];
+    const steps = (content: string) => [dirStep(), stubStep('AGENTS.md', content), manifestStep()];
     const first = await h.run(steps('v1\n'));
-    expect(find(first.results, 'stub:CLAUDE.md')).toMatchObject({
+    expect(find(first.results, 'stub:AGENTS.md')).toMatchObject({
       status: 'ok',
       action: 'written',
     });
     const same = await h.run(steps('v1\n'), { previous: first.manifest });
-    expect(find(same.results, 'stub:CLAUDE.md').status).toBe('unchanged');
+    expect(find(same.results, 'stub:AGENTS.md').status).toBe('unchanged');
     const changed = await h.run(steps('v2\n'), { previous: same.manifest });
-    expect(find(changed.results, 'stub:CLAUDE.md')).toMatchObject({
+    expect(find(changed.results, 'stub:AGENTS.md')).toMatchObject({
       status: 'ok',
       action: 'written',
     });
-    expect(readFileSync(path.join(h.dir, 'CLAUDE.md'), 'utf8')).toBe('v2\n');
+    expect(readFileSync(path.join(h.dir, 'AGENTS.md'), 'utf8')).toBe('v2\n');
   });
 
   it('keeps an edited stub and an unrecorded existing stub', async () => {
     const h = harness();
-    const first = await h.run([dirStep(), stubStep('CLAUDE.md', 'v1\n'), manifestStep()]);
-    writeFileSync(path.join(h.dir, 'CLAUDE.md'), 'my own instructions\n');
-    const edited = await h.run([dirStep(), stubStep('CLAUDE.md', 'v2\n'), manifestStep()], {
+    const first = await h.run([dirStep(), stubStep('AGENTS.md', 'v1\n'), manifestStep()]);
+    writeFileSync(path.join(h.dir, 'AGENTS.md'), 'my own instructions\n');
+    const edited = await h.run([dirStep(), stubStep('AGENTS.md', 'v2\n'), manifestStep()], {
       previous: first.manifest,
     });
-    expect(find(edited.results, 'stub:CLAUDE.md')).toMatchObject({
+    expect(find(edited.results, 'stub:AGENTS.md')).toMatchObject({
       status: 'skipped',
       action: 'kept',
-      message: 'kept CLAUDE.md: edited since ctxman wrote it',
+      message: 'kept AGENTS.md: edited since ctxman wrote it',
     });
-    expect(readFileSync(path.join(h.dir, 'CLAUDE.md'), 'utf8')).toBe('my own instructions\n');
-    expect(edited.manifest?.entries.find((e) => e.path === 'CLAUDE.md')).toMatchObject({
+    expect(readFileSync(path.join(h.dir, 'AGENTS.md'), 'utf8')).toBe('my own instructions\n');
+    expect(edited.manifest?.entries.find((e) => e.path === 'AGENTS.md')).toMatchObject({
       sha256: sha256Of('v1\n'),
     });
 
-    writeFileSync(path.join(h.dir, 'AGENTS.md'), 'mine\n');
-    const unrecorded = await h.run([dirStep(), stubStep('AGENTS.md', 'x\n', 'agents-md')]);
-    expect(find(unrecorded.results, 'stub:AGENTS.md')).toMatchObject({
+    writeFileSync(path.join(h.dir, '.gitignore'), 'mine\n');
+    const unrecorded = await h.run([dirStep(), stubStep('.gitignore', 'x\n', 'gitignore')]);
+    expect(find(unrecorded.results, 'stub:.gitignore')).toMatchObject({
       status: 'skipped',
-      message: 'kept the existing AGENTS.md',
+      message: 'kept the existing .gitignore',
     });
-    expect(readFileSync(path.join(h.dir, 'AGENTS.md'), 'utf8')).toBe('mine\n');
+    expect(readFileSync(path.join(h.dir, '.gitignore'), 'utf8')).toBe('mine\n');
   });
 });
 

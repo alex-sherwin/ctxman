@@ -620,10 +620,8 @@ test.describe('output directory', () => {
       '~/ctxman-inflate/ctxman-dev-brief',
     );
     await expect(page.getByTestId('inflate-output-contextfile')).toHaveValue('AGENTS.md');
-    // claude-code: the CLAUDE.md stub and .gitignore on; no AGENTS.md stub: the context file is AGENTS.md
-    await expect(
-      page.getByTestId('inflate-output-stub-claudeMd').getByRole('checkbox'),
-    ).toBeChecked();
+    // no CLAUDE.md stub (any target); .gitignore on; no AGENTS.md stub: the context file is AGENTS.md
+    await expect(page.getByTestId('inflate-output-stub-claudeMd')).toHaveCount(0);
     await expect(
       page.getByTestId('inflate-output-stub-gitignore').getByRole('checkbox'),
     ).toBeChecked();
@@ -699,7 +697,8 @@ test.describe('output directory', () => {
       stubs: Record<string, boolean>;
     };
     expect(output.contextFile).toBe('CONTEXT.md');
-    expect(output.stubs).toEqual({ agentsMd: true, gitignore: false });
+    // both stubs are on by default for every target: a click switches each off
+    expect(output.stubs).toEqual({ agentsMd: false, gitignore: false });
 
     // back to the defaults: the keys go away again
     await page.getByTestId('inflate-output-stub-agentsMd').click();
@@ -925,7 +924,7 @@ test.describe('preview paths', () => {
     await page.getByTestId('inflate-run-dir').fill(dir);
     await expect(page.getByTestId('inflate-run-overrides')).toContainText('1 run override');
     await expect(page.getByTestId('inflate-dirplan-status')).toHaveAttribute('data-kind', 'ready');
-    await expect(page.getByTestId('inflate-dirplan-step')).toHaveCount(15);
+    await expect(page.getByTestId('inflate-dirplan-step')).toHaveCount(14);
     expect(
       await page
         .getByTestId('inflate-dirplan-step')
@@ -943,7 +942,6 @@ test.describe('preview paths', () => {
       'skill:skill/ctxman-add-entry',
       'clone:reference/astro-docs',
       'context',
-      'stub:CLAUDE.md',
       'stub:.gitignore',
       'manifest',
     ]);

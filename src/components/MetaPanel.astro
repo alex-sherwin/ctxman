@@ -6,11 +6,12 @@ import {
   DEFAULT_CONTEXT_FILE,
   INFLATE_LAYOUTS,
   LAYOUT_LABELS,
+  STUB_DEFAULTS,
   STUB_IDS,
   STUB_LABELS,
   TARGETS,
+  isContextStub,
   isInflateTarget,
-  stubDefaults,
 } from '../lib/inflate/catalog.ts';
 import type { InflateLayout } from '../lib/inflate/catalog.ts';
 import { timeTotalText } from '../lib/iso8601.ts';
@@ -86,12 +87,14 @@ const outputDir = str(recipeOutput?.dir);
 const outputContextFile = str(recipeOutput?.contextFile);
 const outputPrimary = str(recipeOutput?.primary);
 const outputStubs = (() => {
-  if (outputDir === undefined || !isInflateTarget(data.target)) return [];
+  if (outputDir === undefined) return [];
   const given = isRecord(recipeOutput?.stubs) ? recipeOutput.stubs : {};
-  const defaults = stubDefaults(data.target);
-  return STUB_IDS.filter((id) => (typeof given[id] === 'boolean' ? given[id] : defaults[id])).map(
-    (id) => STUB_LABELS[id],
-  );
+  const contextFile = outputContextFile ?? DEFAULT_CONTEXT_FILE;
+  return STUB_IDS.filter(
+    (id) =>
+      !isContextStub(id, contextFile) &&
+      (typeof given[id] === 'boolean' ? given[id] : STUB_DEFAULTS[id]),
+  ).map((id) => STUB_LABELS[id]);
 })();
 
 const generated = isRecord(data.generated) ? data.generated : undefined;

@@ -1222,6 +1222,16 @@ function buildManifest(rt: Runtime): InflateDirManifest {
     if (step?.kind === 'remove' && (result.status === 'ok' || result.status === 'unchanged')) {
       entries.delete(step.path);
     }
+    // The CLAUDE.md stub of an older ctxman, kept because it was edited since, is the user's file now: forgotten,
+    // so no later run tries again and no new manifest records a `claude-md` file.
+    if (
+      step?.kind === 'remove' &&
+      result.action === 'kept' &&
+      step.entry.type === 'file' &&
+      step.entry.role === 'claude-md'
+    ) {
+      entries.delete(step.path);
+    }
   }
   return {
     format: 'ctxman-inflate',

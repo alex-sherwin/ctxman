@@ -398,7 +398,10 @@ export const primaryKeySchema = type(PRIMARY_KEY_PATTERN).describe('must be refe
 export const recipeStubsSchema = type({
   '+': 'reject',
   'agentsMd?': 'boolean',
-  'claudeMd?': 'boolean',
+  /** Deprecated: the CLAUDE.md stub is gone. Still accepted so older recipes stay valid; ignored, dropped on save. */
+  'claudeMd?': type('boolean').describe(
+    'a boolean (deprecated and ignored: ctxman no longer writes CLAUDE.md)',
+  ),
   'gitignore?': 'boolean',
 });
 export const recipeOutputSchema = type({

@@ -19,6 +19,7 @@ import type {
 import {
   CONTEXT_FILE_PATTERN,
   DEFAULT_CONTEXT_FILE,
+  STUB_DEFAULTS,
   STUB_IDS,
   baseMaterialOptionValue,
   baseOptionValue,
@@ -32,7 +33,6 @@ import {
   itemDirName,
   mdKey,
   nextBlockId,
-  stubDefaults,
 } from '../lib/inflate/catalog.ts';
 import type {
   InflateLayout,
@@ -687,8 +687,9 @@ export function commitWorking(next: RecipeData): void {
 // ---------------------------------------------------------------- output (working directory) helpers
 
 /**
- * `output` without the parts that say nothing: `allowNonEmpty: false`, stubs equal to the target's
- * defaults, an empty `stubs`. The whole `output` goes when nothing is left (contextFile is the default).
+ * `output` without the parts that say nothing: `allowNonEmpty: false`, stubs equal to the defaults (and the
+ * deprecated `claudeMd`), an empty `stubs`. The whole `output` goes when nothing is left (contextFile is the
+ * default).
  */
 function tidyOutput(w: RecipeData): RecipeData {
   const o = w.output;
@@ -697,11 +698,10 @@ function tidyOutput(w: RecipeData): RecipeData {
   if (next.allowNonEmpty !== true) next = omit(next, 'allowNonEmpty') as RecipeOutput;
   if (next.dir !== undefined && next.dir.trim() === '') next = omit(next, 'dir') as RecipeOutput;
   if (next.stubs !== undefined) {
-    const defaults = stubDefaults(w.target);
     const stubs: Partial<Record<StubId, boolean>> = {};
     for (const id of STUB_IDS) {
       const value = next.stubs[id];
-      if (value !== undefined && value !== defaults[id]) stubs[id] = value;
+      if (value !== undefined && value !== STUB_DEFAULTS[id]) stubs[id] = value;
     }
     next =
       Object.keys(stubs).length > 0 ? { ...next, stubs } : (omit(next, 'stubs') as RecipeOutput);
@@ -1089,11 +1089,11 @@ export function setContextFile(value: string): void {
   commit(withOutput(w, (o) => ({ ...o, contextFile: value })));
 }
 
-/** A value equal to the target's default removes the key (revert-equality, clean YAML). */
+/** A value equal to the default removes the key (revert-equality, clean YAML). */
 export function setStub(id: StubId, on: boolean): void {
   const w = $working.get();
   if (w === null) return;
-  const current = w.output?.stubs?.[id] ?? stubDefaults(w.target)[id];
+  const current = w.output?.stubs?.[id] ?? STUB_DEFAULTS[id];
   if (current === on) return;
   commit(withOutput(w, (o) => ({ ...o, stubs: { ...o.stubs, [id]: on } })));
 }

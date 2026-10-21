@@ -142,6 +142,7 @@ const manifestEntrySchema = type({
     '+': 'reject',
     path: entryPathSchema,
     type: "'file'",
+    // `claude-md`: the CLAUDE.md stub of an older ctxman, read back from a previous manifest (a stale path now)
     role: type.enumerated('context', 'agents-md', 'claude-md', 'gitignore'),
     sha256: sha256Schema,
   });

@@ -463,18 +463,25 @@ describe('output directory', () => {
     expect($dirty.get()).toBe(false);
   });
 
-  it('setStub stores only what differs from the target defaults', () => {
-    // claude-code: CLAUDE.md and .gitignore on, AGENTS.md off
-    setStub('claudeMd', true); // already the default
+  it('setStub stores only what differs from the defaults (every stub on, every target)', () => {
+    setStub('agentsMd', true); // already the default
     expect(Object.hasOwn(working(), 'output')).toBe(false);
-    setStub('agentsMd', true);
+    setStub('agentsMd', false);
     setStub('gitignore', false);
-    expect(working().output?.stubs).toEqual({ agentsMd: true, gitignore: false });
-    setStub('agentsMd', false); // back to the default: dropped
+    expect(working().output?.stubs).toEqual({ agentsMd: false, gitignore: false });
+    setStub('agentsMd', true); // back to the default: dropped
     expect(working().output?.stubs).toEqual({ gitignore: false });
     setStub('gitignore', true);
     expect(Object.hasOwn(working(), 'output')).toBe(false);
     expect($dirty.get()).toBe(false);
+  });
+
+  it("an old recipe's deprecated stubs.claudeMd goes with the next output edit", () => {
+    load({ ...base, output: { contextFile: 'AGENTS.md', stubs: { claudeMd: true } } });
+    setStub('gitignore', false);
+    expect(working().output?.stubs).toEqual({ gitignore: false });
+    setStub('gitignore', true);
+    expect(Object.hasOwn(working(), 'output')).toBe(false);
   });
 
   it('setAllowNonEmpty stores true only', () => {
@@ -499,13 +506,13 @@ describe('output directory', () => {
     const before = working();
     const snapshot = JSON.stringify(before);
     setContextFile('CONTEXT.md');
-    setStub('agentsMd', true);
+    setStub('agentsMd', false);
     expect(JSON.stringify(before)).toBe(snapshot);
     expect(working().output).toEqual({
       contextFile: 'CONTEXT.md',
       dir: '/work',
       primary: 'reference/refs-a',
-      stubs: { agentsMd: true },
+      stubs: { agentsMd: false },
     });
   });
 });

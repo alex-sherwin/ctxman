@@ -1025,11 +1025,10 @@ function directoryMap(dir: DirEnv, target: TargetDef): string {
   const { files, contextFile } = dir.output;
   const rows: { name: string; note?: string }[] = [{ name: contextFile, note: 'this file' }];
   const fileNotes: Record<Exclude<FileRole, 'context'>, string> = {
-    'claude-md': 'loads this file',
     'agents-md': 'points to this file',
     gitignore: 'ignores the machine-specific paths below',
   };
-  for (const role of ['claude-md', 'agents-md', 'gitignore'] as const) {
+  for (const role of ['agents-md', 'gitignore'] as const) {
     const file = files.find((f) => f.role === role);
     if (file !== undefined) rows.push({ name: file.path, note: fileNotes[role] });
   }
@@ -1347,11 +1346,9 @@ export function renderPlan(
           `> This directory is the working root (${inlineCode(output.dir)}). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
           ...(target.skillsLine === null ? [] : [`> ${target.skillsLine}`]),
           ...output.files.flatMap(({ path, role }) =>
-            role === 'claude-md'
-              ? [`> ${inlineCode(path)} in this directory loads this file.`]
-              : role === 'agents-md'
-                ? [`> ${inlineCode(path)} in this directory points to this file.`]
-                : [],
+            role === 'agents-md'
+              ? [`> ${inlineCode(path)} in this directory points to this file.`]
+              : [],
           ),
           // placed repositories get the "Where to work" note under the map instead
           ...(listsRepos && !dirEnv.views.some((v) => isRepoKind(v.kind) && isPlacedView(v))

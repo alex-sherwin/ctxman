@@ -98,7 +98,8 @@ function materialOptionsObject(
 
 /**
  * `output` in serializer key order: dir (if set), contextFile (if not the default), primary, allowNonEmpty
- * (only true), stubs (only defined keys, STUB_IDS order). undefined when nothing is left.
+ * (only true), stubs (only defined keys, STUB_IDS order: the deprecated `claudeMd` is dropped). undefined when
+ * nothing is left.
  */
 function outputObject(output: RecipeOutput | undefined): Record<string, unknown> | undefined {
   if (output === undefined) return undefined;

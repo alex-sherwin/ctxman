@@ -88,7 +88,8 @@ test.describe('recipe detail', () => {
       '~/ctxman-inflate/ctxman-dev-brief',
     );
     await expect(meta.getByTestId('meta-output-primary')).toContainText('reference/astro-docs');
-    await expect(meta.getByTestId('meta-output-stubs')).toHaveText('CLAUDE.md stub, .gitignore');
+    // no CLAUDE.md stub any more, and no AGENTS.md stub: the context file is AGENTS.md itself
+    await expect(meta.getByTestId('meta-output-stubs')).toHaveText('.gitignore');
     await expect(meta.getByTestId('meta-output-contextfile')).toHaveCount(0);
     await expect(composition.getByTestId('recipe-order')).toBeVisible();
     // The preamble and every markdown block have a pencil that the MarkdownTargets island enables.

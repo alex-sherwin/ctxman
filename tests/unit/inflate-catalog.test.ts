@@ -29,6 +29,7 @@ import {
   REPOS_DIR,
   SEGMENT_KEY_PATTERN,
   STAGE_DIR,
+  STUB_DEFAULTS,
   STUB_FILES,
   STUB_IDS,
   STUB_LABELS,
@@ -43,6 +44,7 @@ import {
   defaultModeFor,
   familyOf,
   inlineCode,
+  isContextStub,
   isEditEligible,
   isInflateTarget,
   isMaterialFor,
@@ -70,7 +72,6 @@ import {
   remoteSkillDirName,
   resolveMaterialOptions,
   resolveOptions,
-  stubDefaults,
 } from '../../src/lib/inflate/catalog.ts';
 import type { InflateTarget, ItemKind, ModeId } from '../../src/lib/inflate/catalog.ts';
 
@@ -89,9 +90,9 @@ describe('TARGETS (spec 4.1)', () => {
       label: 'Claude Code',
       sessionLine: 'Prepared by ctxman for a Claude Code session.',
       skillsDir: '.claude/skills',
-      instructionsFile: 'CLAUDE.md',
+      instructionsFile: 'AGENTS.md',
       skillsLine:
-        'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+        'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
       skillsIntro: 'Installed in `.claude/skills/`, where Claude Code discovers them.',
     });
     expect(TARGETS.codex).toMatchObject({
@@ -682,25 +683,18 @@ describe('output constants and helpers (plans/INFLATE_V2_SPEC.md §3)', () => {
     }
   });
 
-  it('stubs: ids, files, labels and per-target defaults', () => {
-    expect([...STUB_IDS]).toEqual(['agentsMd', 'claudeMd', 'gitignore']);
-    expect(STUB_FILES).toEqual({
-      agentsMd: 'AGENTS.md',
-      claudeMd: 'CLAUDE.md',
-      gitignore: '.gitignore',
-    });
-    expect(STUB_LABELS).toEqual({
-      agentsMd: 'AGENTS.md stub',
-      claudeMd: 'CLAUDE.md stub',
-      gitignore: '.gitignore',
-    });
-    expect(stubDefaults('claude-code')).toEqual({
-      agentsMd: false,
-      claudeMd: true,
-      gitignore: true,
-    });
-    expect(stubDefaults('codex')).toEqual({ agentsMd: true, claudeMd: false, gitignore: true });
-    expect(stubDefaults('generic')).toEqual({ agentsMd: true, claudeMd: false, gitignore: true });
+  it('stubs: ids, files, labels and defaults (no CLAUDE.md stub; both on for every target)', () => {
+    expect([...STUB_IDS]).toEqual(['agentsMd', 'gitignore']);
+    expect(STUB_FILES).toEqual({ agentsMd: 'AGENTS.md', gitignore: '.gitignore' });
+    expect(STUB_LABELS).toEqual({ agentsMd: 'AGENTS.md stub', gitignore: '.gitignore' });
+    expect(STUB_DEFAULTS).toEqual({ agentsMd: true, gitignore: true });
+  });
+
+  it('isContextStub: the stub named like the context file, case-insensitively', () => {
+    expect(isContextStub('agentsMd', 'AGENTS.md')).toBe(true);
+    expect(isContextStub('agentsMd', 'agents.md')).toBe(true);
+    expect(isContextStub('agentsMd', 'LLM_CONTEXT.md')).toBe(false);
+    expect(isContextStub('gitignore', 'AGENTS.md')).toBe(false);
   });
 
   it('isPortableAbsoluteDir: posix, home and win32 absolute forms', () => {

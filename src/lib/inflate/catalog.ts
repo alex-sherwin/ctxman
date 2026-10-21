@@ -40,7 +40,7 @@ export interface TargetDef {
   sessionLine: string;
   /** '.claude/skills' | '.agents/skills' | '.agents/skills' */
   skillsDir: string;
-  /** 'CLAUDE.md' | 'AGENTS.md' | null */
+  /** 'AGENTS.md' (claude-code, codex: both read it) | null */
   instructionsFile: string | null;
   /** Header line 3; null = omitted. */
   skillsLine: string | null;
@@ -56,9 +56,9 @@ export const TARGETS: Readonly<Record<InflateTarget, TargetDef>> = {
     label: 'Claude Code',
     sessionLine: 'Prepared by ctxman for a Claude Code session.',
     skillsDir: '.claude/skills',
-    instructionsFile: 'CLAUDE.md',
+    instructionsFile: 'AGENTS.md',
     skillsLine:
-      'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.',
+      'Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
     skillsIntro: 'Installed in `.claude/skills/`, where Claude Code discovers them.',
     // Claude Code expands a bare `@path` by loading the file (D3), so no backticks here.
     eagerClause: (abs) => `Read it before starting: @${abs}`,
@@ -631,24 +631,30 @@ export const REPOS_DIR = 'repos';
 /** Destination folder of linked / copied local folders (plain folders, not git repositories). */
 export const FOLDERS_DIR = 'folders';
 
-export const STUB_IDS = ['agentsMd', 'claudeMd', 'gitignore'] as const;
+/**
+ * The files a run writes besides the context file. There is no `CLAUDE.md` stub any more: Claude Code, Codex and
+ * the other harnesses all read `AGENTS.md` (a recipe's old `stubs.claudeMd` is accepted and ignored).
+ */
+export const STUB_IDS = ['agentsMd', 'gitignore'] as const;
 export type StubId = (typeof STUB_IDS)[number];
 export const STUB_FILES = {
   agentsMd: 'AGENTS.md',
-  claudeMd: 'CLAUDE.md',
   gitignore: '.gitignore',
 } as const satisfies Record<StubId, string>;
 export const STUB_LABELS = {
   agentsMd: 'AGENTS.md stub',
-  claudeMd: 'CLAUDE.md stub',
   gitignore: '.gitignore',
 } as const satisfies Record<StubId, string>;
 
-/** claude-code: claudeMd; codex, generic: agentsMd; gitignore always. */
-export function stubDefaults(target: InflateTarget): Record<StubId, boolean> {
-  return target === 'claude-code'
-    ? { agentsMd: false, claudeMd: true, gitignore: true }
-    : { agentsMd: true, claudeMd: false, gitignore: true };
+/** Every target: both on (`stubs` in the recipe switches one off). */
+export const STUB_DEFAULTS: Readonly<Record<StubId, boolean>> = { agentsMd: true, gitignore: true };
+
+/**
+ * Is the stub named like the context file (case-insensitively)? Then it is never written: the context file itself
+ * is that file (the `AGENTS.md` stub under the default context file `AGENTS.md`).
+ */
+export function isContextStub(id: StubId, contextFile: string): boolean {
+  return STUB_FILES[id].toLowerCase() === contextFile.toLowerCase();
 }
 
 const PORTABLE_ABSOLUTE_DIR = /^(?:~(?:[\\/]|$)|\/|[A-Za-z]:[\\/]|\\\\)/;

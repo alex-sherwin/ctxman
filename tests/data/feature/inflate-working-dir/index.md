@@ -52,3 +52,5 @@ A follow-up reworked how an item is placed and presented; the full description i
 ## AGENTS.md, worktrees and work branches (2026-10-20)
 
 The context file is now `AGENTS.md` by default (the `LLM_CONTEXT.md` of the versions above can still be chosen as its name), so no AGENTS.md stub is written and `CLAUDE.md` imports `@AGENTS.md`; a re-run upgrades a directory made with the old name. A local repository can be placed as a **git worktree** (`repos/<name>`, commits land in the original repository), clones and worktrees take a **New branch** to work on, clones fetch the full history by default, a reference may name its `folder`, and the context file tells the agent to work from inside each repository's folder.
+
+Later the same day the `CLAUDE.md` stub went: Claude Code reads `AGENTS.md` as well, so no run writes a `CLAUDE.md` any more, and the next run removes an old one that was not edited.

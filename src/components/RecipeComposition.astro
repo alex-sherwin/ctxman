@@ -6,10 +6,11 @@ import {
   ITEM_KIND_LABELS,
   MATERIAL_OPTION_IDS,
   OPTION_IDS,
+  STUB_DEFAULTS,
   STUB_IDS,
   STUB_LABELS,
+  isContextStub,
   materialLabel,
-  stubDefaults,
 } from '../lib/inflate/catalog.ts';
 import type { ItemKind, MaterialId } from '../lib/inflate/catalog.ts';
 import type { RecipeContextRef, RecipeItemRef } from '../lib/entries.ts';
@@ -83,10 +84,12 @@ const defaults = ITEM_KINDS.flatMap((kind) => {
 
 // The working directory a run writes to (`output`), with the generated files it will write.
 const output = data.output;
-const stubDefaultsFor = stubDefaults(data.target);
-const stubs = STUB_IDS.filter((id) => output?.stubs?.[id] ?? stubDefaultsFor[id]).map(
-  (id) => STUB_LABELS[id],
-);
+// (a stub named like the context file is never written: the context file itself is that file)
+const stubs = STUB_IDS.filter(
+  (id) =>
+    !isContextStub(id, output?.contextFile ?? DEFAULT_CONTEXT_FILE) &&
+    (output?.stubs?.[id] ?? STUB_DEFAULTS[id]),
+).map((id) => STUB_LABELS[id]);
 // Repositories the session may change: the primary (unless told otherwise) and every `edit: true` override.
 // A static reading of the file: whether the material allows editing is decided when the recipe is inflated.
 const editFlag = (key: string): boolean | undefined => data.overrides.find((o) => o.key === key)?.edit;

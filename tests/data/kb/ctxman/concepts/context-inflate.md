@@ -17,14 +17,14 @@ Contexts stay evergreen. A recipe stores slugs, never content, and expansion hap
 ## What it does: two outputs
 
 1. **A document** (always available). One markdown document plus a JSON manifest, with absolute paths. Copy it, download it or write it to an absolute `.md` path. This is the "no directory" case and works without `output.dir`.
-2. **A working directory** (when the recipe or the run sets a directory). A run places material in a directory `<W>` that you start your AI coding harness in: symlinks to knowledge bundles and skills, symlinked or copied local repositories, worktrees of local repositories, cloned remote repositories, cloned or downloaded remote skills, the context file `AGENTS.md` (another name can be set) that links to all of it (paths relative to `<W>`) and maps the directory, optional `CLAUDE.md` / `.gitignore` stubs (and an `AGENTS.md` stub when the context file has another name), and a `.ctxman-inflate.json` file that records what ctxman owns there. Re-running updates the directory and removes what the recipe no longer places.
+2. **A working directory** (when the recipe or the run sets a directory). A run places material in a directory `<W>` that you start your AI coding harness in: symlinks to knowledge bundles and skills, symlinked or copied local repositories, worktrees of local repositories, cloned remote repositories, cloned or downloaded remote skills, the context file `AGENTS.md` (another name can be set) that links to all of it (paths relative to `<W>`) and maps the directory, an optional `.gitignore` stub (and an `AGENTS.md` stub when the context file has another name; never a `CLAUDE.md`: Claude Code reads `AGENTS.md` like the other harnesses), and a `.ctxman-inflate.json` file that records what ctxman owns there. Re-running updates the directory and removes what the recipe no longer places.
 
 ### Two questions per item: Place, then In AGENTS.md
 
 In a working directory every item answers two questions, in this order:
 
 1. **Place** (the item's *material*): how it gets into `<W>`. Symlink, Worktree, Copy, Clone, Download or Don't place.
-2. **In AGENTS.md** (the item's *mode*; the label names the context file): how the context file presents it. An item that is placed is **referenced with relative markdown links, not inlined**, unless you ask for inlining: its files are right there, and `CLAUDE.md` loads the whole context file at the start of every session, so every inlined byte costs tokens every time. An item that is not placed keeps the document-only modes (inline, summary, install or clone commands, ...).
+2. **In AGENTS.md** (the item's *mode*; the label names the context file): how the context file presents it. An item that is placed is **referenced with relative markdown links, not inlined**, unless you ask for inlining: its files are right there, and the harness loads the whole context file (`AGENTS.md`) at the start of every session, so every inlined byte costs tokens every time. An item that is not placed keeps the document-only modes (inline, summary, install or clone commands, ...).
 
 Repositories add two more choices: **Primary** (one per recipe; the session starts there) and **Editable** (may the session change files in it, or is it reference material). Without a directory nothing changes: only the mode applies (the UI calls it "Include as") and the defaults are the ones of the original document. The choices are stored as before (`mode`, `material`, `materialOptions`) plus one new optional override key, `edit`; every earlier recipe still parses and keeps its explicit choices, only the built-in defaults moved.
 
@@ -94,7 +94,7 @@ The `output` object:
 | `contextFile` | File name of the generated document inside `dir` (a plain `*.md` name, no folders). Default `AGENTS.md`, omitted from the file when default (directories inflated before this default wrote `LLM_CONTEXT.md`; see Context file and stubs). |
 | `primary` | `reference/<slug>` of the repository the session works on (see Materials). |
 | `allowNonEmpty` | `true` lets a run use a non-empty directory that ctxman did not create. Written only when true. |
-| `stubs` | `{agentsMd?, claudeMd?, gitignore?}` booleans that override the target's defaults; only given keys are written. |
+| `stubs` | `{agentsMd?, gitignore?}` booleans that override the defaults (both on, for every target); only given keys are written. The `claudeMd` key of an older recipe is still accepted (a boolean), ignored, and dropped on the next save. |
 
 Segment keys are `<dataset>/<slug>` for an item, `md:<id>` for a markdown block, `ctx:<slug>` for a context heading and the fixed `sec:extra` for the "Additional items" heading.
 
@@ -213,13 +213,12 @@ A material that cannot be placed is demoted to `none` with a warning and nothing
 | --- | --- | --- | --- |
 | Label | Claude Code | Codex | Generic agent |
 | Skills directory | `.claude/skills` | `.agents/skills` | `.agents/skills` |
-| Instructions file named in the header | `CLAUDE.md` | `AGENTS.md` | none (no skills line) |
+| Instructions file named in the header | `AGENTS.md` | `AGENTS.md` | none (no skills line) |
 | `eager` pointer | `Read it before starting: @/abs/path` | ``Read `/abs/path` before starting.`` | same as codex |
 | Default skill mode (not placed) | `install` | `install` | `pointer` |
 | Default remote-skill mode (not placed) | `install` | `install` | `describe` |
-| Stub written by default | `CLAUDE.md` | none (the context file is `AGENTS.md`) | none (same) |
 
-Everything else is identical across targets; `.gitignore` is a default stub for all of them. A placed skill (`pointer`) and a placed remote skill (`describe`) have the same default in every target. Only an `eager` pointer uses the bare `@path` form, because Claude Code loads a file the moment it sees `@path`; every other path is in backticks (or, in a working-directory document, a markdown link whose text is the backticked path), which suppresses that expansion.
+Everything else is identical across targets, the stubs too: `.gitignore` by default, an `AGENTS.md` stub only when the context file has another name, and never a `CLAUDE.md` (Claude Code reads `AGENTS.md` itself). A placed skill (`pointer`) and a placed remote skill (`describe`) have the same default in every target. Only an `eager` pointer uses the bare `@path` form, because Claude Code loads a file the moment it sees `@path`; every other path is in backticks (or, in a working-directory document, a markdown link whose text is the backticked path), which suppresses that expansion.
 
 ## Output format
 
@@ -232,7 +231,7 @@ The document is the header, the preamble (if any) and then the segments, separat
 
 > Prepared by ctxman for a Claude Code session.
 > Paths are absolute paths on this machine. Read the referenced files and run the listed commands only when the task needs them.
-> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.
+> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.
 
 You are working on ctxman, a local-only Astro app.
 
@@ -282,7 +281,7 @@ The file written by a run (and the relative document of the Preview and of `POST
 
 Section order:
 
-1. Header: the title, the session line, a note that `<W>` is the working root (printed once, the only absolute path of the directory; "Links and paths below are relative to it"), the skills line, which stub loads the file, and the line about running a repository's commands from its own directory when repositories are listed but none is placed.
+1. Header: the title, the session line, a note that `<W>` is the working root (printed once, the only absolute path of the directory; "Links and paths below are relative to it"), the skills line, the `AGENTS.md` stub that points to the file (only with another context file name), and the line about running a repository's commands from its own directory when repositories are listed but none is placed.
 2. The preamble.
 3. `## Working directory map`: a `text` block listing the context file and stubs, then one group per folder (`repos/`, `folders/`, one per knowledge dataset, the skills directory) with what each entry is (`symlink`, `copy`, `git worktree[, at x | , new branch x from y | , detached HEAD]`, `git clone[, sparse][, at x | , new branch x from y]` (`at x` is true for a branch and for a tag, which git checks out detached; after a run a worktree that checked out an existing branch reads `existing branch x`, one that was already in place `branch x`), `cloned` / `downloaded` for a remote skill), a `primary` and an `editable` marker (read-only is the default and not repeated) and the first words of its description. When repositories or folders are placed, a **Where to work** paragraph follows the block: each repository is its own git work tree under `repos/<name>/` (folders under `folders/<name>/`), `cd` into the relevant one before running git, build or test commands, start a session from that folder when the work concerns only that repository, and the primary repository is the default place to start.
 4. `## Placement`: a legend with one line per placement kind that occurs (**symlink**, **copy**, **git worktree**, **git clone** ("on a new work branch it only fetches" when one has a work branch), **downloaded** / **cloned** skill, **not placed**), what **editable** and **read-only** mean when a repository or folder is listed (the line names "repositories", "folders" or both), and a line saying that ctxman knowledge, work items and skills are the user's own notes (`owner` says whether a repository or remote skill is theirs).
@@ -299,8 +298,7 @@ A trimmed example, generated by a dry run of the seed recipe with two extra item
 
 > Prepared by ctxman for a Claude Code session.
 > This directory is the working root (`/Users/me/ctxman-inflate/ctxman-dev-brief`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.
-> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `CLAUDE.md`.
-> `CLAUDE.md` in this directory loads this file.
+> Skills go in `.claude/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.
 
 You are working on ctxman, a local-only Astro app. Use pnpm only, never npm.
 
@@ -310,7 +308,6 @@ You are working on ctxman, a local-only Astro app. Use pnpm only, never npm.
 
 ```text
 AGENTS.md                         this file
-CLAUDE.md                         loads this file
 .gitignore                        ignores the machine-specific paths below
 repos/
   astro-docs/                     git clone, sparse · primary · editable · The Astro documentation source, English content. Consul…
@@ -398,15 +395,16 @@ Details: see Primary repository.
 
 ### Context file and stubs
 
-The context file is `AGENTS.md` unless `output.contextFile` (or the run override) names another file: Codex and most agents read `AGENTS.md` on their own, Claude Code through its stub.
+The context file is `AGENTS.md` unless `output.contextFile` (or the run override) names another file: Claude Code, Codex and most agents read `AGENTS.md` on their own, so ctxman writes no `CLAUDE.md` for any target.
 
-* `CLAUDE.md` (default for `claude-code`): a title, one sentence naming the recipe and the context file, and a bare `@AGENTS.md` line (the context file), which Claude Code loads at session start.
-* `AGENTS.md` (default for `codex` and `generic`, but only when the context file has another name): the same sentence, "read it first", and a note that paths are relative to the directory. While the context file is `AGENTS.md` the stub is never planned, and its checkbox in the Output directory panel is disabled with a note.
+* `AGENTS.md` (on by default for every target, but only planned when the context file has another name): a title, one sentence naming the recipe and the context file, "read it first", and a note that paths are relative to the directory. While the context file is `AGENTS.md` the stub is never planned, and its checkbox in the Output directory panel is disabled with a note.
 * `.gitignore` (default for all): `/.ctxman-inflate.json`, `/.ctxman-tmp/` and the folders that hold placed material (`/repos/`, `/folders/`, `/kb/`, `/.claude/skills/<name>/`, ...), so the directory can be a git repository of your own notes without committing machine-specific content. A symlinked skill is listed without the trailing slash (`/.claude/skills/<name>`), because git does not match a symlink with a directory pattern.
 
 Stubs are only written when absent or when the file still has the hash ctxman recorded; an edited or foreign stub is kept and reported. The context file is output: it is always regenerated, with a warning (`context-file-edited`) when local edits are replaced. A stub whose name equals the context file name (case-insensitive) is not written.
 
 A directory inflated with the old default (`LLM_CONTEXT.md` plus, for codex and generic, an `AGENTS.md` stub) is upgraded by the next run: `LLM_CONTEXT.md` is a stale path and removed by the cleanup rule (only while unedited, and only after the new context file is written: the removal of an old context file is planned right after the `context` step and depends on it), and the recorded `AGENTS.md` stub is replaced by the context file while it still has its recorded hash ("replaced the AGENTS.md stub"). An edited stub is never overwritten: the `context` step fails ("AGENTS.md is a stub ctxman wrote earlier and it was edited since; move it away or choose another context file name"), and so does an `AGENTS.md` ctxman never wrote ("exists and was not written by ctxman; move it away or choose another context file name"). The dry run warns about both up front (`context-file-exists`).
+
+A directory an older ctxman made for `claude-code` also has a `CLAUDE.md` stub (manifest role `claude-md`, an `@` import of the context file). No run writes it any more, so it is a stale path: removed by the cleanup rule while it still has its recorded hash, kept and reported (`kept CLAUDE.md: edited since ctxman wrote it`) when it was edited. A kept `CLAUDE.md` is dropped from the new manifest: it is your file from then on and later runs leave it alone.
 
 ## Working directory runs
 
@@ -416,7 +414,7 @@ A directory inflated with the old default (`LLM_CONTEXT.md` plus, for codex and 
 2. **Run** (`POST /api/inflate/run`) plans again, refuses on a blocking problem, and starts the steps in the background. It answers 202 with the job. Only one run can be active (409 `busy`).
 3. **Jobs** (`GET /api/inflate/jobs/<id>`): the UI polls every 500 ms. A job has a status (`queued`, `running`, `done`, `failed`, `cancelled`), its steps with a status each, the last 20 output lines of every step and a summary. `POST /api/inflate/jobs/<id>/cancel` aborts the running process and skips the rest. Jobs live in server memory: the last 20 finished jobs are kept and all are lost when the server restarts (the page then says the run is no longer known). `?view=run&job=<id>` resumes watching after a reload.
 
-Steps run in this order, with these ids (the seed's dry run has 15):
+Steps run in this order, with these ids (the seed's dry run has 14):
 
 | Id | What it does |
 | --- | --- |
@@ -444,14 +442,14 @@ The ownership record, JSON with 2-space indentation: `format: "ctxman-inflate"`,
 { "path": ".claude/skills/okf-authoring", "type": "copy", "key": "skill/okf-authoring", "source": "/Users/me/repos/ctxman/data/skill/okf-authoring" }
 { "path": "repos/astro-docs", "type": "clone", "key": "reference/astro-docs", "uri": "https://github.com/withastro/docs.git", "branch": null, "depth": 0, "sparse": "src/content/docs/en", "newBranch": null }
 { "path": "repos/ctxman-repo", "type": "worktree", "key": "reference/ctxman-repo", "repo": "/Users/me/repos/ctxman", "branch": "main", "newBranch": "inflate-work" }
-{ "path": "CLAUDE.md", "type": "file", "role": "claude-md", "sha256": "..." }
+{ "path": ".gitignore", "type": "file", "role": "gitignore", "sha256": "..." }
 ```
 
-Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`, `gitignore`). A symlinked skill, local repository or local folder is a `symlink` entry, a copy a `copy` entry, a worktree a `worktree` entry (`repo` is the real path of the repository's top level). A `clone` entry written before work branches existed has no `newBranch` and reads as `null`. Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
+Also `skill` entries (an installed remote skill: `uri`, `subpath`) and the other file roles (`context`, `agents-md`). The role `claude-md` (the `CLAUDE.md` stub of an older ctxman) is still accepted in a previous manifest and never written. A symlinked skill, local repository or local folder is a `symlink` entry, a copy a `copy` entry, a worktree a `worktree` entry (`repo` is the real path of the repository's top level). A `clone` entry written before work branches existed has no `newBranch` and reads as `null`. Every path in it must be relative, free of `..` and `.git` segments and not the manifest itself, or the file is treated as unreadable.
 
 ### Cleanup rule
 
-ctxman deletes or replaces ONLY paths recorded in the previous manifest. A recorded path is removed when (a) the new plan does not own it any more, (b) it is still what ctxman created (a symlink is still a symlink, a copy a real folder, a clone a git checkout, a worktree a linked work tree, a file a file) and (c) it carries nothing of yours: a clone has no uncommitted changes and nothing unpushed (no `[ahead N]`, and `git rev-list HEAD --branches --not --remotes` is empty: a work branch has no upstream and a detached HEAD no branch, so their commits only show there; this is conservative, a clone without remote-tracking refs such as a shallow clone of a tag is kept), git agrees to `git worktree remove` it (no `--force`; its commits stay in the repository) and a detached worktree has no commits that only it holds, a file still has the recorded sha256. Anything else is kept and reported (`kept <path>: it has local changes or unpushed commits`, `edited since ctxman wrote it`, `no longer what ctxman created`). Symlinks are unlinked, never followed, so the ctxman entry behind a link is never touched. Nothing outside recorded paths is ever removed, and an existing path that is not recorded is a conflict (`exists and was not created by ctxman`), not an overwrite. A directory last inflated from a different recipe gets a `manifest-other-recipe` warning with the number of paths that will go.
+ctxman deletes or replaces ONLY paths recorded in the previous manifest. A recorded path is removed when (a) the new plan does not own it any more, (b) it is still what ctxman created (a symlink is still a symlink, a copy a real folder, a clone a git checkout, a worktree a linked work tree, a file a file) and (c) it carries nothing of yours: a clone has no uncommitted changes and nothing unpushed (no `[ahead N]`, and `git rev-list HEAD --branches --not --remotes` is empty: a work branch has no upstream and a detached HEAD no branch, so their commits only show there; this is conservative, a clone without remote-tracking refs such as a shallow clone of a tag is kept), git agrees to `git worktree remove` it (no `--force`; its commits stay in the repository) and a detached worktree has no commits that only it holds, a file still has the recorded sha256. Anything else is kept and reported (`kept <path>: it has local changes or unpushed commits`, `edited since ctxman wrote it`, `no longer what ctxman created`) and stays recorded, so a later run tries again (only an old `CLAUDE.md` stub is forgotten once kept). Symlinks are unlinked, never followed, so the ctxman entry behind a link is never touched. Nothing outside recorded paths is ever removed, and an existing path that is not recorded is a conflict (`exists and was not created by ctxman`), not an overwrite. A directory last inflated from a different recipe gets a `manifest-other-recipe` warning with the number of paths that will go.
 
 ### Safety rules
 
@@ -502,7 +500,7 @@ The file is written to a temporary sibling and renamed, parent directories are c
 
 One React island with three views, selected by the URL parameter `view`:
 
-* **Compose** (default). A sources pane (description, an **Output directory** disclosure with the directory field, "Use default" (`~/ctxman-inflate/<name>`), "Document only", context file, the three stub checkboxes and "Allow a non-empty directory"; preamble editor, contexts to tick, **Default modes**, ad hoc search and "+ Markdown block") and a composition pane. The disclosure starts open when a directory is set. **Default modes** lists only the item kinds the recipe has (included or excluded items, plus any kind with a stored default), one row each: with a directory a **Place** select (the default material, "Default (Symlink)" and so on) and an **In AGENTS.md** select (named after the context file), without one an **Include as** select. The composition pane starts, when a directory is set, with the **placement summary** (`~/ctxman-inflate/x · 4 symlink · 1 worktree · 1 copy · 2 clone · 1 download · 1 not placed · primary: astro-docs · editable: astro-docs`, only the non-zero parts) and then lists each segment with up and down buttons, exclude or remove. A row with a directory has two lines of controls: **Place** (the material select with Symlink / Worktree / Copy / Clone / Download / Don't place, its options (Depth with Full first, Branch, New branch, Subpath only), and for a repository **Primary** and **Editable**; Editable is hidden when the repository cannot be edited) and **In AGENTS.md** (named after the context file; the mode select over the list that fits the placement, plain text when there is only one choice, and the mode's options). Without a directory a row has the single **Include as** select. The row head shows the destination, the reference type, an owner badge (`mine` / `not mine`) and, for a remote skill, `git` or `archive`. Markdown editors and warnings complete the pane. The list is the same pure expansion the server runs, so reordering and mode changes show immediately.
+* **Compose** (default). A sources pane (description, an **Output directory** disclosure with the directory field, "Use default" (`~/ctxman-inflate/<name>`), "Document only", context file, the two stub checkboxes (AGENTS.md stub, .gitignore) and "Allow a non-empty directory"; preamble editor, contexts to tick, **Default modes**, ad hoc search and "+ Markdown block") and a composition pane. The disclosure starts open when a directory is set. **Default modes** lists only the item kinds the recipe has (included or excluded items, plus any kind with a stored default), one row each: with a directory a **Place** select (the default material, "Default (Symlink)" and so on) and an **In AGENTS.md** select (named after the context file), without one an **Include as** select. The composition pane starts, when a directory is set, with the **placement summary** (`~/ctxman-inflate/x · 4 symlink · 1 worktree · 1 copy · 2 clone · 1 download · 1 not placed · primary: astro-docs · editable: astro-docs`, only the non-zero parts) and then lists each segment with up and down buttons, exclude or remove. A row with a directory has two lines of controls: **Place** (the material select with Symlink / Worktree / Copy / Clone / Download / Don't place, its options (Depth with Full first, Branch, New branch, Subpath only), and for a repository **Primary** and **Editable**; Editable is hidden when the repository cannot be edited) and **In AGENTS.md** (named after the context file; the mode select over the list that fits the placement, plain text when there is only one choice, and the mode's options). Without a directory a row has the single **Include as** select. The row head shows the destination, the reference type, an owner badge (`mine` / `not mine`) and, for a remote skill, `git` or `archive`. Markdown editors and warnings complete the pane. The list is the same pure expansion the server runs, so reordering and mode changes show immediately.
 * **Preview**. Renders the real document through the server about 400 ms after the last edit, with Copy, Download .md and the manifest table (with a Material column when a directory is set). With a directory it shows the relative document of the dry run (`paths=relative`, default) and a button that opens the Run view; `paths=absolute` shows the single-document render and the "Write to path" box.
 * **Run**. Run settings on the left (run overrides, the directory, context file, primary, and for every included item a **Place** select plus, for a repository that can be edited, an **Editable** checkbox, with a reset per item), the plan on the right (status line, blocking problems, warnings, the step list, the **Run** button); after starting, the job progress replaces the plan (status, **Cancel**, one row per step with its action, duration and collapsible output, and at the end the directory with "Open in IDE", "Copy path" and "Back to plan").
 

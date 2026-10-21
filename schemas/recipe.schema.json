@@ -1322,7 +1322,8 @@
               "type": "boolean"
             },
             "claudeMd": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "a boolean (deprecated and ignored: ctxman no longer writes CLAUDE.md)"
             },
             "gitignore": {
               "type": "boolean"
