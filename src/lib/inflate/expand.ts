@@ -18,6 +18,7 @@ import {
   isModeFor,
   isModeForPlacement,
   isPrimaryEligible,
+  itemDirName,
   itemKey,
   itemKindOf,
   mdKey,
@@ -42,6 +43,8 @@ export interface ItemMeta {
   uriKind?: RemoteUriKind;
   /** Reference `subpath` (cleaned, non-empty); the browser knows it from the entry summary, `ref` is server only. */
   subpath?: string;
+  /** Reference `folder` (local-repo, local-folder, remote-repo): the folder name used instead of the slug. */
+  folder?: string;
   /** Full reference data: server only (fs-sources); undefined in the browser. */
   ref?: ReferenceData;
   /** A snippet's markdown: server only (fs-sources); undefined in the browser. */
@@ -87,7 +90,8 @@ export type InflateWarningCode =
   | 'tool-missing'
   | 'manifest-unreadable'
   | 'manifest-other-recipe'
-  | 'context-file-edited';
+  | 'context-file-edited'
+  | 'context-file-exists';
 export interface InflateWarning {
   code: InflateWarningCode;
   message: string;
@@ -202,6 +206,7 @@ export function itemMetaFromSummary(s: EntrySummary): ItemMeta {
   if (s.refType !== undefined) meta.refType = s.refType;
   if (s.uriKind !== undefined) meta.uriKind = s.uriKind;
   if (s.subpath !== undefined) meta.subpath = s.subpath;
+  if (s.folder !== undefined) meta.folder = s.folder;
   return meta;
 }
 
@@ -507,7 +512,8 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
     }
     segment.mode = mode;
     segment.modeSource = source;
-    segment.options = resolveOptions(kind, mode, slug, {
+    // `{name}` in a clone directory = the reference's folder name, else the slug
+    segment.options = resolveOptions(kind, mode, itemDirName(slug, found.meta.folder), {
       ...(kindDefault?.options === undefined ? {} : { recipe: kindDefault.options }),
       ...(override?.options === undefined ? {} : { override: override.options }),
     });
@@ -606,7 +612,7 @@ export function expandRecipe(recipe: RecipeData, lookup: ExpandLookup): Expanded
     } else if (seg.kind !== 'remote-repo' && seg.kind !== 'local-repo') {
       message = `primary ${primaryKey} must be a remote-repo or local-repo reference`;
     } else if (!isPrimaryEligible(seg.kind, seg.material)) {
-      message = `primary ${primaryKey} needs material clone (remote-repo) or symlink (local-repo)`;
+      message = `primary ${primaryKey} needs material clone (remote-repo) or symlink or worktree (local-repo)`;
     }
     if (message === undefined) {
       primary = { key: primaryKey, status: 'ok' };

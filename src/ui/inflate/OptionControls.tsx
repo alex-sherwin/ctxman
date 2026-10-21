@@ -13,6 +13,7 @@ import {
   GIT_REF_MESSAGE,
   MATERIAL_OPTION_DEFS,
   OPTION_DEFS,
+  cloneDepthLabel,
   isMaterialFor,
   isModeFor,
   isPlaceableKind,
@@ -126,8 +127,14 @@ function OptionControl({ seg, id }: { seg: ItemSegment; id: OptionId }) {
 
 type MaterialTextDef = Extract<MaterialOptionDef, { control: 'text' }>;
 
+/** Placeholder of an empty Branch / New branch field: what empty means for this material. */
+function refPlaceholder(seg: ItemSegment, id: MaterialTextDef['id']): string {
+  if (id === 'newBranch') return 'none';
+  return seg.material === 'worktree' ? 'repository HEAD' : 'default branch';
+}
+
 function BranchOption({ seg, def }: { seg: ItemSegment; def: MaterialTextDef }) {
-  const resolved = seg.materialOptions.branch ?? def.default;
+  const resolved = seg.materialOptions[def.id] ?? def.default;
   // Like TextOption: only valid refs are committed, the draft stays while the field has focus.
   const f = useDraftField(resolved, (v) => setMaterialOption(seg.key, def.id, v), isSafeGitRef);
   return (
@@ -142,10 +149,10 @@ function BranchOption({ seg, def }: { seg: ItemSegment; def: MaterialTextDef }) 
         value={f.shown}
         onChange={f.onChange}
         onBlur={f.onBlur}
-        placeholder="default branch"
+        placeholder={refPlaceholder(seg, def.id)}
         isInvalid={f.invalid}
         errorMessage={GIT_REF_MESSAGE}
-        inputTestId="inflate-mopt-branch"
+        inputTestId={`inflate-mopt-${def.id}`}
         className="cx-seg__branchopt"
       />
     </span>
@@ -175,8 +182,8 @@ function MaterialOption({ seg, id }: { seg: ItemSegment; id: MaterialOptionId })
             triggerTestId="inflate-mopt-cloneDepth"
           >
             {choices.map((n) => (
-              <ListBoxItem key={n} id={n} textValue={n === 0 ? 'full' : String(n)}>
-                {n === 0 ? 'full' : n}
+              <ListBoxItem key={n} id={n} textValue={cloneDepthLabel(n)}>
+                {cloneDepthLabel(n)}
               </ListBoxItem>
             ))}
           </Select>
@@ -186,7 +193,7 @@ function MaterialOption({ seg, id }: { seg: ItemSegment; id: MaterialOptionId })
     case 'text':
       // A branch only means something for a git URI; an archive download has none.
       if (seg.meta?.uriKind === 'archive') return null;
-      return <BranchOption seg={seg} def={def} />;
+      return <BranchOption key={def.id} seg={seg} def={def} />;
     case 'checkbox':
       // Sparse checkout needs a subpath to check out: offered only when the reference has one (the entry
       // summary carries it; the planner ignores the flag without one).

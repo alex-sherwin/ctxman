@@ -647,6 +647,7 @@ describe('remove step', () => {
       branch: null,
       depth: 1,
       sparse: null,
+      newBranch: null,
     });
 
     it('removes a clean clone', async () => {
@@ -1021,13 +1022,47 @@ describe('writeContext and writeFile', () => {
     const refused = await h.run([dirStep(), ctxStep()]);
     expect(find(refused.results, 'context')).toMatchObject({
       status: 'failed',
-      message: 'LLM_CONTEXT.md exists and was not written by ctxman',
+      message:
+        'LLM_CONTEXT.md exists and was not written by ctxman; move it away or choose another context file name',
     });
     expect(readFileSync(path.join(h.dir, 'LLM_CONTEXT.md'), 'utf8')).toBe('somebody else\n');
 
     writeFileSync(path.join(h.dir, 'LLM_CONTEXT.md'), 'new\n');
     const adopted = await h.run([dirStep(), ctxStep()]);
     expect(find(adopted.results, 'context').status).toBe('unchanged');
+  });
+
+  it('replaces the AGENTS.md stub of an old directory with the context file, but never an edited one', async () => {
+    // a directory made with the old default context file LLM_CONTEXT.md and an AGENTS.md stub pointing to it
+    const agentsStep = step('writeContext', 'context', 'AGENTS.md', { expect: 'write' });
+    const h = harness({ renderContext: () => '# context\n', contextFile: 'AGENTS.md' });
+    mkdirSync(h.dir, { recursive: true });
+    writeFileSync(path.join(h.dir, 'AGENTS.md'), 'stub\n');
+    const old = previousOf([
+      { path: 'AGENTS.md', type: 'file', role: 'agents-md', sha256: sha256Of('stub\n') },
+    ]);
+    const replaced = await h.run([dirStep(), agentsStep, manifestStep()], { previous: old });
+    expect(find(replaced.results, 'context')).toMatchObject({
+      status: 'ok',
+      action: 'written',
+      message: 'replaced the AGENTS.md stub',
+    });
+    expect(readFileSync(path.join(h.dir, 'AGENTS.md'), 'utf8')).toBe('# context\n');
+    expect(replaced.manifest?.entries).toEqual([
+      { path: 'AGENTS.md', type: 'file', role: 'context', sha256: sha256Of('# context\n') },
+    ]);
+    expect(replaced.warnings).toEqual([]);
+
+    writeFileSync(path.join(h.dir, 'AGENTS.md'), 'my own notes\n');
+    const refused = await h.run([dirStep(), agentsStep, manifestStep()], { previous: old });
+    expect(find(refused.results, 'context')).toMatchObject({
+      status: 'failed',
+      message:
+        'AGENTS.md is a stub ctxman wrote earlier and it was edited since; move it away or choose another context file name',
+    });
+    expect(readFileSync(path.join(h.dir, 'AGENTS.md'), 'utf8')).toBe('my own notes\n');
+    // the stub stays recorded as what it was
+    expect(refused.manifest?.entries).toEqual(old.entries);
   });
 
   it('renders the context from the ACTUAL outcomes: failed items are marked failed with the reason', async () => {

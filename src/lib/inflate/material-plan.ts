@@ -40,6 +40,17 @@ export type ManifestEntry =
       branch: string | null;
       depth: number;
       sparse: string | null;
+      /** The work branch created after the clone; null = none (also for manifests written before it existed). */
+      newBranch: string | null;
+    }
+  | {
+      path: string;
+      type: 'worktree';
+      key: string;
+      /** Absolute, real path of the top level of the local repository the worktree belongs to. */
+      repo: string;
+      branch: string | null;
+      newBranch: string | null;
     }
   | { path: string; type: 'skill'; key: string; uri: string; subpath: string | null }
   | { path: string; type: 'file'; role: FileRole; sha256: string };
@@ -86,6 +97,8 @@ export type MaterialStep = StepBase &
         depth: number;
         branch: string | null;
         sparse: string | null;
+        /** Create and switch to this branch right after the clone. */
+        newBranch: string | null;
         stage: boolean;
       }
     | {
@@ -94,6 +107,15 @@ export type MaterialStep = StepBase &
         depth: number;
         branch: string | null;
         sparse: string | null;
+        /** Set: the clone works on this branch; a re-run only fetches (no pull). */
+        newBranch: string | null;
+      }
+    | {
+        kind: 'gitWorktree';
+        /** abs: the local repository (its top level). */
+        repo: string;
+        branch: string | null;
+        newBranch: string | null;
       }
     | { kind: 'download'; uri: string } // path = stage file
     | { kind: 'extract'; archive: string /* rel */; format: 'tgz' | 'zip' } // path = stage dir
@@ -118,7 +140,10 @@ export interface MaterialView {
   uri: string | null;
   subpath: string | null;
   depth: number | null;
+  /** clone / install / worktree: the branch or tag checked out (or the start point of `newBranch`). */
   branch: string | null;
+  /** clone / worktree: the branch created for the work; null = none. */
+  newBranch: string | null;
   sparse: boolean;
   /** References keep their `owner`; ctxman's own okf entries and local skills are always `'me'`. */
   owner: Owner | null;
@@ -404,7 +429,9 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
     const uriKind =
       family === 'remote-skill' && seg.meta.uriKind !== undefined ? seg.meta.uriKind : null;
     const clone = material === 'clone';
+    const worktree = material === 'worktree';
     const branch = opts.branch ?? '';
+    const newBranch = opts.newBranch ?? '';
     const view: MaterialView = {
       key,
       kind,
@@ -414,7 +441,7 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       dest:
         material === 'none'
           ? null
-          : materialDest(kind, seg.dataset, seg.slug, target, ref?.subpath),
+          : materialDest(kind, seg.dataset, seg.slug, target, ref?.subpath, seg.meta.folder),
       sourceAbs:
         family === 'okf' || family === 'skill'
           ? (ic?.rootAbs ?? null)
@@ -424,7 +451,8 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       uri: ref !== undefined && !isLocalReference(ref) ? ref.uri : null,
       subpath: subpath === '' ? null : subpath,
       depth: clone ? (opts.cloneDepth ?? DEFAULT_CLONE_DEPTH) : null,
-      branch: (clone || material === 'install') && branch !== '' ? branch : null,
+      branch: (clone || worktree || material === 'install') && branch !== '' ? branch : null,
+      newBranch: (clone || worktree) && newBranch !== '' ? newBranch : null,
       sparse: clone && opts.subpathOnly === true && subpath !== '',
       owner: ref?.owner ?? (family === 'okf' || family === 'skill' ? 'me' : null),
       edit: seg.edit,
@@ -438,6 +466,7 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       view.dest = null;
       view.depth = null;
       view.branch = null;
+      view.newBranch = null;
       view.sparse = false;
       // Not placed any more: a local repository or folder is editable at its original path only when asked for
       // (the primary default needs a placed repository), anything else loses the flag.
@@ -479,7 +508,11 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       case 'local-repo':
       case 'local-folder': {
         const local = ic?.local;
-        if (material !== 'symlink' && material !== 'copy') {
+        if (
+          material !== 'symlink' &&
+          material !== 'copy' &&
+          !(family === 'local-repo' && worktree)
+        ) {
           demote(
             'material-invalid',
             `material "${material}" does not apply to ${ITEM_KIND_LABELS[kind]}`,
@@ -488,6 +521,8 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
           demote('source-missing', 'the local path is unknown');
         } else if (!local.exists) {
           demote('source-missing', `${local.root} does not exist`);
+        } else if (worktree && !tools.git) {
+          demote('tool-missing', 'git is not installed');
         }
         break;
       }
@@ -651,6 +686,28 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
   for (const { view } of [...group('local-repo'), ...group('local-folder')]) {
     const dest = view.dest as string;
     const source = view.sourceAbs as string;
+    if (view.material === 'worktree') {
+      const on =
+        view.newBranch !== null
+          ? ` (new branch ${view.newBranch})`
+          : view.branch !== null
+            ? ` (${view.branch})`
+            : ' (detached)';
+      steps.push({
+        kind: 'gitWorktree',
+        id: `worktree:${view.key}`,
+        path: dest,
+        label: `git worktree ${dest} → ${source}${on}`,
+        // a worktree recorded there is left as it is
+        expect: previousAt(dest)?.type === 'worktree' ? 'keep' : expectFor(dest),
+        key: view.key,
+        after: [],
+        repo: source,
+        branch: view.branch,
+        newBranch: view.newBranch,
+      });
+      continue;
+    }
     steps.push(
       view.material === 'copy'
         ? {
@@ -689,10 +746,17 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       depth: view.depth ?? DEFAULT_CLONE_DEPTH,
       branch: view.branch,
       sparse: view.sparse ? view.subpath : null,
+      newBranch: view.newBranch,
     };
     steps.push(
       update
-        ? { kind: 'gitUpdate', label: `git pull ${dest}`, expect: 'update', ...common }
+        ? {
+            kind: 'gitUpdate',
+            // on a work branch a re-run only fetches: the branch has no upstream to pull from
+            label: view.newBranch === null ? `git pull ${dest}` : `git fetch ${dest}`,
+            expect: 'update',
+            ...common,
+          }
         : {
             kind: 'gitClone',
             label: `git clone ${uri} → ${dest}`,
@@ -719,9 +783,11 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
         key: view.key,
         after: [],
         uri,
+        // a temporary clone the skill folder is copied out of: no history needed
         depth: 1,
         branch: view.branch,
         sparse: view.subpath,
+        newBranch: null,
         stage: true,
       });
     } else {

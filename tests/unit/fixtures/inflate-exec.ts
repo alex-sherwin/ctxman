@@ -71,6 +71,7 @@ export const cloneStep = (
     depth: 1,
     branch: null,
     sparse: null,
+    newBranch: null,
     stage: false,
     ...fields,
   });
@@ -86,7 +87,21 @@ export const updateStep = (
     depth: 1,
     branch: null,
     sparse: null,
+    newBranch: null,
     expect: 'update',
+    ...fields,
+  });
+export const worktreeStep = (
+  key: string,
+  rel: string,
+  repo: string,
+  fields: StepFields = {},
+): MaterialStep =>
+  step('gitWorktree', `worktree:${key}`, rel, {
+    key,
+    repo,
+    branch: null,
+    newBranch: null,
     ...fields,
   });
 export const removeStep = (entry: ManifestEntry): MaterialStep =>
@@ -123,6 +138,7 @@ export function view(
     subpath: null,
     depth: null,
     branch: null,
+    newBranch: null,
     sparse: false,
     owner: null,
     edit: null,

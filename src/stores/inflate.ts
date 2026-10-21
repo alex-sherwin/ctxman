@@ -29,6 +29,7 @@ import {
   isModeForPlacement,
   isPlaceableKind,
   isPrimaryEligible,
+  itemDirName,
   mdKey,
   nextBlockId,
   stubDefaults,
@@ -167,7 +168,14 @@ export const $referenceInfo = computed($entries, (entries): ReadonlyMap<string, 
 export interface PlacementSummary {
   dir: string;
   /** Included items by placement; a remote-skill `install` counts as clone (git URI) or download (archive). */
-  counts: { symlink: number; copy: number; clone: number; download: number; none: number };
+  counts: {
+    symlink: number;
+    worktree: number;
+    copy: number;
+    clone: number;
+    download: number;
+    none: number;
+  };
   /** Title of the valid primary repository. */
   primary: string | null;
   /** Titles of the repositories the session may change (the primary unless told otherwise). */
@@ -179,6 +187,7 @@ export function summarizePlacement(plan: ExpandedPlan): PlacementSummary | null 
   if (dir === undefined || dir === '') return null;
   const counts: PlacementSummary['counts'] = {
     symlink: 0,
+    worktree: 0,
     copy: 0,
     clone: 0,
     download: 0,
@@ -194,6 +203,9 @@ export function summarizePlacement(plan: ExpandedPlan): PlacementSummary | null 
     switch (seg.material) {
       case 'symlink':
         counts.symlink++;
+        break;
+      case 'worktree':
+        counts.worktree++;
         break;
       case 'copy':
         counts.copy++;
@@ -900,7 +912,13 @@ export function setOption(key: string, id: OptionId, value: boolean | number | s
   const w = $working.get();
   const seg = itemSegment(key);
   if (w === null || seg === undefined || seg.kind === null || seg.mode === null) return;
-  const base = baseOptionValue(seg.kind, seg.mode, id, seg.slug, w.defaults[seg.kind]?.options);
+  const base = baseOptionValue(
+    seg.kind,
+    seg.mode,
+    id,
+    itemDirName(seg.slug, seg.meta?.folder),
+    w.defaults[seg.kind]?.options,
+  );
   commit(
     editOverride(w, key, (o) => {
       const options: Record<string, unknown> = { ...o.options };

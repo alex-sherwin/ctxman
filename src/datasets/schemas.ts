@@ -374,13 +374,18 @@ export const inflateOptionsSchema = type({
 export const recipeItemSchema = type({ '+': 'reject', dataset: linkableDataset, slug: nameSchema });
 export const recipeMarkdownSchema = type({ '+': 'reject', id: nameSchema, body: 'string' });
 
-/** Options of the materials clone / install (plans/INFLATE_V2_SPEC.md §4.1). */
+/** A branch or tag name ('' = none), passed to git as one argv element (catalog.isSafeGitRef). */
+const gitRefSchema = type('string <= 200').and(GIT_REF_PATTERN).describe(GIT_REF_MESSAGE);
+
+/** Options of the materials clone / install / worktree (plans/INFLATE_V2_SPEC.md §4.1). */
 export const materialOptionsSchema = type({
   '+': 'reject',
   /** Commits of history; 0 = full history. */
   'cloneDepth?': '0 <= number.integer <= 100000',
-  /** '' = the default branch. */
-  'branch?': type('string <= 200').and(GIT_REF_PATTERN).describe(GIT_REF_MESSAGE),
+  /** Branch or tag to check out, or the start point of `newBranch`; '' = the default branch. */
+  'branch?': gitRefSchema,
+  /** clone, worktree: the branch created for the work; '' = work on `branch` itself. */
+  'newBranch?': gitRefSchema,
   'subpathOnly?': 'boolean',
 });
 export const contextFileSchema = type(CONTEXT_FILE_PATTERN).describe(CONTEXT_FILE_MESSAGE);

@@ -1257,7 +1257,7 @@ describe('remote-repo modes', () => {
     );
   });
 
-  it('clone: shallow by default, into the {name} directory, then read the subpath', async () => {
+  it('clone: full history by default, into repos/{name}, then read the subpath', async () => {
     const { D } = world();
     const { markdown } = await render(
       D,
@@ -1271,19 +1271,19 @@ describe('remote-repo modes', () => {
         '',
         'Desc rr.',
         '',
-        'Clone it into the project (run from the project root; keep `.ctxman/` out of version control):',
+        'Clone it into the project (run from the project root; keep `repos/` out of version control):',
         '',
         '```sh',
-        'git clone --depth 1 https://github.com/o/r.git .ctxman/refs/rr',
+        'git clone https://github.com/o/r.git repos/rr',
         '```',
         '',
-        'Then read `.ctxman/refs/rr/docs`.',
+        'Then read `repos/rr/docs`.',
         '',
       ].join('\n'),
     );
   });
 
-  it('clone: shallow off, custom cloneDir', async () => {
+  it('clone: shallow on, custom cloneDir (its top folder stays out of version control)', async () => {
     const { D } = world();
     const { markdown } = await render(
       D,
@@ -1292,14 +1292,15 @@ describe('remote-repo modes', () => {
           {
             key: 'reference/rr-plain',
             mode: 'clone',
-            options: { shallow: false, cloneDir: 'vendor/{name}-src' },
+            options: { shallow: true, cloneDir: 'vendor/{name}-src' },
           },
         ],
       }),
     );
     expect(markdown).toContain(
-      '```sh\ngit clone git@github.com:o/r.git vendor/rr-plain-src\n```\n',
+      '```sh\ngit clone --depth 1 git@github.com:o/r.git vendor/rr-plain-src\n```\n',
     );
+    expect(markdown).toContain('keep `vendor/` out of version control');
     expect(markdown).not.toContain('Then read');
   });
 
@@ -1312,18 +1313,18 @@ describe('remote-repo modes', () => {
       }),
     );
     expect(sparse.markdown).toContain(
-      '```sh\ngit clone --depth 1 --filter=blob:none --sparse https://github.com/o/r.git .ctxman/refs/rr\ngit -C .ctxman/refs/rr sparse-checkout set docs\n```\n',
+      '```sh\ngit clone --filter=blob:none --sparse https://github.com/o/r.git repos/rr\ngit -C repos/rr sparse-checkout set docs\n```\n',
     );
-    const deep = await render(
+    const shallow = await render(
       D,
       only('rr', {
         overrides: [
-          { key: 'reference/rr', mode: 'clone', options: { sparse: true, shallow: false } },
+          { key: 'reference/rr', mode: 'clone', options: { sparse: true, shallow: true } },
         ],
       }),
     );
-    expect(deep.markdown).toContain(
-      'git clone --filter=blob:none --sparse https://github.com/o/r.git .ctxman/refs/rr\n',
+    expect(shallow.markdown).toContain(
+      'git clone --depth 1 --filter=blob:none --sparse https://github.com/o/r.git repos/rr\n',
     );
     // sparse without a subpath is a plain clone
     const noSub = await render(
@@ -1333,7 +1334,7 @@ describe('remote-repo modes', () => {
       }),
     );
     expect(noSub.markdown).toContain(
-      '```sh\ngit clone --depth 1 git@github.com:o/r.git .ctxman/refs/rr-plain\n```\n',
+      '```sh\ngit clone git@github.com:o/r.git repos/rr-plain\n```\n',
     );
   });
 });
@@ -1678,7 +1679,7 @@ async function renderDir(
   }
   const output: RenderOutput = {
     dir: WD,
-    contextFile: opts.contextFile ?? recipe.output?.contextFile ?? 'LLM_CONTEXT.md',
+    contextFile: opts.contextFile ?? recipe.output?.contextFile ?? 'AGENTS.md',
     primary: mp.primary,
     target: recipe.target,
     materials,
@@ -1741,7 +1742,7 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '## Working directory map',
       '',
       '```text',
-      'LLM_CONTEXT.md                    this file',
+      'AGENTS.md                         this file',
       'CLAUDE.md                         loads this file',
       '.gitignore                        ignores the machine-specific paths below',
       'repos/',
@@ -1764,6 +1765,8 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '  ctxman-add-entry/               symlink · Create a new ctxman dataset entry with the add scripts.',
       '```',
       '',
+      '**Where to work**: Each repository is its own git work tree under `repos/<name>/`. `cd` into the relevant one before running git, build or test commands, and start a session from that folder when the work concerns only that repository. The primary repository, [`repos/astro-docs/`](repos/astro-docs/), is the default place to start.',
+      '',
       '## Placement',
       '',
       '- **symlink**: the original folder, live; edits change the source (your ctxman entry or local repository).',
@@ -1777,7 +1780,7 @@ describe('renderPlan with output: golden document (the seed example)', () => {
       '',
       'The Astro documentation source, English content. Consult it for content collections, loaders, routing and configuration.',
       '',
-      '- Source: git clone of `https://github.com/withastro/docs.git`, shallow (depth 1), sparse checkout of `src/content/docs/en`',
+      '- Source: git clone of `https://github.com/withastro/docs.git`, full history, sparse checkout of `src/content/docs/en`',
       '- Start in: [`repos/astro-docs/src/content/docs/en/`](repos/astro-docs/src/content/docs/en/)',
       '',
       'Work in [`repos/astro-docs/`](repos/astro-docs/) unless the task says otherwise.',
@@ -1895,7 +1898,7 @@ describe('renderPlan with output: golden document (the seed example)', () => {
     const m = result.manifest;
     expect(m.output).toEqual({
       dir: WD,
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       primary: 'reference/astro-docs',
     });
     const seg = (key: string) => m.segments.find((s) => s.key === key);
@@ -2025,8 +2028,9 @@ describe('renderPlan without output stays the v1 document', () => {
 });
 
 describe('renderPlan with output: header', () => {
-  it('codex: AGENTS.md line, codex skills dir; no CLAUDE.md line', async () => {
+  it('codex: codex skills dir; no CLAUDE.md line; the AGENTS.md line only with another context file', async () => {
     const w = dirWorld();
+    // the context file IS AGENTS.md by default: no stub points to it
     const { result } = await renderDir(w, flatDir(['skill/foo'], [], { target: 'codex' }));
     const head = result.markdown.split('\n\n## ')[0] ?? '';
     expect(head.split('\n')).toEqual([
@@ -2035,8 +2039,17 @@ describe('renderPlan with output: header', () => {
       '> Prepared by ctxman for a Codex session.',
       `> This directory is the working root (\`${WD}\`). Links and paths below are relative to it; absolute paths point outside it. Read the referenced files and run the listed commands only when the task needs them.`,
       '> Skills go in `.agents/skills/<name>/`; project-wide instructions belong in `AGENTS.md`.',
-      '> `AGENTS.md` in this directory points to this file.',
     ]);
+    const named = await renderDir(
+      w,
+      flatDir(['skill/foo'], [], {
+        target: 'codex',
+        output: { dir: WD, contextFile: 'LLM_CONTEXT.md' },
+      }),
+    );
+    expect((named.result.markdown.split('\n\n## ')[0] ?? '').split('\n').at(-1)).toBe(
+      '> `AGENTS.md` in this directory points to this file.',
+    );
     expect(section(result.markdown, 'Skills')).toContain(
       'Installed in `.agents/skills/`, where Codex discovers them.',
     );
@@ -2103,7 +2116,7 @@ describe('renderPlan with output: working directory map', () => {
         '## Working directory map',
         '',
         '```text',
-        'LLM_CONTEXT.md      this file',
+        'AGENTS.md           this file',
         'CLAUDE.md           loads this file',
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
@@ -2118,6 +2131,8 @@ describe('renderPlan with output: working directory map', () => {
         '  foo/              symlink · A local skill.',
         '  rs-tgz/           downloaded · Desc rs-tgz.',
         '```',
+        '',
+        '**Where to work**: Each repository is its own git work tree under `repos/<name>/`. `cd` into the relevant one before running git, build or test commands, and start a session from that folder when the work concerns only that repository. The primary repository, [`repos/rr/`](repos/rr/), is the default place to start.',
       ].join('\n'),
     );
   });
@@ -2346,7 +2361,7 @@ describe('renderPlan with output: primary repository', () => {
         '',
         'Desc rr.',
         '',
-        '- Source: git clone of `git@github.com:o/r.git`, shallow (depth 1)',
+        '- Source: git clone of `git@github.com:o/r.git`, full history',
         '- Start in: [`repos/rr/docs/`](repos/rr/docs/)',
         '',
         'Read it to answer the task; it is read-only.',
@@ -2497,14 +2512,16 @@ describe('renderPlan with output: local folders', () => {
         '## Working directory map',
         '',
         '```text',
-        'LLM_CONTEXT.md  this file',
-        'CLAUDE.md       loads this file',
-        '.gitignore      ignores the machine-specific paths below',
+        'AGENTS.md   this file',
+        'CLAUDE.md   loads this file',
+        '.gitignore  ignores the machine-specific paths below',
         'repos/',
-        '  lr/           symlink · Desc lr.',
+        '  lr/       symlink · Desc lr.',
         'folders/',
-        '  lf/           symlink · editable · Desc lf.',
+        '  lf/       symlink · editable · Desc lf.',
         '```',
+        '',
+        '**Where to work**: Each repository is its own git work tree under `repos/<name>/`; folders are under `folders/<name>/`. `cd` into the relevant one before running git, build or test commands, and start a session from that folder when the work concerns only that repository.',
       ].join('\n'),
     );
   });
@@ -3175,14 +3192,14 @@ describe('renderPlan with output: repository items (compact)', () => {
         '',
         'Details: see Repositories.',
         '',
-        'Clone it into the project (run from this directory; keep `.ctxman/` out of version control):',
+        'Clone it into the project (run from this directory; keep `repos/` out of version control):',
         '',
         '```sh',
-        'git clone --depth 1 --filter=blob:none --sparse git@github.com:o/r.git .ctxman/refs/rr',
-        'git -C .ctxman/refs/rr sparse-checkout set docs',
+        'git clone --filter=blob:none --sparse git@github.com:o/r.git repos/rr',
+        'git -C repos/rr sparse-checkout set docs',
         '```',
         '',
-        'Then read `.ctxman/refs/rr/docs`.',
+        'Then read `repos/rr/docs`.',
       ].join('\n'),
     );
   });
@@ -3401,7 +3418,7 @@ describe('renderPlan with output: realistic working directory', () => {
         '## Working directory map',
         '',
         '```text',
-        'LLM_CONTEXT.md      this file',
+        'AGENTS.md           this file',
         'CLAUDE.md           loads this file',
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
@@ -3415,6 +3432,8 @@ describe('renderPlan with output: realistic working directory', () => {
         '  foo/              symlink · A local skill.',
         '  rs-tgz/           downloaded · Desc rs-tgz.',
         '```',
+        '',
+        '**Where to work**: Each repository is its own git work tree under `repos/<name>/`. `cd` into the relevant one before running git, build or test commands, and start a session from that folder when the work concerns only that repository. The primary repository, [`repos/rr/`](repos/rr/), is the default place to start.',
       ].join('\n'),
     );
     expect(section(md, 'Placement').split('\n').slice(2)).toHaveLength(7);
@@ -3463,5 +3482,137 @@ describe('renderPlan with output: realistic working directory', () => {
     // nothing of the data directory leaks: every placed path is relative
     expect(md).not.toContain(w.D);
     expect(result.manifest.warnings).toEqual([]);
+  });
+});
+
+describe('renderPlan: worktrees, work branches, folder names and where to work', () => {
+  const REPOS_LINE =
+    "> Run git, build and test commands of a repository from that repository's own directory.";
+
+  it('a worktree primary: map row, legend, source and work branch lines, the default place to start', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/lr'],
+        [
+          {
+            key: 'reference/lr',
+            material: 'worktree',
+            materialOptions: { branch: 'trunk', newBranch: 'feat/x' },
+          },
+        ],
+        { output: { dir: WD, primary: 'reference/lr' } },
+      ),
+    );
+    const md = result.markdown;
+    expect(section(md, 'Working directory map')).toMatch(
+      /^ {2}lr\/ +git worktree, new branch feat\/x from trunk · primary · editable · Desc lr\.$/m,
+    );
+    expect(section(md, 'Working directory map')).toContain(
+      'The primary repository, [`repos/lr/`](repos/lr/), is the default place to start.',
+    );
+    expect(section(md, 'Placement')).toContain(
+      '- **git worktree**: a separate checkout of the local repository on its own branch; commits land in the original repository; the next inflate leaves it as it is.',
+    );
+    const primary = section(md, 'Primary repository');
+    expect(primary).toContain(`- Source: git worktree of \`${w.repo}\`\n`);
+    expect(primary).toContain('- Branch: work on branch `feat/x`, created from `trunk`');
+    expect(primary).toContain('- Start in: [`repos/lr/src/`](repos/lr/src/)');
+    expect(primary).toContain('Work in [`repos/lr/`](repos/lr/) unless the task says otherwise.');
+    expect(section(md, 'lr')).toContain(
+      '`reference/lr` · Local repo · [`repos/lr/`](repos/lr/) · git worktree · primary · editable',
+    );
+    expect(result.manifest.segments.find((s) => s.key === 'reference/lr')).toMatchObject({
+      material: 'worktree',
+      dest: 'repos/lr',
+    });
+  });
+
+  it('a clone on a work branch and a detached worktree in the map and the Repositories section', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/rr', 'reference/lr'],
+        [
+          { key: 'reference/rr', materialOptions: { newBranch: 'work' } },
+          { key: 'reference/lr', material: 'worktree' },
+        ],
+      ),
+    );
+    const md = result.markdown;
+    const map = section(md, 'Working directory map');
+    expect(map).toMatch(
+      /^ {2}rr\/ +git clone, new branch work from the default branch · Desc rr\.$/m,
+    );
+    expect(map).toMatch(/^ {2}lr\/ +git worktree, detached HEAD · Desc lr\.$/m);
+    const repos = section(md, 'Repositories');
+    expect(repos).toContain(
+      ' · git clone of `git@github.com:o/r.git` · work on branch `work`, created from the default branch · relevant path',
+    );
+    expect(repos).toContain(` · git worktree of \`${w.repo}\` · relevant path`);
+    expect(section(md, 'Placement')).toContain(
+      'the next inflate pulls (fast-forward only; on a new work branch it only fetches)',
+    );
+  });
+
+  it("a reference's folder names its directory", async () => {
+    const w = dirWorld({
+      'reference/named.yaml': referenceYaml(
+        'named',
+        'type: remote-repo\nuri: git@github.com:o/n.git\nfolder: Named.Repo\nowner: me\n',
+      ),
+    });
+    const { result, plan } = await renderDir(w, flatDir(['reference/named']));
+    expect(plan.materials['reference/named']?.dest).toBe('repos/Named.Repo');
+    expect(section(result.markdown, 'Working directory map')).toMatch(
+      /^ {2}Named\.Repo\/ +git clone/m,
+    );
+    expect(section(result.markdown, 'named')).toContain('[`repos/Named.Repo/`](repos/Named.Repo/)');
+  });
+
+  it('where to work: folders only, a copied repository, nothing placed', async () => {
+    const w = dirWorld();
+    const folders = await renderDir(w, flatDir(['reference/lf']));
+    expect(section(folders.result.markdown, 'Working directory map')).toContain(
+      '**Where to work**: Each folder is under `folders/<name>/`: `cd` into the relevant one before running build or test commands there, and start a session from that folder when the work concerns only it.',
+    );
+    const copied = await renderDir(
+      w,
+      flatDir(['reference/lr'], [{ key: 'reference/lr', material: 'copy' }]),
+    );
+    expect(copied.result.markdown).toContain(
+      'Each repository is its own git work tree under `repos/<name>/` (a copy has no `.git`).',
+    );
+    const knowledge = await renderDir(w, flatDir(['kb/ctxman']));
+    expect(knowledge.result.markdown).not.toContain('Where to work');
+    expect(knowledge.result.markdown).not.toContain(REPOS_LINE);
+    // a repository that is not placed: the one-line reminder in the header instead
+    const unplaced = await renderDir(
+      w,
+      flatDir(['reference/rr'], [{ key: 'reference/rr', material: 'none' }]),
+    );
+    expect(unplaced.result.markdown).not.toContain('Where to work');
+    expect((unplaced.result.markdown.split('\n\n## ')[0] ?? '').split('\n')).toContain(REPOS_LINE);
+  });
+
+  it('document mode: one header line when the document lists repositories', async () => {
+    const { D } = world();
+    const local = await render(
+      D,
+      recipe({ layout: 'flat', items: [{ dataset: 'reference', slug: 'lr' }] }),
+    );
+    expect((local.markdown.split('\n\n')[1] ?? '').split('\n')).toContain(REPOS_LINE);
+    const remote = await render(
+      D,
+      recipe({ layout: 'flat', items: [{ dataset: 'reference', slug: 'rr-plain' }] }),
+    );
+    expect(remote.markdown).toContain(REPOS_LINE);
+    const folder = await render(
+      D,
+      recipe({ layout: 'flat', items: [{ dataset: 'reference', slug: 'lf' }] }),
+    );
+    expect(folder.markdown).not.toContain(REPOS_LINE);
   });
 });

@@ -215,16 +215,18 @@ describe('planMaterialization: seed-shaped recipe', () => {
       key: 'reference/astro-docs',
       after: [],
       uri: 'https://github.com/withastro/docs.git',
-      depth: 1,
+      // full history by default
+      depth: 0,
       branch: null,
       sparse: 'src/content/docs/en',
+      newBranch: null,
       stage: false,
     });
     expect(step('context')).toEqual({
       kind: 'writeContext',
       id: 'context',
-      path: 'LLM_CONTEXT.md',
-      label: 'Write LLM_CONTEXT.md',
+      path: 'AGENTS.md',
+      label: 'Write AGENTS.md',
       expect: 'write',
       after: [],
     });
@@ -236,7 +238,7 @@ describe('planMaterialization: seed-shaped recipe', () => {
       expect: 'write',
       after: [],
       role: 'claude-md',
-      content: stubText('claude-md', 'ctxman-dev-brief', 'LLM_CONTEXT.md'),
+      content: stubText('claude-md', 'ctxman-dev-brief', 'AGENTS.md'),
     });
     expect(step('stub:.gitignore')).toMatchObject({
       role: 'gitignore',
@@ -299,8 +301,9 @@ describe('planMaterialization: seed-shaped recipe', () => {
       sourceAbs: null,
       uri: 'https://github.com/withastro/docs.git',
       subpath: 'src/content/docs/en',
-      depth: 1,
+      depth: 0,
       branch: null,
+      newBranch: null,
       sparse: true,
       owner: 'not-me',
       edit: true,
@@ -319,7 +322,7 @@ describe('planMaterialization: seed-shaped recipe', () => {
       sparse: false,
     });
     expect(p.files).toEqual([
-      { path: 'LLM_CONTEXT.md', role: 'context' },
+      { path: 'AGENTS.md', role: 'context' },
       { path: 'CLAUDE.md', role: 'claude-md' },
       { path: '.gitignore', role: 'gitignore' },
     ]);
@@ -363,6 +366,7 @@ describe('planMaterialization: previous manifest', () => {
       branch: null,
       depth: 1,
       sparse: null,
+      newBranch: null,
     });
     const same = await plan(w, seedRecipe(), {
       previous: manifest([cloneEntry('https://github.com/withastro/docs.git')]),
@@ -376,9 +380,10 @@ describe('planMaterialization: previous manifest', () => {
       key: 'reference/astro-docs',
       after: [],
       uri: 'https://github.com/withastro/docs.git',
-      depth: 1,
+      depth: 0,
       branch: null,
       sparse: 'src/content/docs/en',
+      newBranch: null,
     });
     const other = await plan(w, seedRecipe(), {
       previous: manifest([cloneEntry('https://example.test/other/docs.git')]),
@@ -413,6 +418,7 @@ describe('planMaterialization: previous manifest', () => {
 
   it('removes only previous paths the new plan does not own, sorted by path, right after ensureDir', async () => {
     const w = world();
+    // a directory made with the old default context file LLM_CONTEXT.md (and an AGENTS.md stub)
     const previous = manifest([
       file('LLM_CONTEXT.md', 'context'),
       claudeStub,
@@ -425,6 +431,7 @@ describe('planMaterialization: previous manifest', () => {
         branch: null,
         depth: 1,
         sparse: null,
+        newBranch: null,
       },
       { path: 'kb/ctxman', type: 'symlink', key: 'kb/ctxman', target: '/old' },
       { path: 'kb/old-entry', type: 'symlink', key: 'kb/old-entry', target: '/old' },
@@ -436,26 +443,29 @@ describe('planMaterialization: previous manifest', () => {
     const removed = p.steps.filter((s) => s.kind === 'remove');
     expect(removed.map((s) => s.id)).toEqual([
       'rm:.claude/skills/gone',
-      'rm:AGENTS.md',
+      'rm:LLM_CONTEXT.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
     ]);
     expect(ids(p).slice(0, 5)).toEqual([
       'dir',
       'rm:.claude/skills/gone',
-      'rm:AGENTS.md',
+      'rm:LLM_CONTEXT.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
     ]);
+    // the old context file is stale; the old AGENTS.md stub is where the context file now goes
     expect(removed[1]).toEqual({
       kind: 'remove',
-      id: 'rm:AGENTS.md',
-      path: 'AGENTS.md',
-      label: 'Remove AGENTS.md',
+      id: 'rm:LLM_CONTEXT.md',
+      path: 'LLM_CONTEXT.md',
+      label: 'Remove LLM_CONTEXT.md',
       expect: 'remove',
       after: [],
-      entry: file('AGENTS.md', 'agents-md'),
+      entry: file('LLM_CONTEXT.md', 'context'),
     });
+    expect(ids(p)).not.toContain('rm:AGENTS.md');
+    expect(p.steps.find((s) => s.id === 'context')?.path).toBe('AGENTS.md');
     // owned paths (context file, CLAUDE.md, kb/ctxman) are not removed
     expect(ids(p)).not.toContain('rm:CLAUDE.md');
     expect(ids(p)).not.toContain('rm:kb/ctxman');
@@ -494,6 +504,7 @@ describe('planMaterialization: previous manifest', () => {
           branch: null,
           depth: 1,
           sparse: null,
+          newBranch: null,
         },
         { path: 'kb/old-entry', type: 'symlink', key: 'kb/old-entry', target: '/old' },
       ],
@@ -778,6 +789,7 @@ describe('planMaterialization: step groups', () => {
       depth: 1,
       branch: 'release/1.2',
       sparse: 'skills/foo',
+      newBranch: null,
       stage: true,
     });
     expect(byId('skill:reference/rs-git')).toEqual({
@@ -933,9 +945,10 @@ describe('planMaterialization: step groups', () => {
       adhoc(['reference/rr'], {}, [{ key: 'reference/rr', material: 'clone' }]),
     );
     expect(plain.steps.find((s) => s.id === 'clone:reference/rr')).toMatchObject({
-      depth: 1,
+      depth: 0,
       branch: null,
       sparse: null,
+      newBranch: null,
     });
   });
 });
@@ -1411,20 +1424,39 @@ describe('planMaterialization: context file and stubs', () => {
       'stub:CLAUDE.md',
       'stub:.gitignore',
     ]);
+    // the default context file IS AGENTS.md: there is no AGENTS.md stub, even when it is switched on
     for (const target of ['codex', 'generic']) {
       const p = await plan(w, seedRecipe({ target }));
-      expect(ids(p).filter((id) => id.startsWith('stub:'))).toEqual([
+      expect(ids(p).filter((id) => id.startsWith('stub:'))).toEqual(['stub:.gitignore']);
+      expect(p.files.map((f) => f.path)).toEqual(['AGENTS.md', '.gitignore']);
+      // with another context file name the AGENTS.md stub points to it
+      const named = await plan(
+        w,
+        seedRecipe({ target, output: { dir: W, contextFile: 'LLM_CONTEXT.md' } }),
+      );
+      expect(ids(named).filter((id) => id.startsWith('stub:'))).toEqual([
         'stub:AGENTS.md',
         'stub:.gitignore',
       ]);
-      expect(p.steps.find((s) => s.id === 'stub:AGENTS.md')).toMatchObject({
+      expect(named.steps.find((s) => s.id === 'stub:AGENTS.md')).toMatchObject({
         role: 'agents-md',
         content: stubText('agents-md', 'ctxman-dev-brief', 'LLM_CONTEXT.md'),
       });
     }
-    const both = await plan(
+    const on = await plan(
       w,
       seedRecipe({ output: { dir: W, stubs: { agentsMd: true, gitignore: false } } }),
+    );
+    expect(ids(on).filter((id) => id.startsWith('stub:'))).toEqual(['stub:CLAUDE.md']);
+    const both = await plan(
+      w,
+      seedRecipe({
+        output: {
+          dir: W,
+          contextFile: 'LLM_CONTEXT.md',
+          stubs: { agentsMd: true, gitignore: false },
+        },
+      }),
     );
     expect(ids(both).filter((id) => id.startsWith('stub:'))).toEqual([
       'stub:CLAUDE.md',
@@ -1445,6 +1477,178 @@ describe('planMaterialization: context file and stubs', () => {
     expect(none.files.map((f) => f.role)).toEqual(['context', 'claude-md']);
     const some = await plan(w, adhoc(['kb/ctxman']));
     expect(ids(some)).toContain('stub:.gitignore');
+  });
+});
+
+// ---------------------------------------------------------------- worktree, folder names, work branches
+
+describe('planMaterialization: worktree, reference folder and new branch', () => {
+  it('a local repository as a worktree: one gitWorktree step at repos/<name>, primary and editable', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/lr'], { output: { dir: W, primary: 'reference/lr' } }, [
+        {
+          key: 'reference/lr',
+          material: 'worktree',
+          materialOptions: { branch: 'trunk', newBranch: 'feat/x' },
+        },
+      ]),
+    );
+    expect(p.steps.find((s) => s.id === 'worktree:reference/lr')).toEqual({
+      kind: 'gitWorktree',
+      id: 'worktree:reference/lr',
+      path: 'repos/lr',
+      label: `git worktree repos/lr → ${w.repo} (new branch feat/x)`,
+      expect: 'create',
+      key: 'reference/lr',
+      after: [],
+      repo: w.repo,
+      branch: 'trunk',
+      newBranch: 'feat/x',
+    });
+    expect(p.materials['reference/lr']).toMatchObject({
+      material: 'worktree',
+      dest: 'repos/lr',
+      sourceAbs: w.repo,
+      branch: 'trunk',
+      newBranch: 'feat/x',
+      depth: null,
+      edit: true,
+    });
+    expect(p.primary).toBe('reference/lr');
+    expect(p.warnings).toEqual([]);
+  });
+
+  it('a worktree recorded at the path is kept; another entry there is replaced; no git demotes it', async () => {
+    const w = world();
+    const recipe = adhoc(['reference/lr'], {}, [{ key: 'reference/lr', material: 'worktree' }]);
+    const recorded = await plan(w, recipe, {
+      previous: manifest([
+        {
+          path: 'repos/lr',
+          type: 'worktree',
+          key: 'reference/lr',
+          repo: w.repo,
+          branch: null,
+          newBranch: null,
+        },
+      ]),
+    });
+    expect(recorded.steps.find((s) => s.id === 'worktree:reference/lr')).toMatchObject({
+      expect: 'keep',
+      label: `git worktree repos/lr → ${w.repo} (detached)`,
+      branch: null,
+      newBranch: null,
+    });
+    const symlinked = await plan(w, recipe, {
+      previous: manifest([
+        { path: 'repos/lr', type: 'symlink', key: 'reference/lr', target: w.repo },
+      ]),
+    });
+    expect(symlinked.steps.find((s) => s.id === 'worktree:reference/lr')?.expect).toBe('replace');
+    const noGit = await plan(w, recipe, { tools: { git: false, tar: true, unzip: true } });
+    expect(noGit.steps.some((s) => s.kind === 'gitWorktree')).toBe(false);
+    expect(noGit.materials['reference/lr']).toMatchObject({ material: 'none', dest: null });
+    expect(noGit.warnings).toEqual([
+      {
+        code: 'tool-missing',
+        message: 'reference/lr: git is not installed; nothing placed',
+        key: 'reference/lr',
+      },
+    ]);
+  });
+
+  it('a worktree of a local folder is not a valid material (demoted like any other)', async () => {
+    const w = world();
+    const p = await plan(
+      w,
+      adhoc(['reference/lf'], {}, [{ key: 'reference/lf', material: 'worktree' }]),
+    );
+    // the expander already falls back to the folder's default material
+    expect(p.materials['reference/lf']).toMatchObject({ material: 'symlink', dest: 'folders/lf' });
+  });
+
+  it('a reference folder names the destination; two references with the same folder collide', async () => {
+    const repo = tmp.make({ 'README.md': '' });
+    const folder = tmp.make({ 'notes.md': '' });
+    const D = tmp.make(
+      seedTree({
+        'reference/one.yaml': referenceYaml(
+          'one',
+          `type: local-repo\npath: ${repo}\nfolder: shared\nowner: me\n`,
+        ),
+        'reference/two.yaml': referenceYaml(
+          'two',
+          'type: remote-repo\nuri: git@github.com:o/two.git\nfolder: shared\nowner: me\n',
+        ),
+        'reference/notes.yaml': referenceYaml(
+          'notes',
+          `type: local-folder\npath: ${folder}\nfolder: My.Notes\nowner: me\n`,
+        ),
+      }),
+    );
+    const p = await plan(
+      { D, repo, folder },
+      adhoc(['reference/one', 'reference/two', 'reference/notes']),
+    );
+    expect(p.materials['reference/one']).toMatchObject({ dest: 'repos/shared' });
+    expect(p.materials['reference/notes']).toMatchObject({ dest: 'folders/My.Notes' });
+    expect(p.materials['reference/two']).toMatchObject({ material: 'none', dest: null });
+    expect(p.warnings).toEqual([
+      {
+        code: 'dest-collision',
+        message: 'reference/two: repos/shared is already used by reference/one; nothing placed',
+        key: 'reference/two',
+      },
+    ]);
+    expect(p.steps.find((s) => s.id === 'link:reference/one')?.path).toBe('repos/shared');
+    expect(p.steps.some((s) => s.id === 'clone:reference/two')).toBe(false);
+  });
+
+  it('newBranch flows into the clone step and the view; a re-run of that clone only fetches', async () => {
+    const w = world();
+    const recipe = adhoc(['reference/rr'], {}, [
+      {
+        key: 'reference/rr',
+        material: 'clone',
+        materialOptions: { branch: 'trunk', newBranch: 'work' },
+      },
+    ]);
+    const p = await plan(w, recipe);
+    expect(p.steps.find((s) => s.id === 'clone:reference/rr')).toMatchObject({
+      kind: 'gitClone',
+      branch: 'trunk',
+      newBranch: 'work',
+    });
+    expect(p.materials['reference/rr']).toMatchObject({ branch: 'trunk', newBranch: 'work' });
+    const again = await plan(w, recipe, {
+      previous: manifest([
+        {
+          path: 'repos/rr',
+          type: 'clone',
+          key: 'reference/rr',
+          uri: 'git@github.com:o/r.git',
+          branch: 'trunk',
+          depth: 0,
+          sparse: null,
+          newBranch: 'work',
+        },
+      ]),
+    });
+    expect(again.steps.find((s) => s.id === 'clone:reference/rr')).toMatchObject({
+      kind: 'gitUpdate',
+      label: 'git fetch repos/rr',
+      newBranch: 'work',
+    });
+    // a material without the option ignores it
+    const none = await plan(
+      w,
+      adhoc(['reference/rr'], {}, [
+        { key: 'reference/rr', material: 'none', materialOptions: { newBranch: 'work' } },
+      ]),
+    );
+    expect(none.materials['reference/rr']).toMatchObject({ newBranch: null, branch: null });
   });
 });
 
@@ -1542,6 +1746,7 @@ describe('createPathMapper (mount mapping)', () => {
     subpath: null,
     depth: null,
     branch: null,
+    newBranch: null,
     sparse: false,
     owner: null,
     edit: null,

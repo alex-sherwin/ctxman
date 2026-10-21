@@ -23,7 +23,7 @@ import { Button, EmptyState, Notice, OrderedList } from '../kit/index.ts';
 import { labelOf, plural } from './format.ts';
 import { SegmentRow } from './SegmentRow.tsx';
 
-/** `<dir> · 4 symlink · 1 copy · 2 clone · 1 download · 1 not placed · primary: X · editable: X, Y` (non-zero parts only). */
+/** `<dir> · 4 symlink · 1 worktree · 1 copy · 2 clone · 1 download · 1 not placed · primary: X · editable: X, Y` (non-zero parts only). */
 function PlacementStrip() {
   const summary = useStore($placementSummary);
   if (summary === null) return null;
@@ -35,6 +35,7 @@ function PlacementStrip() {
   ];
   const counted: [number, string][] = [
     [counts.symlink, 'symlink'],
+    [counts.worktree, 'worktree'],
     [counts.copy, 'copy'],
     [counts.clone, 'clone'],
     [counts.download, 'download'],

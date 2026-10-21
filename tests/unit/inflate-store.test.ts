@@ -330,7 +330,7 @@ describe('modes, options, defaults, exclude', () => {
     setMode('reference/refs-a', 'clone');
     setOption('reference/refs-a', 'cloneDir', '.ctxman/refs/other');
     expect(working().overrides[0]?.options?.cloneDir).toBe('.ctxman/refs/other');
-    setOption('reference/refs-a', 'cloneDir', '.ctxman/refs/refs-a');
+    setOption('reference/refs-a', 'cloneDir', 'repos/refs-a');
     expect(working().overrides[0]?.options).toBeUndefined();
   });
 
@@ -434,7 +434,7 @@ describe('output directory', () => {
   it('setOutputDir sets and clears the directory; an emptied output disappears', () => {
     setOutputDir('~/ctxman-inflate/demo');
     expect(working().output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       dir: '~/ctxman-inflate/demo',
     });
     expect($dirty.get()).toBe(true);
@@ -458,7 +458,7 @@ describe('output directory', () => {
     setContextFile('notes.txt');
     setContextFile('');
     expect(working().output?.contextFile).toBe('CONTEXT.md');
-    setContextFile('LLM_CONTEXT.md');
+    setContextFile('AGENTS.md');
     expect(Object.hasOwn(working(), 'output')).toBe(false);
     expect($dirty.get()).toBe(false);
   });
@@ -546,19 +546,22 @@ describe('materials', () => {
 
   it('setMaterialOption stores a value and drops it when it equals the base value', () => {
     // clone is the built-in material of a remote repo: only the options are stored
-    setMaterialOption('reference/refs-a', 'cloneDepth', 0);
+    setMaterialOption('reference/refs-a', 'cloneDepth', 1);
     setMaterialOption('reference/refs-a', 'branch', 'dev');
+    setMaterialOption('reference/refs-a', 'newBranch', 'work');
     expect(working().overrides[0]).toEqual({
       key: 'reference/refs-a',
-      materialOptions: { cloneDepth: 0, branch: 'dev' },
+      materialOptions: { cloneDepth: 1, branch: 'dev', newBranch: 'work' },
     });
-    setMaterialOption('reference/refs-a', 'cloneDepth', 1); // the built-in depth
+    setMaterialOption('reference/refs-a', 'cloneDepth', 0); // the built-in depth: full history
     setMaterialOption('reference/refs-a', 'branch', '');
+    setMaterialOption('reference/refs-a', 'newBranch', '');
     expect(working().overrides).toEqual([]);
     const segment = $plan.get()?.segments.find((s) => s.key === 'reference/refs-a');
     expect(segment?.type === 'item' && segment.materialOptions).toEqual({
-      cloneDepth: 1,
+      cloneDepth: 0,
       branch: '',
+      newBranch: '',
       subpathOnly: false,
     });
   });
@@ -600,7 +603,7 @@ describe('materials', () => {
     setOutputDir('/work');
     toggleContext('ctx-a', false); // refs-a was only linked by ctx-a
     expect(keys()).not.toContain('reference/refs-a');
-    expect(working().output).toEqual({ contextFile: 'LLM_CONTEXT.md', dir: '/work' });
+    expect(working().output).toEqual({ contextFile: 'AGENTS.md', dir: '/work' });
     expect(working().overrides).toEqual([]);
   });
 
@@ -746,7 +749,7 @@ describe('Editable (v3)', () => {
 
   it('the other override fields survive an edit flag and the other way round', () => {
     setEdit('reference/refs-a', true);
-    setMaterialOption('reference/refs-a', 'cloneDepth', 0);
+    setMaterialOption('reference/refs-a', 'cloneDepth', 1);
     setMode('reference/refs-a', 'clone');
     setExcluded('reference/refs-a', true);
     setExcluded('reference/refs-a', false);
@@ -754,13 +757,13 @@ describe('Editable (v3)', () => {
       {
         key: 'reference/refs-a',
         mode: 'clone',
-        materialOptions: { cloneDepth: 0 },
+        materialOptions: { cloneDepth: 1 },
         edit: true,
       },
     ]);
     setEdit('reference/refs-a', false);
     expect(working().overrides[0]).not.toHaveProperty('edit');
-    expect(working().overrides[0]?.materialOptions).toEqual({ cloneDepth: 0 });
+    expect(working().overrides[0]?.materialOptions).toEqual({ cloneDepth: 1 });
   });
 
   it('an override that only says edit is kept, and the recipe it makes is valid', () => {
@@ -846,7 +849,7 @@ describe('placement summary (v3)', () => {
     // kb/one, task/two, skill/my-skill symlinked; refs-a cloned
     expect($placementSummary.get()).toEqual({
       dir: '/work',
-      counts: { symlink: 3, copy: 0, clone: 1, download: 0, none: 0 },
+      counts: { symlink: 3, worktree: 0, copy: 0, clone: 1, download: 0, none: 0 },
       primary: null,
       editable: [],
     });
@@ -858,11 +861,14 @@ describe('placement summary (v3)', () => {
     addItem('reference', 'local-a');
     expect($placementSummary.get()?.counts).toEqual({
       symlink: 2, // my-skill, local-a
+      worktree: 0,
       copy: 1,
       clone: 2, // refs-a, the git skill
       download: 1,
       none: 1,
     });
+    setMaterial('reference/local-a', 'worktree');
+    expect($placementSummary.get()?.counts).toMatchObject({ symlink: 1, worktree: 1 });
   });
 
   it('names the primary and the editable repositories', () => {
@@ -888,6 +894,7 @@ describe('placement summary (v3)', () => {
     });
     expect($placementSummary.get()?.counts).toEqual({
       symlink: 3,
+      worktree: 0,
       copy: 0,
       clone: 1,
       download: 0,

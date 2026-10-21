@@ -22,7 +22,7 @@ const manifest = (over: Partial<InflateDirManifest> = {}): InflateDirManifest =>
   version: 1,
   recipe: 'demo',
   target: 'claude-code',
-  contextFile: 'LLM_CONTEXT.md',
+  contextFile: 'AGENTS.md',
   generatedAt: '2026-10-17T12:00:00.000Z',
   jobId: 'a4752759-d16a-4199-aa1f-1440b492a804',
   entries: [
@@ -32,7 +32,7 @@ const manifest = (over: Partial<InflateDirManifest> = {}): InflateDirManifest =>
       key: 'skill/okf-authoring',
       source: '/s',
     },
-    { path: 'LLM_CONTEXT.md', type: 'file', role: 'context', sha256: sha },
+    { path: 'AGENTS.md', type: 'file', role: 'context', sha256: sha },
     { path: 'kb/ctxman', type: 'symlink', key: 'kb/ctxman', target: '/d/kb/ctxman' },
     {
       path: 'repos/docs',
@@ -42,6 +42,15 @@ const manifest = (over: Partial<InflateDirManifest> = {}): InflateDirManifest =>
       branch: null,
       depth: 1,
       sparse: 'docs',
+      newBranch: 'work',
+    },
+    {
+      path: 'repos/local',
+      type: 'worktree',
+      key: 'reference/local',
+      repo: '/src/local',
+      branch: 'trunk',
+      newBranch: null,
     },
     {
       path: 'skills/x',
@@ -185,7 +194,7 @@ describe('inspectOutputDir + blockingFor', () => {
     const insp = await inspectOutputDir(root);
     expect(insp.manifestStatus).toBe('ok');
     expect(insp.manifest?.recipe).toBe('demo');
-    expect(insp.manifest?.entries).toHaveLength(5);
+    expect(insp.manifest?.entries).toHaveLength(6);
     expect(await blockingOf(root)).toEqual([]);
   });
 
@@ -278,6 +287,43 @@ describe('parseDirManifest', () => {
     const parsed = parseDirManifest(text, dir);
     expect(parsed.status).toBe('ok');
     if (parsed.status === 'ok') expect(parsed.manifest).toEqual(manifest());
+  });
+
+  it('writes newBranch after sparse and the worktree keys in order', () => {
+    const text = serializeDirManifest(manifest());
+    expect(text).toContain('"sparse": "docs",\n      "newBranch": "work"\n');
+    expect(text).toContain(
+      '"type": "worktree",\n      "key": "reference/local",\n      "repo": "/src/local",\n      "branch": "trunk",\n      "newBranch": null\n',
+    );
+  });
+
+  it('reads a clone entry written before work branches (no newBranch) as newBranch null', () => {
+    const old = {
+      ...manifest(),
+      entries: [
+        {
+          path: 'repos/docs',
+          type: 'clone',
+          key: 'reference/docs',
+          uri: 'u',
+          branch: null,
+          depth: 1,
+          sparse: null,
+        },
+      ],
+    };
+    const parsed = parse(old);
+    expect(parsed.status).toBe('ok');
+    if (parsed.status === 'ok') {
+      expect(parsed.manifest.entries).toEqual([{ ...old.entries[0], newBranch: null }]);
+    }
+    // a worktree entry is strict: every key, nothing else
+    const worktree = { path: 'repos/w', type: 'worktree', key: 'k', repo: '/r', branch: null };
+    expect(parse({ ...manifest(), entries: [worktree] }).status).toBe('invalid');
+    expect(
+      parse({ ...manifest(), entries: [{ ...worktree, newBranch: null, extra: 1 }] }).status,
+    ).toBe('invalid');
+    expect(parse({ ...manifest(), entries: [{ ...worktree, newBranch: null }] }).status).toBe('ok');
   });
 
   it('reports invalid JSON, non-objects and schema problems as invalid', () => {

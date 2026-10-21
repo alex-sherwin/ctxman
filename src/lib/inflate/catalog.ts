@@ -267,15 +267,15 @@ export const OPTION_DEFS: Readonly<Record<OptionId, OptionDef>> = {
     id: 'cloneDir',
     control: 'text',
     label: 'Clone into',
-    help: 'Project-relative directory; {name} = reference name.',
-    default: '.ctxman/refs/{name}',
+    help: "Project-relative directory; {name} = the reference's folder name (default: the reference name).",
+    default: 'repos/{name}',
   },
   shallow: {
     id: 'shallow',
     control: 'checkbox',
     label: 'Shallow',
-    help: 'Clone with --depth 1.',
-    default: true,
+    help: 'Clone with --depth 1 (default: the full history).',
+    default: false,
   },
   sparse: {
     id: 'sparse',
@@ -514,6 +514,14 @@ export function defaultModeFor(kind: ItemKind, target: InflateTarget, placed = f
 
 // ---------------------------------------------------------------- option resolution
 
+/**
+ * The folder name of an item: a reference's optional `folder` when set, else the slug. It names the destination
+ * of a placed repository or folder (`repos/<name>`, `folders/<name>`) and is what `{name}` stands for in options.
+ */
+export function itemDirName(slug: string, folder?: string | null): string {
+  return folder !== undefined && folder !== null && folder !== '' ? folder : slug;
+}
+
 function withName(value: string, slug: string): string {
   return value.replaceAll('{name}', slug);
 }
@@ -525,7 +533,7 @@ function defaultOf(option: OptionId, slug: string): InflateOptions[OptionId] {
 
 /**
  * What `resolveOptions` would give for `option` without the override layer
- * (recipe default ?? built-in default; `{name}` in cloneDir → slug).
+ * (recipe default ?? built-in default; `{name}` in cloneDir → `slug`, which callers pass as `itemDirName`).
  */
 export function baseOptionValue(
   _kind: ItemKind,
@@ -541,7 +549,7 @@ export function baseOptionValue(
 
 /**
  * Resolved options for one item: only the mode's options, each = override ?? recipe default ??
- * OPTION_DEFS default; `{name}` in cloneDir → slug.
+ * OPTION_DEFS default; `{name}` in cloneDir → `slug` (callers pass `itemDirName`: the reference folder or slug).
  */
 export function resolveOptions(
   kind: ItemKind,
@@ -601,7 +609,8 @@ export function nextBlockId(existing: readonly string[]): string {
 
 // ---------------------------------------------------------------- output (working directory, plans/INFLATE_V2_SPEC.md §3)
 
-export const DEFAULT_CONTEXT_FILE = 'LLM_CONTEXT.md';
+/** The context file of a working directory: the agent instructions file the harnesses read on their own. */
+export const DEFAULT_CONTEXT_FILE = 'AGENTS.md';
 export const DEFAULT_DIR_TEMPLATE = '~/ctxman-inflate/{name}';
 export const defaultDirFor = (recipeName: string): string =>
   DEFAULT_DIR_TEMPLATE.replace('{name}', recipeName);
@@ -676,7 +685,7 @@ export function isSafeGitRef(value: string): boolean {
 
 // ---------------------------------------------------------------- materials (what is PLACED in the working directory)
 
-export const MATERIAL_IDS = ['none', 'symlink', 'copy', 'clone', 'install'] as const;
+export const MATERIAL_IDS = ['none', 'symlink', 'copy', 'clone', 'install', 'worktree'] as const;
 export type MaterialId = (typeof MATERIAL_IDS)[number];
 
 /** Materials a `reference/<slug>` override key may name (the reference type is not known from the key). */
@@ -686,16 +695,19 @@ export const REFERENCE_MATERIAL_IDS = [
   'copy',
   'clone',
   'install',
+  'worktree',
 ] as const satisfies readonly MaterialId[];
 
-export const MATERIAL_OPTION_IDS = ['cloneDepth', 'branch', 'subpathOnly'] as const;
+export const MATERIAL_OPTION_IDS = ['cloneDepth', 'branch', 'newBranch', 'subpathOnly'] as const;
 export type MaterialOptionId = (typeof MATERIAL_OPTION_IDS)[number];
 
 export interface MaterialOptions {
   /** Commits of history to fetch; 0 = full history. */
   cloneDepth: number;
-  /** '' = the default branch. */
+  /** Branch or tag to check out, or the start point of `newBranch`; '' = the default branch (worktree: HEAD). */
   branch: string;
+  /** Branch created for the work (clone, worktree); '' = work on `branch` itself. */
+  newBranch: string;
   subpathOnly: boolean;
 }
 
@@ -707,7 +719,7 @@ export interface MaterialDef {
 }
 
 const DONT_PLACE = "Don't place";
-const NOT_PLACED = 'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.';
+const NOT_PLACED = 'Nothing is placed; the context file points at the original path or URI.';
 
 const dontPlace = (): MaterialDef => ({
   id: 'none',
@@ -757,6 +769,13 @@ export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[
       options: [],
     },
     {
+      id: 'worktree',
+      label: 'Worktree',
+      description:
+        'git worktree of the repository at repos/<name> on its own branch; commits land in the original repository; later runs leave it as is.',
+      options: ['branch', 'newBranch'],
+    },
+    {
       id: 'copy',
       label: 'Copy',
       description: 'Snapshot without .git and node_modules at repos/<name>; replaced on every run.',
@@ -783,8 +802,9 @@ export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[
     {
       id: 'clone',
       label: 'Clone',
-      description: 'git clone into repos/<name>; later runs pull (fast-forward only).',
-      options: ['cloneDepth', 'branch', 'subpathOnly'],
+      description:
+        'git clone into repos/<name>; later runs pull (fast-forward only), or only fetch on a new work branch.',
+      options: ['cloneDepth', 'branch', 'newBranch', 'subpathOnly'],
     },
     dontPlace(),
   ],
@@ -799,12 +819,12 @@ export const FAMILY_MATERIALS: Readonly<Record<ModeFamily, readonly MaterialDef[
     },
     dontPlace(),
   ],
-  // Nothing to place: the markdown is written into LLM_CONTEXT.md itself.
+  // Nothing to place: the markdown is written into the context file itself.
   snippet: [
     {
       id: 'none',
       label: DONT_PLACE,
-      description: 'Nothing to place: the markdown is written into LLM_CONTEXT.md.',
+      description: 'Nothing to place: the markdown is written into the context file.',
       options: [],
     },
   ],
@@ -862,7 +882,7 @@ export function materialDescription(
 
 /**
  * okf symlink · skill symlink · local-repo symlink · local-folder symlink · remote-repo clone · remote-skill
- * install · snippet none (all targets).
+ * install · snippet none (all targets). A local-repo `worktree` is opt-in.
  */
 export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): MaterialId {
   // The first entry of each family list (checked by a unit test).
@@ -882,26 +902,27 @@ export function defaultMaterialFor(kind: ItemKind, _target: InflateTarget): Mate
 }
 
 /**
- * A primary repository is a remote-repo with material clone, or a local-repo with material symlink (a copy has no
- * .git). A local folder is never primary: it is not a git repository.
+ * A primary repository is a remote-repo with material clone, or a local-repo with material symlink or worktree (a
+ * copy has no .git). A local folder is never primary: it is not a git repository.
  */
 export function isPrimaryEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
   return (
     (kind === 'remote-repo' && material === 'clone') ||
-    (kind === 'local-repo' && material === 'symlink')
+    (kind === 'local-repo' && (material === 'symlink' || material === 'worktree'))
   );
 }
 
 /**
  * May the session change files in this repository or folder (plans/INFLATE_V3_PLAN.md §3.2)? A local repository
- * or local folder that is symlinked or not placed (its original path), or a cloned remote repository. A copy is
- * a snapshot and a not-cloned remote cannot be edited, so neither is eligible. The default is `true` for the
- * valid primary and `false` for every other item.
+ * or local folder that is symlinked or not placed (its original path), a worktree of a local repository, or a
+ * cloned remote repository. A copy is a snapshot and a not-cloned remote cannot be edited, so neither is
+ * eligible. The default is `true` for the valid primary and `false` for every other item.
  */
 export function isEditEligible(kind: ItemKind | null, material: MaterialId | null): boolean {
   return (
     ((kind === 'local-repo' || kind === 'local-folder') &&
       (material === 'symlink' || material === 'none')) ||
+    (kind === 'local-repo' && material === 'worktree') ||
     (kind === 'remote-repo' && material === 'clone')
   );
 }
@@ -912,10 +933,11 @@ export type MaterialOptionDef =
       control: 'select-number';
       label: 'Depth';
       help: string;
-      default: 1;
-      choices: readonly [1, 10, 50, 0];
+      default: 0;
+      choices: readonly [0, 1, 10, 50];
     }
   | { id: 'branch'; control: 'text'; label: 'Branch'; help: string; default: '' }
+  | { id: 'newBranch'; control: 'text'; label: 'New branch'; help: string; default: '' }
   | { id: 'subpathOnly'; control: 'checkbox'; label: 'Subpath only'; help: string; default: false };
 
 export const MATERIAL_OPTION_DEFS: Readonly<Record<MaterialOptionId, MaterialOptionDef>> = {
@@ -923,15 +945,22 @@ export const MATERIAL_OPTION_DEFS: Readonly<Record<MaterialOptionId, MaterialOpt
     id: 'cloneDepth',
     control: 'select-number',
     label: 'Depth',
-    help: 'Commits of history to fetch; 0 = full history.',
-    default: 1,
-    choices: [1, 10, 50, 0],
+    help: 'Commits of history to fetch; Full = the whole history.',
+    default: 0,
+    choices: [0, 1, 10, 50],
   },
   branch: {
     id: 'branch',
     control: 'text',
     label: 'Branch',
-    help: 'Branch or tag; empty = the default branch.',
+    help: 'Branch or tag to check out, or the start point of New branch; empty = the default branch (a worktree: the HEAD of the repository).',
+    default: '',
+  },
+  newBranch: {
+    id: 'newBranch',
+    control: 'text',
+    label: 'New branch',
+    help: 'Create this branch for the work, starting at Branch (empty Branch = the default branch); empty = work on Branch itself.',
     default: '',
   },
   subpathOnly: {
@@ -942,6 +971,11 @@ export const MATERIAL_OPTION_DEFS: Readonly<Record<MaterialOptionId, MaterialOpt
     default: false,
   },
 };
+
+/** How a clone depth reads in the UI: 0 is 'Full' (the whole history), any other depth its number. */
+export function cloneDepthLabel(depth: number): string {
+  return depth === 0 ? 'Full' : String(depth);
+}
 
 /** What `resolveMaterialOptions` gives for `id` without the override layer (recipe default ?? built-in). */
 export function baseMaterialOptionValue(
@@ -980,8 +1014,9 @@ export function remoteSkillDirName(slug: string, subpath: string | null | undefi
 }
 
 /**
- * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<slug>` · local folder
- * `folders/<slug>` · remote-skill `<skillsDir>/<remoteSkillDirName>`.
+ * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<name>` · local folder
+ * `folders/<name>` · remote-skill `<skillsDir>/<remoteSkillDirName>`; `<name>` = `itemDirName(slug, folder)`, the
+ * reference's optional `folder`, else the slug.
  */
 export function materialDest(
   kind: ItemKind,
@@ -989,6 +1024,7 @@ export function materialDest(
   slug: string,
   target: InflateTarget,
   subpath?: string | null,
+  folder?: string | null,
 ): string {
   switch (familyOf(kind)) {
     case 'okf':
@@ -997,9 +1033,9 @@ export function materialDest(
       return `${TARGETS[target].skillsDir}/${slug}`;
     case 'local-repo':
     case 'remote-repo':
-      return `${REPOS_DIR}/${slug}`;
+      return `${REPOS_DIR}/${itemDirName(slug, folder)}`;
     case 'local-folder':
-      return `${FOLDERS_DIR}/${slug}`;
+      return `${FOLDERS_DIR}/${itemDirName(slug, folder)}`;
     case 'remote-skill':
       return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath)}`;
     case 'snippet':

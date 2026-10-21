@@ -314,7 +314,7 @@ function checkRecipeOutput(ctx: Ctx, file: string, recipe: RecipeData): string |
       'warning',
       'collections/recipe-primary-invalid',
       file,
-      `primary ${primary} needs material clone (remote-repo) or symlink (local-repo)`,
+      `primary ${primary} needs material clone (remote-repo) or symlink or worktree (local-repo)`,
     );
     return null;
   }

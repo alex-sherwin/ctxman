@@ -3,7 +3,7 @@
 // server render (`$render`, absolute paths). With one, it is the dry run's document with paths relative to the
 // directory (`$dirPlan`) unless `paths=absolute` asks for the v1 render.
 import { useStore } from '@nanostores/react';
-import { materialLabel } from '../../lib/inflate/catalog.ts';
+import { DEFAULT_CONTEXT_FILE, materialLabel } from '../../lib/inflate/catalog.ts';
 import type { InflateManifest, InflateResult } from '../../lib/inflate/render.ts';
 import {
   $inflateUrl,
@@ -234,7 +234,7 @@ function RunHint() {
       <p className="cx-preview__writestatus">
         A run writes this file to{' '}
         <code>
-          {result?.dir ?? '<dir>'}/{result?.contextFile ?? 'LLM_CONTEXT.md'}
+          {result?.dir ?? '<dir>'}/{result?.contextFile ?? DEFAULT_CONTEXT_FILE}
         </code>
         .
       </p>

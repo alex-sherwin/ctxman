@@ -611,9 +611,38 @@ describe('expandRecipe: modes and options', () => {
       world(),
     );
     expect(itemOf(plan, 'reference/rr').options).toEqual({
-      cloneDir: '.ctxman/refs/rr',
-      shallow: true,
+      cloneDir: 'repos/rr',
+      shallow: false,
       sparse: true,
+    });
+  });
+
+  it('{name} in cloneDir is the reference folder when it has one', () => {
+    const lookup = lookupOf(
+      {},
+      {
+        'reference/rr': ready(
+          meta('reference', 'rr', { refType: 'remote-repo', folder: 'Remote.Repo' }),
+        ),
+      },
+    );
+    const plan = expandRecipe(
+      recipe({
+        items: [{ dataset: 'reference', slug: 'rr' }],
+        overrides: [{ key: 'reference/rr', mode: 'clone', options: { cloneDir: 'vendor/{name}' } }],
+      }),
+      lookup,
+    );
+    expect(itemOf(plan, 'reference/rr').options).toMatchObject({ cloneDir: 'vendor/Remote.Repo' });
+    const byDefault = expandRecipe(
+      recipe({
+        items: [{ dataset: 'reference', slug: 'rr' }],
+        overrides: [{ key: 'reference/rr', mode: 'clone' }],
+      }),
+      lookup,
+    );
+    expect(itemOf(byDefault, 'reference/rr').options).toMatchObject({
+      cloneDir: 'repos/Remote.Repo',
     });
   });
 
@@ -702,8 +731,9 @@ describe('expandRecipe: materials (plans/INFLATE_V2_SPEC.md §5)', () => {
       ]);
       expect(itemOf(plan, 'kb/a').materialOptions).toEqual({});
       expect(itemOf(plan, 'reference/rr').materialOptions).toEqual({
-        cloneDepth: 1,
+        cloneDepth: 0,
         branch: '',
+        newBranch: '',
         subpathOnly: false,
       });
       expect(itemOf(plan, 'reference/rs').materialOptions).toEqual({ branch: '' });
@@ -985,7 +1015,7 @@ describe('expandRecipe: primary (plans/INFLATE_V2_SPEC.md §5)', () => {
 
   it('invalid: material none, a copy (no .git) or the wrong material for the kind', () => {
     const message =
-      'primary reference/rr needs material clone (remote-repo) or symlink (local-repo)';
+      'primary reference/rr needs material clone (remote-repo) or symlink or worktree (local-repo)';
     const explicitNone = expandRecipe(
       withPrimary('reference/rr', { overrides: [{ key: 'reference/rr', material: 'none' }] }),
       world(),
@@ -1003,7 +1033,19 @@ describe('expandRecipe: primary (plans/INFLATE_V2_SPEC.md §5)', () => {
     expect(localCopy.primary).toEqual({
       key: 'reference/lr',
       status: 'invalid',
-      message: 'primary reference/lr needs material clone (remote-repo) or symlink (local-repo)',
+      message:
+        'primary reference/lr needs material clone (remote-repo) or symlink or worktree (local-repo)',
+    });
+    // a worktree of a local repository is a git work tree: a valid primary, editable by default
+    const localWorktree = expandRecipe(
+      withPrimary('reference/lr', { overrides: [{ key: 'reference/lr', material: 'worktree' }] }),
+      world(),
+    );
+    expect(localWorktree.primary).toEqual({ key: 'reference/lr', status: 'ok' });
+    expect(itemOf(localWorktree, 'reference/lr')).toMatchObject({
+      material: 'worktree',
+      materialOptions: { branch: '', newBranch: '' },
+      edit: true,
     });
     // symlink on a remote-repo is not a valid material at all: the segment falls back to the default
     // (clone), which is a valid primary, so only the material warning remains
@@ -1099,7 +1141,7 @@ describe('expandRecipe: the seed recipe (plans/INFLATE_V2_SPEC.md §13)', () => 
       modeSource: 'default',
       material: 'clone',
       materialSource: 'override',
-      materialOptions: { cloneDepth: 1, branch: '', subpathOnly: true },
+      materialOptions: { cloneDepth: 0, branch: '', newBranch: '', subpathOnly: true },
       placed: true,
       edit: true,
       editSource: 'default',
@@ -1210,7 +1252,7 @@ describe('expandRecipe: placement (plans/INFLATE_V3_PLAN.md §3.3 and §5)', () 
       placed: false,
       mode: 'clone',
       modeSource: 'recipe',
-      options: { cloneDir: '.ctxman/refs/rr', shallow: true, sparse: false },
+      options: { cloneDir: 'repos/rr', shallow: false, sparse: false },
     });
     // ...and silently replaced as soon as it is
     const placed = expandRecipe(
