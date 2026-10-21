@@ -54,9 +54,9 @@
     --toolbar-h: 40px; /* Forge footer, Inflate bar */
     --bar-w: 2px; /* left accent bars (notices, ordered rows, dataset badges) */
     --gutter: 12px;
-    --content-max: 1600px;
+    --content-max: 2000px; /* the page content (`.cx-main`): lists, entry pages, dashboard, Tools */
     --sidebar-w: 30rem;
-    --prose-max: 84ch;
+    --prose-max: 126ch; /* the rendered markdown column; `ch` of the element that uses it (13px Inter: ~1030px) */
 
     /* ---- motion / layering ---- */
     --dur-fast: 80ms;

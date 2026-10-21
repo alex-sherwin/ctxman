@@ -140,7 +140,13 @@ test.describe('bundle detail pages', () => {
     const content = page.getByTestId('detail-content');
     await expect(toc).toBeVisible();
     const contentBox = (await content.boundingBox())!;
-    expect((await toc.boundingBox())!.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width);
+    const navBox = (await toc.boundingBox())!;
+    expect(navBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width);
+    // its natural width (at most 22rem = 286px) with 24px left and right of the list
+    const listBox = (await toc.locator('ol').boundingBox())!;
+    expect(Math.round(listBox.x - (contentBox.x + contentBox.width))).toBe(24);
+    expect(Math.round(navBox.x + navBox.width - (listBox.x + listBox.width))).toBe(24);
+    expect(listBox.width).toBeLessThanOrEqual(286);
     // the lone h1 (the title) is not listed
     await expect(toc.getByRole('link')).toHaveText([
       'What it holds',
