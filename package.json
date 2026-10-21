@@ -57,6 +57,9 @@
     "cybercore-css": "0.3.0",
     "fuse.js": "7.5.0",
     "hack-font": "3.3.0",
+    "mdast-util-from-markdown": "2.1.0",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
     "monaco-editor": "0.57.0",
     "monaco-yaml": "5.5.1",
     "nanostores": "1.5.5",
@@ -69,6 +72,7 @@
   "devDependencies": {
     "@astrojs/ts-content-mapper": "0.2.0",
     "@playwright/test": "1.64.1",
+    "@types/mdast": "4.0.4",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

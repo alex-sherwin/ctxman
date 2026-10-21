@@ -58,6 +58,10 @@ export default defineConfig({
         'monaco-yaml > vscode-uri',
         'monaco-yaml > jsonc-parser',
         'monaco-yaml > prettier',
+        // src/lib/jira-markup.ts (Copy as JIRA Markup), lazy-imported by islands and shell.ts
+        'mdast-util-from-markdown',
+        'micromark-extension-gfm',
+        'mdast-util-gfm',
       ],
     },
   },

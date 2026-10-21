@@ -1,5 +1,8 @@
 # Update log
 
+## 2026-10-21
+* **Add**: The Copy buttons of the okf and skill doc toolbar, the snippet Markdown panel and the Inflate preview are split buttons whose menu has "Copy as JIRA Markup": the markdown is converted to Jira wiki markup by `src/lib/jira-markup.ts` (GFM parsed with micromark; headings, effects, code with a Jira language or `{noformat}`, nested lists, tables, quotes, alerts as panels, links, images and footnotes, escaped only where Jira would read markup). [Jira markup](/concepts/jira-markup.md), [Editing](/concepts/editing.md) and [Architecture](/concepts/architecture.md) follow.
+
 ## 2026-10-20
 * **Update**: Context Inflate no longer writes a `CLAUDE.md` for any target: Claude Code reads `AGENTS.md` like the other harnesses, and the `AGENTS.md` stub (only planned when the context file has another name) is on by default for every target. A recipe's old `output.stubs.claudeMd` stays valid, is ignored and is dropped on the next save; a re-run over an old claude-code directory removes its unedited `CLAUDE.md` stub and keeps (and then forgets) an edited one. [Context inflate](/concepts/context-inflate.md) follows.
 * **Fix**: Context Inflate keeps a stale clone with commits on its work branch or a detached HEAD (they have no upstream, so `git status` did not show them), removes an old context file only after the new one is written, says `at <ref>` for a Branch (a tag is checked out detached) and tells a reused work branch from a new one. [Context inflate](/concepts/context-inflate.md) follows.

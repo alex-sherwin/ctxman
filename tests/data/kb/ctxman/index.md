@@ -65,6 +65,7 @@ The context [ctxman-dev](ctxman:context/ctxman-dev) is the starting point for wo
 * [MCP server](/concepts/mcp.md) - the embedded MCP endpoint for agents: setup, tools and resources.
 * [Keyboard shortcuts](/concepts/keyboard-shortcuts.md) - `?` help, `c` new entry, `l` add a link, `i` open in the IDE, `e` edit, and the editor and search keys.
 * [Editing](/concepts/editing.md) - editing in the browser: the Save model, drafts, markdown editor with link completion, Details dialog and forms, Open in IDE, JSON Schemas.
+* [Jira markup](/concepts/jira-markup.md) - Copy as JIRA Markup: markdown to Jira wiki markup, the mapping and the escaping policy.
 
 ## Quick facts
 
@@ -94,6 +95,7 @@ The tool at `/inflate` expands selected contexts, extra items and your own instr
 * [Context inflate](/concepts/context-inflate.md) - Recipes that turn contexts and extra items into one markdown document, or into a working directory (symlinks, copies, clones, worktrees, downloaded skills, an AGENTS.md context file that links to them) for Claude Code, Codex or a generic agent: Place and mode per item, Editable repositories, materials, targets, runs, safety rules and API.
 * [Search](/concepts/search.md) - The global fuzzy search: what is indexed (built from the disk per request), how it ranks, and its URL parameters.
 * [MCP server](/concepts/mcp.md) - The embedded MCP endpoint at `POST /mcp`: client setup, the read and write tools, the resources, and its loopback-only safety.
+* [Jira markup](/concepts/jira-markup.md) - "Copy as JIRA Markup" on the Copy buttons: how `src/lib/jira-markup.ts` maps every GFM element to Jira wiki markup, when it escapes, and what real Jira renderers cannot show.
 * [Routes and API](/concepts/routes-and-api.md) - Every page route, URL parameter and JSON endpoint, including the entry PATCH and create APIs, the MCP endpoint and the 503 while the data directory is unusable.
 
 ## Working in the repo
