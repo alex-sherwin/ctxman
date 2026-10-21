@@ -33,7 +33,7 @@ Before this feature a project could only mention its tasks in prose, a task coul
 
 * Data model: `links` in the okf entry `index.md` frontmatter, validated by `entryLinksSchema` (one link per target, no self link); skills have mentions only. Check rules `links/relation-target` (warning) and `links/relation-self` (error).
 * Read path: the entry index (`src/lib/entry-index.ts`, cached per file by mtime and size) feeds lists, details and the pure relation graph (`src/lib/relations.ts`). Collections keep rendering HTML and the search index; loaders and watchers are unchanged.
-* Write path: `GET|PATCH /api/entry/<ds>/<slug>` (range-based frontmatter splicing, schema-checked, `ifUnmodifiedSince`), `POST /api/entry/<ds>` (create, optional `parent`), `POST /api/doc/...` (create a concept and update the entry's `## Concepts` section and `log.md`), `POST /api/context/<slug>/links`.
+* Write path: `GET|PATCH /api/entry/<ds>/<slug>` (range-based frontmatter splicing, schema-checked, `ifUnmodifiedSince`), `POST /api/entry/<ds>` (create, optional `parent`), `POST /api/doc/...` (create a bundle file and list it under the entry's `## Links` section, plus `log.md` when present), `POST /api/context/<slug>/links`.
 * UI: the EntryTools and NewEntryForm islands, SSR panels and the state select, the EntryPicker, Monaco link completion, drafts.
 
 ## Acceptance criteria
