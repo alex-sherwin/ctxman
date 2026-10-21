@@ -72,6 +72,16 @@ Everything below is the EntryTools island on okf and skill detail pages (see [Ed
 * **Build context** (project pages): a checklist of the project (always on), its children (on) and its related and depends-on entries (off) becomes the links of a new context, or is appended to an existing one, and the browser opens it in the [Forge](/concepts/context-forge.md). There is no dedicated endpoint: it is `POST /api/context` or the links endpoint with the list computed in the page.
 * In the Forge itself the **All** tab searches every linkable dataset, and a row that has children offers `+ Add with N children` (children not yet linked, in file order).
 
+## Cloning and relations
+
+Cloning an okf entry (the `⋯` menu's Clone…, `POST /api/entry/<dataset>/<slug>/clone`, MCP `clone-entry`; see [Editing](/concepts/editing.md#cloning-an-okf-entry)) copies the entry's OWN links, filtered:
+
+* **Relations** (on by default, `links`): the `related` and `depends-on` links are kept as they are.
+* **Child links** (off by default, `children`): the `child` links, so a cloned project starts without children unless asked; the children's own files are never touched.
+* A link that would point at the clone itself (a dangling link to the new name) is dropped with a `clone/self-link-dropped` warning; with nothing left the `links:` key goes.
+
+Incoming links are not cloned: an entry that is a child of a project, a related or depends-on target of other entries or a link of a context keeps those edges for the original only, so the clone is NOT added to the original's project (use `+ Add existing` in that project's Children panel, or create the copy there). `ctxman:` mentions inside the copied files stay as written, so the clone mentions what the original mentions, and its `log.md` (when the original has one) mentions the original through the "Cloned from" line.
+
 ## Check rules
 
 | Rule | Severity | Meaning |
@@ -83,5 +93,5 @@ A malformed item or a duplicate is an `okf/entry-schema` / `collections/schema` 
 
 ## Related
 
-* [Datasets](/concepts/datasets.md) for the `links` field in the dataset shapes and [Routes and API](/concepts/routes-and-api.md) for `GET|PATCH /api/entry`, `POST /api/entry` and the context links endpoint.
+* [Datasets](/concepts/datasets.md) for the `links` field in the dataset shapes and [Routes and API](/concepts/routes-and-api.md) for `GET|PATCH /api/entry`, `POST /api/entry`, the clone endpoint and the context links endpoint.
 * [Context forge](/concepts/context-forge.md) and [Context inflate](/concepts/context-inflate.md) for the All tab and add-with-children.

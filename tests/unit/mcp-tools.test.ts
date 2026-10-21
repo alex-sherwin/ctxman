@@ -66,6 +66,7 @@ describe('read-only tools', () => {
         'render-recipe',
         'check-data',
         'create-entry',
+        'clone-entry',
         'patch-entry',
         'append-context-links',
         'append-log',
@@ -77,6 +78,7 @@ describe('read-only tools', () => {
       }
       expect(TOOLS.filter((t) => !t.readOnly).map((t) => t.name)).toEqual([
         'create-entry',
+        'clone-entry',
         'patch-entry',
         'append-context-links',
         'append-log',
@@ -660,6 +662,59 @@ describe('tools on a private corpus copy (tests that write)', () => {
       );
       expect(existsSync(path.join(dir, 'task', 'ok-name'))).toBe(false);
       expect(existsSync(path.join(dir, 'reference', 'bad-ref.yaml'))).toBe(false);
+    });
+  });
+
+  describe('clone-entry', () => {
+    it('copies a whole bundle as a new entry, visible in the next read', async () => {
+      const result = await ok('clone-entry', {
+        dataset: 'kb',
+        slug: 'ctxman',
+        name: 'ctxman-copy',
+        description: 'A clone made through MCP.',
+      });
+      const out = data<{
+        slug: string;
+        path: string;
+        files: string[];
+        resource: string;
+        summary: { title: string };
+      }>(result);
+      expect(out).toMatchObject({
+        slug: 'ctxman-copy',
+        path: 'kb/ctxman-copy/index.md',
+        resource: 'ctxman://kb/ctxman-copy',
+      });
+      expect(out.files).toContain('kb/ctxman-copy/concepts/mcp.md');
+      expect(out.summary.title).toMatch(/\(copy\)$/);
+      expect(read('kb', 'ctxman-copy', 'concepts', 'mcp.md')).toBe(
+        read('kb', 'ctxman', 'concepts', 'mcp.md'),
+      );
+      expect(read('kb', 'ctxman-copy', 'log.md')).toContain('* **Create**: Cloned from [');
+      expect(text(result)).toContain('Cloned `kb/ctxman` as `kb/ctxman-copy`');
+      const files = data<{ files: { path: string }[] }>(
+        await ok('list-bundle-files', { dataset: 'kb', slug: 'ctxman-copy' }),
+      );
+      expect(files.files.map((f) => f.path)).toContain('concepts/mcp.md');
+    });
+
+    it('fails with the lib codes: taken name, missing entry, not okf', async () => {
+      const base = { name: 'x-copy', description: 'x' };
+      await fails(
+        'clone-entry',
+        { dataset: 'kb', slug: 'ctxman', ...base, name: 'ctxman' },
+        'exists',
+      );
+      await fails('clone-entry', { dataset: 'kb', slug: 'nope', ...base }, 'not-found');
+      await fails(
+        'clone-entry',
+        { dataset: 'skill', slug: 'ctxman-add-entry', ...base },
+        'bad-dataset',
+      );
+      expect(TOOLS.find((t) => t.name === 'clone-entry')!.input.toJsonSchema()).toMatchObject({
+        type: 'object',
+        required: expect.arrayContaining(['dataset', 'slug', 'name', 'description']),
+      });
     });
   });
 

@@ -4,6 +4,7 @@
 import type { EntryRel, LinkableDatasetId } from '../../datasets/registry.ts';
 import { getJson, sendJson } from '../edit/api.ts';
 import type { ApiResult } from '../edit/api.ts';
+import type { CloneBody } from './clone-entry.ts';
 import type { FrontmatterPatch } from './entry-helpers.ts';
 
 const seg = encodeURIComponent;
@@ -55,6 +56,25 @@ export function patchEntry(
   body: EntryPatchBody,
 ): Promise<ApiResult<EntryWritten>> {
   return sendJson<EntryWritten>('PATCH', entryApiUrl(dataset, slug), body);
+}
+
+export interface EntryCloned {
+  dataset: string;
+  slug: string;
+  path: string;
+  /** The new entry's page: `/task/x-copy`. */
+  url: string;
+  files: string[];
+  warnings: unknown[];
+}
+
+/** `POST /api/entry/<ds>/<slug>/clone`: the whole okf bundle as a new entry (201). 409 `exists` when the name is taken. */
+export function cloneEntry(
+  dataset: string,
+  slug: string,
+  body: CloneBody,
+): Promise<ApiResult<EntryCloned>> {
+  return sendJson<EntryCloned>('POST', `${entryApiUrl(dataset, slug)}/clone`, body);
 }
 
 // ---------------------------------------------------------------- contexts

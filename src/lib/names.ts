@@ -34,3 +34,29 @@ export function normalizeTag(raw: string): string {
 export function tagProblem(tag: string): string | null {
   return tag === '' || TAG_PATTERN.test(tag) ? null : 'Lowercase letters, digits and hyphens';
 }
+
+// ---------------------------------------------------------------- clones (entry-clone.ts, the Clone… dialog)
+
+/** A trailing `-copy` / `-copy-<n>` of a name: cloning a clone suggests the next copy of the first one. */
+const COPY_SUFFIX = /-copy(?:-\d+)?$/;
+
+/**
+ * The first free name for a copy of `slug`: `<slug>-copy`, then `<slug>-copy-2`, `-copy-3`… (`existing` = the names
+ * of the dataset's entries). A `-copy[-n]` the slug already ends with is not repeated, and the base is shortened so
+ * the name stays within NAME_MAX_LENGTH (no trailing hyphen).
+ */
+export function suggestCloneName(slug: string, existing: ReadonlySet<string>): string {
+  const stem = slug.replace(COPY_SUFFIX, '') || slug;
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? '-copy' : `-copy-${n}`;
+    const base = stem.slice(0, NAME_MAX_LENGTH - suffix.length).replace(/-+$/, '');
+    const name = `${base}${suffix}`;
+    if (!existing.has(name)) return name;
+  }
+}
+
+/** The title of a copy: "<title> (copy)"; a title that already ends in "(copy)" / "(copy 2)" stays as it is. */
+export function cloneTitle(title: string): string {
+  const t = title.trim();
+  return /\(copy(?: \d+)?\)$/.test(t) ? t : `${t} (copy)`;
+}

@@ -1,10 +1,12 @@
 // The "more actions" menu of one entry and its delete confirmation, shared by the EntryMenus island (the SSR slot of
-// detail headers) and the ListTable island (its own row cells). The only action is "Delete…": the dialog runs the
-// DELETE, then a row reloads the list and a detail page goes back to the list of its dataset.
+// detail headers) and the ListTable island (its own row cells). Actions: "Clone…" (okf entries in the detail
+// header only, when the caller passes `onClone`: CloneEntryDialog.tsx) and "Delete…": the dialog runs the DELETE, then
+// a row reloads the list and a detail page goes back to the list of its dataset.
 // Monaco-free and store-free (the caller passes the doc-editor lock); kit parts are imported by file.
 import { useState } from 'react';
 import { datasetDef } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
+import { canClone } from '../entry/clone-entry.ts';
 import { LOCK_TITLE } from '../entry/entry-actions.ts';
 import { deleteEntry, deleteSummary } from '../entry/delete-entry.ts';
 import { Button } from '../kit/Button.tsx';
@@ -23,13 +25,16 @@ export interface MenuTarget {
 
 export interface EntryMenuProps {
   target: MenuTarget;
-  /** "Leave the editor first": a doc editor is open, so deleting is disabled. */
+  /** "Leave the editor first": a doc editor is open, so cloning and deleting are disabled. */
   locked?: boolean;
   onDelete: (target: MenuTarget) => void;
+  /** Shows "Clone…" for an okf entry in the detail header (list rows never pass it). */
+  onClone?: (target: MenuTarget) => void;
 }
 
 /** The `⋯` button and its menu. */
-export function EntryMenu({ target, locked = false, onDelete }: EntryMenuProps) {
+export function EntryMenu({ target, locked = false, onDelete, onClone }: EntryMenuProps) {
+  const cloneable = onClone !== undefined && canClone(target);
   return (
     <MenuTrigger>
       <Button
@@ -42,7 +47,23 @@ export function EntryMenu({ target, locked = false, onDelete }: EntryMenuProps) 
         <Icon name="more" />
       </Button>
       <Popover placement="bottom end">
-        <Menu aria-label={`Actions for ${target.title}`} onAction={() => onDelete(target)}>
+        <Menu
+          aria-label={`Actions for ${target.title}`}
+          onAction={(key) => {
+            if (key === 'clone') onClone?.(target);
+            else onDelete(target);
+          }}
+        >
+          {cloneable && (
+            <MenuItem
+              id="clone"
+              textValue="Clone"
+              isDisabled={locked}
+              data-testid="entry-menu-clone"
+            >
+              <span title={locked ? LOCK_TITLE : undefined}>Clone…</span>
+            </MenuItem>
+          )}
           <MenuItem
             id="delete"
             tone="danger"
