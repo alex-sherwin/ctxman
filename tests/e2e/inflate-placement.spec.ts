@@ -1,5 +1,5 @@
 // Inflate v3 (plans/INFLATE_V3_PLAN.md): "placement first". Every item of a recipe with a working directory answers
-// two questions, Place (the material) and "In LLM_CONTEXT.md" (the mode), and repositories carry an Editable flag.
+// two questions, Place (the material) and "In <context file>" (the mode), and repositories carry an Editable flag.
 // Covered here from the UI: the new defaults (symlinked skill, cloned remote repository, git skill cloned, archive
 // skill downloaded) and the "Don't place" choice, the placement summary strip, the Editable checkbox (saved as the
 // recipe override `edit`, visible in the dry-run document) and the Run view Editable checkbox (a run override).
@@ -197,12 +197,12 @@ test.describe('placement defaults', () => {
       `repos/${REPO_REF}`,
     );
 
-    // "In LLM_CONTEXT.md" column: a placed item is referenced with links, not inlined
+    // "In AGENTS.md" column (the default context file): a placed item is referenced with links, not inlined
     await expect(mode('kb/okf-format')).toContainText('Summary + links');
     await expect(mode('skill/okf-authoring')).toContainText('Link');
     await expect(mode(REPO_KEY)).toHaveText('Describe'); // one choice: static text, not a Select
     await expect(mode(LOCAL_KEY)).toContainText('Describe');
-    await expect(segmentRow(page, 'kb/okf-format').getByText('In LLM_CONTEXT.md')).toBeVisible();
+    await expect(segmentRow(page, 'kb/okf-format').getByText('In AGENTS.md')).toBeVisible();
 
     // owners come from the reference entries
     await expect(segmentRow(page, REPO_KEY).getByTestId('inflate-segment-owner')).toHaveAttribute(
@@ -294,9 +294,14 @@ test.describe('placement defaults', () => {
     await expect(archive.getByTestId('inflate-segment-dest')).toHaveCount(0);
     await expect(summary(page)).toHaveText(`${dir} · 2 symlink · 2 clone · 2 not placed`);
 
-    // local repository: Symlink, Copy, Don't place
+    // local repository: Symlink, Worktree, Copy, Don't place
     await segmentRow(page, LOCAL_KEY).getByTestId('inflate-segment-material').click();
-    await expect(page.getByRole('option')).toHaveText([/^Symlink/, /^Copy/, /^Don't place/]);
+    await expect(page.getByRole('option')).toHaveText([
+      /^Symlink/,
+      /^Worktree/,
+      /^Copy/,
+      /^Don't place/,
+    ]);
     await page.getByRole('option', { name: /^Copy/ }).click();
     await expect(summary(page)).toHaveText(`${dir} · 1 symlink · 1 copy · 2 clone · 2 not placed`);
 
@@ -529,7 +534,7 @@ test.describe('Run view Editable', () => {
     await expect(page.getByTestId('inflate-job')).toHaveAttribute('data-status', 'done', {
       timeout: 15_000,
     });
-    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(context).toMatch(new RegExp(`\\*\\*${LOCAL_REF}\\*\\* · .* · owner: me · editable — `));
     expect(context).toMatch(new RegExp(`${LOCAL_REF}/ +symlink · editable · `));
     expect(overrideIn(readRecipeYaml(name), LOCAL_KEY)).toBeUndefined();

@@ -1,6 +1,8 @@
 // NODE (fs through `output-dir.ts` and the injected sources): the dry run of an Inflate run into a working
 // directory and the preparation `/api/inflate/run` executes (plans/INFLATE_V2_SPEC.md §8.1). Nothing is
 // written. Without an output directory the result is the v1 absolute document ("document mode").
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { RecipeData } from '../../datasets/schemas.ts';
 import type { InflateRunOverrides } from '../../datasets/schemas.ts';
 import { spawnCapture } from '../proc.ts';
@@ -8,7 +10,7 @@ import type { ProcRunner } from '../proc.ts';
 import { DEFAULT_CONTEXT_FILE } from './catalog.ts';
 import type { ExpandedPlan, InflateWarning } from './expand.ts';
 import { createFsSources } from './fs-sources.ts';
-import { executeSteps, probeTools } from './material-exec.ts';
+import { executeSteps, probeTools, sha256Of } from './material-exec.ts';
 import type { ExecuteOutcome } from './material-exec.ts';
 import { planMaterialization } from './material-plan.ts';
 import type {
@@ -19,7 +21,7 @@ import type {
   StepUpdate,
 } from './material-plan.ts';
 import { blockingFor, checkOutputDir, inspectOutputDir } from './output-dir.ts';
-import type { DirCheckOptions } from './output-dir.ts';
+import type { DirCheckOptions, DirInspection } from './output-dir.ts';
 import { prepareInflate } from './pipeline.ts';
 import type { InflateSources, PlanContent } from './pipeline.ts';
 import { applyRunOverrides } from './recipe.ts';
@@ -85,6 +87,41 @@ function appliedOverrides(run: InflateRunOverrides): string[] {
     }
   }
   return applied;
+}
+
+const CONTEXT_FILE_HINT = 'move it away or choose another context file name';
+
+/**
+ * The up-front warning of a context file the run will refuse to write (its `writeContext` step fails): one ctxman
+ * did not write (not in the manifest), or a stub ctxman wrote there that was edited since (an `AGENTS.md` stub of
+ * a directory made with another context file name). null when the run may write it.
+ */
+async function contextFileWarning(
+  dir: string,
+  contextFile: string,
+  insp: DirInspection,
+  previous: InflateDirManifest | null,
+): Promise<InflateWarning | null> {
+  if (!insp.exists || insp.kind !== 'dir' || !insp.entries.includes(contextFile)) return null;
+  const rec = previous?.entries.find((e) => e.path === contextFile);
+  if (rec === undefined || rec.type !== 'file') {
+    return {
+      code: 'context-file-exists',
+      message: `${contextFile} already exists in ${dir} and was not written by ctxman, so the run will not write it; ${CONTEXT_FILE_HINT}`,
+    };
+  }
+  if (rec.role === 'context') return null;
+  let text: Buffer;
+  try {
+    text = await readFile(path.join(dir, contextFile));
+  } catch {
+    return null;
+  }
+  if (sha256Of(text) === rec.sha256) return null;
+  return {
+    code: 'context-file-exists',
+    message: `${contextFile} is a stub ctxman wrote earlier and it was edited since, so the run will not replace it; ${CONTEXT_FILE_HINT}`,
+  };
 }
 
 /**
@@ -160,6 +197,9 @@ export async function planInflateDir(input: PlanInflateDirInput): Promise<DirPla
       message: `${check.abs}/.ctxman-inflate.json cannot be read; nothing previously created there will be removed`,
     });
   }
+
+  const contextWarning = await contextFileWarning(check.abs, contextFile, inspection, previous);
+  if (contextWarning !== null) extraWarnings.push(contextWarning);
 
   const materialPlan: MaterialPlan = planMaterialization({
     plan,

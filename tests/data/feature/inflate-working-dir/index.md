@@ -48,3 +48,7 @@ Context Inflate v1 produces one markdown document that tells an agent where thin
 ## Inflate v3 (2026-10-18)
 
 A follow-up reworked how an item is placed and presented; the full description is the concept `concepts/context-inflate.md` of the knowledge base [ctxman](ctxman:kb/ctxman). In short: every item answers **Place** (symlink, copy, clone, download, don't place) and then **In LLM_CONTEXT.md**; a placed item is referenced with relative links instead of being inlined; the defaults moved (knowledge, skills and local repositories are symlinked, remote repositories cloned, remote skills cloned or downloaded) and a local repository can be copied; repositories carry an **Editable** flag (recipe override `edit`, on by default for the primary). The requirements and criteria above describe the first version.
+
+## AGENTS.md, worktrees and work branches (2026-10-20)
+
+The context file is now `AGENTS.md` by default (the `LLM_CONTEXT.md` of the versions above can still be chosen as its name), so no AGENTS.md stub is written and `CLAUDE.md` imports `@AGENTS.md`; a re-run upgrades a directory made with the old name. A local repository can be placed as a **git worktree** (`repos/<name>`, commits land in the original repository), clones and worktrees take a **New branch** to work on, clones fetch the full history by default, a reference may name its `folder`, and the context file tells the agent to work from inside each repository's folder.

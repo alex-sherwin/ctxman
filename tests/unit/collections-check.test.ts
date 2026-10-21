@@ -430,7 +430,7 @@ describe('checkCollections', () => {
         const needs = (key: string) =>
           rule(
             'recipe-primary-invalid',
-            `primary ${key} needs material clone (remote-repo) or symlink (local-repo)`,
+            `primary ${key} needs material clone (remote-repo) or symlink or worktree (local-repo)`,
           );
         const items = (slug: string) => `items:\n  - dataset: reference\n    slug: ${slug}\n`;
         // v3: the built-in materials (clone for a remote repo, symlink for a local one) are eligible
@@ -452,6 +452,12 @@ describe('checkCollections', () => {
             `output:\n  primary: reference/repo\n${items('repo')}defaults:\n  local-repo:\n    material: none\n`,
           ),
         ).toEqual([needs('reference/repo')]);
+        // a worktree of a local repository is a git work tree: a valid primary
+        expect(
+          await run(
+            `output:\n  primary: reference/repo\n${items('repo')}overrides:\n  - key: reference/repo\n    material: worktree\n    materialOptions:\n      newBranch: work\n`,
+          ),
+        ).toEqual([]);
         // wrong material for the type (symlink on a remote repo) is reported once; the primary check then
         // looks at the override as written, and a symlink is not clone
         expect(

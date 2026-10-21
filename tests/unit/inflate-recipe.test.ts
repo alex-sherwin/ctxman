@@ -391,10 +391,10 @@ describe('sameRecipe', () => {
 });
 
 describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', () => {
-  it('output is optional; contextFile defaults to LLM_CONTEXT.md inside it', () => {
+  it('output is optional; contextFile defaults to AGENTS.md inside it', () => {
     expect(assertValid(recipeSchema, base).output).toBeUndefined();
     expect(assertValid(recipeSchema, { ...base, output: {} }).output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
     });
     expect(
       assertValid(recipeSchema, {
@@ -476,6 +476,70 @@ describe('recipeSchema: output and material (plans/INFLATE_V2_SPEC.md §4.1)', (
       parseRecipe({ ...base, defaults: { 'remote-repo': { materialOptions: { cloneDepth: 10 } } } })
         .ok,
     ).toBe(true);
+  });
+
+  it('materialOptions.newBranch: a safe git ref like branch, in defaults, overrides and run overrides', () => {
+    const o = (materialOptions: unknown) => [
+      { key: 'reference/r', material: 'clone', materialOptions },
+    ];
+    expect(
+      parseRecipe({ ...base, overrides: o({ newBranch: 'feat/x', branch: 'trunk' }) }).ok,
+    ).toBe(true);
+    expect(parseRecipe({ ...base, overrides: o({ newBranch: '' }) }).ok).toBe(true);
+    expect(issues({ overrides: o({ newBranch: '-x' }) })).toEqual([
+      [
+        'overrides.0.materialOptions.newBranch',
+        'must be a branch or tag name (letters, digits, . _ - /; no "..", no leading "-") (was "-x")',
+      ],
+    ]);
+    expect(
+      parseRecipe({
+        ...base,
+        defaults: { 'local-repo': { material: 'worktree', materialOptions: { newBranch: 'w' } } },
+      }).ok,
+    ).toBe(true);
+    // worktree is a local-repo material only
+    expect(issues({ defaults: { 'remote-repo': { material: 'worktree' } } })).toEqual([
+      ['defaults.remote-repo.material', 'material "worktree" does not apply to Remote repo items'],
+    ]);
+    expect(issues({ overrides: [{ key: 'kb/a', material: 'worktree' }] })).toEqual([
+      ['overrides.0.material', 'material "worktree" does not apply to kb/a'],
+    ]);
+    expect(
+      parseRecipe({ ...base, overrides: [{ key: 'reference/r', material: 'worktree' }] }).ok,
+    ).toBe(true);
+    const parsed = parseRunRequest({
+      recipe: base,
+      overrides: { items: { 'reference/r': { materialOptions: { newBranch: 'work' } } } },
+    });
+    expect(parsed.ok && parsed.overrides.items['reference/r']).toEqual({
+      materialOptions: { newBranch: 'work' },
+    });
+    expect(
+      parseRunRequest({
+        recipe: base,
+        overrides: { items: { 'reference/r': { materialOptions: { newBranch: 'a..b' } } } },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('serializes newBranch in MATERIAL_OPTION_IDS order (after branch)', () => {
+    const r = parse({
+      overrides: [
+        {
+          key: 'reference/r',
+          material: 'clone',
+          materialOptions: { subpathOnly: true, newBranch: 'w', branch: 'b', cloneDepth: 1 },
+        },
+      ],
+    });
+    const override = (recipeToYamlObject(r).overrides as Record<string, unknown>[])[0];
+    expect(Object.keys(override?.materialOptions as object)).toEqual([
+      'cloneDepth',
+      'branch',
+      'newBranch',
+      'subpathOnly',
+    ]);
   });
 
   it('defaults: a material must apply to the kind', () => {
@@ -646,7 +710,12 @@ defaults:
 
   it('output omissions: default contextFile, allowNonEmpty false, empty stubs, empty output', () => {
     const out = (output: Record<string, unknown>) => recipeToYamlObject(parse({ output })).output;
-    expect(out({ dir: '/x', contextFile: 'LLM_CONTEXT.md' })).toEqual({ dir: '/x' });
+    expect(out({ dir: '/x', contextFile: 'AGENTS.md' })).toEqual({ dir: '/x' });
+    // the old default is a name of its own now
+    expect(out({ dir: '/x', contextFile: 'LLM_CONTEXT.md' })).toEqual({
+      dir: '/x',
+      contextFile: 'LLM_CONTEXT.md',
+    });
     expect(out({ dir: '/x', allowNonEmpty: false })).toEqual({ dir: '/x' });
     expect(out({ dir: '/x', stubs: {} })).toEqual({ dir: '/x' });
     expect(out({ dir: '/x', stubs: { gitignore: undefined } })).toEqual({ dir: '/x' });
@@ -655,7 +724,7 @@ defaults:
     });
     expect(out({})).toBeUndefined();
     expect(recipeToYamlObject(parse({ output: {} }))).not.toHaveProperty('output');
-    expect(out({ contextFile: 'LLM_CONTEXT.md', stubs: {} })).toBeUndefined();
+    expect(out({ contextFile: 'AGENTS.md', stubs: {} })).toBeUndefined();
   });
 
   it('keeps an override or default that only has a material or material options', () => {
@@ -776,18 +845,18 @@ describe('applyRunOverrides (plans/INFLATE_V2_SPEC.md §4.3)', () => {
 
   it('output is created from a recipe without one, with the default context file', () => {
     expect(applyRunOverrides(parse({}), run({ dir: '/tmp/w' })).output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       dir: '/tmp/w',
     });
     expect(applyRunOverrides(parse({}), run({ primary: 'reference/x' })).output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       primary: 'reference/x',
     });
     expect(applyRunOverrides(parse({}), run({ primary: null })).output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
     });
     expect(applyRunOverrides(parse({}), run({ allowNonEmpty: false })).output).toEqual({
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       allowNonEmpty: false,
     });
   });
@@ -1071,7 +1140,7 @@ describe('the seed recipe (plans/INFLATE_V2_SPEC.md §13)', () => {
     if (!parsed.ok) return;
     expect(parsed.recipe.output).toEqual({
       dir: '~/ctxman-inflate/ctxman-dev-brief',
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
       primary: 'reference/astro-docs',
     });
     expect(parsed.recipe.overrides.find((o) => o.key === 'reference/astro-docs')).toEqual({

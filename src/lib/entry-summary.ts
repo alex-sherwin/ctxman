@@ -1,6 +1,13 @@
 // PURE shared shapes + builders (UI_SPEC §0.5, PLAN §E.15). Islands import ONLY the types
 // (`import type`); `summarize` runs in SSR (src/lib/entries.ts) and scripts/tests.
-import { datasetDef, entryUrl, isReferenceType, OWNERS } from '../datasets/registry.ts';
+import {
+  datasetDef,
+  entryUrl,
+  isFolderReferenceType,
+  isReferenceType,
+  OWNERS,
+  REFERENCE_FOLDER_PATTERN,
+} from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { entryLinkSchema } from '../datasets/schemas.ts';
 import type { ContextInput, ContextLink, EntryLink } from '../datasets/schemas.ts';
@@ -40,6 +47,8 @@ export interface EntrySummary {
   owner?: Owner;
   /** reference only: the `subpath`, trimmed and without leading / trailing slashes (omitted when empty). */
   subpath?: string;
+  /** reference local-repo, local-folder, remote-repo only: a valid `folder` (Inflate's folder name instead of the slug). */
+  folder?: string;
   /** context only. */
   linkCount?: number;
   /** recipe only (from `data.target`). */
@@ -164,6 +173,13 @@ export function summarize(
   }
   if (dataset === 'reference' && isReferenceType(data.type)) {
     summary.refType = data.type;
+    if (
+      isFolderReferenceType(data.type) &&
+      typeof data.folder === 'string' &&
+      REFERENCE_FOLDER_PATTERN.test(data.folder)
+    ) {
+      summary.folder = data.folder;
+    }
     if (data.type === 'remote-skill' && typeof data.uri === 'string') {
       const uriKind = classifyRemoteUri(data.uri);
       if (uriKind !== null) summary.uriKind = uriKind;

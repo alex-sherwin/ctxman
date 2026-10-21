@@ -7,6 +7,7 @@ import {
   CONTEXT_FILE_MESSAGE,
   CONTEXT_FILE_PATTERN,
   DEFAULT_CONTEXT_FILE,
+  STUB_FILES,
   STUB_IDS,
   STUB_LABELS,
   defaultDirFor,
@@ -70,6 +71,7 @@ export function OutputPanel({ working }: { working: RecipeData }) {
   const overrides = useStore($runOverrideCount);
   const output = working.output;
   const dir = output?.dir ?? null;
+  const contextFile = output?.contextFile ?? DEFAULT_CONTEXT_FILE;
   const defaults = stubDefaults(working.target);
   const askAllow =
     output?.allowNonEmpty === true ||
@@ -104,19 +106,29 @@ export function OutputPanel({ working }: { working: RecipeData }) {
             Document only
           </Button>
         </div>
-        <ContextFileField value={output?.contextFile ?? DEFAULT_CONTEXT_FILE} />
+        <ContextFileField value={contextFile} />
         <fieldset className="cx-output__stubs">
           <legend className="cx-label">Generated files</legend>
-          {STUB_IDS.map((id) => (
-            <Checkbox
-              key={id}
-              isSelected={output?.stubs?.[id] ?? defaults[id]}
-              onChange={(on) => setStub(id, on)}
-              data-testid={`inflate-output-stub-${id}`}
-            >
-              {STUB_LABELS[id]}
-            </Checkbox>
-          ))}
+          {STUB_IDS.map((id) => {
+            // a stub named like the context file is never written: the context file itself is that file
+            const isContext = STUB_FILES[id].toLowerCase() === contextFile.toLowerCase();
+            return (
+              <Checkbox
+                key={id}
+                isSelected={!isContext && (output?.stubs?.[id] ?? defaults[id])}
+                isDisabled={isContext}
+                onChange={(on) => setStub(id, on)}
+                data-testid={`inflate-output-stub-${id}`}
+              >
+                {STUB_LABELS[id]}
+              </Checkbox>
+            );
+          })}
+          {STUB_IDS.some((id) => STUB_FILES[id].toLowerCase() === contextFile.toLowerCase()) && (
+            <p className="cx-subtle" data-testid="inflate-output-stub-note">
+              No {contextFile} stub is written: the context file is {contextFile} itself.
+            </p>
+          )}
         </fieldset>
         {askAllow && (
           <Checkbox

@@ -178,6 +178,59 @@ test.describe('/new/reference', () => {
     await expect(fields).toContainText('~/e2e-notes');
     await expect(fields).toContainText('folder root');
   });
+
+  test('Folder name is offered for repositories and folders (not a remote skill); a name that is not one folder is refused on the field', async ({
+    page,
+  }) => {
+    const name = uniqueName('e2e-ref');
+    created.push({ ds: 'reference', name });
+    const writes: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/api/') && r.method() !== 'GET')
+        writes.push(`${r.method()} ${r.url()}`);
+    });
+    await openNew(page, 'reference');
+    const folder = page.getByTestId('dform-field-folder');
+    // local repo (the default type): repos/<folder>, the placeholder is the reference name
+    await expect(folder).toBeVisible();
+    await expect(page.getByTestId('dform')).toContainText('Folder under repos/');
+    await page.getByTestId('dform-field-name').fill(name);
+    await expect(folder).toHaveAttribute('placeholder', name);
+    await pick(page, 'type', 'Local folder');
+    await expect(page.getByTestId('dform')).toContainText('Folder under folders/');
+    await pick(page, 'type', 'Remote repo');
+    await expect(folder).toBeVisible();
+    await pick(page, 'type', 'Remote skill');
+    await expect(folder).toHaveCount(0);
+    await pick(page, 'type', 'Local repo');
+    await expect(folder).toBeVisible();
+
+    await page.getByTestId('dform-field-description').fill('Folder name in a working directory');
+    await page.getByTestId('dform-field-path').fill('~/repos/e2e-folder');
+    await folder.fill('a/b');
+    await page.getByTestId('dform-save').click();
+    await expect(page.locator('.ck-field__error')).toContainText('must be one folder name');
+    await expect(folder).toBeFocused();
+    await expect(page.getByTestId('dform-status')).toHaveText('Fix the highlighted fields');
+    expect(writes).toEqual([]);
+    expect(dataExists(`reference/${name}.yaml`)).toBe(false);
+
+    await folder.fill('custom-dir');
+    await expect(page.locator('.ck-field__error')).toHaveCount(0);
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    expect(readYaml(`reference/${name}.yaml`)).toEqual({
+      name,
+      description: 'Folder name in a working directory',
+      type: 'local-repo',
+      path: '~/repos/e2e-folder',
+      folder: 'custom-dir',
+      owner: 'me',
+    });
+    const shown = page.getByTestId('reference-folder');
+    await expect(shown).toContainText('custom-dir');
+    await expect(shown).toContainText('repos/custom-dir');
+  });
 });
 
 test.describe('/new/context', () => {
@@ -674,6 +727,29 @@ test.describe('edit: reference', () => {
       owner: 'not-me',
       tags: ['e2e', 'edited'],
     });
+  });
+
+  test('Folder name: Save writes it, the page shows it, and clearing it removes the key again', async ({
+    page,
+    request,
+  }) => {
+    const name = uniqueName('e2e-ref');
+    await createReference(request, name);
+    await openEdit(page, 'reference', name);
+    await expect(page.getByTestId('dform-field-folder')).toHaveValue('');
+    await page.getByTestId('dform-field-folder').fill('checkout');
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    await expect(page.getByTestId('reference-folder')).toContainText('repos/checkout');
+    expect(readYaml(`reference/${name}.yaml`)).toMatchObject({ folder: 'checkout' });
+
+    await openEdit(page, 'reference', name);
+    await expect(page.getByTestId('dform-field-folder')).toHaveValue('checkout');
+    await page.getByTestId('dform-field-folder').fill('');
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    await expect(page.getByTestId('reference-folder')).toContainText(`repos/${name}`);
+    expect(readYaml(`reference/${name}.yaml`)).not.toHaveProperty('folder');
   });
 
   test('Info is a Monaco markdown field: Save writes it and the page renders it', async ({

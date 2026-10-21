@@ -23,6 +23,7 @@ import {
   REPOS_DIR,
   TARGETS,
   familyOf,
+  itemDirName,
   modeDef,
   modesForPlacement,
 } from './catalog.ts';
@@ -134,6 +135,9 @@ const byteLength = (text: string): number => encoder.encode(text).length;
 
 const HEADER_PATHS_LINE =
   'Paths are absolute paths on this machine. Read the referenced files and run the listed commands only when the task needs them.';
+/** Document mode, when repositories are listed (the directory document says it under its map). */
+const HEADER_REPOS_LINE =
+  "Run git, build and test commands of a repository from that repository's own directory.";
 
 // ---------------------------------------------------------------- small helpers
 
@@ -427,7 +431,11 @@ function cloneCommands(
 ): string[] {
   const subpath = cleanSubpath(ref.subpath);
   const dir =
-    seg.options.cloneDir ?? (OPTION_DEFS.cloneDir.default as string).replaceAll('{name}', seg.slug);
+    seg.options.cloneDir ??
+    (OPTION_DEFS.cloneDir.default as string).replaceAll(
+      '{name}',
+      itemDirName(seg.slug, seg.meta?.folder),
+    );
   const depth = flag(seg.options, 'shallow') ? ' --depth 1' : '';
   const lines =
     flag(seg.options, 'sparse') && subpath !== ''
@@ -436,8 +444,10 @@ function cloneCommands(
           `git -C ${shQuote(dir)} sparse-checkout set ${shQuote(subpath)}`,
         ]
       : [`git clone${depth} ${shQuote(ref.uri)} ${shQuote(dir)}`];
+  // the clone is a repository of its own inside the project: its top folder stays out of version control
+  const top = dir.split('/')[0] ?? dir;
   const out = [
-    `Clone it into the project (run from ${root}; keep \`.ctxman/\` out of version control):`,
+    `Clone it into the project (run from ${root}; keep ${inlineCode(`${top}/`)} out of version control):`,
     shBlock(lines),
   ];
   if (subpath !== '') out.push(`Then read ${inlineCode(`${dir}/${subpath}`)}.`);
@@ -949,16 +959,56 @@ function placementWord(view: MaterialView): string {
     case 'remote-skill':
       return fetchWord(view) ?? 'installed';
     default:
-      // okf, local skills, local repositories and local folders: a symlink or a copy
-      return view.material === 'copy' ? 'copy' : 'symlink';
+      // okf, local skills, local repositories and local folders: a symlink, a worktree or a copy
+      return view.material === 'copy'
+        ? 'copy'
+        : view.material === 'worktree'
+          ? 'git worktree'
+          : 'symlink';
   }
 }
 
-/** The note of a map row: the placement word, with the clone details. */
+/** Where a work branch starts when Branch is empty: the default branch of a clone, the HEAD of a worktree. */
+const startOf = (view: MaterialView): string =>
+  view.material === 'worktree' ? 'HEAD' : 'the default branch';
+
+/**
+ * What is checked out, without a work branch: `at <ref>` (true for a branch and for a tag, which git checks out
+ * detached), `detached HEAD` for a worktree without Branch, '' otherwise. `code` formats the ref.
+ */
+function checkout(view: MaterialView, code: (s: string) => string): string {
+  if (view.newBranch !== null) return '';
+  if (view.branch !== null) return `at ${code(view.branch)}`;
+  return view.material === 'worktree' ? 'detached HEAD' : '';
+}
+
+/** The note of a map row: the placement word, with the clone / worktree details. */
 function placement(view: MaterialView): string {
-  return view.kind === 'remote-repo'
-    ? `git clone${view.sparse ? ', sparse' : ''}${view.branch === null ? '' : `, branch ${view.branch}`}`
-    : placementWord(view);
+  if (view.kind !== 'remote-repo' && view.material !== 'worktree') return placementWord(view);
+  const plain = (s: string): string => s;
+  const work =
+    view.newBranch === null
+      ? checkout(view, plain)
+      : view.workBranch === 'reused'
+        ? `existing branch ${view.newBranch}`
+        : view.workBranch === 'present'
+          ? `branch ${view.newBranch}`
+          : `new branch ${view.newBranch} from ${view.branch ?? startOf(view)}`;
+  return `${placementWord(view)}${view.sparse ? ', sparse' : ''}${work === '' ? '' : `, ${work}`}`;
+}
+
+/**
+ * The work branch line of a clone or worktree with `newBranch` ('' otherwise): "work on branch `X`, created from
+ * `Y`", or, after a run, "(an existing branch)" when a worktree checked out a branch that was already there and
+ * nothing about its origin when the worktree was already in place.
+ */
+function workBranch(view: MaterialView): string {
+  if (view.newBranch === null) return '';
+  const name = inlineCode(view.newBranch);
+  if (view.workBranch === 'reused') return `work on branch ${name} (an existing branch)`;
+  if (view.workBranch === 'present') return `work on branch ${name}`;
+  const from = view.branch === null ? startOf(view) : inlineCode(view.branch);
+  return `work on branch ${name}, created from ${from}`;
 }
 
 /**
@@ -1017,7 +1067,36 @@ function directoryMap(dir: DirEnv, target: TargetDef): string {
     `${target.skillsDir}/`,
     placed.filter((v) => isSkillKind(v.kind)),
   );
-  return `${headingText(2, 'Working directory map')}\n\n${fenced(alignRows(rows).join('\n'), 'text')}`;
+  const note = whereToWork(dir);
+  return [
+    headingText(2, 'Working directory map'),
+    fenced(alignRows(rows).join('\n'), 'text'),
+    ...(note === '' ? [] : [note]),
+  ].join('\n\n');
+}
+
+/**
+ * The standing instruction under the map when repositories or folders are placed: each is a project of its own,
+ * so commands run from inside it and a session about one repository starts there; the primary is the default.
+ */
+function whereToWork(dir: DirEnv): string {
+  const placed = dir.views.filter(isPlacedView);
+  const repos = placed.filter((v) => isRepoKind(v.kind));
+  const folders = placed.some((v) => v.kind === 'local-folder');
+  if (repos.length === 0 && !folders) return '';
+  const repoName = inlineCode(`${REPOS_DIR}/<name>/`);
+  const folderName = inlineCode(`${FOLDERS_DIR}/<name>/`);
+  const copied = repos.some((v) => v.material === 'copy') ? ' (a copy has no `.git`)' : '';
+  const where =
+    repos.length === 0
+      ? `Each folder is under ${folderName}: \`cd\` into the relevant one before running build or test commands there, and start a session from that folder when the work concerns only it.`
+      : `Each repository is its own git work tree under ${repoName}${copied}${folders ? `; folders are under ${folderName}` : ''}. \`cd\` into the relevant one before running git, build or test commands, and start a session from that folder when the work concerns only that repository.`;
+  const primary = dir.primary === null ? undefined : dir.output.materials[dir.primary];
+  const start =
+    primary?.dest == null
+      ? ''
+      : ` The primary repository, ${pathLink(primary.dest, { folder: true })}, is the default place to start.`;
+  return `**Where to work**: ${where}${start}`;
 }
 
 /** `## Placement`: what symlink / copy / clone mean here, only for the placements that occur. */
@@ -1035,9 +1114,16 @@ function placementSection(dir: DirEnv): string {
       '- **copy**: a snapshot taken when this directory was inflated; edits stay here and are replaced by the next inflate.',
     );
   }
+  if (placed.some((v) => v.material === 'worktree')) {
+    bullets.push(
+      '- **git worktree**: a separate checkout of the local repository on its own branch; commits land in the original repository; the next inflate leaves it as it is.',
+    );
+  }
   if (placed.some((v) => v.material === 'clone')) {
     bullets.push(
-      '- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only) and keeps local changes and unpushed commits.',
+      placed.some((v) => v.material === 'clone' && v.newBranch !== null)
+        ? '- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only; on a new work branch it only fetches) and keeps local changes and unpushed commits.'
+        : '- **git clone**: a checkout of the remote repository; the next inflate pulls (fast-forward only) and keeps local changes and unpushed commits.',
     );
   }
   const fetched = placed.filter((v) => v.kind === 'remote-skill').map(fetchWord);
@@ -1073,16 +1159,23 @@ function primarySection(view: MaterialView): string {
   const dest = view.dest ?? '';
   const link = pathLink(dest, { folder: true });
   const editable = access(view) === 'editable';
+  // what is checked out; with a work branch Branch is only the start point (the Branch line says so)
+  const at = checkout(view, inlineCode);
+  const checkedOut = at === '' ? '' : `, ${at}`;
   const source =
     view.material === 'clone'
       ? `git clone of ${inlineCode(view.uri ?? '')}, ` +
-        ((view.depth ?? 1) > 0 ? `shallow (depth ${view.depth ?? 1})` : 'full history') +
-        (view.branch === null ? '' : `, branch ${inlineCode(view.branch)}`) +
+        ((view.depth ?? 0) > 0 ? `shallow (depth ${view.depth ?? 0})` : 'full history') +
+        checkedOut +
         (view.sparse && view.subpath !== null
           ? `, sparse checkout of ${inlineCode(view.subpath)}`
           : '')
-      : `${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`;
+      : view.material === 'worktree'
+        ? `git worktree of ${inlineCode(view.sourceAbs ?? '')}${checkedOut}`
+        : `${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`;
   const facts = [`- Source: ${source}`];
+  const work = workBranch(view);
+  if (work !== '') facts.push(`- Branch: ${work}`);
   if (view.subpath !== null) {
     facts.push(`- Start in: ${pathLink(`${dest}/${view.subpath}`, { folder: true })}`);
   }
@@ -1117,13 +1210,15 @@ function sourceBullet(view: MaterialView): string {
   const how = !placed
     ? ''
     : local
-      ? ` · ${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`
+      ? ` · ${view.material === 'copy' ? 'copy of' : view.material === 'worktree' ? 'git worktree of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`
       : ` · git clone of ${inlineCode(view.uri ?? '')}`;
+  // the same checkout facts as the map row: the work branch, else the ref checked out (or a detached HEAD)
+  const work = placed ? workBranch(view) || checkout(view, inlineCode) : '';
   const relevant =
     view.subpath === null
       ? ''
       : ` · relevant path ${placed ? pathLink(`${view.dest}/${view.subpath}`, { folder: true }) : inlineCode(view.subpath)}`;
-  return `- **${view.title}** · ${where}${how}${relevant}${ownerPart(view)} · ${access(view)}${dashed(view.description)}`;
+  return `- **${view.title}** · ${where}${how}${work === '' ? '' : ` · ${work}`}${relevant}${ownerPart(view)} · ${access(view)}${dashed(view.description)}`;
 }
 
 function repositoriesSection(dir: DirEnv): string {
@@ -1228,6 +1323,13 @@ export function renderPlan(
     ...(dirEnv === undefined ? {} : { dir: dirEnv }),
   };
 
+  // A repository is a project of its own: its commands run from its directory, not from where this file is.
+  const listsRepos = plan.segments.some(
+    (s) =>
+      s.type === 'item' &&
+      s.status === 'included' &&
+      (s.kind === 'local-repo' || s.kind === 'remote-repo'),
+  );
   const headerLines =
     output === undefined || dirEnv === undefined
       ? [
@@ -1236,6 +1338,7 @@ export function renderPlan(
           `> ${target.sessionLine}`,
           `> ${HEADER_PATHS_LINE}`,
           ...(target.skillsLine === null ? [] : [`> ${target.skillsLine}`]),
+          ...(listsRepos ? [`> ${HEADER_REPOS_LINE}`] : []),
         ]
       : [
           `# ${recipe.name}`,
@@ -1250,6 +1353,10 @@ export function renderPlan(
                 ? [`> ${inlineCode(path)} in this directory points to this file.`]
                 : [],
           ),
+          // placed repositories get the "Where to work" note under the map instead
+          ...(listsRepos && !dirEnv.views.some((v) => isRepoKind(v.kind) && isPlacedView(v))
+            ? [`> ${HEADER_REPOS_LINE}`]
+            : []),
         ];
   const header = headerLines.join('\n');
   const preamble = trimBlankLines(normalizeText(recipe.preamble ?? ''));

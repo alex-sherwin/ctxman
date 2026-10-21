@@ -243,6 +243,8 @@ interface Runtime {
   results: StepResult[];
   steps: readonly MaterialStep[];
   manifest: InflateDirManifest | null;
+  /** What a step learned about its item at run time (a worktree's work branch), merged into the rendered view. */
+  facts: Map<string, Partial<MaterialView>>;
 }
 
 /**
@@ -284,12 +286,68 @@ async function target(
 
 // ---------------------------------------------------------------- removal of recorded paths
 
-type RemoveResult = { kind: 'gone' } | { kind: 'removed' } | { kind: 'kept'; message: string };
+type RemoveResult =
+  | { kind: 'gone' }
+  | { kind: 'removed'; message?: string }
+  | { kind: 'kept'; message: string };
+
+/**
+ * `git worktree remove` (never `--force`) of a recorded worktree, then `git worktree prune`. Kept when the
+ * repository is gone, when HEAD is detached on commits no ref holds (they would be lost), or when git refuses
+ * (local changes, untracked files, a lock). Its commits stay in the repository: the branch lives there.
+ */
+async function removeWorktree(
+  rt: Runtime,
+  abs: string,
+  rec: Extract<ManifestEntry, { type: 'worktree' }>,
+): Promise<RemoveResult> {
+  const repo = await statOrNull(rec.repo);
+  if (repo === null || !repo.isDirectory()) {
+    return {
+      kind: 'kept',
+      message: `kept ${rec.path}: its repository ${rec.repo} is gone; left in place`,
+    };
+  }
+  const quick = { timeoutMs: 60_000 };
+  const head = await git(rt, ['-C', abs, 'symbolic-ref', '-q', 'HEAD'], quick);
+  if (head.code !== 0) {
+    // a detached HEAD: its commits survive only when a branch, tag or remote ref holds them
+    const holders = await git(
+      rt,
+      ['-C', abs, 'for-each-ref', '--contains', 'HEAD', '--count=1', '--format=%(refname)'],
+      quick,
+    );
+    if (holders.code !== 0 || holders.stdout.trim() === '') {
+      return {
+        kind: 'kept',
+        message: `kept ${rec.path}: it has commits on a detached HEAD that no branch holds; left in place`,
+      };
+    }
+  }
+  const remove = await git(rt, ['-C', rec.repo, 'worktree', 'remove', '--', abs], quick);
+  if (remove.aborted) return { kind: 'kept', message: `kept ${rec.path}: the run was cancelled` };
+  if (remove.code !== 0) {
+    const text = remove.tail.join('\n');
+    return {
+      kind: 'kept',
+      message: /modified or untracked|contains modified/i.test(text)
+        ? `kept ${rec.path}: it has local changes; left in place`
+        : `kept ${rec.path}: ${failureLine(remove, 'git worktree remove')}`,
+    };
+  }
+  await git(rt, ['-C', rec.repo, 'worktree', 'prune'], quick);
+  const branch = rec.newBranch ?? rec.branch;
+  return {
+    kind: 'removed',
+    message: `removed the worktree; its commits stay in ${rec.repo}${branch === null ? '' : ` (branch ${branch})`}`,
+  };
+}
 
 /**
  * Removes the path `rec` describes, but only while it still is what ctxman created: symlink stays a symlink
  * (unlinked), copies / skills stay real directories, clones stay clean (no local changes, nothing unpushed),
- * files keep the recorded sha256. Anything else is kept.
+ * worktrees are removed by git (which refuses local changes), files keep the recorded sha256. Anything else is
+ * kept.
  */
 async function removeRecorded(rt: Runtime, abs: string, rec: ManifestEntry): Promise<RemoveResult> {
   const st = await lstatOrNull(abs);
@@ -319,16 +377,30 @@ async function removeRecorded(rt: Runtime, abs: string, rec: ManifestEntry): Pro
       if (status.code !== 0) {
         return { kind: 'kept', message: `kept ${rec.path}: could not check its git status` };
       }
+      const unpushed: RemoveResult = {
+        kind: 'kept',
+        message: `kept ${rec.path}: it has local changes or unpushed commits`,
+      };
       const lines = status.stdout.split('\n').filter((l) => l.trim() !== '');
-      if (lines.length > 1 || (lines[0] ?? '').includes('[ahead')) {
-        return {
-          kind: 'kept',
-          message: `kept ${rec.path}: it has local changes or unpushed commits`,
-        };
-      }
+      if (lines.length > 1 || (lines[0] ?? '').includes('[ahead')) return unpushed;
+      // `[ahead N]` exists only for a branch with an upstream (a work branch made by `switch -c` has none): any
+      // commit of HEAD (also a detached one) or of a local branch that no remote-tracking ref holds counts too.
+      // Conservative on purpose: a clone without remote-tracking refs (a shallow clone of a tag) is kept.
+      const local = await rt.ctx.proc(
+        'git',
+        ['-C', abs, 'rev-list', 'HEAD', '--branches', '--not', '--remotes', '-n', '1'],
+        { env: gitEnv(), signal: rt.ctx.signal, timeoutMs: 60_000 },
+      );
+      if (local.code !== 0 || local.stdout.trim() !== '') return unpushed;
       await rmTree(abs);
       return { kind: 'removed' };
     }
+    case 'worktree':
+      // a linked worktree is a real directory whose `.git` is a file pointing into the repository
+      if (!st.isDirectory() || (await lstatOrNull(path.join(abs, '.git')))?.isFile() !== true) {
+        return mismatch;
+      }
+      return removeWorktree(rt, abs, rec);
     case 'file': {
       if (!st.isFile()) return mismatch;
       if (sha256Of(await readFile(abs)) !== rec.sha256) {
@@ -348,7 +420,7 @@ async function runRemove(rt: Runtime, step: MaterialStep & { kind: 'remove' }): 
   const result = await removeRecorded(rt, abs, step.entry);
   if (result.kind === 'gone') return done('unchanged', { message: 'already gone' });
   if (result.kind === 'kept') return kept(result.message);
-  return done('removed');
+  return done('removed', result.message === undefined ? {} : { message: result.message });
 }
 
 // ---------------------------------------------------------------- symlink / copy
@@ -481,11 +553,20 @@ async function originOf(rt: Runtime, abs: string): Promise<string | null> {
   return result.code === 0 && url !== '' ? url : null;
 }
 
-/** `git clone` into `abs` (missing or an empty directory); a clone this step started is removed on failure. */
+/**
+ * `git clone` into `abs` (missing or an empty directory), then the sparse checkout and the work branch
+ * (`git switch -c <newBranch>`); a clone this step started is removed on failure.
+ */
 async function cloneInto(
   rt: Runtime,
   abs: string,
-  spec: { uri: string; depth: number; branch: string | null; sparse: string | null },
+  spec: {
+    uri: string;
+    depth: number;
+    branch: string | null;
+    sparse: string | null;
+    newBranch?: string | null;
+  },
 ): Promise<Outcome | null> {
   const existed = (await lstatOrNull(abs)) !== null;
   const args = ['clone'];
@@ -513,6 +594,15 @@ async function cloneInto(
       return failed(failureLine(sparse, 'git sparse-checkout'));
     }
   }
+  const newBranch = spec.newBranch ?? null;
+  if (newBranch !== null) {
+    const work = await git(rt, ['-C', abs, 'switch', '-c', newBranch], { progress: true });
+    if (work.aborted) return abort();
+    if (work.code !== 0) {
+      if (!existed) await rmTree(abs);
+      return failed(failureLine(work, 'git switch'));
+    }
+  }
   return null;
 }
 
@@ -526,6 +616,7 @@ function cloneEntry(step: {
   depth: number;
   branch: string | null;
   sparse: string | null;
+  newBranch?: string | null;
 }): ManifestEntry {
   return {
     path: step.path,
@@ -535,7 +626,29 @@ function cloneEntry(step: {
     branch: step.branch,
     depth: step.depth,
     sparse: step.sparse,
+    newBranch: step.newBranch ?? null,
   };
+}
+
+/** `branch <name>` or `a detached HEAD`: where a checkout is, for kept messages. */
+const onWhat = (head: string): string => (head === 'HEAD' ? 'a detached HEAD' : `branch ${head}`);
+
+/** `git rev-parse --abbrev-ref HEAD` ('HEAD' when detached); null when git fails. */
+async function headOf(rt: Runtime, abs: string): Promise<string | null> {
+  const head = await git(rt, ['-C', abs, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+    timeoutMs: 60_000,
+  });
+  return head.code === 0 ? head.stdout.trim() : null;
+}
+
+/** Every remote-tracking ref with its commit (one line each): compared before / after a fetch. */
+async function remoteRefs(rt: Runtime, abs: string): Promise<string> {
+  const refs = await git(
+    rt,
+    ['-C', abs, 'for-each-ref', '--format=%(objectname) %(refname)', 'refs/remotes'],
+    { timeoutMs: 60_000 },
+  );
+  return refs.stdout.trim();
 }
 
 async function updateClone(
@@ -547,15 +660,16 @@ async function updateClone(
   if (origin === null) return failed(`${step.path} has no origin remote`);
   if (origin !== step.uri) return failed(`${step.path} is a clone of ${origin}, not ${step.uri}`);
 
-  if (step.branch !== null) {
-    const head = await git(rt, ['-C', abs, 'rev-parse', '--abbrev-ref', 'HEAD'], {
-      timeoutMs: 60_000,
-    });
-    const have = head.stdout.trim();
-    if (head.code === 0 && have !== step.branch) {
-      return kept(
-        `on ${have === 'HEAD' ? 'a detached HEAD' : `branch ${have}`}, recipe wants ${step.branch}; left as is`,
-      );
+  const newBranch = step.newBranch ?? null;
+  if (newBranch !== null) {
+    const have = await headOf(rt, abs);
+    if (have !== null && have !== newBranch) {
+      return kept(`on ${onWhat(have)}, recipe wants work branch ${newBranch}; left as is`);
+    }
+  } else if (step.branch !== null) {
+    const have = await headOf(rt, abs);
+    if (have !== null && have !== step.branch) {
+      return kept(`on ${onWhat(have)}, recipe wants ${step.branch}; left as is`);
     }
   }
 
@@ -569,6 +683,20 @@ async function updateClone(
           });
     if (change.aborted) return cancelled();
     if (change.code !== 0) return failed(failureLine(change, 'git sparse-checkout'));
+  }
+
+  if (newBranch !== null) {
+    // The work branch has no upstream: fetch only, never pull or touch the working tree.
+    const before = await remoteRefs(rt, abs);
+    const fetch = await git(rt, ['-C', abs, 'fetch', '--progress', 'origin'], { progress: true });
+    if (fetch.aborted) return cancelled();
+    if (fetch.code !== 0) return failed(failureLine(fetch, 'git fetch'));
+    const after = await remoteRefs(rt, abs);
+    const outcome = {
+      entry: cloneEntry(step),
+      message: `on work branch ${newBranch}; fetched origin`,
+    };
+    return before === after ? done('unchanged', outcome) : done('updated', outcome);
   }
 
   const before = await git(rt, ['-C', abs, 'rev-parse', 'HEAD'], { timeoutMs: 60_000 });
@@ -630,6 +758,157 @@ async function runGitUpdate(rt: Runtime, step: UpdateStep): Promise<Outcome> {
     return failed(`${step.path} exists and is not a clone of ${step.uri}`);
   }
   return updateClone(rt, step, abs);
+}
+
+// ---------------------------------------------------------------- worktree of a local repository
+
+type WorktreeStep = MaterialStep & { kind: 'gitWorktree' };
+
+/** realpath of `git -C <dir> rev-parse <flag>` (resolved against `dir` when git answers relative); null on failure. */
+async function gitPath(rt: Runtime, dir: string, flag: string): Promise<string | null> {
+  const result = await git(rt, ['-C', dir, 'rev-parse', flag], { timeoutMs: 60_000 });
+  const out = result.stdout.trim();
+  if (result.code !== 0 || out === '') return null;
+  return realpath(path.resolve(dir, out)).catch(() => null);
+}
+
+/**
+ * Is `abs` the top level of a work tree that shares its repository (`--git-common-dir`) with `repo`? A plain
+ * folder inside some other work tree does not count: its top level is elsewhere.
+ */
+async function isWorktreeOf(rt: Runtime, abs: string, repo: string): Promise<boolean> {
+  const [top, real, common, repoCommon] = await Promise.all([
+    gitPath(rt, abs, '--show-toplevel'),
+    realpath(abs).catch(() => null),
+    gitPath(rt, abs, '--git-common-dir'),
+    gitPath(rt, repo, '--git-common-dir'),
+  ]);
+  return top !== null && top === real && common !== null && common === repoCommon;
+}
+
+/** `name` when it is a local branch of `repo` (`refs/heads/<name>`), else null (also for null). */
+async function isBranchOf(rt: Runtime, repo: string, name: string | null): Promise<string | null> {
+  if (name === null) return null;
+  const found = await git(
+    rt,
+    ['-C', repo, 'show-ref', '--verify', '--quiet', `refs/heads/${name}`],
+    { timeoutMs: 60_000 },
+  );
+  return found.code === 0 ? name : null;
+}
+
+/**
+ * `git -C <repo> worktree add` at `abs` (absent or an empty folder): a new work branch (`-b <newBranch>` from
+ * Branch or HEAD; an existing branch of that name is checked out instead), Branch itself, or a detached HEAD.
+ * Stale registrations of deleted worktrees are pruned first.
+ */
+async function addWorktree(
+  rt: Runtime,
+  abs: string,
+  repo: string,
+  step: WorktreeStep,
+): Promise<{ message?: string; reused: boolean } | { fail: Outcome }> {
+  const quick = { timeoutMs: 60_000 };
+  await git(rt, ['-C', repo, 'worktree', 'prune'], quick);
+  const add = ['-C', repo, 'worktree', 'add'];
+  let args: string[];
+  let message: string | undefined;
+  let reused = false;
+  if (step.newBranch !== null) {
+    if ((await isBranchOf(rt, repo, step.newBranch)) !== null) {
+      args = [...add, '--', abs, step.newBranch];
+      message = `the branch ${step.newBranch} already exists in the repository: checked it out`;
+      reused = true;
+    } else {
+      const from = step.branch ?? 'HEAD';
+      args = [...add, '-b', step.newBranch, '--', abs, from];
+      message = `new branch ${step.newBranch} from ${from}`;
+    }
+  } else if (step.branch !== null) {
+    args = [...add, '--', abs, step.branch];
+  } else {
+    args = [...add, '--detach', '--', abs];
+  }
+  const existed = (await lstatOrNull(abs)) !== null;
+  const result = await git(rt, args, { progress: true });
+  if (result.aborted || result.code !== 0) {
+    // only a worktree this step just created is removed (it has nothing of the user's yet)
+    if (!existed && (await lstatOrNull(abs)) !== null) {
+      await git(rt, ['-C', repo, 'worktree', 'remove', '--force', '--', abs], quick);
+      await rmTree(abs);
+      await git(rt, ['-C', repo, 'worktree', 'prune'], quick);
+    }
+    if (result.aborted) return { fail: cancelled() };
+    let reason = failureLine(result, 'git worktree add');
+    if (
+      step.newBranch === null &&
+      step.branch !== null &&
+      /already (checked out|used by worktree)/i.test(result.tail.join('\n'))
+    ) {
+      reason += '; set New branch to work on a branch of your own';
+    }
+    return { fail: failed(reason) };
+  }
+  return message === undefined ? { reused } : { message, reused };
+}
+
+/**
+ * Places a git worktree of a local repository. A worktree of the same repository already there is left as it is
+ * (never reset or pulled; on another branch than wanted it is `kept`); a recorded path of another kind (a symlink,
+ * a copy, a worktree of another repository) is replaced through `removeRecorded`; anything else fails.
+ */
+async function runGitWorktree(rt: Runtime, step: WorktreeStep): Promise<Outcome> {
+  const repo = await realpath(step.repo).catch(() => null);
+  if (repo === null) return failed(`source ${step.repo} does not exist`);
+  const top = await gitPath(rt, repo, '--show-toplevel');
+  if (top !== repo) {
+    return failed(`${step.repo} is not the top level of a git work tree`);
+  }
+  const where = await target(rt, step.path, true);
+  if ('fail' in where) return where.fail;
+  const abs = where.abs;
+  const entry: ManifestEntry = {
+    path: step.path,
+    type: 'worktree',
+    key: step.key ?? '',
+    repo,
+    branch: step.branch,
+    newBranch: step.newBranch,
+  };
+
+  // the work branch as the written context file describes it
+  const learned = (workBranch: NonNullable<MaterialView['workBranch']>): void => {
+    if (step.newBranch !== null && step.key !== undefined) rt.facts.set(step.key, { workBranch });
+  };
+  const add = async (action: 'created' | 'replaced'): Promise<Outcome> => {
+    const made = await addWorktree(rt, abs, repo, step);
+    if ('fail' in made) return made.fail;
+    learned(made.reused ? 'reused' : 'created');
+    return done(action, {
+      entry,
+      ...(made.message === undefined ? {} : { message: made.message }),
+    });
+  };
+
+  const st = await lstatOrNull(abs);
+  if (st === null || (st.isDirectory() && (await readdir(abs)).length === 0)) {
+    return add('created');
+  }
+  if (st.isDirectory() && (await isWorktreeOf(rt, abs, repo))) {
+    learned('present');
+    // Compared only with a branch: a tag (or any other commit) is checked out detached.
+    const want = step.newBranch ?? (await isBranchOf(rt, repo, step.branch));
+    const have = await headOf(rt, abs);
+    if (want !== null && have !== null && have !== want) {
+      return kept(`on ${onWhat(have)}, recipe wants ${want}; left as is`);
+    }
+    return done('unchanged', { entry, message: `a worktree of ${repo}; left as is` });
+  }
+  const rec = rt.recorded(step.path);
+  if (rec === undefined) return failed(`${step.path} exists and was not created by ctxman`);
+  const removed = await removeRecorded(rt, abs, rec);
+  if (removed.kind === 'kept') return failed(removed.message);
+  return add('replaced');
 }
 
 // ---------------------------------------------------------------- download / extract / place skill
@@ -826,7 +1105,9 @@ function materialsFromResults(rt: Runtime): Record<string, MaterialView> {
   const byId = new Map(rt.results.map((r) => [r.id, r]));
   const out: Record<string, MaterialView> = {};
   for (const [key, view] of Object.entries(rt.ctx.materials)) {
-    const terminal = rt.steps.find((s) => s.key === key && /^(okf|skill|link|clone):/.test(s.id));
+    const terminal = rt.steps.find(
+      (s) => s.key === key && /^(okf|skill|link|clone|worktree):/.test(s.id),
+    );
     const result = terminal === undefined ? undefined : byId.get(terminal.id);
     if (result === undefined) {
       out[key] = view;
@@ -837,7 +1118,7 @@ function materialsFromResults(rt: Runtime): Record<string, MaterialView> {
       result.status === 'unchanged' ||
       (result.status === 'skipped' && result.action === 'kept');
     if (ok) {
-      out[key] = { ...view, state: 'ok' };
+      out[key] = { ...view, ...rt.facts.get(key), state: 'ok' };
       continue;
     }
     let reason = result.message ?? 'not placed';
@@ -854,6 +1135,9 @@ function materialsFromResults(rt: Runtime): Record<string, MaterialView> {
   return out;
 }
 
+/** The hint of every refused context file: what the user can do about it. */
+const CONTEXT_FILE_HINT = 'move it away or choose another context file name';
+
 async function runWriteContext(rt: Runtime, step: MaterialStep): Promise<Outcome> {
   const where = await target(rt, step.path, false);
   if ('fail' in where) return where.fail;
@@ -862,10 +1146,22 @@ async function runWriteContext(rt: Runtime, step: MaterialStep): Promise<Outcome
   const entry = fileEntry(step.path, 'context', text);
   const rec = rt.recorded(step.path);
   const current = await readIfFile(abs);
-  if (current.st === 'other') return failed(`${step.path} exists and was not written by ctxman`);
+  const foreign = `${step.path} exists and was not written by ctxman; ${CONTEXT_FILE_HINT}`;
+  if (current.st === 'other') return failed(foreign);
   if (current.st === 'file') {
     if (current.sha === entry.sha256) return done('unchanged', { entry });
-    if (rec?.type !== 'file') return failed(`${step.path} exists and was not written by ctxman`);
+    if (rec?.type !== 'file') return failed(foreign);
+    // A stub ctxman wrote there earlier (the AGENTS.md of a directory made with another context file name) is
+    // replaced while unedited; an edited one is the user's text now.
+    if (rec.role !== 'context') {
+      if (current.sha !== rec.sha256) {
+        return failed(
+          `${step.path} is a stub ctxman wrote earlier and it was edited since; ${CONTEXT_FILE_HINT}`,
+        );
+      }
+      await writeAtomic(abs, text);
+      return done('written', { entry, message: `replaced the ${step.path} stub` });
+    }
     if (current.sha !== rec.sha256) {
       const message = `local edits to ${step.path} were replaced`;
       rt.log(message);
@@ -977,6 +1273,8 @@ async function runStep(rt: Runtime, step: MaterialStep): Promise<Outcome> {
       return runGitClone(rt, step);
     case 'gitUpdate':
       return runGitUpdate(rt, step);
+    case 'gitWorktree':
+      return runGitWorktree(rt, step);
     case 'download':
       return runDownload(rt, step);
     case 'extract':
@@ -1042,6 +1340,7 @@ export async function executeSteps(
     results: [],
     steps,
     manifest: null,
+    facts: new Map(),
   };
   const statusById = new Map<string, StepResult['status']>();
   let fatalFailed: string | null = null;

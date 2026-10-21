@@ -36,6 +36,7 @@ import {
   TREE_LIMIT_CHOICES,
   baseMaterialOptionValue,
   baseOptionValue,
+  cloneDepthLabel,
   ctxKey,
   defaultDirFor,
   defaultMaterialFor,
@@ -51,6 +52,7 @@ import {
   isPrimaryEligible,
   isSafeGitRef,
   isSafeRelativeDir,
+  itemDirName,
   itemKey,
   isPlaceableKind,
   itemKindOf,
@@ -467,10 +469,15 @@ describe('options (spec 4.4)', () => {
     expect(row('cloneDir')).toEqual([
       'text',
       'Clone into',
-      '.ctxman/refs/{name}',
-      'Project-relative directory; {name} = reference name.',
+      'repos/{name}',
+      "Project-relative directory; {name} = the reference's folder name (default: the reference name).",
     ]);
-    expect(row('shallow')).toEqual(['checkbox', 'Shallow', true, 'Clone with --depth 1.']);
+    expect(row('shallow')).toEqual([
+      'checkbox',
+      'Shallow',
+      false,
+      'Clone with --depth 1 (default: the full history).',
+    ]);
     expect(row('sparse')).toEqual([
       'checkbox',
       'Sparse subpath',
@@ -505,8 +512,8 @@ describe('options (spec 4.4)', () => {
 
   it('{name} in cloneDir becomes the slug (defaults, recipe and override layers)', () => {
     expect(resolveOptions('remote-repo', 'clone', 'astro-docs', {})).toEqual({
-      cloneDir: '.ctxman/refs/astro-docs',
-      shallow: true,
+      cloneDir: 'repos/astro-docs',
+      shallow: false,
       sparse: false,
     });
     expect(
@@ -528,7 +535,7 @@ describe('options (spec 4.4)', () => {
     expect(
       baseOptionValue('kb', 'inline-main', 'shiftHeadings', 'x', { shiftHeadings: false }),
     ).toBe(false);
-    expect(baseOptionValue('remote-repo', 'clone', 'cloneDir', 'n')).toBe('.ctxman/refs/n');
+    expect(baseOptionValue('remote-repo', 'clone', 'cloneDir', 'n')).toBe('repos/n');
     expect(baseOptionValue('remote-repo', 'clone', 'cloneDir', 'n', { cloneDir: 'a/{name}' })).toBe(
       'a/n',
     );
@@ -625,7 +632,7 @@ describe('keys', () => {
 
 describe('output constants and helpers (plans/INFLATE_V2_SPEC.md §3)', () => {
   it('names the context file, manifest, staging and repos folders', () => {
-    expect(DEFAULT_CONTEXT_FILE).toBe('LLM_CONTEXT.md');
+    expect(DEFAULT_CONTEXT_FILE).toBe('AGENTS.md');
     expect(DIR_MANIFEST_FILE).toBe('.ctxman-inflate.json');
     expect(STAGE_DIR).toBe('.ctxman-tmp');
     expect(REPOS_DIR).toBe('repos');
@@ -733,9 +740,16 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     materialsFor(kind).map((m) => [m.id, m.label, m.description, [...m.options]]);
 
   it('lists the ids, the reference subset and the option ids', () => {
-    expect([...MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install']);
-    expect([...REFERENCE_MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install']);
-    expect([...MATERIAL_OPTION_IDS]).toEqual(['cloneDepth', 'branch', 'subpathOnly']);
+    expect([...MATERIAL_IDS]).toEqual(['none', 'symlink', 'copy', 'clone', 'install', 'worktree']);
+    expect([...REFERENCE_MATERIAL_IDS]).toEqual([
+      'none',
+      'symlink',
+      'copy',
+      'clone',
+      'install',
+      'worktree',
+    ]);
+    expect([...MATERIAL_OPTION_IDS]).toEqual(['cloneDepth', 'branch', 'newBranch', 'subpathOnly']);
     expect(Object.keys(FAMILY_MATERIALS)).toEqual([
       'okf',
       'skill',
@@ -750,7 +764,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
   it('snippet: nothing to place (its markdown goes into the context file), always inlined', () => {
     expect(materialsFor('snippet').map((m) => m.id)).toEqual(['none']);
     expect(materialDef('snippet', 'none')?.description).toBe(
-      'Nothing to place: the markdown is written into LLM_CONTEXT.md.',
+      'Nothing to place: the markdown is written into the context file.',
     );
     expect(modesFor('snippet').map((m) => m.id)).toEqual(['inline']);
     expect(modesForPlacement('snippet', true).map((m) => m.id)).toEqual(['inline']);
@@ -765,7 +779,7 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
   const notPlaced = [
     'none',
     "Don't place",
-    'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.',
+    'Nothing is placed; the context file points at the original path or URI.',
     [],
   ];
 
@@ -798,13 +812,19 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     ]);
   });
 
-  it("local-repo: symlink, copy (new), Don't place", () => {
+  it("local-repo: symlink, worktree, copy, Don't place", () => {
     expect(row('local-repo')).toEqual([
       [
         'symlink',
         'Symlink',
         'Link to the original repository at repos/<name>; edits change it.',
         [],
+      ],
+      [
+        'worktree',
+        'Worktree',
+        'git worktree of the repository at repos/<name> on its own branch; commits land in the original repository; later runs leave it as is.',
+        ['branch', 'newBranch'],
       ],
       [
         'copy',
@@ -837,8 +857,8 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       [
         'clone',
         'Clone',
-        'git clone into repos/<name>; later runs pull (fast-forward only).',
-        ['cloneDepth', 'branch', 'subpathOnly'],
+        'git clone into repos/<name>; later runs pull (fast-forward only), or only fetch on a new work branch.',
+        ['cloneDepth', 'branch', 'newBranch', 'subpathOnly'],
       ],
       notPlaced,
     ]);
@@ -885,8 +905,9 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       'Snapshot without .git and node_modules at repos/<name>; replaced on every run.',
     );
     expect(materialDescription('kb', 'none')).toBe(
-      'Nothing is placed; LLM_CONTEXT.md points at the original path or URI.',
+      'Nothing is placed; the context file points at the original path or URI.',
     );
+    expect(materialLabel('local-repo', 'worktree')).toBe('Worktree');
   });
 
   it('every material id is used by some family; reference ids are the non-okf/skill ones', () => {
@@ -906,6 +927,10 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     expect(isMaterialFor('skill', 'symlink')).toBe(true);
     expect(isMaterialFor('skill', 'clone')).toBe(false);
     expect(isMaterialFor('local-repo', 'copy')).toBe(true);
+    expect(isMaterialFor('local-repo', 'worktree')).toBe(true);
+    // a worktree needs a git repository: not a plain folder, not a remote one
+    expect(isMaterialFor('local-folder', 'worktree')).toBe(false);
+    expect(isMaterialFor('remote-repo', 'worktree')).toBe(false);
     expect(isMaterialFor('remote-repo', 'copy')).toBe(false);
     expect(isMaterialFor('remote-repo', 'clone')).toBe(true);
     expect(isMaterialFor('remote-skill', 'install')).toBe(true);
@@ -941,9 +966,10 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     }
   });
 
-  it('isPrimaryEligible: remote-repo + clone, local-repo + symlink', () => {
+  it('isPrimaryEligible: remote-repo + clone, local-repo + symlink or worktree', () => {
     expect(isPrimaryEligible('remote-repo', 'clone')).toBe(true);
     expect(isPrimaryEligible('local-repo', 'symlink')).toBe(true);
+    expect(isPrimaryEligible('local-repo', 'worktree')).toBe(true);
     expect(isPrimaryEligible('remote-repo', 'none')).toBe(false);
     expect(isPrimaryEligible('local-repo', 'none')).toBe(false);
     expect(isPrimaryEligible('local-repo', 'clone')).toBe(false);
@@ -958,8 +984,9 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     expect(isPrimaryEligible('local-folder', 'copy')).toBe(false);
   });
 
-  it('isEditEligible: local-repo / local-folder symlink or none, remote-repo clone (plans/INFLATE_V3_PLAN.md §3.2)', () => {
+  it('isEditEligible: local-repo / local-folder symlink or none, local-repo worktree, remote-repo clone (plans/INFLATE_V3_PLAN.md §3.2)', () => {
     expect(isEditEligible('local-repo', 'symlink')).toBe(true);
+    expect(isEditEligible('local-repo', 'worktree')).toBe(true);
     expect(isEditEligible('local-repo', 'none')).toBe(true);
     expect(isEditEligible('local-folder', 'symlink')).toBe(true);
     expect(isEditEligible('local-folder', 'none')).toBe(true);
@@ -981,15 +1008,24 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       id: 'cloneDepth',
       control: 'select-number',
       label: 'Depth',
-      help: 'Commits of history to fetch; 0 = full history.',
-      default: 1,
-      choices: [1, 10, 50, 0],
+      help: 'Commits of history to fetch; Full = the whole history.',
+      default: 0,
+      choices: [0, 1, 10, 50],
     });
+    expect(cloneDepthLabel(0)).toBe('Full');
+    expect(cloneDepthLabel(10)).toBe('10');
     expect(MATERIAL_OPTION_DEFS.branch).toEqual({
       id: 'branch',
       control: 'text',
       label: 'Branch',
-      help: 'Branch or tag; empty = the default branch.',
+      help: 'Branch or tag to check out, or the start point of New branch; empty = the default branch (a worktree: the HEAD of the repository).',
+      default: '',
+    });
+    expect(MATERIAL_OPTION_DEFS.newBranch).toEqual({
+      id: 'newBranch',
+      control: 'text',
+      label: 'New branch',
+      help: 'Create this branch for the work, starting at Branch (empty Branch = the default branch); empty = work on Branch itself.',
       default: '',
     });
     expect(MATERIAL_OPTION_DEFS.subpathOnly).toEqual({
@@ -1003,23 +1039,27 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
 
   it('resolveMaterialOptions: only the material options, override ?? recipe ?? built-in', () => {
     expect(resolveMaterialOptions('remote-repo', 'clone', {})).toEqual({
-      cloneDepth: 1,
+      cloneDepth: 0,
       branch: '',
+      newBranch: '',
       subpathOnly: false,
     });
     expect(
       resolveMaterialOptions('remote-repo', 'clone', {
         recipe: { cloneDepth: 10, branch: 'dev' },
-        override: { cloneDepth: 0, subpathOnly: true },
+        override: { cloneDepth: 0, subpathOnly: true, newBranch: 'work' },
       }),
-    ).toEqual({ cloneDepth: 0, branch: 'dev', subpathOnly: true });
+    ).toEqual({ cloneDepth: 0, branch: 'dev', newBranch: 'work', subpathOnly: true });
+    expect(
+      resolveMaterialOptions('local-repo', 'worktree', { recipe: { newBranch: 'feat/x' } }),
+    ).toEqual({ branch: '', newBranch: 'feat/x' });
     // 0 / '' / false are values, not "unset"
     expect(
       resolveMaterialOptions('remote-repo', 'clone', {
         recipe: { cloneDepth: 50, branch: 'dev', subpathOnly: true },
         override: { cloneDepth: 0, branch: '', subpathOnly: false },
       }),
-    ).toEqual({ cloneDepth: 0, branch: '', subpathOnly: false });
+    ).toEqual({ cloneDepth: 0, branch: '', newBranch: '', subpathOnly: false });
     expect(
       resolveMaterialOptions('remote-skill', 'install', { override: { branch: 'v2' } }),
     ).toEqual({ branch: 'v2' });
@@ -1030,8 +1070,9 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
   });
 
   it('baseMaterialOptionValue is what resolveMaterialOptions gives without the override layer', () => {
-    expect(baseMaterialOptionValue('cloneDepth')).toBe(1);
-    expect(baseMaterialOptionValue('cloneDepth', { cloneDepth: 0 })).toBe(0);
+    expect(baseMaterialOptionValue('cloneDepth')).toBe(0);
+    expect(baseMaterialOptionValue('cloneDepth', { cloneDepth: 1 })).toBe(1);
+    expect(baseMaterialOptionValue('newBranch')).toBe('');
     expect(baseMaterialOptionValue('branch', { branch: 'dev' })).toBe('dev');
     expect(baseMaterialOptionValue('subpathOnly', {})).toBe(false);
     expect(baseMaterialOptionValue('subpathOnly', { subpathOnly: true })).toBe(true);
@@ -1084,6 +1125,26 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
     );
     expect(materialDest('remote-skill', 'reference', 'anthropic-skills', 'codex', 'Bad Name')).toBe(
       '.agents/skills/anthropic-skills',
+    );
+  });
+
+  it('materialDest uses the reference folder (itemDirName) for repositories and folders only', () => {
+    expect(itemDirName('blasto')).toBe('blasto');
+    expect(itemDirName('blasto', null)).toBe('blasto');
+    expect(itemDirName('blasto', '')).toBe('blasto');
+    expect(itemDirName('blasto', 'Blasto.git')).toBe('Blasto.git');
+    expect(materialDest('local-repo', 'reference', 'blasto', 'codex', null, 'blasto-main')).toBe(
+      'repos/blasto-main',
+    );
+    expect(materialDest('remote-repo', 'reference', 'astro-docs', 'codex', 'docs', 'docs')).toBe(
+      'repos/docs',
+    );
+    expect(materialDest('local-folder', 'reference', 'notes', 'codex', null, 'Notes')).toBe(
+      'folders/Notes',
+    );
+    // a remote skill keeps its skill folder name
+    expect(materialDest('remote-skill', 'reference', 'ksa-modding', 'codex', null, 'other')).toBe(
+      '.agents/skills/ksa-modding',
     );
   });
 });

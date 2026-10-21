@@ -250,20 +250,18 @@ test.describe('Run view', () => {
     expect(
       lstatSync(path.join(dir, '.claude', 'skills', 'okf-authoring', 'SKILL.md')).isFile(),
     ).toBe(true);
-    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain('## Primary repository');
     // placed paths are relative markdown links, never the absolute ctxman data path
     expect(context).toContain(`[\`repos/${REPO_REF}/\`](repos/${REPO_REF}/)`);
     expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
-    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@LLM_CONTEXT.md\n')).toBe(
-      true,
-    );
+    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@AGENTS.md\n')).toBe(true);
     const manifest = readManifest(dir);
     expect(manifest.recipe).toBe(recipeName);
     expect(manifest.jobId).toBe(firstJobId);
-    expect(manifest.entries).toHaveLength(7); // 4 materials + LLM_CONTEXT.md + CLAUDE.md + .gitignore
+    expect(manifest.entries).toHaveLength(7); // 4 materials + AGENTS.md + CLAUDE.md + .gitignore
   });
 
   test('Open in IDE starts the editor on the directory; Copy path copies it', async ({ page }) => {
@@ -489,7 +487,7 @@ test.describe('compose and run overrides', () => {
     ).toContainText('CONTEXT.md');
     await page.getByTestId('inflate-run-overrides-clear').click();
     await expect(page.getByTestId('inflate-run-overrides')).toHaveCount(0);
-    await expect(page.getByTestId('inflate-run-contextfile')).toHaveValue('LLM_CONTEXT.md');
+    await expect(page.getByTestId('inflate-run-contextfile')).toHaveValue('AGENTS.md');
     await expect(page.getByTestId('inflate-status')).toHaveText('No changes');
   });
 });

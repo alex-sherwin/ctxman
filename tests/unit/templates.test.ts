@@ -154,6 +154,23 @@ describe('planNewEntry skill, reference, context', () => {
       '# yaml-language-server: $schema=http://127.0.0.1:4321/api/schemas/reference\n' +
         'name: r1\ndescription: d\ntype: local-repo\npath: /tmp/r1\nsubpath: src\nowner: not-me\n',
     );
+    const [named] = planNewEntry('reference', 'r1', {
+      now,
+      description: 'd',
+      type: 'remote-repo',
+      uri: 'git@github.com:o/r1.git',
+      subpath: 'docs',
+      folder: ' r1-main ',
+    });
+    expect(named?.content).toContain(
+      'uri: git@github.com:o/r1.git\nsubpath: docs\nfolder: r1-main\nowner: me\n',
+    );
+    expect(() =>
+      planNewEntry('reference', 'r1', { now, type: 'remote-skill', folder: 'x' }),
+    ).toThrow('folder only applies to local-repo, local-folder and remote-repo references');
+    expect(() =>
+      planNewEntry('reference', 'r1', { now, type: 'local-repo', folder: '.x' }),
+    ).toThrow(/^Invalid folder ".x": must be one folder name/);
     const [localDefault] = planNewEntry('reference', 'r1', { now, type: 'local-repo' });
     expect(localDefault?.content).toContain('path: ~/repos/r1\n');
     const [folder] = planNewEntry('reference', 'notes', {

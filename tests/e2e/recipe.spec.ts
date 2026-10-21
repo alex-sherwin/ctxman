@@ -60,7 +60,7 @@ test.describe('recipe detail', () => {
     const output = composition.getByTestId('recipe-output');
     await expect(output).toBeVisible();
     await expect(output).toContainText('~/ctxman-inflate/ctxman-dev-brief');
-    await expect(output).toContainText('LLM_CONTEXT.md');
+    await expect(output).toContainText('AGENTS.md');
     await expect(output.getByTestId('recipe-output-primary')).toContainText('reference/astro-docs');
     // The Overrides table has a Material column: the clone override with its options and the primary marker.
     const astroOverride = composition.locator(

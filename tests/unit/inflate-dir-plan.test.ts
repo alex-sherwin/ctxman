@@ -92,7 +92,7 @@ describe('planInflateDir: document mode', () => {
       blocking: [],
       steps: [],
       applied: [],
-      contextFile: 'LLM_CONTEXT.md',
+      contextFile: 'AGENTS.md',
     });
     expect(result.internal).toBeUndefined();
     const v1 = await inflateRecipe(recipe, sources, NOW);
@@ -266,6 +266,47 @@ describe('planInflateDir: directory mode', () => {
     expect(result.document.manifest.warnings).toEqual(result.warnings);
   });
 
+  it('warns up front about a context file the run will not write (foreign, or an edited stub)', async () => {
+    const { work, plan } = setup();
+    mkdirSync(work, { recursive: true });
+    const hint = 'move it away or choose another context file name';
+    const contextWarnings = (r: DirPlanResult) =>
+      r.warnings.filter((w) => w.code === 'context-file-exists').map((w) => w.message);
+
+    // an AGENTS.md ctxman never wrote
+    writeFileSync(path.join(work, 'AGENTS.md'), 'the project instructions\n');
+    const foreign = await plan({ allowNonEmpty: true });
+    expect(contextWarnings(foreign)).toEqual([
+      `AGENTS.md already exists in ${work} and was not written by ctxman, so the run will not write it; ${hint}`,
+    ]);
+    // another context file name: nothing to warn about
+    expect(contextWarnings(await plan({ allowNonEmpty: true, contextFile: 'CONTEXT.md' }))).toEqual(
+      [],
+    );
+
+    // the AGENTS.md stub of a directory made with the old default LLM_CONTEXT.md
+    const stub = 'stub\n';
+    const manifestWith = (sha: string) =>
+      serializeDirManifest({
+        format: 'ctxman-inflate',
+        version: 1,
+        recipe: 'ctxman-dev-brief',
+        target: 'codex',
+        contextFile: 'LLM_CONTEXT.md',
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        jobId: 'old',
+        entries: [{ path: 'AGENTS.md', type: 'file', role: 'agents-md', sha256: sha }],
+      });
+    const { sha256Of } = await import('../../src/lib/inflate/material-exec.ts');
+    writeFileSync(path.join(work, 'AGENTS.md'), stub);
+    writeFileSync(path.join(work, '.ctxman-inflate.json'), manifestWith(sha256Of(stub)));
+    expect(contextWarnings(await plan())).toEqual([]);
+    writeFileSync(path.join(work, 'AGENTS.md'), 'my own notes\n');
+    expect(contextWarnings(await plan())).toEqual([
+      `AGENTS.md is a stub ctxman wrote earlier and it was edited since, so the run will not replace it; ${hint}`,
+    ]);
+  });
+
   it('an unreadable manifest blocks, and with allowNonEmpty becomes a manifest-unreadable warning', async () => {
     const { work, plan } = setup();
     mkdirSync(work, { recursive: true });
@@ -409,7 +450,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     expect(existsSync(path.join(clone, 'src', 'content', 'docs', 'en', 'index.md'))).toBe(true);
     expect(existsSync(path.join(clone, 'src', 'content', 'docs', 'fr'))).toBe(false);
 
-    const context = readFileSync(path.join(work, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(work, 'AGENTS.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain('## Primary repository');
     expect(context).toContain('[`repos/astro-docs/`](repos/astro-docs/)');
@@ -417,9 +458,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     for (const ds of ['kb', 'rca', 'idea', 'task', 'feature', 'project', 'skill']) {
       expect(context).not.toContain(path.join(dataDir, ds));
     }
-    expect(readFileSync(path.join(work, 'CLAUDE.md'), 'utf8').endsWith('@LLM_CONTEXT.md\n')).toBe(
-      true,
-    );
+    expect(readFileSync(path.join(work, 'CLAUDE.md'), 'utf8').endsWith('@AGENTS.md\n')).toBe(true);
     expect(readFileSync(path.join(work, '.gitignore'), 'utf8')).toContain('/repos/');
     const manifest = JSON.parse(readFileSync(path.join(work, '.ctxman-inflate.json'), 'utf8')) as {
       entries: { path: string }[];
@@ -428,8 +467,8 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
       '.claude/skills/ctxman-add-entry',
       '.claude/skills/okf-authoring',
       '.gitignore',
+      'AGENTS.md',
       'CLAUDE.md',
-      'LLM_CONTEXT.md',
       'feature/context-forge',
       'idea/context-inflate',
       'kb/astro-content-layer',
@@ -593,7 +632,7 @@ describe.skipIf(!HAS_GIT)('plan and execute the seed into a temp directory', () 
     const run = await runPlanned(await plan({}, seedRecipe(), spawn));
     expect(run.status['clone:reference/astro-docs']).toBe('failed');
     expect(run.status['context']).toBe('ok');
-    const context = readFileSync(path.join(work, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(work, 'AGENTS.md'), 'utf8');
     expect(context).toContain('not placed');
     expect(context).not.toContain('## Primary repository');
     expect(existsSync(path.join(work, 'repos', 'astro-docs'))).toBe(false);

@@ -42,6 +42,12 @@
           },
           "default": []
         },
+        "folder": {
+          "type": "string",
+          "description": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "patternErrorMessage": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)"
+        },
         "info": {
           "type": "string"
         },
@@ -94,6 +100,12 @@
             "minLength": 1
           },
           "default": []
+        },
+        "folder": {
+          "type": "string",
+          "description": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "patternErrorMessage": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)"
         },
         "info": {
           "type": "string"
@@ -150,6 +162,12 @@
             "minLength": 1
           },
           "default": []
+        },
+        "folder": {
+          "type": "string",
+          "description": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "patternErrorMessage": "must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)"
         },
         "info": {
           "type": "string"

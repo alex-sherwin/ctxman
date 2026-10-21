@@ -20,7 +20,7 @@ pnpm run add:<dataset> <name> [--title "..."] [--description "..."] [--state <st
 
 `<dataset>` is any of the twelve dataset ids (`kb`, `rca`, `idea`, `task`, `bug`, `feature`, `project`, `skill`, `reference`, `snippet`, `context`, `recipe`), for example `pnpm run add:idea my-idea --title "My idea" --description "One sentence."`. pnpm forwards the extra arguments as they are, so do not add a `--` separator; pnpm 11 passes it through literally and the script rejects it.
 
-Reference entries also take `--type local-repo|local-folder|remote-repo|remote-skill`, `--path` (the local types), `--uri` (the remote types), `--subpath` and `--owner me|not-me`. Snippets take `--markdown "..."` (the text; without it the file gets a `TODO:` placeholder). Add `--json` for machine output.
+Reference entries also take `--type local-repo|local-folder|remote-repo|remote-skill`, `--path` (the local types), `--uri` (the remote types), `--subpath`, `--folder` (local-repo, local-folder and remote-repo only: the folder name Context Inflate places it under instead of the reference name) and `--owner me|not-me`. Snippets take `--markdown "..."` (the text; without it the file gets a `TODO:` placeholder). Add `--json` for machine output.
 
 The script validates the name (kebab-case, at most 64 characters) and the state, refuses to overwrite anything that exists, writes the files, then re-validates them against the schemas. The same operation is available on the `/tools` page.
 

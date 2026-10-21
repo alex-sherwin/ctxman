@@ -15,6 +15,8 @@ import {
   NAME_PATTERN,
   OWNERS,
   PROJECT_STATES,
+  REFERENCE_FOLDER_MESSAGE,
+  REFERENCE_FOLDER_PATTERN,
   TASK_STATES,
   isLocalReferenceType,
 } from './registry.ts';
@@ -256,6 +258,11 @@ export const skillSchema = type({
 
 /** Optional markdown about the referenced thing, inlined under its item by Context Inflate. */
 const referenceInfo = type('string');
+/**
+ * Optional folder name of a repository or folder in an Inflate working directory (`repos/<folder>`,
+ * `folders/<folder>`; default = the reference name). A remote skill has none: its strict schema rejects the key.
+ */
+const referenceFolder = type(REFERENCE_FOLDER_PATTERN).describe(REFERENCE_FOLDER_MESSAGE);
 
 export const localRepoReferenceSchema = type({
   '+': 'reject',
@@ -266,6 +273,7 @@ export const localRepoReferenceSchema = type({
   /** Absolute path (or ~-prefixed) to the repo root on this machine. */
   path: 'string > 0',
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });
@@ -278,6 +286,7 @@ export const localFolderReferenceSchema = type({
   /** Absolute path (or ~-prefixed) to a plain folder (not a git repository) on this machine. */
   path: 'string > 0',
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });
@@ -290,6 +299,7 @@ export const remoteRepoReferenceSchema = type({
   /** git URI: git@host:org/repo.git, ssh://git@host/org/repo.git, https://host/org/repo[.git]. */
   uri: type('string > 0').narrow(gitUriNarrow).describe(GIT_URI_MESSAGE),
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });
@@ -369,13 +379,18 @@ export const inflateOptionsSchema = type({
 export const recipeItemSchema = type({ '+': 'reject', dataset: linkableDataset, slug: nameSchema });
 export const recipeMarkdownSchema = type({ '+': 'reject', id: nameSchema, body: 'string' });
 
-/** Options of the materials clone / install (plans/INFLATE_V2_SPEC.md §4.1). */
+/** A branch or tag name ('' = none), passed to git as one argv element (catalog.isSafeGitRef). */
+const gitRefSchema = type('string <= 200').and(GIT_REF_PATTERN).describe(GIT_REF_MESSAGE);
+
+/** Options of the materials clone / install / worktree (plans/INFLATE_V2_SPEC.md §4.1). */
 export const materialOptionsSchema = type({
   '+': 'reject',
   /** Commits of history; 0 = full history. */
   'cloneDepth?': '0 <= number.integer <= 100000',
-  /** '' = the default branch. */
-  'branch?': type('string <= 200').and(GIT_REF_PATTERN).describe(GIT_REF_MESSAGE),
+  /** Branch or tag to check out, or the start point of `newBranch`; '' = the default branch. */
+  'branch?': gitRefSchema,
+  /** clone, worktree: the branch created for the work; '' = work on `branch` itself. */
+  'newBranch?': gitRefSchema,
   'subpathOnly?': 'boolean',
 });
 export const contextFileSchema = type(CONTEXT_FILE_PATTERN).describe(CONTEXT_FILE_MESSAGE);

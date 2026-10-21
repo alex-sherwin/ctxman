@@ -118,6 +118,17 @@ const manifestEntrySchema = type({
     branch: 'string | null',
     depth: 'number.integer >= 0',
     sparse: 'string | null',
+    /** Absent in manifests written before work branches existed: read as null. */
+    'newBranch?': 'string | null',
+  })
+  .or({
+    '+': 'reject',
+    path: entryPathSchema,
+    type: "'worktree'",
+    key: 'string',
+    repo: 'string > 0',
+    branch: 'string | null',
+    newBranch: 'string | null',
   })
   .or({
     '+': 'reject',
@@ -191,7 +202,13 @@ export function parseDirManifest(text: string, dirAbs: string): ManifestParse {
       message: first === undefined ? 'invalid manifest' : issueMessage(first, data),
     };
   }
-  const manifest = parsed.data as InflateDirManifest;
+  const manifest: InflateDirManifest = {
+    ...(parsed.data as InflateDirManifest),
+    // a clone entry without `newBranch` (older manifests) has none
+    entries: (parsed.data as InflateDirManifest).entries.map((entry) =>
+      entry.type === 'clone' ? { ...entry, newBranch: entry.newBranch ?? null } : entry,
+    ),
+  };
   const seen = new Set<string>();
   for (const entry of manifest.entries) {
     if (!isSafeEntryPath(dirAbs, entry.path)) {
@@ -234,6 +251,16 @@ function orderedEntry(e: ManifestEntry): ManifestEntry {
         branch: e.branch,
         depth: e.depth,
         sparse: e.sparse,
+        newBranch: e.newBranch,
+      };
+    case 'worktree':
+      return {
+        path: e.path,
+        type: e.type,
+        key: e.key,
+        repo: e.repo,
+        branch: e.branch,
+        newBranch: e.newBranch,
       };
     case 'skill':
       return { path: e.path, type: e.type, key: e.key, uri: e.uri, subpath: e.subpath };

@@ -142,6 +142,14 @@ export function describeIssue(issue: PathIssue, root?: unknown): string {
     return 'Invalid date (use YYYY-MM-DD or an ISO 8601 timestamp)';
   }
   if (issue.message.endsWith(' must be removed')) {
+    // a reference `folder` is only declared for the types Inflate places under repos/ or folders/
+    if (
+      issue.path.length === 1 &&
+      issue.path[0] === 'folder' &&
+      (root as { type?: unknown } | undefined)?.type === 'remote-skill'
+    ) {
+      return 'folder applies to local-repo, local-folder and remote-repo references only';
+    }
     return `Unrecognized key "${String(issue.path.at(-1))}"`;
   }
   // a `.describe("must be …")` text lands after arktype's own "must be"

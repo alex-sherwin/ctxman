@@ -247,6 +247,7 @@ function compactSummary(s: EntrySummary): Record<string, unknown> {
   if (s.uriKind !== undefined) out.uriKind = s.uriKind;
   if (s.owner !== undefined) out.owner = s.owner;
   if (s.subpath !== undefined) out.subpath = s.subpath;
+  if (s.folder !== undefined) out.folder = s.folder;
   if (s.linkCount !== undefined) out.linkCount = s.linkCount;
   if (s.recipeTarget !== undefined) out.recipeTarget = s.recipeTarget;
   if (s.contextCount !== undefined) out.contextCount = s.contextCount;
@@ -937,7 +938,7 @@ const createEntryTool = defineTool({
   name: 'create-entry',
   title: 'Create entry',
   description:
-    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, owner. snippet: markdown (the reusable text). context and recipe start empty (add links with append-context-links).',
+    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, folder (not remote-skill: the Inflate folder name instead of the slug), owner. snippet: markdown (the reusable text). context and recipe start empty (add links with append-context-links).',
   readOnly: false,
   input: type({
     '+': 'reject',
@@ -954,6 +955,9 @@ const createEntryTool = defineTool({
     'path?': 'string',
     'uri?': 'string',
     'subpath?': 'string',
+    'folder?': type('string').describe(
+      'reference local-repo, local-folder, remote-repo only: folder name in an Inflate working directory (repos/<folder>, folders/<folder>); default = the name.',
+    ),
     'owner?': type.enumerated(...OWNERS),
     'markdown?': type('string').describe(
       'snippet only: the markdown of the snippet (default: a TODO placeholder).',
@@ -961,7 +965,7 @@ const createEntryTool = defineTool({
   }),
   async handler(args, ctx) {
     const def = datasetDef(args.dataset);
-    const referenceOnly = (['type', 'path', 'uri', 'subpath', 'owner'] as const).filter(
+    const referenceOnly = (['type', 'path', 'uri', 'subpath', 'folder', 'owner'] as const).filter(
       (k) => args[k] !== undefined,
     );
     if (args.dataset !== 'reference' && referenceOnly.length > 0) {
@@ -993,6 +997,7 @@ const createEntryTool = defineTool({
           ...(args.path === undefined ? {} : { path: args.path }),
           ...(args.uri === undefined ? {} : { uri: args.uri }),
           ...(args.subpath === undefined ? {} : { subpath: args.subpath }),
+          ...(args.folder === undefined ? {} : { folder: args.folder }),
           ...(args.owner === undefined ? {} : { owner: args.owner }),
           ...(args.markdown === undefined ? {} : { markdown: args.markdown }),
           serverOrigin: ctx.serverOrigin,

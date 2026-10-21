@@ -1,7 +1,7 @@
 // Scaffold a new entry of any dataset from its template. Never overwrites.
 // Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S]
 //          [--type local-repo|local-folder|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
-//          [--owner me|not-me] [--markdown M] [--json]
+//          [--folder F] [--owner me|not-me] [--markdown M] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
 import path from 'node:path';
 import process from 'node:process';
@@ -10,9 +10,12 @@ import {
   DATASET_IDS,
   entryUrl,
   isDatasetId,
+  isFolderReferenceType,
   isLocalReferenceType,
   isReferenceType,
   OWNERS,
+  REFERENCE_FOLDER_MESSAGE,
+  REFERENCE_FOLDER_PATTERN,
   REFERENCE_TYPES,
 } from '../src/datasets/registry.ts';
 import type { Owner } from '../src/datasets/registry.ts';
@@ -43,6 +46,8 @@ Options:
   --uri U            reference remote-repo: git URI (git@host:org/repo.git, ssh://…, https://…);
                      remote-skill: git URI or https URL ending .tar.gz / .tgz / .zip
   --subpath S        reference: repo-relative sub folder
+  --folder F         reference local-repo, local-folder, remote-repo: folder name in an Inflate working
+                     directory (repos/F, folders/F) instead of the reference name
   --owner O          reference: ${OWNERS.join(' | ')} (default: me)
   --markdown M       snippet: the markdown text (default: "TODO: write the <title> snippet.")
   --json             print one JSON document instead of text
@@ -78,6 +83,7 @@ async function main(): Promise<void> {
         path: { type: 'string' },
         uri: { type: 'string' },
         subpath: { type: 'string' },
+        folder: { type: 'string' },
         owner: { type: 'string' },
         markdown: { type: 'string' },
         json: { type: 'boolean' },
@@ -109,7 +115,7 @@ async function main(): Promise<void> {
   }
   const dataset = datasetArg;
 
-  const referenceOnly = (['type', 'path', 'uri', 'subpath', 'owner'] as const).filter(
+  const referenceOnly = (['type', 'path', 'uri', 'subpath', 'folder', 'owner'] as const).filter(
     (k) => values[k] !== undefined,
   );
   if (dataset !== 'reference' && referenceOnly.length > 0) {
@@ -137,6 +143,18 @@ async function main(): Promise<void> {
     }
     if (values.uri !== undefined && isLocalReferenceType(type)) {
       return finish(EXIT_USAGE, '--uri only applies to --type remote-repo or remote-skill');
+    }
+    if (values.folder !== undefined && !isFolderReferenceType(type)) {
+      return finish(
+        EXIT_USAGE,
+        '--folder only applies to --type local-repo, local-folder or remote-repo',
+      );
+    }
+    if (values.folder !== undefined && !REFERENCE_FOLDER_PATTERN.test(values.folder.trim())) {
+      return finish(
+        EXIT_USAGE,
+        `invalid --folder "${values.folder.trim()}": ${REFERENCE_FOLDER_MESSAGE}`,
+      );
     }
     if (values.uri !== undefined) {
       const uri = values.uri.trim();
@@ -166,6 +184,7 @@ async function main(): Promise<void> {
       ...(values.path === undefined ? {} : { path: values.path }),
       ...(values.uri === undefined ? {} : { uri: values.uri }),
       ...(values.subpath === undefined ? {} : { subpath: values.subpath }),
+      ...(values.folder === undefined ? {} : { folder: values.folder }),
       ...(values.owner === undefined ? {} : { owner: values.owner as Owner }),
       ...(values.markdown === undefined ? {} : { markdown: values.markdown }),
       serverOrigin: resolveServerOrigin(),

@@ -619,8 +619,8 @@ test.describe('output directory', () => {
     await expect(page.getByTestId('inflate-output-dir')).toHaveValue(
       '~/ctxman-inflate/ctxman-dev-brief',
     );
-    await expect(page.getByTestId('inflate-output-contextfile')).toHaveValue('LLM_CONTEXT.md');
-    // claude-code: the CLAUDE.md stub and .gitignore on, AGENTS.md off
+    await expect(page.getByTestId('inflate-output-contextfile')).toHaveValue('AGENTS.md');
+    // claude-code: the CLAUDE.md stub and .gitignore on; no AGENTS.md stub: the context file is AGENTS.md
     await expect(
       page.getByTestId('inflate-output-stub-claudeMd').getByRole('checkbox'),
     ).toBeChecked();
@@ -630,6 +630,10 @@ test.describe('output directory', () => {
     await expect(
       page.getByTestId('inflate-output-stub-agentsMd').getByRole('checkbox'),
     ).not.toBeChecked();
+    await expect(
+      page.getByTestId('inflate-output-stub-agentsMd').getByRole('checkbox'),
+    ).toBeDisabled();
+    await expect(page.getByTestId('inflate-output-stub-note')).toBeVisible();
     await expect(page.getByTestId('inflate-output-primary')).toContainText('astro-docs');
     await expect(
       astroDocs(page).getByTestId('inflate-segment-primary').getByRole('checkbox'),
@@ -698,9 +702,9 @@ test.describe('output directory', () => {
     expect(output.stubs).toEqual({ agentsMd: true, gitignore: false });
 
     // back to the defaults: the keys go away again
-    await page.getByTestId('inflate-output-contextfile').fill('LLM_CONTEXT.md');
     await page.getByTestId('inflate-output-stub-agentsMd').click();
     await page.getByTestId('inflate-output-stub-gitignore').click();
+    await page.getByTestId('inflate-output-contextfile').fill('AGENTS.md');
     await saveRecipe(page);
     const reset = readRecipeYaml(name).output as Record<string, unknown>;
     expect(reset).not.toHaveProperty('contextFile');
@@ -743,6 +747,57 @@ test.describe('output directory', () => {
     ).toBeVisible();
   });
 
+  test('a local repository can be placed as a Worktree: Branch and New branch, no clone options; they are saved', async ({
+    page,
+    request,
+  }) => {
+    // reference/ctxman-repo (seed) is a local-repo: Symlink by default
+    const name = uniqueName('e2e-rcp');
+    created.add(name);
+    const response = await request.post(`${API}/recipe`, {
+      data: {
+        name,
+        description: 'worktree options',
+        target: 'claude-code',
+        layout: 'grouped',
+        contexts: [],
+        items: [{ dataset: 'reference', slug: 'ctxman-repo' }],
+        overrides: [],
+        output: { dir: `~/ctxman-inflate/${name}` },
+      },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    await openInflate(page, name);
+    const row = segmentRow(page, 'reference/ctxman-repo');
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('inflate-mopt-newBranch')).toHaveCount(0);
+
+    await row.getByTestId('inflate-segment-material').click();
+    await page.getByRole('option', { name: /^Worktree/ }).click();
+    await expect(row.getByTestId('inflate-segment-material')).toContainText('Worktree');
+    await expect(row.getByTestId('inflate-segment-dest')).toContainText('repos/ctxman-repo');
+    // a worktree starts at Branch (empty = the HEAD of the repository) and may get a branch of its own
+    await expect(row.getByTestId('inflate-mopt-branch')).toHaveAttribute(
+      'placeholder',
+      'repository HEAD',
+    );
+    await expect(row.getByTestId('inflate-mopt-newBranch')).toHaveAttribute('placeholder', 'none');
+    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toHaveCount(0);
+    await expect(row.getByTestId('inflate-mopt-subpathOnly')).toHaveCount(0);
+
+    // an invalid ref is not committed, a valid one is
+    await row.getByTestId('inflate-mopt-newBranch').fill('-bad');
+    await expect(page.getByText(/must be a branch or tag name/)).toBeVisible();
+    await row.getByTestId('inflate-mopt-newBranch').fill('feature/work');
+    await saveRecipe(page);
+    const saved = overrideIn(readRecipeYaml(name), 'reference/ctxman-repo');
+    expect(saved).toMatchObject({
+      material: 'worktree',
+      materialOptions: { newBranch: 'feature/work' },
+    });
+    expect(saved?.materialOptions).not.toHaveProperty('branch');
+  });
+
   test('a repository row offers its material, clone options and Primary; they are saved', async ({
     page,
     request,
@@ -751,12 +806,13 @@ test.describe('output directory', () => {
     await openInflate(page, name);
     const row = astroDocs(page);
     await expect(row).toBeVisible();
-    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toContainText('1');
+    // full history by default
+    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toContainText('Full');
     await expect(row.getByTestId('inflate-mopt-subpathOnly').getByRole('checkbox')).toBeChecked();
 
     await row.getByTestId('inflate-mopt-cloneDepth').click();
-    await page.getByRole('option', { name: 'full', exact: true }).click();
-    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toContainText('full');
+    await page.getByRole('option', { name: '1', exact: true }).click();
+    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toContainText('1');
     // an invalid branch is not committed, a valid one is
     await row.getByTestId('inflate-mopt-branch').fill('-bad');
     await expect(page.getByText(/must be a branch or tag name/)).toBeVisible();
@@ -765,7 +821,7 @@ test.describe('output directory', () => {
     await saveRecipe(page);
     expect(overrideIn(readRecipeYaml(name), 'reference/astro-docs')).toMatchObject({
       material: 'clone',
-      materialOptions: { cloneDepth: 0, branch: 'release/1.0' },
+      materialOptions: { cloneDepth: 1, branch: 'release/1.0' },
     });
     expect(
       (overrideIn(readRecipeYaml(name), 'reference/astro-docs') as { materialOptions: object })
@@ -812,7 +868,7 @@ test.describe('preview paths', () => {
     await expect(lines).toContainText('# ctxman-dev-brief');
     await expect(lines).toContainText('This directory is the working root');
     // the side column explains where a run writes it; no Write box
-    await expect(page.getByTestId('inflate-preview-hint')).toContainText('LLM_CONTEXT.md');
+    await expect(page.getByTestId('inflate-preview-hint')).toContainText('AGENTS.md');
     await expect(page.getByTestId('inflate-preview-run')).toBeVisible();
     await expect(page.getByTestId('inflate-write-path')).toHaveCount(0);
     // the manifest says what is placed where

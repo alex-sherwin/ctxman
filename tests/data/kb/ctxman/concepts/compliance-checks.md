@@ -67,7 +67,7 @@ Three more warning rules cover the working-directory settings of a recipe (`outp
 | --- | --- |
 | `collections/recipe-output-dir-relative` | `output.dir` is not absolute and does not start with `~/` (a run refuses it) |
 | `collections/recipe-material-invalid` | An override of `reference/<slug>` names a material that does not apply to that reference's type (`clone` needs a remote-repo, `symlink` or `copy` a local-repo or local-folder, `install` a remote-skill); only when the reference exists and is valid |
-| `collections/recipe-primary-invalid` | `output.primary` is not a remote-repo or local-repo reference (or is missing; a local-folder is never a primary); or its effective material is not `clone` (remote-repo) / `symlink` (local-repo); or, when every listed context exists and is valid, it is not an item of the recipe |
+| `collections/recipe-primary-invalid` | `output.primary` is not a remote-repo or local-repo reference (or is missing; a local-folder is never a primary); or its effective material is not `clone` (remote-repo) / `symlink` or `worktree` (local-repo); or, when every listed context exists and is valid, it is not an item of the recipe |
 
 One more warning rule covers the first line of every reference, snippet, context and recipe file:
 
