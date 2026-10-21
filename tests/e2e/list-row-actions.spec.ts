@@ -18,8 +18,12 @@ async function createTask(request: APIRequestContext, prefix: string): Promise<s
   return name;
 }
 
-test.afterAll(() => {
-  for (const name of created) rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
+// After each test, not after all: under fullyParallel the worker may run another file's test (list-table.spec.ts
+// counts the 4 seed tasks) before this file's afterAll.
+test.afterEach(() => {
+  for (const name of created.splice(0)) {
+    rmSync(dataPath(`task/${name}`), { recursive: true, force: true });
+  }
 });
 
 const rowOf = (page: Page, slug: string) =>
