@@ -199,7 +199,7 @@ test.describe('plan (dry run)', () => {
     expect(response.headers()['cache-control']).toBe('no-store');
     const body = (await response.json()) as PlanBody;
     expect(body.dir).toBe(path.resolve(dir));
-    expect(body.contextFile).toBe('LLM_CONTEXT.md');
+    expect(body.contextFile).toBe('AGENTS.md');
     expect(body.blocking).toEqual([]);
     expect(body.dirState).toEqual({
       exists: false,
@@ -333,7 +333,7 @@ test.describe('run', () => {
     expect(response.headers().location).toBe(`/api/inflate/jobs/${started.jobId}`);
     expect(['queued', 'running']).toContain(started.job.status);
     expect(started.job.dir).toBe(path.resolve(dir));
-    expect(started.job.contextFile).toBe(path.join(path.resolve(dir), 'LLM_CONTEXT.md'));
+    expect(started.job.contextFile).toBe(path.join(path.resolve(dir), 'AGENTS.md'));
 
     const job = await waitFor(request, started.jobId, (j) => TERMINAL.has(j.status));
     expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
@@ -364,7 +364,7 @@ test.describe('run', () => {
       expect(existsSync(path.join(dir, 'repos', REPO_REF, '.git'))).toBe(true);
       expect(existsSync(path.join(dir, 'repos', REPO_REF, 'docs', 'guide.md'))).toBe(true);
     }
-    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(context).toContain('## Working directory map');
     expect(context).toContain(HAS_GIT ? '## Primary repository' : '## Repositories');
     // placed paths are relative markdown links, never the absolute ctxman data path
@@ -372,9 +372,7 @@ test.describe('run', () => {
     expect(context).toContain('[`kb/okf-format/index.md`](kb/okf-format/index.md)');
     expect(context).toContain('## Placement');
     expect(context).not.toContain(path.join(E2E_DATA_DIR, 'kb', 'okf-format'));
-    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@LLM_CONTEXT.md\n')).toBe(
-      true,
-    );
+    expect(readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').endsWith('@AGENTS.md\n')).toBe(true);
     expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toContain('/.ctxman-inflate.json');
 
     const manifest = readManifest(dir);
@@ -384,7 +382,7 @@ test.describe('run', () => {
         '.claude/skills/okf-authoring',
         '.gitignore',
         'CLAUDE.md',
-        'LLM_CONTEXT.md',
+        'AGENTS.md',
         'kb/okf-format',
         ...(HAS_GIT ? [`repos/${REPO_REF}`] : []),
         `repos/${LOCAL_REF}`,
@@ -626,7 +624,7 @@ test.describe('placement and editable (v3)', () => {
     expect(isLink(path.join(dir, 'kb', 'okf-format'))).toBe(true);
     expect(existsSync(path.join(repoDir, '.git'))).toBe(false);
 
-    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(context).toContain(
       '- **copy**: a snapshot taken when this directory was inflated; edits stay here and are replaced by the next inflate.',
     );
@@ -677,7 +675,7 @@ test.describe('placement and editable (v3)', () => {
     });
     expect(readFileSync(path.join(dir, '.gitignore'), 'utf8')).toContain('\n/folders/\n');
 
-    const context = readFileSync(path.join(dir, 'LLM_CONTEXT.md'), 'utf8');
+    const context = readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(context).toContain(
       `- **${FOLDER_REF}** · [\`folders/${FOLDER_REF}/\`](folders/${FOLDER_REF}/) · symlink to \`${E2E_LOCAL_FIXTURE}\` · owner: not me · read-only`,
     );
@@ -761,7 +759,7 @@ test.describe('safety', () => {
     expect(statuses['context']).toBe('ok');
     expect(readFileSync(path.join(occupied, 'kb', 'okf-format', 'mine.md'), 'utf8')).toBe('mine');
     // the context file describes the real outcome
-    expect(readFileSync(path.join(occupied, 'LLM_CONTEXT.md'), 'utf8')).toContain('kb/okf-format');
+    expect(readFileSync(path.join(occupied, 'AGENTS.md'), 'utf8')).toContain('kb/okf-format');
   });
 });
 
