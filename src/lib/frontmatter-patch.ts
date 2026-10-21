@@ -161,11 +161,37 @@ export function modifiedStamp(now: Date): string {
  * `modified` is replaced in place (its trailing comment goes with it), else the line is appended at the end of the
  * frontmatter; every other byte stays (`patchFrontmatter`), CRLF included. Text without a frontmatter block, or whose
  * frontmatter does not parse as a mapping (bad YAML, a duplicate key, a list), is returned unchanged; an empty block
- * gets the key. The DocEditor applies it to okf files on every Save (src/stores/doc-editor.ts).
+ * gets the key. Frontmatter the line splice cannot extend (a flow map `{type: x}`, indented top-level keys) is caught
+ * by re-parsing the result: unless it is a mapping with the same keys plus `modified` holding the stamp, the source is
+ * returned unchanged. The DocEditor applies it to okf files on every Save (src/stores/doc-editor.ts).
  */
 export function stampModified(source: string, now: Date): string {
-  const result = patchFrontmatter(source, { modified: modifiedStamp(now) });
-  return result.ok ? result.source : source;
+  const stamp = modifiedStamp(now);
+  const result = patchFrontmatter(source, { modified: stamp });
+  if (!result.ok || !result.changed) return source;
+  const before = topLevelPairs(source);
+  const after = topLevelPairs(result.source);
+  if (before === null || after === null || after.get('modified') !== stamp) return source;
+  const expected = new Set([...before.keys(), 'modified']);
+  const sameKeys = after.size === expected.size && [...after.keys()].every((k) => expected.has(k));
+  return sameKeys ? result.source : source;
+}
+
+/**
+ * The top-level keys of `source`'s frontmatter with their values (YAML core schema without the timestamp tag, so a
+ * date-time stays a string); an empty block is an empty map. null without frontmatter, on a YAML error and for a
+ * frontmatter that is not a mapping.
+ */
+function topLevelPairs(source: string): Map<string, unknown> | null {
+  const region = locateFrontmatter(source);
+  if (region === null) return null;
+  const doc = parseDocument(region.text, { schema: 'core', merge: true });
+  if (doc.errors.length > 0) return null;
+  if (doc.contents === null) return new Map();
+  if (!isMap(doc.contents)) return null;
+  const json: unknown = doc.toJS();
+  if (json === null || typeof json !== 'object' || Array.isArray(json)) return null;
+  return new Map(Object.entries(json as Record<string, unknown>));
 }
 
 /** `text` without the blank (or whitespace-only) lines it starts with. */

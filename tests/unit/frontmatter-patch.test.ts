@@ -403,6 +403,25 @@ describe('stampModified', () => {
       expect(stampModified(source, NOW)).toBe(source);
     }
   });
+
+  it('leaves frontmatter the line splice would break unchanged (flow map, indented keys)', () => {
+    for (const source of [
+      '---\n{type: article}\n---\n# T\n',
+      '---\n{type: article, modified: "2020-01-01T00:00:00Z"}\n---\n# T\n',
+      '---\n{\n  type: article\n}\n---\n# T\n',
+      '---\n  type: article\n  name: x\n---\n# T\n',
+      '---\n  type: article\n  modified: "2020-01-01T00:00:00Z"\n---\n# T\n',
+      '---\r\n  type: article\r\n---\r\n# T\r\n',
+    ]) {
+      expect(stampModified(source, NOW), JSON.stringify(source)).toBe(source);
+    }
+  });
+
+  it('still stamps a block mapping with nested indentation, comments and a multi-line value', () => {
+    const source =
+      '---\n# lead comment\ntype: Guide\ngenerated:\n  by: x\n  at: 2026-10-17T10:15:00Z\ndescription: >-\n  folded\n  text\n---\n# T\n';
+    expect(stampModified(source, NOW)).toBe(source.replace('  text\n---', `  text\n${LINE}\n---`));
+  });
 });
 
 describe('stripFrontmatter / trimLeadingBlankLines', () => {
