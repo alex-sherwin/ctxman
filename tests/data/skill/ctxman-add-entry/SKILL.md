@@ -62,6 +62,7 @@ Any time the user wants something recorded in ctxman: "add a task for X", "write
 * The same action is available in the browser: `/new/<dataset>` forms (the `/tools` Add Entry panel links to them).
 * Entries can be edited in the browser: markdown files on their detail page (Edit toggle, `?edit=1`), reference, snippet, context and recipe in a form (`/<dataset>/<slug>?edit=1`); a snippet's markdown also has a pencil popup on its page. Both save explicitly and are described in the knowledge base concept `concepts/editing.md`.
 * Relations (the `links` field, projects and their children, the panels) are described in the knowledge base concept `concepts/relations.md`.
-* An agent connected to ctxman over MCP (`POST /mcp`) can use the `create-entry`, `patch-entry`, `append-context-links` and `append-log` tools instead of the scripts; see the knowledge base concept `concepts/mcp.md`.
+* An agent connected to ctxman over MCP (`POST /mcp`) can use the `create-entry`, `clone-entry`, `patch-entry`, `append-context-links` and `append-log` tools instead of the scripts; see the knowledge base concept `concepts/mcp.md`.
+* To start from an existing okf bundle (a recurring task, a project template), clone it instead of copying the folder: the `⋯` menu's Clone… on its page, `POST /api/entry/<dataset>/<slug>/clone` with `{"name": "new-name", "description": "..."}`, or the MCP tool `clone-entry`. Every file is copied, the new `index.md` gets the new name, title, description and the default state, and links to the original are not copied.
 * Contexts can also be built interactively at `/forge`; recipes are composed and turned into a markdown document for Claude Code or Codex at `/inflate`.
 * Background on all datasets: [ctxman](ctxman:kb/ctxman).

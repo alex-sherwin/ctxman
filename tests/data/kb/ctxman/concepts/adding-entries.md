@@ -10,7 +10,7 @@ generated:
 
 # Adding entries
 
-Always scaffold with the script instead of copying a folder, so the shape and frontmatter are right. The agent-facing version of this guide is the skill [ctxman-add-entry](ctxman:skill/ctxman-add-entry).
+Always scaffold with the script instead of copying a folder, so the shape and frontmatter are right. To start from an existing okf bundle, clone it (the `⋯` menu's Clone… on its page, `POST /api/entry/<dataset>/<slug>/clone` or the MCP `clone-entry` tool): that copies every file and rewrites the frontmatter that must change, see [Editing](/concepts/editing.md#cloning-an-okf-entry). The agent-facing version of this guide is the skill [ctxman-add-entry](ctxman:skill/ctxman-add-entry).
 
 ## Command
 
