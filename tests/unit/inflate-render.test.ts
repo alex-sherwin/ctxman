@@ -2121,7 +2121,7 @@ describe('renderPlan with output: working directory map', () => {
         '.gitignore          ignores the machine-specific paths below',
         'repos/',
         '  lr/               symlink · editable · Desc lr.',
-        '  rr/               git clone, sparse, branch trunk · primary · editable · Desc rr.',
+        '  rr/               git clone, sparse, at trunk · primary · editable · Desc rr.',
         'kb/',
         '  ctxman/           copy · What ctxman is, how it is built, and how to work with i…',
         'task/',
@@ -2337,7 +2337,7 @@ describe('renderPlan with output: primary repository', () => {
         '',
         'Desc rr-plain.',
         '',
-        '- Source: git clone of `https://github.com/o/plain.git`, full history, branch `v2`',
+        '- Source: git clone of `https://github.com/o/plain.git`, full history, at `v2`',
         '',
         'Work in [`repos/rr-plain/`](repos/rr-plain/) unless the task says otherwise.',
       ].join('\n'),
@@ -3551,10 +3551,74 @@ describe('renderPlan: worktrees, work branches, folder names and where to work',
     expect(repos).toContain(
       ' · git clone of `git@github.com:o/r.git` · work on branch `work`, created from the default branch · relevant path',
     );
-    expect(repos).toContain(` · git worktree of \`${w.repo}\` · relevant path`);
+    expect(repos).toContain(` · git worktree of \`${w.repo}\` · detached HEAD · relevant path`);
     expect(section(md, 'Placement')).toContain(
       'the next inflate pulls (fast-forward only; on a new work branch it only fetches)',
     );
+  });
+
+  it('Branch alone reads "at <ref>" (a branch or a tag) in the map row, the Repositories bullet and the primary', async () => {
+    const w = dirWorld();
+    const { result } = await renderDir(
+      w,
+      flatDir(
+        ['reference/lr', 'reference/rr-plain'],
+        [
+          { key: 'reference/lr', material: 'worktree', materialOptions: { branch: 'v1' } },
+          { key: 'reference/rr-plain', materialOptions: { branch: 'release' } },
+        ],
+        { output: { dir: WD, primary: 'reference/rr-plain' } },
+      ),
+    );
+    const md = result.markdown;
+    const map = section(md, 'Working directory map');
+    expect(map).toMatch(/^ {2}lr\/ +git worktree, at v1 · Desc lr\.$/m);
+    expect(map).toMatch(/^ {2}rr-plain\/ +git clone, at release · primary/m);
+    expect(section(md, 'Repositories')).toContain(
+      ` · git worktree of \`${w.repo}\` · at \`v1\` · relevant path`,
+    );
+    expect(section(md, 'Primary repository')).toContain(
+      '- Source: git clone of `https://github.com/o/plain.git`, full history, at `release`',
+    );
+    expect(md).not.toMatch(/branch (v1|release)/);
+  });
+
+  it('after a run: a reused work branch says so, a worktree already in place names only its branch', async () => {
+    const w = dirWorld();
+    const recipe = flatDir(
+      ['reference/lr'],
+      [{ key: 'reference/lr', material: 'worktree', materialOptions: { newBranch: 'work' } }],
+      { output: { dir: WD, primary: 'reference/lr' } },
+    );
+    const planned = await renderDir(w, recipe);
+    expect(planned.result.markdown).toContain('- Branch: work on branch `work`, created from HEAD');
+    const { plan, content } = await prepare(w.D, recipe);
+    const after = (workBranch: 'reused' | 'present') => {
+      const view = planned.output.materials['reference/lr'];
+      if (view === undefined) throw new Error('no view');
+      return renderPlan(plan, content, {
+        generatedAt: GENERATED_AT,
+        output: {
+          ...planned.output,
+          materials: {
+            ...planned.output.materials,
+            'reference/lr': { ...view, state: 'ok', workBranch },
+          },
+        },
+      }).markdown;
+    };
+    const reused = after('reused');
+    expect(reused).toContain('- Branch: work on branch `work` (an existing branch)');
+    expect(section(reused, 'Working directory map')).toMatch(
+      /^ {2}lr\/ +git worktree, existing branch work · primary/m,
+    );
+    expect(reused).not.toContain('created from');
+    const present = after('present');
+    expect(present).toContain('- Branch: work on branch `work`\n');
+    expect(section(present, 'Working directory map')).toMatch(
+      /^ {2}lr\/ +git worktree, branch work · primary/m,
+    );
+    expect(present).not.toContain('created from');
   });
 
   it("a reference's folder names its directory", async () => {

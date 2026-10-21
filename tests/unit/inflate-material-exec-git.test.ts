@@ -22,6 +22,7 @@ import {
   symlinkStep,
   tmp,
   updateStep,
+  view,
   worktreeStep,
 } from './fixtures/inflate-exec.ts';
 
@@ -346,6 +347,52 @@ describe.skipIf(!HAS_GIT).concurrent('work branches of clones (real git)', () =>
     });
   });
 
+  it('a stale clone is removed only when no commit is missing from its remote (work branch, detached HEAD)', async ({
+    expect,
+  }) => {
+    const repo = makeFixtureRepo();
+    const h = harness();
+    const first = await h.run([
+      dirStep(),
+      cloneStep('reference/w', 'repos/w', repo.uri, { depth: 0, newBranch: 'work' }),
+      cloneStep('reference/d', 'repos/d', repo.uri, { depth: 0 }),
+      cloneStep('reference/c', 'repos/c', repo.uri, { depth: 0, newBranch: 'clean' }),
+      manifestStep(),
+    ]);
+    const entry = (p: string) => {
+      const found = first.manifest?.entries.find((e) => e.path === p);
+      if (found === undefined) throw new Error(`no entry ${p}`);
+      return found;
+    };
+    // a commit on the work branch: it has no upstream, so `git status` shows no `[ahead N]`
+    commitFile(path.join(h.dir, 'repos', 'w'), 'work.md', 'only here');
+    // a commit on a detached HEAD
+    git(path.join(h.dir, 'repos', 'd'), 'checkout', '-q', '--detach');
+    commitFile(path.join(h.dir, 'repos', 'd'), 'detached.md', 'only here too');
+    const { results, manifest } = await h.run(
+      [
+        dirStep(),
+        removeStep(entry('repos/c')),
+        removeStep(entry('repos/d')),
+        removeStep(entry('repos/w')),
+        manifestStep(),
+      ],
+      { previous: first.manifest },
+    );
+    for (const p of ['repos/w', 'repos/d']) {
+      expect(find(results, `rm:${p}`), p).toMatchObject({
+        status: 'skipped',
+        action: 'kept',
+        message: `kept ${p}: it has local changes or unpushed commits`,
+      });
+    }
+    expect(readFileSync(path.join(h.dir, 'repos', 'w', 'work.md'), 'utf8')).toBe('only here');
+    // a work branch without commits of its own holds nothing the remote lacks
+    expect(find(results, 'rm:repos/c')).toMatchObject({ status: 'ok', action: 'removed' });
+    expect(existsSync(path.join(h.dir, 'repos', 'c'))).toBe(false);
+    expect(manifest?.entries.map((e) => e.path)).toEqual(['repos/d', 'repos/w']);
+  });
+
   it('a failing switch removes the fresh clone', async ({ expect }) => {
     const repo = makeFixtureRepo();
     const h = harness();
@@ -450,6 +497,44 @@ describe.skipIf(!HAS_GIT).concurrent('worktrees of local repositories (real git)
       /^git worktree add failed: .*; set New branch to work on a branch of your own$/,
     );
     expect(existsSync(path.join(h.dir, 'repos', 'c'))).toBe(false);
+  });
+
+  it('the written context sees how the work branch came about (created, reused, already there)', async ({
+    expect,
+  }) => {
+    const repo = makeFixtureRepo();
+    git(repo.dir, 'branch', 'old-work');
+    const seen: (string | undefined)[] = [];
+    const h = harness({
+      materials: {
+        'reference/a': view('reference/a', 'repos/a', {
+          kind: 'local-repo',
+          material: 'worktree',
+          newBranch: 'fresh',
+        }),
+        'reference/b': view('reference/b', 'repos/b', {
+          kind: 'local-repo',
+          material: 'worktree',
+          newBranch: 'old-work',
+        }),
+      },
+      renderContext: (materials) => {
+        seen.push(materials['reference/a']?.workBranch, materials['reference/b']?.workBranch);
+        return '# context\n';
+      },
+    });
+    const steps = [
+      dirStep(),
+      worktreeStep('reference/a', 'repos/a', repo.dir, { newBranch: 'fresh' }),
+      worktreeStep('reference/b', 'repos/b', repo.dir, { newBranch: 'old-work' }),
+      step('writeContext', 'context', 'AGENTS.md', { expect: 'write' }),
+      manifestStep(),
+    ];
+    const first = await h.run(steps);
+    expect(seen).toEqual(['created', 'reused']);
+    seen.length = 0;
+    await h.run(steps, { previous: first.manifest });
+    expect(seen).toEqual(['present', 'present']);
   });
 
   it('refuses a path that is not the top level of a work tree, and a foreign directory', async ({

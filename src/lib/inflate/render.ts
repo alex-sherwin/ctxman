@@ -972,25 +972,43 @@ function placementWord(view: MaterialView): string {
 const startOf = (view: MaterialView): string =>
   view.material === 'worktree' ? 'HEAD' : 'the default branch';
 
+/**
+ * What is checked out, without a work branch: `at <ref>` (true for a branch and for a tag, which git checks out
+ * detached), `detached HEAD` for a worktree without Branch, '' otherwise. `code` formats the ref.
+ */
+function checkout(view: MaterialView, code: (s: string) => string): string {
+  if (view.newBranch !== null) return '';
+  if (view.branch !== null) return `at ${code(view.branch)}`;
+  return view.material === 'worktree' ? 'detached HEAD' : '';
+}
+
 /** The note of a map row: the placement word, with the clone / worktree details. */
 function placement(view: MaterialView): string {
   if (view.kind !== 'remote-repo' && view.material !== 'worktree') return placementWord(view);
-  const branch =
-    view.newBranch !== null
-      ? `, new branch ${view.newBranch} from ${view.branch ?? startOf(view)}`
-      : view.branch !== null
-        ? `, branch ${view.branch}`
-        : view.material === 'worktree'
-          ? ', detached HEAD'
-          : '';
-  return `${placementWord(view)}${view.sparse ? ', sparse' : ''}${branch}`;
+  const plain = (s: string): string => s;
+  const work =
+    view.newBranch === null
+      ? checkout(view, plain)
+      : view.workBranch === 'reused'
+        ? `existing branch ${view.newBranch}`
+        : view.workBranch === 'present'
+          ? `branch ${view.newBranch}`
+          : `new branch ${view.newBranch} from ${view.branch ?? startOf(view)}`;
+  return `${placementWord(view)}${view.sparse ? ', sparse' : ''}${work === '' ? '' : `, ${work}`}`;
 }
 
-/** "work on branch `X`, created from `Y`" for a clone or worktree with a work branch; '' otherwise. */
+/**
+ * The work branch line of a clone or worktree with `newBranch` ('' otherwise): "work on branch `X`, created from
+ * `Y`", or, after a run, "(an existing branch)" when a worktree checked out a branch that was already there and
+ * nothing about its origin when the worktree was already in place.
+ */
 function workBranch(view: MaterialView): string {
   if (view.newBranch === null) return '';
+  const name = inlineCode(view.newBranch);
+  if (view.workBranch === 'reused') return `work on branch ${name} (an existing branch)`;
+  if (view.workBranch === 'present') return `work on branch ${name}`;
   const from = view.branch === null ? startOf(view) : inlineCode(view.branch);
-  return `work on branch ${inlineCode(view.newBranch)}, created from ${from}`;
+  return `work on branch ${name}, created from ${from}`;
 }
 
 /**
@@ -1141,20 +1159,19 @@ function primarySection(view: MaterialView): string {
   const dest = view.dest ?? '';
   const link = pathLink(dest, { folder: true });
   const editable = access(view) === 'editable';
-  // the checked-out branch; with a work branch it is only the start point (the Work on line says so)
-  const branch =
-    view.newBranch === null && view.branch !== null ? `, branch ${inlineCode(view.branch)}` : '';
+  // what is checked out; with a work branch Branch is only the start point (the Branch line says so)
+  const at = checkout(view, inlineCode);
+  const checkedOut = at === '' ? '' : `, ${at}`;
   const source =
     view.material === 'clone'
       ? `git clone of ${inlineCode(view.uri ?? '')}, ` +
         ((view.depth ?? 0) > 0 ? `shallow (depth ${view.depth ?? 0})` : 'full history') +
-        branch +
+        checkedOut +
         (view.sparse && view.subpath !== null
           ? `, sparse checkout of ${inlineCode(view.subpath)}`
           : '')
       : view.material === 'worktree'
-        ? `git worktree of ${inlineCode(view.sourceAbs ?? '')}` +
-          (view.newBranch === null && view.branch === null ? ', detached HEAD' : branch)
+        ? `git worktree of ${inlineCode(view.sourceAbs ?? '')}${checkedOut}`
         : `${view.material === 'copy' ? 'copy of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`;
   const facts = [`- Source: ${source}`];
   const work = workBranch(view);
@@ -1195,7 +1212,8 @@ function sourceBullet(view: MaterialView): string {
     : local
       ? ` · ${view.material === 'copy' ? 'copy of' : view.material === 'worktree' ? 'git worktree of' : 'symlink to'} ${inlineCode(view.sourceAbs ?? '')}`
       : ` · git clone of ${inlineCode(view.uri ?? '')}`;
-  const work = placed ? workBranch(view) : '';
+  // the same checkout facts as the map row: the work branch, else the ref checked out (or a detached HEAD)
+  const work = placed ? workBranch(view) || checkout(view, inlineCode) : '';
   const relevant =
     view.subpath === null
       ? ''

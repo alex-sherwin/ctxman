@@ -1065,6 +1065,46 @@ describe('writeContext and writeFile', () => {
     expect(refused.manifest?.entries).toEqual(old.entries);
   });
 
+  it('the old context file goes only after the new one is written (its removal depends on the context step)', async () => {
+    const agentsStep = step('writeContext', 'context', 'AGENTS.md', { expect: 'write' });
+    const oldContext = {
+      path: 'LLM_CONTEXT.md',
+      type: 'file' as const,
+      role: 'context' as const,
+      sha256: sha256Of('old context\n'),
+    };
+    const rmOld = step('remove', 'rm:LLM_CONTEXT.md', 'LLM_CONTEXT.md', {
+      expect: 'remove',
+      entry: oldContext,
+      after: ['context'],
+    });
+    const stub = { path: 'AGENTS.md', type: 'file' as const, role: 'agents-md' as const };
+    const h = harness({ renderContext: () => '# context\n', contextFile: 'AGENTS.md' });
+    mkdirSync(h.dir, { recursive: true });
+    writeFileSync(path.join(h.dir, 'LLM_CONTEXT.md'), 'old context\n');
+    writeFileSync(path.join(h.dir, 'AGENTS.md'), 'stub edited by the user\n');
+    const old = previousOf([oldContext, { ...stub, sha256: sha256Of('stub\n') }]);
+    // the edited stub fails the context step: the old context file is not removed
+    const refused = await h.run([dirStep(), agentsStep, rmOld, manifestStep()], { previous: old });
+    expect(find(refused.results, 'context').status).toBe('failed');
+    expect(find(refused.results, 'rm:LLM_CONTEXT.md')).toMatchObject({
+      status: 'skipped',
+      message: 'skipped: context did not succeed',
+    });
+    expect(readFileSync(path.join(h.dir, 'LLM_CONTEXT.md'), 'utf8')).toBe('old context\n');
+    expect(refused.manifest?.entries.map((e) => e.path)).toEqual(['AGENTS.md', 'LLM_CONTEXT.md']);
+
+    // once the stub is gone, the context file is written and then the old one removed
+    rmSync(path.join(h.dir, 'AGENTS.md'));
+    const done = await h.run([dirStep(), agentsStep, rmOld, manifestStep()], { previous: old });
+    expect(find(done.results, 'context').status).toBe('ok');
+    expect(find(done.results, 'rm:LLM_CONTEXT.md')).toMatchObject({
+      status: 'ok',
+      action: 'removed',
+    });
+    expect(existsSync(path.join(h.dir, 'LLM_CONTEXT.md'))).toBe(false);
+  });
+
   it('renders the context from the ACTUAL outcomes: failed items are marked failed with the reason', async () => {
     const source = tmp.make();
     const missing = path.join(tmp.make(), 'nope');

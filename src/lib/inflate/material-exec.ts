@@ -243,6 +243,8 @@ interface Runtime {
   results: StepResult[];
   steps: readonly MaterialStep[];
   manifest: InflateDirManifest | null;
+  /** What a step learned about its item at run time (a worktree's work branch), merged into the rendered view. */
+  facts: Map<string, Partial<MaterialView>>;
 }
 
 /**
@@ -375,13 +377,21 @@ async function removeRecorded(rt: Runtime, abs: string, rec: ManifestEntry): Pro
       if (status.code !== 0) {
         return { kind: 'kept', message: `kept ${rec.path}: could not check its git status` };
       }
+      const unpushed: RemoveResult = {
+        kind: 'kept',
+        message: `kept ${rec.path}: it has local changes or unpushed commits`,
+      };
       const lines = status.stdout.split('\n').filter((l) => l.trim() !== '');
-      if (lines.length > 1 || (lines[0] ?? '').includes('[ahead')) {
-        return {
-          kind: 'kept',
-          message: `kept ${rec.path}: it has local changes or unpushed commits`,
-        };
-      }
+      if (lines.length > 1 || (lines[0] ?? '').includes('[ahead')) return unpushed;
+      // `[ahead N]` exists only for a branch with an upstream (a work branch made by `switch -c` has none): any
+      // commit of HEAD (also a detached one) or of a local branch that no remote-tracking ref holds counts too.
+      // Conservative on purpose: a clone without remote-tracking refs (a shallow clone of a tag) is kept.
+      const local = await rt.ctx.proc(
+        'git',
+        ['-C', abs, 'rev-list', 'HEAD', '--branches', '--not', '--remotes', '-n', '1'],
+        { env: gitEnv(), signal: rt.ctx.signal, timeoutMs: 60_000 },
+      );
+      if (local.code !== 0 || local.stdout.trim() !== '') return unpushed;
       await rmTree(abs);
       return { kind: 'removed' };
     }
@@ -797,16 +807,18 @@ async function addWorktree(
   abs: string,
   repo: string,
   step: WorktreeStep,
-): Promise<{ message?: string } | { fail: Outcome }> {
+): Promise<{ message?: string; reused: boolean } | { fail: Outcome }> {
   const quick = { timeoutMs: 60_000 };
   await git(rt, ['-C', repo, 'worktree', 'prune'], quick);
   const add = ['-C', repo, 'worktree', 'add'];
   let args: string[];
   let message: string | undefined;
+  let reused = false;
   if (step.newBranch !== null) {
     if ((await isBranchOf(rt, repo, step.newBranch)) !== null) {
       args = [...add, '--', abs, step.newBranch];
       message = `the branch ${step.newBranch} already exists in the repository: checked it out`;
+      reused = true;
     } else {
       const from = step.branch ?? 'HEAD';
       args = [...add, '-b', step.newBranch, '--', abs, from];
@@ -837,7 +849,7 @@ async function addWorktree(
     }
     return { fail: failed(reason) };
   }
-  return message === undefined ? {} : { message };
+  return message === undefined ? { reused } : { message, reused };
 }
 
 /**
@@ -864,13 +876,26 @@ async function runGitWorktree(rt: Runtime, step: WorktreeStep): Promise<Outcome>
     newBranch: step.newBranch,
   };
 
-  const st = await lstatOrNull(abs);
-  if (st === null || (st.isDirectory() && (await readdir(abs)).length === 0)) {
+  // the work branch as the written context file describes it
+  const learned = (workBranch: NonNullable<MaterialView['workBranch']>): void => {
+    if (step.newBranch !== null && step.key !== undefined) rt.facts.set(step.key, { workBranch });
+  };
+  const add = async (action: 'created' | 'replaced'): Promise<Outcome> => {
     const made = await addWorktree(rt, abs, repo, step);
     if ('fail' in made) return made.fail;
-    return done('created', { entry, ...made });
+    learned(made.reused ? 'reused' : 'created');
+    return done(action, {
+      entry,
+      ...(made.message === undefined ? {} : { message: made.message }),
+    });
+  };
+
+  const st = await lstatOrNull(abs);
+  if (st === null || (st.isDirectory() && (await readdir(abs)).length === 0)) {
+    return add('created');
   }
   if (st.isDirectory() && (await isWorktreeOf(rt, abs, repo))) {
+    learned('present');
     // Compared only with a branch: a tag (or any other commit) is checked out detached.
     const want = step.newBranch ?? (await isBranchOf(rt, repo, step.branch));
     const have = await headOf(rt, abs);
@@ -883,9 +908,7 @@ async function runGitWorktree(rt: Runtime, step: WorktreeStep): Promise<Outcome>
   if (rec === undefined) return failed(`${step.path} exists and was not created by ctxman`);
   const removed = await removeRecorded(rt, abs, rec);
   if (removed.kind === 'kept') return failed(removed.message);
-  const made = await addWorktree(rt, abs, repo, step);
-  if ('fail' in made) return made.fail;
-  return done('replaced', { entry, ...made });
+  return add('replaced');
 }
 
 // ---------------------------------------------------------------- download / extract / place skill
@@ -1095,7 +1118,7 @@ function materialsFromResults(rt: Runtime): Record<string, MaterialView> {
       result.status === 'unchanged' ||
       (result.status === 'skipped' && result.action === 'kept');
     if (ok) {
-      out[key] = { ...view, state: 'ok' };
+      out[key] = { ...view, ...rt.facts.get(key), state: 'ok' };
       continue;
     }
     let reason = result.message ?? 'not placed';
@@ -1317,6 +1340,7 @@ export async function executeSteps(
     results: [],
     steps,
     manifest: null,
+    facts: new Map(),
   };
   const statusById = new Map<string, StepResult['status']>();
   let fatalFailed: string | null = null;

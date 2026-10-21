@@ -416,7 +416,7 @@ describe('planMaterialization: previous manifest', () => {
     expect(expectOf('skill:skill/ctxman-add-entry')).toBe('create');
   });
 
-  it('removes only previous paths the new plan does not own, sorted by path, right after ensureDir', async () => {
+  it('removes only previous paths the new plan does not own, sorted by path, right after ensureDir (an old context file after the new one)', async () => {
     const w = world();
     // a directory made with the old default context file LLM_CONTEXT.md (and an AGENTS.md stub)
     const previous = manifest([
@@ -443,27 +443,29 @@ describe('planMaterialization: previous manifest', () => {
     const removed = p.steps.filter((s) => s.kind === 'remove');
     expect(removed.map((s) => s.id)).toEqual([
       'rm:.claude/skills/gone',
-      'rm:LLM_CONTEXT.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
+      'rm:LLM_CONTEXT.md',
     ]);
-    expect(ids(p).slice(0, 5)).toEqual([
+    expect(ids(p).slice(0, 4)).toEqual([
       'dir',
       'rm:.claude/skills/gone',
-      'rm:LLM_CONTEXT.md',
       'rm:kb/old-entry',
       'rm:repos/zeta',
     ]);
-    // the old context file is stale; the old AGENTS.md stub is where the context file now goes
-    expect(removed[1]).toEqual({
+    // the old context file is stale, but it goes only once the new one (where the old AGENTS.md stub was) is written
+    const contextAt = ids(p).indexOf('context');
+    expect(ids(p)[contextAt + 1]).toBe('rm:LLM_CONTEXT.md');
+    expect(removed[3]).toEqual({
       kind: 'remove',
       id: 'rm:LLM_CONTEXT.md',
       path: 'LLM_CONTEXT.md',
       label: 'Remove LLM_CONTEXT.md',
       expect: 'remove',
-      after: [],
+      after: ['context'],
       entry: file('LLM_CONTEXT.md', 'context'),
     });
+    expect(removed[0]?.after).toEqual([]);
     expect(ids(p)).not.toContain('rm:AGENTS.md');
     expect(p.steps.find((s) => s.id === 'context')?.path).toBe('AGENTS.md');
     // owned paths (context file, CLAUDE.md, kb/ctxman) are not removed

@@ -144,6 +144,12 @@ export interface MaterialView {
   branch: string | null;
   /** clone / worktree: the branch created for the work; null = none. */
   newBranch: string | null;
+  /**
+   * Set by a run for a worktree with `newBranch` (absent in a plan, which says "created from"): `created` (made
+   * from Branch now), `reused` (the branch already existed and was checked out) or `present` (the worktree was
+   * already there, left as it is: how its branch came about is not known).
+   */
+  workBranch?: 'created' | 'reused' | 'present';
   sparse: boolean;
   /** References keep their `owner`; ctxman's own okf entries and local skills are always `'me'`. */
   owner: Owner | null;
@@ -399,8 +405,8 @@ interface Placed {
 
 /**
  * Pure and deterministic: the same input always gives the same steps, in the order of spec §6.2 (ensureDir,
- * removals, okf, skills, local repos, local folders, remote repos, remote skills, stage cleanup, context file,
- * stubs, manifest). Items that cannot be placed are demoted to material `none` with a warning (no step).
+ * removals, okf, skills, local repos, local folders, remote repos, remote skills, stage cleanup, context file, the
+ * removal of an old context file (after the new one is written), stubs, manifest). Items that cannot be placed are demoted to material `none` with a warning (no step).
  */
 export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
   const { plan, content, dir, dirExists, previous, tools } = input;
@@ -613,16 +619,20 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
   const stale = (previous?.entries ?? [])
     .filter((e) => !owned.has(e.path) && !underOwned(e.path))
     .sort((a, b) => compareText(a.path, b.path));
+  const removeStep = (entry: ManifestEntry, after: string[]): MaterialStep => ({
+    kind: 'remove',
+    id: `rm:${entry.path}`,
+    path: entry.path,
+    label: `Remove ${entry.path}`,
+    expect: 'remove',
+    after,
+    entry,
+  });
+  // An old context file (a renamed one, or LLM_CONTEXT.md of an older ctxman) goes only once the new one is
+  // written: its removal is planned right after the `context` step and depends on it.
+  const isOldContext = (e: ManifestEntry): boolean => e.type === 'file' && e.role === 'context';
   for (const entry of stale) {
-    steps.push({
-      kind: 'remove',
-      id: `rm:${entry.path}`,
-      path: entry.path,
-      label: `Remove ${entry.path}`,
-      expect: 'remove',
-      after: [],
-      entry,
-    });
+    if (!isOldContext(entry)) steps.push(removeStep(entry, []));
   }
 
   const expectFor = (path: string): 'create' | 'replace' =>
@@ -849,6 +859,9 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
     expect: 'write',
     after: [],
   });
+  for (const entry of stale) {
+    if (isOldContext(entry)) steps.push(removeStep(entry, ['context']));
+  }
   for (const { id, role } of stubs) {
     const file = STUB_FILES[id];
     steps.push({

@@ -975,6 +975,10 @@ test.describe('worktrees and work branches (a git repository made by the test)',
     });
     expect(git(dest(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(BRANCH);
     expect(readFileSync(path.join(dest(), 'notes.md'), 'utf8')).toBe('agent notes\n');
+    // the written context file says so, instead of the planned "created from"
+    const written = readFileSync(path.join(work, 'AGENTS.md'), 'utf8');
+    expect(written).toContain(`work on branch \`${BRANCH}\` (an existing branch)`);
+    expect(written).not.toContain(`new branch ${BRANCH} from`);
 
     // an untracked file makes git refuse; ctxman keeps the folder and says why
     writeFileSync(path.join(dest(), 'scratch.txt'), 'not committed');
@@ -1078,11 +1082,9 @@ test.describe('a clone on a work branch', () => {
     expect(readFileSync(path.join(clone, 'mine.txt'), 'utf8')).toBe('work in progress');
   });
 
-  // KNOWN GAP (found by the real-git validation of the work-branch change): removal asks `git status --branch` for
-  // "[ahead N]", which git prints only for a branch WITH an upstream. A work branch made by `git switch -c` has none,
-  // so a commit on it is invisible and the clone is deleted (src/lib/inflate/material-exec.ts, removeRecorded, case
-  // 'clone'). Turn this into a plain `test` once removal also checks `git rev-list --branches --not --remotes`.
-  test.fixme('a clone with a commit on its work branch is kept when its item stops being placed', async ({
+  // `git status --branch` prints "[ahead N]" only for a branch WITH an upstream; a work branch made by `git switch -c`
+  // has none, so removal also asks `git rev-list HEAD --branches --not --remotes` (material-exec.ts, removeRecorded).
+  test('a clone with a commit on its work branch is kept when its item stops being placed', async ({
     request,
   }) => {
     const dir = path.join(base, 'clone-work-commit');
@@ -1259,6 +1261,11 @@ test.describe('AGENTS.md as the context file', () => {
     expect(job.steps.find((s) => s.id === 'context')).toMatchObject({ status: 'failed' });
     expect(job.steps.find((s) => s.id === 'context')?.message).toContain(hint);
     expect(readFileSync(path.join(edited, 'AGENTS.md'), 'utf8')).toContain('my own notes');
+    // the old context file stays until a new one is written: its removal waits for the context step
+    expect(job.steps.find((s) => s.id === 'rm:LLM_CONTEXT.md')).toMatchObject({
+      status: 'skipped',
+    });
+    expect(existsSync(path.join(edited, 'LLM_CONTEXT.md'))).toBe(true);
 
     // 2. an AGENTS.md that is the user's own (no manifest says otherwise)
     const foreign = path.join(base, 'foreign-agents');
