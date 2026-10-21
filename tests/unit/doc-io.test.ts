@@ -876,10 +876,61 @@ describe('removeConceptFromIndex', () => {
     expect(out).toContain('## Concepts\n');
     expect(out).not.toContain('* [One](/concepts/one.md)');
     expect(out).toContain('* [One again](/concepts/one.md)');
-    // with both, ## Links is the section
-    const both = `# X\n\n## Concepts\n\n* [One](/concepts/one.md)\n\n## Links\n\n* [One](/concepts/one.md) - The first.\n`;
+  });
+
+  it('with both a legacy ## Concepts and a ## Links section, removes the item from each, every other byte kept', () => {
+    const both = [
+      '# X',
+      '',
+      '## Concepts',
+      '',
+      '* [One](/concepts/one.md) - Listed before the rename.',
+      '  continued',
+      '* [Two](/concepts/two.md) - Stays.',
+      '',
+      '```',
+      '## Links',
+      '* [One](/concepts/one.md) - in code, not a section',
+      '```',
+      '',
+      '## links',
+      '',
+      '- [One](./concepts/one.md) - Listed after.',
+      '- [Three](/concepts/three.md) - Stays.',
+      '',
+      '## Later',
+      '',
+      '* [One again](/concepts/one.md)',
+      '',
+    ].join('\n');
     expect(removeConceptFromIndex(both, 'concepts/one.md')).toBe(
-      '# X\n\n## Concepts\n\n* [One](/concepts/one.md)\n\n## Links\n\n',
+      [
+        '# X',
+        '',
+        '## Concepts',
+        '',
+        '* [Two](/concepts/two.md) - Stays.',
+        '',
+        '```',
+        '## Links',
+        '* [One](/concepts/one.md) - in code, not a section',
+        '```',
+        '',
+        '## links',
+        '',
+        '- [Three](/concepts/three.md) - Stays.',
+        '',
+        '## Later',
+        '',
+        '* [One again](/concepts/one.md)',
+        '',
+      ].join('\n'),
+    );
+    // CRLF stays CRLF; a section listing nothing is untouched
+    const crlf =
+      '## Concepts\r\n\r\n* [One](/concepts/one.md)\r\n\r\n## Links\r\n\r\n* [B](/b.md)\r\n';
+    expect(removeConceptFromIndex(crlf, 'concepts/one.md')).toBe(
+      '## Concepts\r\n\r\n\r\n## Links\r\n\r\n* [B](/b.md)\r\n',
     );
   });
 

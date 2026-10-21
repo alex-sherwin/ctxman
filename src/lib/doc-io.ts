@@ -544,24 +544,18 @@ export function addCreateToLog(
 }
 
 /**
- * `index.md` text without the list items of its `## Links` section (or, without one, the legacy `## Concepts`) that
- * link to `relPath` (the bookkeeping `addConceptToIndex` added, undone when the file is deleted); an item's
- * continuation lines go with it. Links elsewhere in the file are left alone, and so is the heading. Pure text in,
- * text out.
+ * `index.md` text without the list items that link to `relPath` in EVERY `## Links` and legacy `## Concepts` section
+ * (ATX, any case, outside code; a section runs to the next `#` / `##` heading): the bookkeeping `addConceptToIndex`
+ * added, undone when the file is deleted. An item's continuation lines go with it; links elsewhere in the file and
+ * the headings are left alone, every other byte stays. Pure text in, text out.
  */
 export function removeConceptFromIndex(source: string, relPath: string): string {
   const lines = source.split('\n');
   const masked = maskMarkdownCode(source).split('\n');
-  const section = linksSection(masked);
-  if (section === null) return source;
-  const { heading } = section;
-  let end = masked.length;
-  for (let i = heading + 1; i < masked.length; i++) {
-    if (/^#{1,2}[ \t]/.test(masked[i] ?? '')) {
-      end = i;
-      break;
-    }
-  }
+  const headings = masked.flatMap((line, i) =>
+    LINKS_HEADING.test(line) || LEGACY_LINKS_HEADING.test(line) ? [i] : [],
+  );
+  if (headings.length === 0) return source;
   // 0-based lines holding a link to the file
   const linking = new Set(
     extractLinks(source)
@@ -574,10 +568,19 @@ export function removeConceptFromIndex(source: string, relPath: string): string 
   );
   const isItem = (i: number): boolean => /^\s*([*-]) /.test(masked[i] ?? '');
   const drop = new Set<number>();
-  for (let i = heading + 1; i < end; i++) {
-    if (!isItem(i) || !linking.has(i)) continue;
-    drop.add(i);
-    for (let j = i + 1; j < end && /^\s+\S/.test(lines[j] ?? '') && !isItem(j); j++) drop.add(j);
+  for (const heading of headings) {
+    let end = masked.length;
+    for (let i = heading + 1; i < masked.length; i++) {
+      if (/^#{1,2}[ \t]/.test(masked[i] ?? '')) {
+        end = i;
+        break;
+      }
+    }
+    for (let i = heading + 1; i < end; i++) {
+      if (!isItem(i) || !linking.has(i)) continue;
+      drop.add(i);
+      for (let j = i + 1; j < end && /^\s+\S/.test(lines[j] ?? '') && !isItem(j); j++) drop.add(j);
+    }
   }
   return drop.size === 0 ? source : lines.filter((_, i) => !drop.has(i)).join('\n');
 }
