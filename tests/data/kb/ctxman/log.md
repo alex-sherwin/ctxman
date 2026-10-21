@@ -1,5 +1,10 @@
 # Update log
 
+## 2026-10-20
+* **Update**: Context Inflate writes the working-directory context file as `AGENTS.md` by default (`LLM_CONTEXT.md` before; the name can still be set), with no AGENTS.md stub then; `CLAUDE.md` imports `@AGENTS.md`. A re-run upgrades an old directory (the stale `LLM_CONTEXT.md` goes, the unedited AGENTS.md stub is replaced) and never overwrites an edited one. [Context inflate](/concepts/context-inflate.md) follows.
+* **Add**: A local repository can be placed as a git worktree (material `worktree`), and clones and worktrees take a New branch to work on, created from Branch. Clones fetch the full history by default; the document-mode clone goes to `repos/{name}`. The context file tells the agent to work from inside each repository's folder. [Context inflate](/concepts/context-inflate.md) and [Compliance checks](/concepts/compliance-checks.md) follow.
+* **Add**: References of type local-repo, local-folder and remote-repo take an optional `folder`, the folder name Inflate places them under (`--folder`, the form's "Folder name", MCP `create-entry`). [Datasets](/concepts/datasets.md), [Adding entries](/concepts/adding-entries.md) and [MCP server](/concepts/mcp.md) follow.
+
 ## 2026-10-19
 * **Update**: The Files panel's "+ New concept" is now "+ Add file": the path is free (folders and a file name, such as `references/abc.md`; missing folders are created), no longer forced under `concepts/`. [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.
 * **Add**: Delete a single file of an okf bundle: a Delete button right of the Preview | Edit toggle of every sub-doc page (not the entry `index.md`, which is the whole bundle) and `DELETE /api/doc/<dataset>/<slug>/<path>`, which also drops the file's `## Concepts` line and the folders it leaves empty and reports the links still pointing at it. [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.
