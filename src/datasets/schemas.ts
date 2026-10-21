@@ -15,6 +15,8 @@ import {
   NAME_PATTERN,
   OWNERS,
   PROJECT_STATES,
+  REFERENCE_FOLDER_MESSAGE,
+  REFERENCE_FOLDER_PATTERN,
   TASK_STATES,
   isLocalReferenceType,
 } from './registry.ts';
@@ -251,6 +253,11 @@ export const skillSchema = type({
 
 /** Optional markdown about the referenced thing, inlined under its item by Context Inflate. */
 const referenceInfo = type('string');
+/**
+ * Optional folder name of a repository or folder in an Inflate working directory (`repos/<folder>`,
+ * `folders/<folder>`; default = the reference name). A remote skill has none: its strict schema rejects the key.
+ */
+const referenceFolder = type(REFERENCE_FOLDER_PATTERN).describe(REFERENCE_FOLDER_MESSAGE);
 
 export const localRepoReferenceSchema = type({
   '+': 'reject',
@@ -261,6 +268,7 @@ export const localRepoReferenceSchema = type({
   /** Absolute path (or ~-prefixed) to the repo root on this machine. */
   path: 'string > 0',
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });
@@ -273,6 +281,7 @@ export const localFolderReferenceSchema = type({
   /** Absolute path (or ~-prefixed) to a plain folder (not a git repository) on this machine. */
   path: 'string > 0',
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });
@@ -285,6 +294,7 @@ export const remoteRepoReferenceSchema = type({
   /** git URI: git@host:org/repo.git, ssh://git@host/org/repo.git, https://host/org/repo[.git]. */
   uri: type('string > 0').narrow(gitUriNarrow).describe(GIT_URI_MESSAGE),
   'subpath?': 'string',
+  'folder?': referenceFolder,
   owner,
   'info?': referenceInfo,
 });

@@ -517,6 +517,39 @@ describe('tools on a private corpus copy (tests that write)', () => {
         path: '~/notes',
       });
       expect(read('reference', 'mcp-folder.yaml')).toContain('type: local-folder\npath: ~/notes\n');
+
+      await ok('create-entry', {
+        dataset: 'reference',
+        name: 'mcp-named',
+        description: 'A repo with a folder name.',
+        type: 'local-repo',
+        path: '~/repos/named',
+        folder: 'Named.Repo',
+      });
+      expect(read('reference', 'mcp-named.yaml')).toContain(
+        'path: ~/repos/named\nfolder: Named.Repo\nowner: me\n',
+      );
+      const named = data<{ entries: { slug: string; folder?: string }[] }>(
+        await ok('list-entries', { dataset: 'reference', type: 'local-repo' }),
+      );
+      expect(named.entries.find((e) => e.slug === 'mcp-named')?.folder).toBe('Named.Repo');
+      await fails(
+        'create-entry',
+        {
+          dataset: 'reference',
+          name: 'mcp-skill-folder',
+          description: 'x',
+          type: 'remote-skill',
+          uri: 'https://github.com/acme/skills.git',
+          folder: 'x',
+        },
+        'invalid',
+      );
+      await fails(
+        'create-entry',
+        { dataset: 'kb', name: 'kb-folder', description: 'x', folder: 'x' },
+        'invalid',
+      );
       const folders = data<{ entries: { slug: string; refType?: string }[] }>(
         await ok('list-entries', { dataset: 'reference', type: 'local-folder' }),
       );

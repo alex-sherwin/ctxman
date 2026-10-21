@@ -144,6 +144,31 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
     expect((await runCli('check-all.ts', dir, '--json')).code).toBe(0);
   });
 
+  it('reference --folder writes the folder after subpath (repositories and folders only)', async ({
+    expect,
+  }) => {
+    const dir = tmp.make();
+    const r = await runCli(
+      'add-entry.ts',
+      dir,
+      'reference',
+      'app',
+      '--type',
+      'local-repo',
+      '--path',
+      '/tmp/app',
+      '--subpath',
+      'src',
+      '--folder',
+      'App.Main',
+    );
+    expect(r.code, r.stderr).toBe(0);
+    expect(readFileSync(path.join(dir, 'reference', 'app.yaml'), 'utf8')).toContain(
+      'path: /tmp/app\nsubpath: src\nfolder: App.Main\nowner: me\n',
+    );
+    expect((await runCli('check-all.ts', dir, '--json')).code).toBe(0);
+  });
+
   it('exits 2 on usage errors and writes nothing', async ({ expect }) => {
     const dir = tmp.make();
     const cases: string[][] = [
@@ -165,6 +190,10 @@ describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
       ['reference', 'x', '--type', 'remote-skill', '--uri', 'https://h.test/b.rar'],
       ['kb', 'x', '--markdown', 'm'],
       ['reference', 'x', '--markdown', 'm'],
+      ['kb', 'x', '--folder', 'f'],
+      ['reference', 'x', '--type', 'remote-skill', '--folder', 'f'],
+      ['reference', 'x', '--type', 'local-repo', '--folder', '../up'],
+      ['reference', 'x', '--type', 'local-repo', '--folder', 'a/b'],
       ['kb', 'x', '--bogus'],
     ];
     const [results, badName] = await Promise.all([

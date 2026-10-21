@@ -261,6 +261,21 @@ describe('summarize', () => {
       expect('subpath' in summarize('reference', 'x', { subpath: '' }, MODIFIED, NOW)).toBe(false);
     });
 
+    it('sets folder for repositories and folders only, when it is a valid folder name', () => {
+      const folder = (data: Record<string, unknown>) =>
+        summarize('reference', 'x', data, MODIFIED, NOW).folder;
+      expect(folder({ type: 'local-repo', folder: 'x-main' })).toBe('x-main');
+      expect(folder({ type: 'local-folder', folder: 'Notes' })).toBe('Notes');
+      expect(folder({ type: 'remote-repo', folder: 'r.git' })).toBe('r.git');
+      expect(folder({ type: 'remote-skill', folder: 'x' })).toBeUndefined();
+      expect(folder({ type: 'local-repo', folder: '../x' })).toBeUndefined();
+      expect(folder({ type: 'local-repo', folder: 3 })).toBeUndefined();
+      expect(folder({ folder: 'x' })).toBeUndefined();
+      expect(
+        summarize('kb', 'x', { type: 'local-repo', folder: 'x' }, MODIFIED, NOW).folder,
+      ).toBeUndefined();
+    });
+
     it('subpath is reference-only', () => {
       for (const dataset of ['kb', 'skill', 'context', 'recipe'] as const) {
         expect(summarize(dataset, 'x', { subpath: 'a' }, MODIFIED, NOW).subpath).toBeUndefined();

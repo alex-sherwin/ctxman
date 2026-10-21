@@ -26,6 +26,9 @@ const subpath = data.subpath ?? '';
 const uriKind = data.type === 'remote-skill' ? classifyRemoteUri(data.uri) : null;
 const isUrl = /^https?:\/\//i.test(where.value);
 const root = uriKind === 'archive' ? 'archive root' : data.type === 'local-folder' ? 'folder root' : 'repo root';
+// Inflate places a repository at repos/<folder> and a folder at folders/<folder> (a remote skill has no folder)
+const folder = data.type === 'remote-skill' ? undefined : (data.folder ?? null);
+const placeUnder = data.type === 'local-folder' ? 'folders/' : 'repos/';
 ---
 
 <dl class="cx-fields" data-testid="reference-fields">
@@ -59,6 +62,21 @@ const root = uriKind === 'archive' ? 'archive root' : data.type === 'local-folde
   </dd>
   <dt class="ck-label">Subpath</dt>
   <dd>{subpath ? <code class="cx-mono">{subpath}</code> : <span class="cx-subtle">{root}</span>}</dd>
+  {
+    folder !== undefined && (
+      <>
+        <dt class="ck-label">Folder name</dt>
+        <dd data-testid="reference-folder">
+          {folder !== null ? (
+            <code class="cx-mono">{folder}</code>
+          ) : (
+            <span class="cx-subtle">{data.name} (the reference name)</span>
+          )}{" "}
+          <span class="cx-subtle">in an Inflate working directory: {placeUnder}{folder ?? data.name}</span>
+        </dd>
+      </>
+    )
+  }
   <dt class="ck-label">Owner</dt>
   <dd>{OWNER_LABELS[data.owner]}</dd>
 </dl>

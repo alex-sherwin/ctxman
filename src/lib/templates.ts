@@ -4,11 +4,14 @@
 import { Document, isSeq } from 'yaml';
 import {
   datasetDef,
+  isFolderReferenceType,
   isReferenceType,
   isValidName,
   NAME_MAX_LENGTH,
   OKF_ENTRY_FILE,
   OWNERS,
+  REFERENCE_FOLDER_MESSAGE,
+  REFERENCE_FOLDER_PATTERN,
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { TAG_PATTERN } from './names.ts';
@@ -25,6 +28,8 @@ export interface NewEntryOptions {
   path?: string;
   uri?: string;
   subpath?: string;
+  /** reference local-repo, local-folder, remote-repo only: the Inflate folder name (`repos/<folder>`). */
+  folder?: string;
   owner?: Owner;
   /** snippet only: the markdown (default: a TODO placeholder). */
   markdown?: string;
@@ -211,6 +216,16 @@ function referenceDoc(
   else doc.uri = opts.uri?.trim() || `https://github.com/TODO/${name}.git`;
   const subpath = opts.subpath?.trim();
   if (subpath) doc.subpath = subpath;
+  const folder = opts.folder?.trim();
+  if (folder) {
+    if (!isFolderReferenceType(type)) {
+      throw new Error('folder only applies to local-repo, local-folder and remote-repo references');
+    }
+    if (!REFERENCE_FOLDER_PATTERN.test(folder)) {
+      throw new Error(`Invalid folder "${folder}": ${REFERENCE_FOLDER_MESSAGE}`);
+    }
+    doc.folder = folder;
+  }
   doc.owner = owner;
   return doc;
 }

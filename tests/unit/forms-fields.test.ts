@@ -37,22 +37,39 @@ describe('FORM_FIELDS / visibleFields', () => {
         'type',
         'path',
         'subpath',
+        'folder',
         'owner',
         'info',
       ]);
     }
-    for (const type of ['remote-repo', 'remote-skill']) {
-      expect(ids(visibleFields('reference', { type }))).toEqual([
-        'name',
-        'description',
-        'tags',
-        'type',
-        'uri',
-        'subpath',
-        'owner',
-        'info',
-      ]);
-    }
+    expect(ids(visibleFields('reference', { type: 'remote-repo' }))).toEqual([
+      'name',
+      'description',
+      'tags',
+      'type',
+      'uri',
+      'subpath',
+      'folder',
+      'owner',
+      'info',
+    ]);
+    // a remote skill is installed under its skill name: no folder
+    expect(ids(visibleFields('reference', { type: 'remote-skill' }))).toEqual([
+      'name',
+      'description',
+      'tags',
+      'type',
+      'uri',
+      'subpath',
+      'owner',
+      'info',
+    ]);
+    const folder = FORM_FIELDS.reference.find((f) => f.id === 'folder');
+    expect(folder?.label).toBe('Folder name');
+    expect(folder && fieldHelp(folder, { type: 'local-folder' })).toMatch(
+      /^Folder under folders\//,
+    );
+    expect(folder && fieldHelp(folder, { type: 'remote-repo' })).toMatch(/^Folder under repos\//);
     expect(FORM_FIELDS.reference.find((f) => f.id === 'info')?.kind).toBe('markdown');
   });
 
@@ -199,6 +216,60 @@ describe('normalizeDoc', () => {
       subpath: 'drafts',
       owner: 'me',
     });
+  });
+
+  it('reference: folder is trimmed, kept after subpath, dropped when empty or for a remote skill', () => {
+    const base = { name: 'r', description: 'd', owner: 'me' };
+    const repo = normalizeDoc('reference', {
+      ...base,
+      type: 'local-repo',
+      path: '/x',
+      subpath: 'src',
+      folder: ' r-main ',
+    });
+    expect(Object.keys(repo)).toEqual([
+      'name',
+      'description',
+      'type',
+      'path',
+      'subpath',
+      'folder',
+      'owner',
+    ]);
+    expect(repo.folder).toBe('r-main');
+    expect(
+      normalizeDoc('reference', { ...base, type: 'local-repo', path: '/x', folder: '  ' }),
+    ).not.toHaveProperty('folder');
+    expect(
+      normalizeDoc('reference', {
+        ...base,
+        type: 'remote-skill',
+        uri: 'https://example.com/s.tgz',
+        folder: 'leftover',
+      }),
+    ).not.toHaveProperty('folder');
+    expect(
+      validateDoc('reference', {
+        ...base,
+        type: 'remote-repo',
+        uri: 'git@h:o/r.git',
+        folder: '../x',
+      }),
+    ).toEqual({
+      ok: false,
+      errors: {
+        folder:
+          'must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters) (was "../x")',
+      },
+    });
+    expect(
+      validateDoc('reference', {
+        ...base,
+        type: 'remote-repo',
+        uri: 'git@h:o/r.git',
+        folder: 'R.git',
+      }).ok,
+    ).toBe(true);
   });
 
   it('reference: info is kept as written (last key) and dropped when blank', () => {

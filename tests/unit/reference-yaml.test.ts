@@ -40,6 +40,37 @@ const remoteSkill = parse({
 });
 
 describe('serializeReference', () => {
+  it('writes folder right after subpath; a remote skill rejects it', () => {
+    const named = parse({ ...local, folder: 'my-repo.main' });
+    expect(Object.keys(referenceToYamlObject(named))).toEqual([
+      'name',
+      'description',
+      'type',
+      'path',
+      'subpath',
+      'folder',
+      'owner',
+      'tags',
+    ]);
+    expect(serializeReference(parse({ ...remoteRepo, folder: 'Blasto' }))).toContain(
+      'uri: git@github.com:meow-sci/blasto.git\nfolder: Blasto\nowner: me\n',
+    );
+    expect(parseReference({ ...remoteSkill, folder: 'x' })).toEqual({
+      ok: false,
+      code: 'invalid',
+      issues: [
+        {
+          path: 'folder',
+          message: 'folder applies to local-repo, local-folder and remote-repo references only',
+        },
+      ],
+    });
+    for (const bad of ['', '.hidden', '-x', 'a/b', '..', 'a b', 'x'.repeat(101)]) {
+      expect(parseReference({ ...local, folder: bad }).ok, bad).toBe(false);
+    }
+    expect(parseReference({ ...local, folder: 'A1._-z' }).ok).toBe(true);
+  });
+
   it('writes keys in the fixed order for each type', () => {
     expect(Object.keys(referenceToYamlObject(local))).toEqual([
       'name',

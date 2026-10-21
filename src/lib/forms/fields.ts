@@ -9,6 +9,7 @@ import {
   OWNER_LABELS,
   REFERENCE_TYPES,
   REFERENCE_TYPE_LABELS,
+  isFolderReferenceType,
   isLocalReferenceType,
 } from '../../datasets/registry.ts';
 import { INFLATE_LAYOUTS, INFLATE_TARGETS, LAYOUT_LABELS, TARGETS } from '../inflate/catalog.ts';
@@ -126,6 +127,17 @@ export const FORM_FIELDS: Record<YamlDatasetId, readonly FieldDef[]> = {
       mono: true,
       help: 'Folder inside the repo, folder or archive; empty = the root',
     },
+    {
+      id: 'folder',
+      label: 'Folder name',
+      kind: 'text',
+      mono: true,
+      help: (doc) =>
+        `Folder under ${doc.type === 'local-folder' ? 'folders/' : 'repos/'} in an Inflate working directory; empty = the reference name`,
+      placeholder: (doc) =>
+        typeof doc.name === 'string' && doc.name !== '' ? doc.name : 'my-repo',
+      when: (doc) => isFolderReferenceType(doc.type),
+    },
     { id: 'owner', label: 'Owner', kind: 'select', required: true, options: OWNER_OPTIONS },
     {
       id: 'info',
@@ -229,9 +241,9 @@ function put(out: FormDoc, key: string, value: unknown): void {
 }
 
 /**
- * The document the API receives: strings trimmed, optional empty values (subpath, tags, info, preamble) dropped.
- * Reference keeps only the keys of the active type variant (`path` for local-repo and local-folder,
- * `uri` for the remote types), in the serializer's key order; a snippet keeps its markdown as typed (not trimmed);
+ * The document the API receives: strings trimmed, optional empty values (subpath, folder, tags, info, preamble)
+ * dropped. Reference keeps only the keys of the active type variant (`path` for local-repo and local-folder,
+ * `uri` for the remote types, no `folder` for remote-skill), in the serializer's key order; a snippet keeps its markdown as typed (not trimmed);
  * context and recipe keep every other key (links, composition) as is.
  */
 export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
@@ -245,6 +257,11 @@ export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
     else put(out, 'uri', trimmed(doc.uri));
     const subpath = trimmed(doc.subpath);
     if (typeof subpath === 'string' && subpath !== '') out.subpath = subpath;
+    // a remote skill has no folder: switching the type to it drops the value
+    const folder = trimmed(doc.folder);
+    if (isFolderReferenceType(doc.type) && typeof folder === 'string' && folder !== '') {
+      out.folder = folder;
+    }
     put(out, 'owner', doc.owner);
     if (tags.length > 0) out.tags = tags;
     if (typeof doc.info === 'string' && doc.info.trim() !== '') out.info = doc.info;

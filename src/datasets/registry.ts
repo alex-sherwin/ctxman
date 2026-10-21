@@ -151,6 +151,18 @@ export const REFERENCE_TYPE_LABELS: Readonly<Record<ReferenceType, string>> = {
 export const LOCAL_REFERENCE_TYPES = ['local-repo', 'local-folder'] as const;
 export type LocalReferenceType = (typeof LOCAL_REFERENCE_TYPES)[number];
 
+/**
+ * Reference types that take an optional `folder`: the folder name Context Inflate places them under in a working
+ * directory (`repos/<folder>`, `folders/<folder>`) instead of the reference name. A remote skill is installed
+ * under its skill name, so it has none.
+ */
+export const FOLDER_REFERENCE_TYPES = ['local-repo', 'local-folder', 'remote-repo'] as const;
+export type FolderReferenceType = (typeof FOLDER_REFERENCE_TYPES)[number];
+/** One path segment: a leading letter or digit, then letters, digits and . _ - (max 100 characters). */
+export const REFERENCE_FOLDER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+export const REFERENCE_FOLDER_MESSAGE =
+  'must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)';
+
 export const OWNERS = ['me', 'not-me'] as const;
 export type Owner = (typeof OWNERS)[number];
 export const OWNER_LABELS: Readonly<Record<Owner, string>> = { me: 'me', 'not-me': 'not me' };
@@ -348,6 +360,11 @@ export function isReferenceType(value: unknown): value is ReferenceType {
 
 export function isLocalReferenceType(value: unknown): value is LocalReferenceType {
   return typeof value === 'string' && (LOCAL_REFERENCE_TYPES as readonly string[]).includes(value);
+}
+
+/** local-repo, local-folder and remote-repo: the reference types with an optional `folder`. */
+export function isFolderReferenceType(value: unknown): value is FolderReferenceType {
+  return typeof value === 'string' && (FOLDER_REFERENCE_TYPES as readonly string[]).includes(value);
 }
 
 /** Group for a state id; 'neutral' when the dataset has no lifecycle or the state is unknown. */
