@@ -10,6 +10,8 @@ import {
   ENTRY_RELS,
   FEATURE_STATES,
   IDEA_STATES,
+  ISSUE_KEY_EXPECTED,
+  ISSUE_KEY_PATTERN,
   LINKABLE_DATASETS,
   NAME_MAX_LENGTH,
   NAME_PATTERN,
@@ -178,12 +180,18 @@ export const entryLinksSchema = entryLinkSchema.array().narrow((links, ctx) => {
   return ok;
 });
 
+/** The entry's issue tracker key (`PROJ-123`, `org/repo#42`): one token, see registry ISSUE_KEY_PATTERN. */
+export const issueKeySchema = type('string').narrow(
+  (value, ctx) => ISSUE_KEY_PATTERN.test(value) || ctx.mustBe(ISSUE_KEY_EXPECTED),
+);
+
 /** Bundle entry (root index.md) for kb / rca (no lifecycle); `okf_version` leads the frontmatter. */
 export const okfEntrySchema = type({
   'okf_version?': "'0.2'",
   ...okfSharedShape,
   name: nameSchema,
   description: nonBlank,
+  'issueKey?': issueKeySchema,
   'links?': entryLinksSchema,
 });
 

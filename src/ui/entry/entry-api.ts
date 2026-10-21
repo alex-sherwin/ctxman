@@ -33,6 +33,8 @@ export interface EntryLinkBody {
 }
 
 export interface EntryPatchBody extends FrontmatterPatch {
+  /** task, feature, bug, rca: ISO 8601 durations appended to `time` (not together with `time`). */
+  addTime?: string[];
   addLinks?: EntryLinkBody[];
   removeLinks?: { dataset: LinkableDatasetId; slug: string }[];
   ifUnmodifiedSince?: string;

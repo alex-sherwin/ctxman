@@ -2,7 +2,12 @@
 // serves, the draft shape, the client-side validation, the `POST /api/entry/<ds>` body and how a failed
 // response maps back to fields. The server (src/lib/entry-io.ts `createEntry`) stays the authority; this only
 // gives the same answers before the request is sent.
-import { datasetDef, isOkfDatasetId } from '../../datasets/registry.ts';
+import {
+  datasetDef,
+  ISSUE_KEY_EXPECTED,
+  ISSUE_KEY_PATTERN,
+  isOkfDatasetId,
+} from '../../datasets/registry.ts';
 import type { OkfDatasetId } from '../../datasets/registry.ts';
 import { nameProblem } from '../names.ts';
 
@@ -19,6 +24,8 @@ export interface NewEntryDraft {
   description: string;
   /** Lifecycle datasets only; '' otherwise. */
   state: string;
+  /** okf only: the issue tracker key; '' = none. */
+  issueKey: string;
   tags: string[];
   /** A project slug, or null = none. */
   parent: string | null;
@@ -44,6 +51,7 @@ export function blankDraft(dataset: NewEntryDataset, parent: string | null): New
     title: '',
     description: '',
     state: datasetDef(dataset).states?.[0]?.id ?? '',
+    issueKey: '',
     tags: [],
     parent,
   };
@@ -71,6 +79,10 @@ export function validateDraft(
   else if (description.length > DESCRIPTION_MAX) {
     errors.description = `${DESCRIPTION_MAX} characters max`;
   }
+  const issueKey = draft.issueKey.trim();
+  if (dataset !== 'skill' && issueKey !== '' && !ISSUE_KEY_PATTERN.test(issueKey)) {
+    errors.issueKey = `Use ${ISSUE_KEY_EXPECTED}`;
+  }
   if (draft.parent !== null && context.projects !== null && !context.projects.has(draft.parent)) {
     errors.parent = `Project "${draft.parent}" does not exist`;
   }
@@ -86,6 +98,7 @@ export function buildBody(dataset: NewEntryDataset, draft: NewEntryDraft): Recor
   if (dataset !== 'skill') {
     if (draft.title.trim() !== '') body.title = draft.title.trim();
     if (draft.tags.length > 0) body.tags = draft.tags;
+    if (draft.issueKey.trim() !== '') body.issueKey = draft.issueKey.trim();
   }
   if (datasetDef(dataset).states !== undefined && draft.state !== '') body.state = draft.state;
   if (draft.parent !== null) body.parent = draft.parent;

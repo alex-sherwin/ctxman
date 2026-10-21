@@ -1,5 +1,5 @@
 // Scaffold a new entry of any dataset from its template. Never overwrites.
-// Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S]
+// Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S] [--issue-key K]
 //          [--type local-repo|local-folder|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
 //          [--folder F] [--owner me|not-me] [--markdown M] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
@@ -41,6 +41,7 @@ Options:
   --title T          human title (default: derived from the name)
   --description D    one-line description (default: "TODO: describe <title>.")
   --state S          lifecycle state (idea, task, bug, feature, project only; default: first state)
+  --issue-key K      okf datasets: issue tracker key of the entry (PROJ-123, org/repo#42; one word)
   --type T           reference only: ${REFERENCE_TYPES.join(' | ')} (default: remote-repo)
   --path P           reference local-repo: repo root on this machine; local-folder: the folder
   --uri U            reference remote-repo: git URI (git@host:org/repo.git, ssh://…, https://…);
@@ -79,6 +80,7 @@ async function main(): Promise<void> {
         title: { type: 'string' },
         description: { type: 'string' },
         state: { type: 'string' },
+        'issue-key': { type: 'string' },
         type: { type: 'string' },
         path: { type: 'string' },
         uri: { type: 'string' },
@@ -180,6 +182,7 @@ async function main(): Promise<void> {
       ...(values.title === undefined ? {} : { title: values.title }),
       ...(values.description === undefined ? {} : { description: values.description }),
       ...(values.state === undefined ? {} : { state: values.state }),
+      ...(values['issue-key'] === undefined ? {} : { issueKey: values['issue-key'] }),
       ...(values.type === undefined || !isReferenceType(values.type) ? {} : { type: values.type }),
       ...(values.path === undefined ? {} : { path: values.path }),
       ...(values.uri === undefined ? {} : { uri: values.uri }),

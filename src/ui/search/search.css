@@ -97,6 +97,12 @@
   .cx-search__item[data-hovered] {
     background: var(--bg-subtle);
   }
+  /* no result has the keyboard focus (after a deletion, or a query restored from the URL) while the input does:
+     Enter opens the first result (SearchWidget.tsx), so it looks focused */
+  .cx-search:has(.cx-search__bar input:focus)
+    .cx-search__listbox:not(:has([data-focused]))
+    > section:first-of-type
+    > .cx-search__item:first-of-type,
   .cx-search__item[data-focused] {
     background: var(--accent-bg);
     border-left-color: var(--accent);
@@ -116,6 +122,11 @@
     font-size: var(--fs-lg);
     font-weight: var(--fw-medium);
   }
+  .cx-search:has(.cx-search__bar input:focus)
+    .cx-search__listbox:not(:has([data-focused]))
+    > section:first-of-type
+    > .cx-search__item:first-of-type
+    .cx-search__title,
   .cx-search__item[data-focused] .cx-search__title {
     color: var(--accent-text);
   }

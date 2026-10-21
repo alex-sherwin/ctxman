@@ -720,6 +720,31 @@ describe('tools on a private corpus copy (tests that write)', () => {
       expect(read('task', 'write-agents-md', 'index.md')).not.toMatch(/^(time|resolved):/m);
     });
 
+    it('addTime appends to the logged time; issueKey is set and removed', async () => {
+      await ok('patch-entry', { dataset: 'task', slug: 'write-agents-md', addTime: ['PT1H'] });
+      const result = await ok('patch-entry', {
+        dataset: 'task',
+        slug: 'write-agents-md',
+        addTime: ['pt30m'],
+        issueKey: 'PROJ-7',
+      });
+      expect(data(result)).toMatchObject({
+        frontmatter: { time: ['PT1H', 'PT30M'], issueKey: 'PROJ-7' },
+      });
+      await fails(
+        'patch-entry',
+        { dataset: 'task', slug: 'write-agents-md', time: [], addTime: ['PT1H'] },
+        'invalid',
+      );
+      await fails(
+        'patch-entry',
+        { dataset: 'task', slug: 'write-agents-md', issueKey: 'two words' },
+        'invalid',
+      );
+      await ok('patch-entry', { dataset: 'task', slug: 'write-agents-md', issueKey: null });
+      expect(read('task', 'write-agents-md', 'index.md')).not.toContain('issueKey');
+    });
+
     it('adds and removes relations', async () => {
       await ok('patch-entry', {
         dataset: 'task',

@@ -55,6 +55,7 @@ const toIso = (v: unknown): string | undefined => {
 const description = str(data.description);
 const tags = Array.isArray(data.tags) ? data.tags.filter((t): t is string => typeof t === 'string') : [];
 const state = getDataset(dataset)?.states ? str(data.state) : undefined;
+const issueKey = kind === 'okf' ? str(data.issueKey)?.trim() : undefined;
 const status = str(data.status);
 const staleAfter =
   data.stale_after instanceof Date || typeof data.stale_after === 'string'
@@ -163,6 +164,15 @@ const filePath = `data/${file}`;
       )
     }
     {description && <MetaRow label="Description">{description}</MetaRow>}
+    {
+      issueKey && (
+        <MetaRow label="Issue">
+          <code class="cx-mono" data-testid="meta-issue-key">{issueKey}</code>
+          {" "}
+          <CopyButton text={issueKey} ariaLabel="Copy issue key" />
+        </MetaRow>
+      )
+    }
     {
       tags.length > 0 && (
         <MetaRow label="Tags">

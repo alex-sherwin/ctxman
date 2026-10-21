@@ -9,12 +9,15 @@
 //   list with `sort` / `dir`, and the server sorts (filterEntries). The choice is remembered first
 //   (list-sort-memory.ts): a list URL without a sort opens in the last one chosen.
 // - The state select is the native one src/scripts/shell.ts saves (StateSelect.tsx); `keyboardNavigationBehavior
-//   ="tab"` keeps arrow keys and Enter inside it instead of moving through the grid.
-// - The last column holds the entry's `⋯` menu (EntryMenu.tsx, shared with the EntryMenus island of detail pages).
+//   ="tab"` keeps arrow keys and Enter inside it instead of moving through the grid, and its cell keeps the events
+//   of a change from pressing the row (a change saves and reloads the list, it never opens the entry).
+// - The last column holds the row's actions as icon buttons: Log time (task, feature, bug, rca: LogTimeDialog.tsx)
+//   and Delete… (the confirm dialog of EntryMenu.tsx, shared with the EntryMenus island of detail pages). A write
+//   reloads the list; Log time leaves a message for the reloaded page (list-flash.ts).
 import { useStore } from '@nanostores/react';
 import { useEffect, useMemo, useState } from 'react';
 import type { Key } from 'react-aria-components';
-import { getDataset, OWNER_LABELS } from '../../datasets/registry.ts';
+import { getDataset, isTimeTrackedDatasetId, OWNER_LABELS } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
 import { defaultSortDir } from '../../lib/entry-filter.ts';
 import type { SortDir } from '../../lib/entry-filter.ts';
@@ -29,13 +32,18 @@ import { Button } from '../kit/Button.tsx';
 import { Icon } from '../kit/Icon.tsx';
 import { Menu, MenuItem, MenuSection, MenuTrigger } from '../kit/Menu.tsx';
 import { Popover } from '../kit/Popover.tsx';
-import { DeleteEntryDialog, EntryMenu } from '../menus/EntryMenu.tsx';
+import { Status } from '../kit/Status.tsx';
+import { Tooltip } from '../kit/Tooltip.tsx';
+import { DeleteEntryDialog } from '../menus/EntryMenu.tsx';
 import type { MenuTarget } from '../menus/EntryMenu.tsx';
 import { Cell, Column, ResizableTable, Row, Table, TableBody, TableHeader } from '../kit/Table.tsx';
 import { listColumns } from './columns.ts';
 import type { ListColumn, ListColumnId } from './columns.ts';
 import { readListData } from './list-data.ts';
 import type { ListData } from './list-data.ts';
+import { clearListFlash, readListFlash } from './list-flash.ts';
+import { LogTimeDialog } from './LogTimeDialog.tsx';
+import type { LogTimeTarget } from './LogTimeDialog.tsx';
 import { StateSelect } from './StateSelect.tsx';
 import {
   DEFAULT_TABLE_PREFS,
@@ -49,12 +57,14 @@ import type { TableDensity, TablePrefs } from './table-prefs.ts';
 
 const MAX_TAGS = 4;
 
-/** The actions column after the data columns: the row's `⋯` menu. Fixed width; never sorted, resized or hidden. */
-interface MenuColumn {
-  id: 'menu';
+/** The actions column after the data columns: the row's icon buttons. Fixed width; never sorted, resized or hidden. */
+interface ActionsColumn {
+  id: 'actions';
 }
-const MENU_COLUMN: MenuColumn = { id: 'menu' };
-const MENU_WIDTH = 44;
+const ACTIONS_COLUMN: ActionsColumn = { id: 'actions' };
+/** Fits one small icon button plus the cell padding; each more button adds its width and the gap. */
+const ACTIONS_WIDTH = 44;
+const ACTION_STEP = 24;
 
 /** The same list sorted by `sort` / `dir`: a navigation, the server sorts. Remembered as the list's sort. */
 function goSort(dataset: DatasetId, sort: ListSort, dir: SortDir): void {
@@ -82,6 +92,13 @@ function ListTableView({ data }: { data: ListData }) {
   const [sorting, setSorting] = useState(false);
   // The row whose "Delete…" is being confirmed.
   const [asking, setAsking] = useState<MenuTarget | null>(null);
+  // The row whose "Log time" dialog is open.
+  const [logging, setLogging] = useState<LogTimeTarget | null>(null);
+  // What the last row action did before the reload (Log time); shown once.
+  const [flash] = useState(readListFlash);
+  useEffect(() => clearListFlash(), []);
+  const timeTracked = isTimeTrackedDatasetId(dataset);
+  const actionsWidth = ACTIONS_WIDTH + (timeTracked ? ACTION_STEP : 0);
 
   const allColumns = useMemo(() => listColumns(dataset), [dataset]);
   // The data columns the layout shows; the table renders them plus the actions column.
@@ -89,7 +106,7 @@ function ListTableView({ data }: { data: ListData }) {
     () => allColumns.filter((c) => !prefs.hidden.includes(c.id)),
     [allColumns, prefs.hidden],
   );
-  const tableColumns = useMemo(() => [...columns, MENU_COLUMN], [columns]);
+  const tableColumns = useMemo(() => [...columns, ACTIONS_COLUMN], [columns]);
   const widthOf = (c: ListColumn) =>
     toColumnWidth(dragWidths?.get(c.id)) ?? prefs.widths[c.id] ?? c.defaultWidth;
   const sorted = columns.find((c) => c.sort === sort);
@@ -116,6 +133,11 @@ function ListTableView({ data }: { data: ListData }) {
   return (
     <div className="cx-ltable" data-testid="list-results" data-sorting={sorting || undefined}>
       <div className="cx-ltable__bar">
+        {flash !== null && (
+          <Status kind="ok" className="cx-ltable__flash" testId="list-flash">
+            {flash}
+          </Status>
+        )}
         <LayoutMenu
           columns={allColumns}
           prefs={prefs}
@@ -156,13 +178,13 @@ function ListTableView({ data }: { data: ListData }) {
         >
           <TableHeader columns={tableColumns} dependencies={[prefs, dragWidths]}>
             {(column) =>
-              column.id === 'menu' ? (
+              column.id === 'actions' ? (
                 <Column
-                  id="menu"
-                  width={MENU_WIDTH}
-                  minWidth={MENU_WIDTH}
+                  id="actions"
+                  width={actionsWidth}
+                  minWidth={actionsWidth}
                   textValue="Actions"
-                  className="cx-table__th--menu"
+                  className="cx-table__th--actions"
                 >
                   <span className="ck-sr-only">Actions</span>
                 </Column>
@@ -205,18 +227,13 @@ function ListTableView({ data }: { data: ListData }) {
               >
                 {(column) => (
                   <Cell className={`cx-table__td--${column.id}`}>
-                    {column.id === 'menu' ? (
-                      <span data-testid="row-menu-slot">
-                        <EntryMenu
-                          target={{
-                            dataset: e.dataset,
-                            slug: e.slug,
-                            title: e.title ?? e.name,
-                            context: 'row',
-                          }}
-                          onDelete={setAsking}
-                        />
-                      </span>
+                    {column.id === 'actions' ? (
+                      <RowActions
+                        entry={e}
+                        timeTracked={timeTracked}
+                        onLogTime={setLogging}
+                        onDelete={setAsking}
+                      />
                     ) : (
                       <CellContent entry={e} column={column.id} now={now} />
                     )}
@@ -228,7 +245,54 @@ function ListTableView({ data }: { data: ListData }) {
         </Table>
       </ResizableTable>
       {asking !== null && <DeleteEntryDialog target={asking} onClose={() => setAsking(null)} />}
+      {logging !== null && <LogTimeDialog target={logging} onClose={() => setLogging(null)} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- row actions
+
+interface RowActionsProps {
+  entry: EntrySummary;
+  /** task, feature, bug, rca: the row has Log time. */
+  timeTracked: boolean;
+  onLogTime: (target: LogTimeTarget) => void;
+  onDelete: (target: MenuTarget) => void;
+}
+
+/** The icon buttons of a row. RAC buttons keep their presses to themselves: the row link never sees them. */
+function RowActions({ entry: e, timeTracked, onLogTime, onDelete }: RowActionsProps) {
+  const title = e.title ?? e.name;
+  return (
+    <span className="cx-ltable__actions" data-testid="row-actions">
+      {timeTracked && (
+        <Tooltip content="Log time">
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label={`Log time on ${title}`}
+            onPress={() => onLogTime({ dataset: e.dataset, slug: e.slug, title })}
+            data-testid="row-log-time"
+          >
+            <Icon name="clock" />
+          </Button>
+        </Tooltip>
+      )}
+      <Tooltip content="Delete…">
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          tone="danger"
+          aria-label={`Delete ${title}`}
+          onPress={() => onDelete({ dataset: e.dataset, slug: e.slug, title, context: 'row' })}
+          data-testid="row-delete"
+        >
+          <Icon name="trash" />
+        </Button>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -266,6 +330,15 @@ function CellContent({
                 data-testid="invalid-badge"
               >
                 invalid
+              </span>
+            )}
+            {e.issueKey !== undefined && (
+              <span
+                className="ck-badge ck-badge--muted ck-badge--mono"
+                title="Issue key"
+                data-testid="issue-key-badge"
+              >
+                {e.issueKey}
               </span>
             )}
             {e.stale && (

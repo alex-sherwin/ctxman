@@ -20,7 +20,8 @@ export type PatchResult =
 const ANCHORS: Readonly<Record<string, readonly string[]>> = {
   title: ['name'],
   state: ['description'],
-  tags: ['state', 'description'],
+  issueKey: ['state', 'description'],
+  tags: ['issueKey', 'state', 'description'],
   time: ['tags', 'state', 'description'],
   resolved: ['time', 'tags', 'state', 'description'],
   stale_after: ['tags'],

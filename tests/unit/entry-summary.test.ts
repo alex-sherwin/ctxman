@@ -85,6 +85,17 @@ describe('summarize', () => {
       expect(summarize('kb', 'x', { status }, MODIFIED, NOW).okfStatus).toBe(status);
     });
 
+    it('carries a valid issueKey of an okf entry only', () => {
+      expect(summarize('task', 'x', { issueKey: 'PROJ-1' }, MODIFIED, NOW).issueKey).toBe('PROJ-1');
+      expect(
+        summarize('kb', 'x', { issueKey: 'two words' }, MODIFIED, NOW).issueKey,
+      ).toBeUndefined();
+      expect(summarize('kb', 'x', { issueKey: 7 }, MODIFIED, NOW).issueKey).toBeUndefined();
+      expect(
+        summarize('reference', 'x', { issueKey: 'PROJ-1' }, MODIFIED, NOW).issueKey,
+      ).toBeUndefined();
+    });
+
     it('only lifecycle datasets carry a state', () => {
       expect(summarize('kb', 'x', { state: 'pending' }, MODIFIED, NOW).state).toBeUndefined();
       expect(summarize('bug', 'x', { state: 'fixed' }, MODIFIED, NOW).state).toBe('fixed');

@@ -938,7 +938,7 @@ const createEntryTool = defineTool({
   name: 'create-entry',
   title: 'Create entry',
   description:
-    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, folder (not remote-skill: the Inflate folder name instead of the slug), owner. snippet: markdown (the reusable text). context and recipe start empty (add links with append-context-links).',
+    'WRITES to the data dir. Create a new entry of any dataset from the standard template (the same as the /new form and `pnpm run add:<dataset>`); never overwrites. okf: title, state, tags, issueKey, parent (a project that gets a child link) apply. reference: type (local-repo | local-folder | remote-repo | remote-skill), path or uri, subpath, folder (not remote-skill: the Inflate folder name instead of the slug), owner. snippet: markdown (the reusable text). context and recipe start empty (add links with append-context-links).',
   readOnly: false,
   input: type({
     '+': 'reject',
@@ -948,6 +948,9 @@ const createEntryTool = defineTool({
     'title?': 'string',
     'state?': type('string').describe('Lifecycle datasets only; default is the first state.'),
     'tags?': type('string').array(),
+    'issueKey?': type('string').describe(
+      'okf only: the key of the matching issue in an issue tracker (PROJ-123, org/repo#42); one word.',
+    ),
     'parent?': nameType.describe(
       'okf only: an existing project that gets a child link to the new entry.',
     ),
@@ -984,7 +987,7 @@ const createEntryTool = defineTool({
       parentError?: string;
     };
     if (def.kind === 'data') {
-      const bad = (['title', 'state', 'tags', 'parent'] as const).filter(
+      const bad = (['title', 'state', 'tags', 'issueKey', 'parent'] as const).filter(
         (k) => args[k] !== undefined,
       );
       if (bad.length > 0)
@@ -1023,6 +1026,7 @@ const createEntryTool = defineTool({
           ...(args.title === undefined ? {} : { title: args.title }),
           ...(args.state === undefined ? {} : { state: args.state }),
           ...(args.tags === undefined ? {} : { tags: args.tags }),
+          ...(args.issueKey === undefined ? {} : { issueKey: args.issueKey }),
           ...(args.parent === undefined ? {} : { parent: args.parent }),
         },
         ctx.dataDir,
@@ -1058,7 +1062,7 @@ const patchEntryTool = defineTool({
   name: 'patch-entry',
   title: 'Patch entry frontmatter',
   description:
-    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, tags (replaces the list), time and resolved (task, feature, bug and rca: time tracking), addLinks / removeLinks (relations of an okf entry index.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
+    'WRITES. Edit the frontmatter of an okf or skill entry: state (lifecycle datasets), title, description, issueKey (okf), tags (replaces the list), time / addTime and resolved (task, feature, bug and rca: time tracking), addLinks / removeLinks (relations of an okf entry index.md: rel child | related | depends-on, default related). Only the given keys change, every other byte of the file stays; invalid results are refused and nothing is written. Last write wins.',
   readOnly: false,
   input: type({
     '+': 'reject',
@@ -1067,12 +1071,18 @@ const patchEntryTool = defineTool({
     'state?': type('string').describe('A lifecycle state of the dataset, e.g. in-progress.'),
     'title?': type('string').describe('Empty string removes the title.'),
     'description?': 'string',
+    'issueKey?': type('string | null').describe(
+      'okf only: the issue tracker key (PROJ-123, org/repo#42), one word. null or empty removes it.',
+    ),
     'tags?': type('string').array(),
     'time?': type('string')
       .array()
       .describe(
-        'Time spent, one ISO 8601 duration per stretch of work (PT1H30M, PT45M, P1D). Replaces the list: to add one, send the current list (get-entry) plus the new value; [] removes it.',
+        'Time spent, one ISO 8601 duration per stretch of work (PT1H30M, PT45M, P1D). Replaces the list; [] removes it. To log more time use addTime.',
       ),
+    'addTime?': type('string')
+      .array()
+      .describe('Durations appended to the current time list (["PT45M"]); not together with time.'),
     'resolved?': type('string | null').describe(
       'When the work was resolved: an ISO 8601 date or date-time (2026-10-19, 2026-10-19T14:30+02:00). null removes it.',
     ),

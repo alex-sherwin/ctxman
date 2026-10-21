@@ -140,12 +140,12 @@ test('the Columns menu hides columns and sets the density; both survive a reload
   // the menu stays open for more toggles
   await expect(page.getByTestId('list-layout-col-tags')).toHaveAttribute('aria-checked', 'false');
   await page.getByTestId('list-layout-density-compact').click();
-  await expectOrder(page, HEADERS, 'data-key', ['entry', 'desc', 'state', 'modified', 'menu']);
+  await expectOrder(page, HEADERS, 'data-key', ['entry', 'desc', 'state', 'modified', 'actions']);
   await expect(page.locator('table.ck-table--compact')).toHaveCount(1);
 
   await page.reload();
   await mounted(page);
-  await expectOrder(page, HEADERS, 'data-key', ['entry', 'desc', 'state', 'modified', 'menu']);
+  await expectOrder(page, HEADERS, 'data-key', ['entry', 'desc', 'state', 'modified', 'actions']);
   await expect(page.locator('table.ck-table--compact')).toHaveCount(1);
 
   await page.getByTestId('list-layout').click();
@@ -156,7 +156,7 @@ test('the Columns menu hides columns and sets the density; both survive a reload
     'state',
     'tags',
     'modified',
-    'menu',
+    'actions',
   ]);
   await expect(page.locator('table.ck-table--compact')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('ctxman:table:task'))).toBeNull();
@@ -167,7 +167,7 @@ test('a column menu hides its column and sorts either way', async ({ page }) => 
   await header(page, 'desc').hover();
   await page.getByTestId('list-colmenu-desc').click();
   await page.getByRole('menuitem', { name: 'Hide column' }).click();
-  await expectOrder(page, HEADERS, 'data-key', ['entry', 'state', 'tags', 'modified', 'menu']);
+  await expectOrder(page, HEADERS, 'data-key', ['entry', 'state', 'tags', 'modified', 'actions']);
 
   await header(page, 'entry').hover();
   await page.getByTestId('list-colmenu-entry').click();

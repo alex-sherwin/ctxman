@@ -452,6 +452,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await expect(page.getByTestId('new-title')).toHaveAttribute('placeholder', /^E2e nf task/);
     await page.getByTestId('new-title').fill('E2E form task');
     await page.getByTestId('new-description').fill('Created by the NewEntryForm spec');
+    await page.getByTestId('new-issue-key').fill(' PROJ-77 ');
     await page.getByTestId('new-state').click();
     await page.getByRole('option', { name: 'In progress' }).click();
     await expect(page.getByTestId('new-state')).toContainText('In progress');
@@ -473,10 +474,11 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await expect(page.getByTestId('detail-slug')).toHaveText(nTask);
     await expect(page.getByTestId('detail-meta')).toContainText('In progress');
     await expect(page.getByTestId('detail-meta')).toContainText('alpha');
+    await expect(page.getByTestId('meta-issue-key')).toHaveText('PROJ-77');
     const file = readDataText(`task/${nTask}/index.md`);
     expect(file).toContain(`name: ${nTask}`);
     expect(file).toContain('title: E2E form task');
-    expect(file).toContain('state: in-progress');
+    expect(file).toContain('state: in-progress\nissueKey: PROJ-77\n');
     expect(file).toContain('tags: [alpha, beta]');
 
     // the project owns the link: a `child` entry in its frontmatter
@@ -550,6 +552,7 @@ test.describe('/new/<okf> and /new/skill (NewEntryForm)', () => {
     await openNewEntry(page, 'skill');
     await expect(page.getByTestId('new-state')).toHaveCount(0);
     await expect(page.getByTestId('new-title')).toHaveCount(0);
+    await expect(page.getByTestId('new-issue-key')).toHaveCount(0);
     await expect(page.getByTestId('new-tags')).toHaveCount(0);
     await expect(page.getByTestId('new-submit')).toHaveText('Create skill');
     await page.getByTestId('new-name').fill(nSkill);

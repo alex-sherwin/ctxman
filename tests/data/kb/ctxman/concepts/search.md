@@ -27,14 +27,14 @@ Each document carries `dataset`, `slug`, `path` (null for the entry file itself)
 
 ## Ranking
 
-fuse.js runs in the browser over the downloaded index. Field weights: title 0.4, name 0.3, tags 0.2, description 0.2, headings 0.15, body 0.1. The threshold is 0.35 and location is ignored, so a match anywhere in a field counts. Queries need at least two characters, and at most 60 results are shown, grouped by dataset.
+fuse.js runs in the browser over the downloaded index. Field weights: title 0.4, name 0.3, issue key 0.3 (the `issueKey` of an okf entry, so `PROJ-123` finds its task), tags 0.2, description 0.2, headings 0.15, body 0.1. The threshold is 0.35 and location is ignored, so a match anywhere in a field counts. Queries need at least two characters, and at most 60 results are shown, grouped by dataset.
 
 A `#tag` token of the query matches a tag exactly (case-insensitive; `#forge` does not match `forge-ui`). Several `#tag` tokens must all be on the file. The other words are the fuzzy query, run over the files that carry the tags; `#tag` alone lists every file with the tag, in index order. The MCP `search` tool understands the same syntax.
 
 ## Using it
 
 * Open with Cmd/Ctrl+K, or `/` when focus is not in a text field, or the header button.
-* Arrow keys move through results, Enter opens one, Esc clears the query and a second Esc closes.
+* Arrow keys move through results, Enter opens one, Esc clears the query and a second Esc closes. Typing focuses the first result; when no result has the focus (after Backspace, or a query restored from the URL) the first one is still highlighted and Enter in the input opens it.
 * Chips filter by dataset; chip counts reflect all hits before filtering.
 
 ## URL parameters

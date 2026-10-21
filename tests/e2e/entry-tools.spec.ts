@@ -151,6 +151,35 @@ test('a task logs time (Enter adds a valid ISO 8601 duration) and a resolution d
   await expect(page.getByTestId('fm-resolved')).toHaveCount(0);
 });
 
+test('the Details dialog sets an issue key; the Details panel and the list show it', async ({
+  page,
+}) => {
+  await open(page, `/task/${task}`, 'meta-edit');
+  await page.getByTestId('meta-edit').click();
+  await expect(page.getByTestId('fm-dialog')).toBeVisible();
+  const field = page.getByTestId('fm-issue-key');
+  await field.fill('PROJ 123');
+  await expect(page.getByTestId('fm-dialog')).toContainText('One word without spaces');
+  await expect(page.getByTestId('fm-save')).toBeDisabled();
+  await field.fill('PROJ-123');
+  const patched = await afterApi(page, 'PATCH', `${API}/entry/task/`, () =>
+    page.getByTestId('fm-save').click(),
+  );
+  expect(patched.status()).toBe(200);
+  expect(patched.request().postDataJSON()).toEqual({
+    issueKey: 'PROJ-123',
+    ifUnmodifiedSince: expect.any(String),
+  });
+  await expect(page.getByTestId('fm-dialog')).toBeHidden();
+  await expect(page.getByTestId('meta-issue-key')).toHaveText('PROJ-123');
+  expect(readDataText(`task/${task}/index.md`)).toContain('\nissueKey: PROJ-123\n');
+
+  await page.goto('/task');
+  await expect(
+    page.locator(`[data-testid="list-row"][data-slug="${task}"]`).getByTestId('issue-key-badge'),
+  ).toHaveText('PROJ-123');
+});
+
 test('the header state select and the action buttons lock while the doc editor is open', async ({
   page,
 }) => {

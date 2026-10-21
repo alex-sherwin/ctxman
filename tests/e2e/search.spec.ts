@@ -22,6 +22,18 @@ async function resultHrefs(page: Page): Promise<string[]> {
     .evaluateAll((items) => items.map((item) => item.getAttribute('href') ?? ''));
 }
 
+/** The accent border colour of a focused result (`--accent`), resolved by the browser. */
+async function focusedBorder(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+}
+
 /** The result link to `href`. */
 function resultTo(page: Page, href: string): Locator {
   return page.locator(`[data-testid="search-result"][href="${href}"]`);
@@ -196,6 +208,52 @@ test.describe('global search', () => {
     await expect(page.getByTestId('search-modal')).toBeVisible();
     await expect(page.getByTestId('search-input')).toHaveValue('forge');
     await expect(page).toHaveURL(/[?&]sq=forge(&|$)/);
+  });
+
+  test('Enter in the input opens the first result when no result has the focus (after Backspace, from the URL)', async ({
+    page,
+  }) => {
+    // A deletion clears react-aria's virtual focus on purpose; the first result still looks focused and Enter opens it.
+    await page.goto('/');
+    await openSearch(page);
+    const input = page.getByTestId('search-input');
+    await input.pressSequentially('windows smokez');
+    await input.press('Backspace');
+    await expect(input).toHaveValue('windows smoke');
+    await expect(page.getByTestId('search-result').first()).toBeVisible();
+    const [first] = await resultHrefs(page);
+    await expect(page.locator('[data-testid="search-result"][data-focused]')).toHaveCount(0);
+    const target = resultTo(page, first!);
+    await expect(target).toHaveCSS('border-left-color', await focusedBorder(page));
+    await input.press('Enter');
+    await expect(page).toHaveURL((url) => url.pathname === first);
+    await expect(page.getByTestId('detail-slug')).toBeVisible();
+    // Back returns to the search as it was left
+    await page.goBack();
+    await expect(page.getByTestId('search-input')).toHaveValue('windows smoke');
+
+    // a query restored from the URL has no focused result either
+    await page.goto('/?search=1&sq=windows+smoke');
+    await expect(page.getByTestId('search-input')).toBeFocused();
+    await expect(page.getByTestId('search-result').first()).toBeVisible();
+    const [restored] = await resultHrefs(page);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL((url) => url.pathname === restored);
+  });
+
+  test('Enter opens the result moved to with the arrow keys, not the first one', async ({
+    page,
+  }) => {
+    await page.goto('/?search=1&sq=windows+smoke');
+    await expect(page.getByTestId('search-input')).toBeFocused();
+    await expect(page.getByTestId('search-result').nth(1)).toBeVisible();
+    const hrefs = await resultHrefs(page);
+    expect(hrefs.length).toBeGreaterThan(1);
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(resultTo(page, hrefs[1]!)).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL((url) => url.pathname === hrefs[1]);
   });
 
   test('Back from an opened widget closes it', async ({ page }) => {

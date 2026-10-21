@@ -1,4 +1,4 @@
-// Deleting entries: the list row menu (okf), the detail page menu (yaml datasets), the confirm dialog (Cancel, a
+// Deleting entries: the list row Delete button (okf), the detail page menu (yaml datasets), the confirm dialog (Cancel, a
 // failed delete) and DELETE /api/entry/<ds>/<slug>. Every case creates its own e2e-* entry through the API.
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -35,14 +35,14 @@ async function createContext(request: APIRequestContext, name: string): Promise<
   expect(response.status()).toBe(201);
 }
 
-/** Opens the menu of the element under `scope` (a page or a row) and chooses Delete…; the dialog is open after. */
+/** Opens the menu of the element under `scope` (the detail header) and chooses Delete…; the dialog is open after. */
 async function chooseDelete(page: Page, scope: Pick<Page, 'getByTestId'>): Promise<void> {
   await scope.getByTestId('entry-menu').click();
   await page.getByTestId('entry-menu-delete').click();
   await expect(page.getByTestId('entry-delete-dialog')).toBeVisible();
 }
 
-test('the list row menu deletes a task and the list reloads without it', async ({
+test('the list row Delete button deletes a task and the list reloads without it', async ({
   page,
   request,
 }) => {
@@ -51,8 +51,9 @@ test('the list row menu deletes a task and the list reloads without it', async (
   await page.goto('/task');
   const row = page.locator(`[data-testid="list-row"][data-slug="${name}"]`);
   await expect(row).toHaveCount(1);
-  await chooseDelete(page, row);
+  await row.getByTestId('row-delete').click();
   const dialog = page.getByTestId('entry-delete-dialog');
+  await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(`Delete task “E2E delete ${name}”?`);
   await expect(dialog).toContainText(
     `This removes the whole folder task/${name} and every file in it.`,

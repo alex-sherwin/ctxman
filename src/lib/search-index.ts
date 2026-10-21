@@ -249,6 +249,8 @@ export function okfDocToSearchDoc(a: {
   };
   const state = isEntry ? stringOr(a.data.state) : undefined;
   if (state !== undefined) doc.state = state;
+  const issueKey = isEntry ? stringOr(a.data.issueKey)?.trim() : undefined;
+  if (issueKey !== undefined) doc.issueKey = issueKey;
   return doc;
 }
 

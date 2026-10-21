@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react';
+import type { KeyboardEvent } from 'react';
 import { Autocomplete } from 'react-aria-components';
 import type { Key } from 'react-aria-components';
 import { DATASETS, isDatasetId } from '../../datasets/registry.ts';
@@ -10,6 +11,7 @@ import {
   $searchQuery,
   $searchView,
   closeSearch,
+  flushSearchUrl,
   loadSearchIndex,
   setSearchDatasets,
   setSearchQuery,
@@ -31,6 +33,27 @@ function countText(index: SearchIndexState, hasQuery: boolean, view: SearchView)
   if (index.status !== 'ready' || !hasQuery) return '';
   const noun = view.total === 1 ? 'result' : 'results';
   return `${view.total} ${noun}${view.capped ? ` · showing first ${MAX_RESULTS}` : ''}`;
+}
+
+/**
+ * Plain Enter in the search input opens the result that has the keyboard (virtual) focus, else the first result.
+ * RAC's Autocomplete only acts on a focused result: typing forward focuses the first one, but a deletion (Backspace,
+ * cut) clears that focus on purpose and a query restored from the URL never sets it, so Enter did nothing although
+ * results were listed. search.css shows the first result as focused in that state, so the highlight is what opens.
+ */
+function onInputEnter(e: KeyboardEvent<HTMLElement>) {
+  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+  if (e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+  if (!(e.target instanceof HTMLInputElement)) return;
+  const focused = e.currentTarget.parentElement?.querySelector<HTMLAnchorElement>(
+    '.cx-search__item[data-focused]',
+  );
+  const url = focused?.getAttribute('href') ?? $searchView.get().groups[0]?.hits[0]?.item.url;
+  if (url === undefined) return;
+  e.preventDefault();
+  e.stopPropagation();
+  flushSearchUrl();
+  location.assign(url);
 }
 
 /**
@@ -68,7 +91,7 @@ export function SearchWidget() {
           onInputChange={setSearchQuery}
           disableAutoFocusFirst={false}
         >
-          <header className="cx-search__bar">
+          <header className="cx-search__bar" onKeyDownCapture={onInputEnter}>
             <SearchField
               aria-label="Search all datasets"
               autoFocus

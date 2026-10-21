@@ -10,7 +10,9 @@ export type IconName =
   | 'arrow-down'
   | 'external'
   | 'plus'
-  | 'more';
+  | 'more'
+  | 'clock'
+  | 'trash';
 
 export interface IconDef {
   viewBox: string;
@@ -51,6 +53,23 @@ export const ICONS: Record<IconName, IconDef> = {
       [3, 8, 1.3],
       [8, 8, 1.3],
       [13, 8, 1.3],
+    ],
+  },
+  clock: {
+    viewBox: '0 0 16 16',
+    stroke: true,
+    paths: ['M8 4.8V8l2.3 1.5'],
+    circles: [[8, 8, 5.8]],
+  },
+  trash: {
+    viewBox: '0 0 16 16',
+    stroke: true,
+    paths: [
+      'M2.5 4.5h11',
+      'M6 4.5V2.8h4v1.7',
+      'M4 4.5l.7 8.7h6.6l.7-8.7',
+      'M6.7 7v3.8',
+      'M9.3 7v3.8',
     ],
   },
 };

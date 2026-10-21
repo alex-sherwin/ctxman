@@ -5,6 +5,7 @@
 import {
   isLinkableDatasetId,
   isValidName,
+  ISSUE_KEY_PATTERN,
   OKF_DEFAULT_FILE_TYPE,
 } from '../../datasets/registry.ts';
 import type { LinkableDatasetId } from '../../datasets/registry.ts';
@@ -50,6 +51,13 @@ export function staleAfterProblem(value: string): string | null {
   return 'Use a real date as YYYY-MM-DD';
 }
 
+/** The message under the `issueKey` input, or null when it is empty (= none) or one word of at most 100 characters. */
+export function issueKeyProblem(value: string): string | null {
+  const v = value.trim();
+  if (v === '' || ISSUE_KEY_PATTERN.test(v)) return null;
+  return 'One word without spaces, at most 100 characters (e.g. PROJ-123)';
+}
+
 /** The message under the `resolved` input, or null when it is empty (= not resolved) or an ISO 8601 date / date-time. */
 export function resolvedProblem(value: string): string | null {
   const v = value.trim();
@@ -63,6 +71,8 @@ export function resolvedProblem(value: string): string | null {
 export interface FrontmatterDraft {
   title: string;
   description: string;
+  /** okf: the issue tracker key. */
+  issueKey: string;
   tags: string[];
   state: string;
   /** task, feature, bug, rca: ISO 8601 durations. */
@@ -83,6 +93,7 @@ export function draftFromFrontmatter(fm: Readonly<Record<string, unknown>>): Fro
   return {
     title: str(fm.title),
     description: str(fm.description),
+    issueKey: str(fm.issueKey),
     tags: strings(fm.tags),
     state: str(fm.state),
     time: strings(fm.time),
@@ -97,6 +108,7 @@ export interface FrontmatterPatch {
   state?: string;
   title?: string | null;
   description?: string;
+  issueKey?: string | null;
   tags?: string[];
   time?: string[] | null;
   resolved?: string | null;
@@ -108,7 +120,7 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
 
 /**
- * Only the keys whose value changed (compared trimmed), in API shape: an emptied `title` / `time` / `resolved` /
+ * Only the keys whose value changed (compared trimmed), in API shape: an emptied `title` / `issueKey` / `time` / `resolved` /
  * `stale_after` / `status` is `null` (= delete the key). A skill edits its description only; `state` is sent only for
  * datasets with a lifecycle (`hasState`). `time` and `resolved` only change where the dialog shows them (time-tracked
  * datasets), so other datasets never send them.
@@ -126,6 +138,9 @@ export function frontmatterPatch(
   if (kind === 'skill') return patch;
   if (draft.title.trim() !== base.title.trim()) {
     patch.title = draft.title.trim() === '' ? null : draft.title.trim();
+  }
+  if (draft.issueKey.trim() !== base.issueKey.trim()) {
+    patch.issueKey = draft.issueKey.trim() === '' ? null : draft.issueKey.trim();
   }
   if (!sameList(draft.tags, base.tags)) patch.tags = [...draft.tags];
   if (hasState && draft.state !== base.state && draft.state !== '') patch.state = draft.state;
@@ -147,6 +162,7 @@ export function frontmatterPatch(
 export type FrontmatterField =
   | 'title'
   | 'description'
+  | 'issueKey'
   | 'tags'
   | 'state'
   | 'time'
@@ -158,6 +174,7 @@ export type FieldErrors = Partial<Record<FrontmatterField, string>>;
 const FIELDS: readonly FrontmatterField[] = [
   'title',
   'description',
+  'issueKey',
   'tags',
   'state',
   'time',
@@ -176,6 +193,8 @@ export function draftProblems(kind: 'okf' | 'skill', draft: FrontmatterDraft): F
   }
   if (kind === 'okf') {
     if (draft.title.trim().length > TITLE_MAX) errors.title = `${TITLE_MAX} characters max`;
+    const issueKey = issueKeyProblem(draft.issueKey);
+    if (issueKey !== null) errors.issueKey = issueKey;
     const stale = staleAfterProblem(draft.staleAfter);
     if (stale !== null) errors.stale_after = stale;
     const resolved = resolvedProblem(draft.resolved);

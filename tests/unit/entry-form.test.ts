@@ -39,6 +39,7 @@ describe('blankDraft', () => {
       title: '',
       description: '',
       state: 'pending',
+      issueKey: '',
       tags: [],
       parent: 'ctxman-v1',
     });
@@ -53,6 +54,13 @@ describe('blankDraft', () => {
 describe('validateDraft', () => {
   it('accepts a complete draft', () => {
     expect(validateDraft('task', draft(), none)).toEqual({});
+  });
+
+  it('an issue key is one word of at most 100 characters', () => {
+    expect(validateDraft('task', draft({ issueKey: ' PROJ-1 ' }), none)).toEqual({});
+    expect(validateDraft('task', draft({ issueKey: 'PROJ 1' }), none)).toEqual({
+      issueKey: 'Use one word without spaces, at most 100 characters (e.g. PROJ-123)',
+    });
   });
 
   it('requires a name and a description', () => {
@@ -101,6 +109,7 @@ describe('buildBody', () => {
           description: '  Fix it  ',
           title: ' Fix login ',
           state: 'in-progress',
+          issueKey: ' PROJ-12 ',
           tags: ['auth', 'ui'],
           parent: 'ctxman-v1',
         }),
@@ -109,6 +118,7 @@ describe('buildBody', () => {
       name: 'fix-login',
       description: 'Fix it',
       title: 'Fix login',
+      issueKey: 'PROJ-12',
       state: 'in-progress',
       tags: ['auth', 'ui'],
       parent: 'ctxman-v1',
@@ -129,7 +139,10 @@ describe('buildBody', () => {
       description: 'Fix it',
     });
     expect(
-      buildBody('skill', { ...draft({ title: 'T', tags: ['a'], parent: 'p' }), state: '' }),
+      buildBody('skill', {
+        ...draft({ title: 'T', tags: ['a'], issueKey: 'A-1', parent: 'p' }),
+        state: '',
+      }),
     ).toEqual({ name: 'fix-login', description: 'Fix it', parent: 'p' });
   });
 });

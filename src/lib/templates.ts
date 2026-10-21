@@ -12,6 +12,8 @@ import {
   OWNERS,
   REFERENCE_FOLDER_MESSAGE,
   REFERENCE_FOLDER_PATTERN,
+  ISSUE_KEY_EXPECTED,
+  ISSUE_KEY_PATTERN,
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { TAG_PATTERN } from './names.ts';
@@ -24,6 +26,8 @@ export interface NewEntryOptions {
   state?: string;
   /** okf only; written as `tags: [a, b]` (default `[]`). Each tag must match TAG_PATTERN. */
   tags?: readonly string[];
+  /** okf only: the issue tracker key (`PROJ-123`, ISSUE_KEY_PATTERN); blank = none. */
+  issueKey?: string;
   type?: ReferenceType;
   path?: string;
   uri?: string;
@@ -122,6 +126,14 @@ export function planNewEntry(
     }
   }
 
+  const issueKey = opts.issueKey?.trim() ?? '';
+  if (issueKey !== '') {
+    if (def.kind !== 'okf') throw new Error('an issue key only applies to okf entries');
+    if (!ISSUE_KEY_PATTERN.test(issueKey)) {
+      throw new Error(`Invalid issue key "${issueKey}": must be ${ISSUE_KEY_EXPECTED}`);
+    }
+  }
+
   switch (def.kind) {
     case 'okf': {
       const state = def.states ? (opts.state ?? def.states[0]?.id) : undefined;
@@ -133,6 +145,7 @@ export function planNewEntry(
         description,
       };
       if (state !== undefined) frontmatter.state = state;
+      if (issueKey !== '') frontmatter.issueKey = issueKey;
       frontmatter.tags = [...(opts.tags ?? [])];
       frontmatter.generated = { by: 'process:ctxman-add-entry', at: opts.now.toISOString() };
       const sections = (SECTIONS[dataset] ?? []).map((h) => `## ${h}\n`).join('\n');

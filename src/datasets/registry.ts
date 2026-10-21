@@ -168,6 +168,14 @@ export const REFERENCE_FOLDER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 export const REFERENCE_FOLDER_MESSAGE =
   'must be one folder name: a letter or digit first, then letters, digits, . _ - (max 100 characters)';
 
+/**
+ * okf entry `issueKey` (optional, every okf dataset): the key of the matching issue in an issue tracker, such as
+ * `PROJ-123` or `org/repo#42`. One token: no whitespace, at most 100 characters.
+ */
+export const ISSUE_KEY_PATTERN = /^\S{1,100}$/;
+/** What a valid issue key is, after "must be". */
+export const ISSUE_KEY_EXPECTED = 'one word without spaces, at most 100 characters (e.g. PROJ-123)';
+
 export const OWNERS = ['me', 'not-me'] as const;
 export type Owner = (typeof OWNERS)[number];
 export const OWNER_LABELS: Readonly<Record<Owner, string>> = { me: 'me', 'not-me': 'not me' };

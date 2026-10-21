@@ -336,6 +336,82 @@ describe('patchEntry: time tracking (task, feature, bug, rca)', () => {
   });
 });
 
+describe('patchEntry: addTime', () => {
+  it('appends to the time list (or starts it), keeps repeats and the list style', async () => {
+    const { dir, read } = tree();
+    const first = await patchEntry('task', 'bare', { addTime: ['pt30m'] }, dir);
+    expect(first.changed).toBe(true);
+    expect(read('task/bare/index.md')).toContain('state: pending\ntime: [PT30M]\n');
+    const second = await patchEntry('task', 'bare', { addTime: ['PT1H', 'PT30M'] }, dir);
+    expect(second.frontmatter.time).toEqual(['PT30M', 'PT1H', 'PT30M']);
+    expect(read('task/bare/index.md')).toContain('time: [PT30M, PT1H, PT30M]\n');
+    // [] adds nothing and writes nothing
+    expect((await patchEntry('task', 'bare', { addTime: [] }, dir)).changed).toBe(false);
+  });
+
+  it('refuses a bad duration, time + addTime together, other datasets, and a time that is not a list', async () => {
+    const { dir, read } = tree();
+    const before = read('task/bare/index.md');
+    const bad = await failure(patchEntry('task', 'bare', { addTime: ['PT1H', '90 min'] }, dir));
+    expect(bad.issues.map((i) => i.path)).toEqual(['addTime.1']);
+    const both = await failure(patchEntry('task', 'bare', { time: [], addTime: ['PT1H'] }, dir));
+    expect(both.issues.map((i) => i.path)).toEqual(['addTime']);
+    const kb = await failure(patchEntry('kb', 'notes', { addTime: ['PT1H'] }, dir));
+    expect(kb.issues).toEqual([
+      { path: 'addTime', message: 'knowledge base entries have no time tracking' },
+    ]);
+    expect(read('task/bare/index.md')).toBe(before);
+
+    const scalar = tmp.make({
+      'task/odd/index.md':
+        '---\ntype: Task\nname: odd\ndescription: O.\nstate: pending\ntime: PT1H\n---\n',
+    });
+    const odd = await failure(patchEntry('task', 'odd', { addTime: ['PT1H'] }, scalar));
+    expect(odd.code).toBe('invalid');
+    expect(odd.issues[0]?.path).toBe('time');
+  });
+});
+
+describe('patchEntry: issueKey (okf)', () => {
+  it('sets, trims, replaces and deletes the issue key after the state', async () => {
+    const { dir, read } = tree();
+    await patchEntry('task', 'bare', { issueKey: '  PROJ-123 ' }, dir);
+    expect(read('task/bare/index.md')).toContain('state: pending\nissueKey: PROJ-123\n');
+    expect((await readEntry('task', 'bare', dir)).issues).toEqual([]);
+    await patchEntry('task', 'bare', { issueKey: 'org/repo#42' }, dir);
+    expect(read('task/bare/index.md')).toContain('issueKey: org/repo#42\n');
+    await patchEntry('kb', 'notes', { issueKey: 'KB-1' }, dir);
+    expect(read('kb/notes/index.md')).toContain('description: N.\nissueKey: KB-1\n');
+    await patchEntry('task', 'bare', { issueKey: '' }, dir);
+    expect(read('task/bare/index.md')).not.toContain('issueKey');
+    await patchEntry('kb', 'notes', { issueKey: null }, dir);
+    expect(read('kb/notes/index.md')).not.toContain('issueKey');
+  });
+
+  it('refuses spaces, more than 100 characters, non-strings and skills', async () => {
+    const { dir } = tree();
+    for (const bad of ['PROJ 123', 'x'.repeat(101), 42, ['A-1']]) {
+      const error = await failure(patchEntry('task', 'bare', { issueKey: bad }, dir));
+      expect(
+        error.issues.map((i) => i.path),
+        String(bad),
+      ).toEqual(['issueKey']);
+    }
+    const skill = await failure(patchEntry('skill', 'my-skill', { issueKey: 'A-1' }, dir));
+    expect(skill.issues).toEqual([{ path: 'issueKey', message: 'is not available for skills' }]);
+  });
+
+  it('an invalid issue key written by hand fails the schema', async () => {
+    const dir = tmp.make({
+      'task/hand/index.md':
+        '---\ntype: Task\nname: hand\ndescription: H.\nstate: pending\nissueKey: two words\n---\n',
+    });
+    const entry = await readEntry('task', 'hand', dir);
+    expect(entry.issues.map((i) => i.path)).toEqual(['issueKey']);
+    expect(entry.issues[0]?.message).toContain('one word without spaces');
+  });
+});
+
 describe('patchEntry: links', () => {
   const link = (dataset: string, slug: string, rel = 'related') => ({ dataset, slug, rel });
 

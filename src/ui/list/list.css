@@ -86,10 +86,19 @@
   .cx-table__td--modified {
     white-space: nowrap;
   }
-  /* the actions column: the row's ⋯ menu, right-aligned */
-  .cx-table__th--menu,
-  .cx-table__td--menu {
+  /* the actions column: the row's icon buttons, right-aligned */
+  .cx-table__th--actions,
+  .cx-table__td--actions {
     padding-inline: var(--sp-2);
     text-align: right;
+  }
+  .cx-ltable__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  /* what the last row action did (Log time), left of the layout menu */
+  .cx-ltable__flash {
+    margin-right: auto;
   }
 }

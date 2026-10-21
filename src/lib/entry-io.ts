@@ -1,5 +1,6 @@
 // NODE: the entry frontmatter API (plans/ROUND3_SPEC.md §D.1, §D.2): read an okf / skill entry's frontmatter, PATCH
-// single top-level keys (state, title, description, tags, time, resolved, stale_after, status, links) and create a new entry from the
+// single top-level keys (state, title, description, issueKey, tags, time (+ addTime), resolved, stale_after, status,
+// links) and create a new entry from the
 // shared templates. A PATCH edits the YAML by SOURCE RANGE (frontmatter-patch.ts: every other byte of the file stays
 // as it was), runs under the file's `withFileLock`, is optimistically locked by mtime (`ifUnmodifiedSince`) and
 // NEVER writes frontmatter that fails the dataset schema (400 `invalid`, nothing written).
@@ -12,6 +13,8 @@ import {
   isOkfDatasetId,
   isTimeTrackedDatasetId,
   isValidName,
+  ISSUE_KEY_EXPECTED,
+  ISSUE_KEY_PATTERN,
   NAME_MAX_LENGTH,
   OKF_DATASET_IDS,
   OKF_ENTRY_FILE,
@@ -229,8 +232,10 @@ const PATCH_KEYS = [
   'state',
   'title',
   'description',
+  'issueKey',
   'tags',
   'time',
+  'addTime',
   'resolved',
   'stale_after',
   'status',
@@ -242,6 +247,8 @@ const PATCH_KEYS = [
 interface ParsedPatch {
   /** Scalar keys: undefined = delete. */
   set: Record<string, unknown>;
+  /** Durations appended to the current `time` list (under the file lock). */
+  addTime?: string[];
   /** Full replacement of `links`. */
   links?: EntryLink[];
   addLinks?: EntryLink[];
@@ -284,14 +291,17 @@ function parseTags(value: unknown, key: string, issues: Issue[]): string[] | und
   return ok ? tags : undefined;
 }
 
-/** Validates `time` input: ISO 8601 durations, trimmed and upper-cased; repeats are kept (two sessions of PT1H). */
-function parseTime(value: unknown, issues: Issue[]): string[] | undefined {
+/** Validates `time` / `addTime` input: ISO 8601 durations, trimmed and upper-cased; repeats are kept (two sessions of PT1H). */
+function parseTime(value: unknown, issues: Issue[], key = 'time'): string[] | undefined {
   if (!Array.isArray(value)) {
-    issues.push({ path: 'time', message: 'must be an array of ISO 8601 durations (or null)' });
+    issues.push({
+      path: key,
+      message: `must be an array of ISO 8601 durations${key === 'time' ? ' (or null)' : ''}`,
+    });
     return undefined;
   }
   if (value.length > TIME_MAX) {
-    issues.push({ path: 'time', message: `at most ${TIME_MAX} durations` });
+    issues.push({ path: key, message: `at most ${TIME_MAX} durations` });
     return undefined;
   }
   const out: string[] = [];
@@ -300,7 +310,7 @@ function parseTime(value: unknown, issues: Issue[]): string[] | undefined {
     const duration = typeof raw === 'string' ? normalizeIsoDuration(raw) : null;
     if (duration === null) {
       issues.push({
-        path: `time.${index}`,
+        path: `${key}.${index}`,
         message: `${JSON.stringify(raw)} is not ${DURATION_MESSAGE}`,
       });
       ok = false;
@@ -411,6 +421,17 @@ function parsePatchBody(dataset: EntryDatasetId, slug: string, body: unknown): P
     }
   }
 
+  if (body.issueKey !== undefined && okfOnly('issueKey')) {
+    const value = typeof body.issueKey === 'string' ? body.issueKey.trim() : body.issueKey;
+    if (value === null || value === '') {
+      set.issueKey = undefined;
+    } else if (typeof value !== 'string' || !ISSUE_KEY_PATTERN.test(value)) {
+      issues.push({ path: 'issueKey', message: `must be ${ISSUE_KEY_EXPECTED} (or null)` });
+    } else {
+      set.issueKey = value;
+    }
+  }
+
   if (body.tags !== undefined && okfOnly('tags')) {
     const tags = parseTags(body.tags, 'tags', issues);
     if (tags !== undefined) set.tags = tags;
@@ -430,6 +451,15 @@ function parsePatchBody(dataset: EntryDatasetId, slug: string, body: unknown): P
       const time = parseTime(body.time, issues);
       // An emptied list drops the key.
       if (time !== undefined) set.time = time.length === 0 ? undefined : time;
+    }
+  }
+
+  if (body.addTime !== undefined && timeTracked('addTime')) {
+    if (body.time !== undefined) {
+      issues.push({ path: 'addTime', message: 'cannot be combined with time' });
+    } else {
+      const added = parseTime(body.addTime, issues, 'addTime');
+      if (added !== undefined) out.addTime = added;
     }
   }
 
@@ -576,8 +606,9 @@ function relationWarnings(located: LocatedEntry, source: string, dataDir: string
 }
 
 /**
- * PATCHes the frontmatter of an existing entry. `body` is untrusted JSON (see D.1: state, title, description, tags,
- * time + resolved (task, feature, bug, rca), stale_after, status, links | addLinks + removeLinks, ifUnmodifiedSince). Only the given keys are edited, by source
+ * PATCHes the frontmatter of an existing entry. `body` is untrusted JSON (see D.1: state, title, description,
+ * issueKey (okf), tags, time | addTime + resolved (task, feature, bug, rca), stale_after, status,
+ * links | addLinks + removeLinks, ifUnmodifiedSince). Only the given keys are edited, by source
  * range; a patch that equals the current values writes nothing (`changed: false`). The patched frontmatter must pass
  * the dataset schema (+ `name` == directory, + the stale_after format rule) or nothing is written (`invalid`).
  * Throws EntryIoError: `bad-dataset`, `bad-slug`, `invalid`, `not-found`, `conflict`, `invalid-file`.
@@ -612,6 +643,20 @@ export async function patchEntry(
     const changes: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch.set)) {
       if (!sameJson(current[key], value)) changes[key] = value;
+    }
+    if (patch.addTime !== undefined && patch.addTime.length > 0) {
+      if (current.time !== undefined && !Array.isArray(current.time)) {
+        throw new EntryIoError('invalid', 'the file has a `time` that is not a list', [
+          { path: 'time', message: 'is not a list in the file: fix it before adding time' },
+        ]);
+      }
+      const time = Array.isArray(current.time) ? current.time : [];
+      if (time.length + patch.addTime.length > TIME_MAX) {
+        throw new EntryIoError('invalid', 'request body is invalid', [
+          { path: 'addTime', message: `at most ${TIME_MAX} durations in all` },
+        ]);
+      }
+      changes.time = [...time, ...patch.addTime];
     }
     if (
       patch.links !== undefined ||
@@ -729,6 +774,7 @@ interface ParsedCreate {
   title?: string;
   state?: string;
   tags?: string[];
+  issueKey?: string;
   parent?: string;
 }
 
@@ -741,7 +787,7 @@ function parseCreateBody(dataset: EntryDatasetId, body: unknown): ParsedCreate {
   const issues: Issue[] = [];
   const def = datasetDef(dataset);
   const isSkill = dataset === 'skill';
-  const allowed = ['name', 'description', 'title', 'state', 'tags', 'parent'];
+  const allowed = ['name', 'description', 'title', 'state', 'tags', 'issueKey', 'parent'];
   for (const key of Object.keys(body)) {
     if (!allowed.includes(key)) issues.push({ path: key, message: 'unexpected property' });
   }
@@ -802,6 +848,17 @@ function parseCreateBody(dataset: EntryDatasetId, body: unknown): ParsedCreate {
     }
   }
 
+  if (body.issueKey !== undefined && body.issueKey !== null) {
+    const value = typeof body.issueKey === 'string' ? body.issueKey.trim() : body.issueKey;
+    if (isSkill) {
+      issues.push({ path: 'issueKey', message: 'is not available for skills' });
+    } else if (typeof value !== 'string' || (value !== '' && !ISSUE_KEY_PATTERN.test(value))) {
+      issues.push({ path: 'issueKey', message: `must be ${ISSUE_KEY_EXPECTED}` });
+    } else if (value !== '') {
+      out.issueKey = value;
+    }
+  }
+
   if (body.parent !== undefined && body.parent !== null) {
     if (typeof body.parent !== 'string' || !isValidName(body.parent)) {
       issues.push({ path: 'parent', message: 'must be the name of a project' });
@@ -852,6 +909,7 @@ export async function createEntry(
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(input.state === undefined ? {} : { state: input.state }),
       ...(input.tags === undefined ? {} : { tags: input.tags }),
+      ...(input.issueKey === undefined ? {} : { issueKey: input.issueKey }),
       now,
     });
   } catch (error) {

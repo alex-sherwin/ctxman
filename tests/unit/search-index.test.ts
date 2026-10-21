@@ -189,6 +189,18 @@ describe('okfDocToSearchDoc', () => {
     });
   });
 
+  it('makes the issueKey of an entry searchable, never of a sub-doc', () => {
+    const args = {
+      dataset: 'task' as const,
+      slug: 'fix-login',
+      data: { type: 'Task', name: 'fix-login', description: 'D', issueKey: 'PROJ-42' },
+      body: '# Fix login\n',
+      entryTitle: 'Fix login',
+    };
+    expect(okfDocToSearchDoc({ ...args, relPath: 'index.md' }).issueKey).toBe('PROJ-42');
+    expect(okfDocToSearchDoc({ ...args, relPath: 'notes.md' })).not.toHaveProperty('issueKey');
+  });
+
   it('builds a sub-doc with path, doc url and no state', () => {
     const doc = okfDocToSearchDoc({
       dataset: 'kb',

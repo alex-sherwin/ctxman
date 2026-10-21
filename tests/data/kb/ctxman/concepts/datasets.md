@@ -35,15 +35,17 @@ State values are stored kebab-case in the files; the UI shows labels such as "in
 
 Seven datasets are Open Knowledge Format v0.2 bundles. A bundle folder contains:
 
-* `index.md`: the entry. Frontmatter starts with `okf_version: "0.2"` and holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`; the body is the entry content and may end with a `## Links` navigation section that lists the bundle's files (a file added in the UI or through the API is listed there for you; an older `## Concepts` section is renamed to `## Links` the first time a file is added to it). Nested `index.md` files are frontmatter-free navigation.
+* `index.md`: the entry. Frontmatter starts with `okf_version: "0.2"` and holds `type`, `name`, `title`, `description`, `tags`, `state` (lifecycle datasets), the optional `issueKey` (below), the optional `links` relations (below) and optional provenance keys such as `generated`, `sources`, `status` and `stale_after`; the body is the entry content and may end with a `## Links` navigation section that lists the bundle's files (a file added in the UI or through the API is listed there for you; an older `## Concepts` section is renamed to `## Links` the first time a file is added to it). Nested `index.md` files are frontmatter-free navigation.
 * `log.md` (optional): update history, newest first, under `## YYYY-MM-DD` headings. New bundles do not get one (the scripts, the `/new` forms and the API write `index.md` only); the MCP `append-log` tool creates it on request.
+
+Every okf entry `index.md` may name the matching issue in an issue tracker in the optional `issueKey` (`issueKey: PROJ-123`, `org/repo#42`): one word without spaces, at most 100 characters (concept files do not take it). It is set in the `/new/<dataset>` form (Issue key), the Details dialog, `--issue-key` of the add scripts, `PATCH /api/entry` and the MCP `create-entry` / `patch-entry` tools; the Details panel shows it with a Copy button, the list shows it as a badge next to the title, search finds the entry by it and [Context inflate](/concepts/context-inflate.md) names it on the item's first line. `pnpm run check:okf` reports a value with spaces (`okf/entry-schema`).
 
 Task, feature, bug and rca entries can track work in two optional `index.md` keys (registry `TIME_TRACKED_DATASETS`):
 
 * `time`: a list of ISO 8601 durations, one per stretch of work (`time: [PT1H30M, PT45M, P1D]`; a fraction on the smallest part is fine, `PT0.5H`). The Details panel shows them with their total in hours (a value with years or months has no fixed length, so no total).
 * `resolved`: when the work was resolved, an ISO 8601 date or date-time in any common form: `2026-10-19`, `2026-10`, `2026-W42-1`, `2026-292`, `20261019`, `2026-10-19T14:30`, `2026-10-19T14:30:05.5Z`, `2026-10-19T14:30+02:00`. It is kept as written (ctxman quotes a date-time with seconds, which YAML would otherwise read back as a UTC timestamp).
 
-Both are edited in the Details dialog, `PATCH /api/entry` and the MCP `patch-entry` tool; `pnpm run check:okf` reports a value in another form (`okf/entry-schema`).
+Both are edited in the Details dialog, `PATCH /api/entry` and the MCP `patch-entry` tool (whose `addTime` appends durations); the clock button of a list row logs one more duration (Log time, see [Editing](/concepts/editing.md)); `pnpm run check:okf` reports a value in another form (`okf/entry-schema`).
 * Any number of further concept files. Each needs frontmatter with a non-empty `type`.
 
 Two more optional keys work on the entry `index.md` and on every concept file alike:

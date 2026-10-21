@@ -10,6 +10,7 @@ import {
   draftProblems,
   daysFromToday,
   frontmatterPatch,
+  issueKeyProblem,
   isEntryAction,
   isRealYmd,
   issuesToFields,
@@ -24,6 +25,7 @@ import type { FrontmatterDraft } from '../../src/ui/entry/entry-helpers.ts';
 const base = (over: Partial<FrontmatterDraft> = {}): FrontmatterDraft => ({
   title: 'Fix login',
   description: 'Fix the login flow.',
+  issueKey: '',
   tags: ['auth', 'ui'],
   state: 'pending',
   time: ['PT1H'],
@@ -81,6 +83,7 @@ describe('draftFromFrontmatter', () => {
       draftFromFrontmatter({
         title: 'T',
         description: 'D',
+        issueKey: 'PROJ-1',
         tags: ['a', 3, 'b'],
         state: 'pending',
         time: ['PT1H', 2, 'PT30M'],
@@ -91,6 +94,7 @@ describe('draftFromFrontmatter', () => {
     ).toEqual({
       title: 'T',
       description: 'D',
+      issueKey: 'PROJ-1',
       tags: ['a', 'b'],
       state: 'pending',
       time: ['PT1H', 'PT30M'],
@@ -101,6 +105,7 @@ describe('draftFromFrontmatter', () => {
     expect(draftFromFrontmatter({ tags: 'x', title: 4, time: 'PT1H' })).toEqual({
       title: '',
       description: '',
+      issueKey: '',
       tags: [],
       state: '',
       time: [],
@@ -169,6 +174,16 @@ describe('frontmatterPatch', () => {
     ).toEqual({ resolved: null });
   });
 
+  it('issueKey: trimmed when set, null when emptied, not sent by a skill', () => {
+    expect(frontmatterPatch('okf', true, base(), base({ issueKey: ' PROJ-9 ' }))).toEqual({
+      issueKey: 'PROJ-9',
+    });
+    expect(
+      frontmatterPatch('okf', true, base({ issueKey: 'PROJ-9' }), base({ issueKey: '' })),
+    ).toEqual({ issueKey: null });
+    expect(frontmatterPatch('skill', false, base(), base({ issueKey: 'PROJ-9' }))).toEqual({});
+  });
+
   it('status maps to a known value', () => {
     expect(frontmatterPatch('okf', true, base(), base({ status: 'deprecated' }))).toEqual({
       status: 'deprecated',
@@ -184,6 +199,20 @@ describe('frontmatterPatch', () => {
         base({ description: ' New. ', title: 'x', tags: [] }),
       ),
     ).toEqual({ description: 'New.' });
+  });
+});
+
+describe('issueKeyProblem', () => {
+  it('accepts one word of at most 100 characters, or nothing', () => {
+    for (const ok of ['', '  ', 'PROJ-123', ' org/repo#42 ', 'x'.repeat(100)]) {
+      expect(issueKeyProblem(ok), ok).toBeNull();
+    }
+    for (const bad of ['PROJ 123', 'x'.repeat(101)])
+      expect(issueKeyProblem(bad), bad).not.toBeNull();
+    expect(draftProblems('okf', base({ issueKey: 'two words' })).issueKey).toBe(
+      'One word without spaces, at most 100 characters (e.g. PROJ-123)',
+    );
+    expect(draftProblems('skill', base({ issueKey: 'two words' })).issueKey).toBeUndefined();
   });
 });
 

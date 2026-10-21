@@ -1,8 +1,9 @@
 // GET|PATCH|DELETE /api/entry/<dataset>/<slug>: the frontmatter of an okf / skill entry (ROUND3_SPEC §D.1).
 //   GET    200 { frontmatter, lastModified, issues }   (JSON-safe frontmatter; issues = schema problems, may be non-empty)
-//   PATCH  body { state?, title?, description?, tags?, time?, resolved?, stale_after?, status?,
+//   PATCH  body { state?, title?, description?, issueKey?, tags?, time? | addTime?, resolved?, stale_after?, status?,
 //          links? | addLinks?/removeLinks?, ifUnmodifiedSince? } -> 200 { frontmatter, lastModified, changed, warnings }
-//          (`time`: ISO 8601 durations, `resolved`: an ISO 8601 date / date-time; task, feature, bug, rca only; null deletes)
+//          (`issueKey`: okf only, one word; `time`: ISO 8601 durations, `addTime`: durations appended to it,
+//          `resolved`: an ISO 8601 date / date-time; time keys task, feature, bug, rca only; null deletes)
 //   DELETE 204 (removes the whole entry folder) | 400 bad-dataset / bad-slug | 403 | 404 not-found
 //   400 bad-dataset | bad-slug | bad-json | invalid (issues; also when the PATCHED frontmatter fails the schema:
 //   nothing is written), 403 forbidden-origin, 404 not-found, 405, 409 conflict ({ error, message, lastModified }),

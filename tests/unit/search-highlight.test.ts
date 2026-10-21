@@ -50,6 +50,7 @@ describe('search config', () => {
     expect(FUSE_OPTIONS.keys).toEqual([
       { name: 'title', weight: 0.4 },
       { name: 'name', weight: 0.3 },
+      { name: 'issueKey', weight: 0.3 },
       { name: 'tags', weight: 0.2 },
       { name: 'description', weight: 0.2 },
       { name: 'headings', weight: 0.15 },

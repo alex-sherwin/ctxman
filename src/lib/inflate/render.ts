@@ -544,6 +544,7 @@ function metaLine(seg: ItemSegment, location: string | null): string {
   const parts = [inlineCode(seg.key), ITEM_KIND_LABELS[kind]];
   if (kind === 'remote-skill' && meta.uriKind !== undefined) parts.push(meta.uriKind);
   if (meta.state !== undefined) parts.push(`state: ${stateLabel(meta.state)}`);
+  if (meta.issueKey !== undefined) parts.push(`issue: ${inlineCode(meta.issueKey)}`);
   if (meta.stale && meta.staleAfter !== undefined) parts.push(`stale since ${meta.staleAfter}`);
   if (meta.ref !== undefined) parts.push(`owner: ${OWNER_LABELS[meta.ref.owner]}`);
   if (meta.tags.length > 0) parts.push(`tags: ${meta.tags.join(', ')}`);
@@ -772,6 +773,7 @@ function factsLine(c: ItemCtx, view: MaterialView | undefined): string {
   const { seg, kind, meta, env } = c;
   const parts = [inlineCode(seg.key), ITEM_KIND_LABELS[kind]];
   if (meta.state !== undefined) parts.push(`state: ${stateLabel(meta.state)}`);
+  if (meta.issueKey !== undefined) parts.push(`issue: ${inlineCode(meta.issueKey)}`);
   if (meta.stale && meta.staleAfter !== undefined) parts.push(`stale since ${meta.staleAfter}`);
   if (meta.tags.length > 0) parts.push(`tags: ${meta.tags.join(', ')}`);
   parts.push(locationOf(c, view));

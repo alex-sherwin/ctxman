@@ -1,4 +1,4 @@
-// "Edit details" dialog of an okf / skill entry (ROUND3_SPEC §E.5): the frontmatter keys title, description, tags,
+// "Edit details" dialog of an okf / skill entry (ROUND3_SPEC §E.5): the frontmatter keys title, description, issueKey, tags,
 // state, time + resolved (task, feature, bug, rca), stale_after and status (a skill: description only). Loads the current frontmatter when opened
 // (GET /api/entry), saves ONLY the changed keys with an explicit Save (PATCH, `ifUnmodifiedSince` = the loaded
 // mtime). 400 `invalid` puts the server's issues on their fields; 409 shows "Changed on disk" with a Reload
@@ -262,6 +262,19 @@ export function FrontmatterDialog({
                   description="One line: what this is."
                   inputTestId="fm-description"
                 />
+                {kind === 'okf' && (
+                  <TextField
+                    label="Issue key"
+                    mono
+                    placeholder="PROJ-123"
+                    value={ready.draft.issueKey}
+                    onChange={(issueKey) => edit({ issueKey }, 'issueKey')}
+                    isInvalid={shown('issueKey') !== undefined}
+                    errorMessage={shown('issueKey')}
+                    description="The matching issue in an issue tracker. Empty = none."
+                    inputTestId="fm-issue-key"
+                  />
+                )}
                 {kind === 'okf' && (
                   <div className="cx-fm__tags">
                     <TagEditor

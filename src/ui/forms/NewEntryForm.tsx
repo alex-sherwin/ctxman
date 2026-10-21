@@ -1,5 +1,5 @@
 // NewEntryForm island (ROUND3_SPEC §E.7): create an okf or skill entry at /new/<ds>. Fields follow the dataset
-// (title and tags: okf; state: lifecycle datasets; "Part of project": every dataset) and POST /api/entry/<ds>
+// (title, issue key and tags: okf; state: lifecycle datasets; "Part of project": every dataset) and POST /api/entry/<ds>
 // through src/stores/new-entry.ts, which owns the state. Browser-only (client:only="react"); kit parts by file,
 // no Monaco (nothing here is markdown).
 import { useStore } from '@nanostores/react';
@@ -166,6 +166,21 @@ export default function NewEntryForm({ dataset, parent }: NewEntryFormProps) {
         autoComplete="off"
         inputTestId="new-description"
       />
+      {!isSkill && (
+        <TextField
+          label="Issue key"
+          mono
+          value={draft.issueKey}
+          onChange={(v) => setNewField('issueKey', v)}
+          isInvalid={errors.issueKey !== undefined}
+          errorMessage={errors.issueKey}
+          description="Optional; the matching issue in an issue tracker"
+          placeholder="PROJ-123"
+          autoComplete="off"
+          spellCheck="false"
+          inputTestId="new-issue-key"
+        />
+      )}
       <div className="cx-nform__row">
         {def.states !== undefined && (
           <Select

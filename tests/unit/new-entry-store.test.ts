@@ -102,6 +102,7 @@ describe('initNewEntry', () => {
       title: '',
       description: '',
       state: 'pending',
+      issueKey: '',
       tags: [],
       parent: 'ctxman-v1',
     });

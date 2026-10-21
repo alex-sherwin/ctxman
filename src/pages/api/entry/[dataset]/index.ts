@@ -1,5 +1,6 @@
 // POST /api/entry/<dataset>: create a NEW okf / skill entry from the shared templates (ROUND3_SPEC §D.2).
-//   body { name, description, title?, state?, tags?, parent? }  (`title`, `state`, `tags`: okf only; `state`: lifecycle
+//   body { name, description, title?, state?, tags?, issueKey?, parent? }  (`title`, `state`, `tags`, `issueKey`: okf
+//   only; `state`: lifecycle
 //   datasets only; `parent`: an existing project, which gets a `child` link to the new entry)
 //   -> 201 { dataset, slug, path, url, files, parentLinked?, parentError? } + Location: /<dataset>/<slug>
 //   400 bad-dataset | bad-json | invalid (issues), 403 forbidden-origin, 405, 409 exists, 415, 500 internal.

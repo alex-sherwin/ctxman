@@ -238,11 +238,32 @@ describe('createEntry: validation (nothing written)', () => {
     const error = await ioFailure(
       createEntry(
         'skill',
-        { name: 's', description: 'd', title: 'T', state: 'pending', tags: [] },
+        { name: 's', description: 'd', title: 'T', state: 'pending', tags: [], issueKey: 'A-1' },
         dir,
       ),
     );
-    expect(error.issues.map((i) => i.path)).toEqual(['title', 'state', 'tags']);
+    expect(error.issues.map((i) => i.path)).toEqual(['title', 'state', 'tags', 'issueKey']);
+  });
+
+  it('writes a trimmed issueKey after the state, ignores a blank one and refuses one with spaces', async () => {
+    const dir = tmp.make();
+    await createEntry(
+      'task',
+      { name: 'keyed', description: 'With a key.', issueKey: ' PROJ-7 ' },
+      dir,
+      now,
+    );
+    expect(read(dir, 'task/keyed/index.md')).toContain(
+      'state: pending\nissueKey: PROJ-7\ntags: []\n',
+    );
+    expect((await readEntry('task', 'keyed', dir)).issues).toEqual([]);
+    await createEntry('kb', { name: 'unkeyed', description: 'No key.', issueKey: '  ' }, dir, now);
+    expect(read(dir, 'kb/unkeyed/index.md')).not.toContain('issueKey');
+    const error = await ioFailure(
+      createEntry('task', { name: 'bad-key', description: 'd', issueKey: 'PROJ 7' }, dir, now),
+    );
+    expect(error.issues.map((i) => i.path)).toEqual(['issueKey']);
+    expect(existsSync(path.join(dir, 'task', 'bad-key'))).toBe(false);
   });
 
   it('rejects datasets without an entry directory and non-object bodies', async () => {

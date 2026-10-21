@@ -37,6 +37,8 @@ export interface ItemMeta {
   description: string;
   tags: string[];
   state?: string;
+  /** okf: the issue tracker key. */
+  issueKey?: string;
   staleAfter?: string;
   stale: boolean;
   refType?: ReferenceType;
@@ -202,6 +204,7 @@ export function itemMetaFromSummary(s: EntrySummary): ItemMeta {
     stale: s.stale,
   };
   if (s.state !== undefined) meta.state = s.state;
+  if (s.issueKey !== undefined) meta.issueKey = s.issueKey;
   if (s.staleAfter !== undefined) meta.staleAfter = s.staleAfter;
   if (s.refType !== undefined) meta.refType = s.refType;
   if (s.uriKind !== undefined) meta.uriKind = s.uriKind;

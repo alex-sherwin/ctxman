@@ -545,6 +545,17 @@ describe('brief quality (ROUND3 §H)', () => {
     });
 
   describe('defaults and the description', () => {
+    it('the meta line names the issue key of an okf entry', async () => {
+      const { D } = world({
+        'task/keyed/index.md':
+          '---\ntype: Task\nname: keyed\ndescription: Keyed.\nstate: pending\nissueKey: PROJ-9\n---\n\n# Keyed\n',
+      });
+      const { markdown } = await render(D, one('task/keyed'));
+      expect(body(markdown)).toContain(
+        `\`task/keyed\` · Task · state: Pending · issue: \`PROJ-9\` · \`${D}/task/keyed/index.md\``,
+      );
+    });
+
     it('every okf kind is inline-main by default: a task brings its body, headed by its description', async () => {
       const { D } = world({
         'task/work/index.md': okf(

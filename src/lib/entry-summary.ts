@@ -7,6 +7,7 @@ import {
   isReferenceType,
   OWNERS,
   REFERENCE_FOLDER_PATTERN,
+  ISSUE_KEY_PATTERN,
 } from '../datasets/registry.ts';
 import type { DatasetId, Owner, ReferenceType } from '../datasets/registry.ts';
 import { entryLinkSchema } from '../datasets/schemas.ts';
@@ -39,6 +40,8 @@ export interface EntrySummary {
   /** today (local) >= staleAfter. */
   stale: boolean;
   okfStatus?: OkfStatus;
+  /** okf only: the issue tracker key (`issueKey`), when it is a valid one. */
+  issueKey?: string;
   /** reference only. */
   refType?: ReferenceType;
   /** reference remote-skill only, derived from `uri`: 'git' repo or https 'archive'. */
@@ -86,6 +89,8 @@ export interface SearchDoc {
   headings: string[];
   body: string;
   state?: string;
+  /** okf entries (not sub-docs) only: the issue tracker key, searchable on its own. */
+  issueKey?: string;
   /** '/kb/foo' or '/kb/foo/doc/concepts/x' */
   url: string;
 }
@@ -156,6 +161,9 @@ export function summarize(
     }
     if (typeof data.status === 'string' && OKF_STATUS_VALUES.includes(data.status)) {
       summary.okfStatus = data.status as OkfStatus;
+    }
+    if (typeof data.issueKey === 'string' && ISSUE_KEY_PATTERN.test(data.issueKey)) {
+      summary.issueKey = data.issueKey;
     }
     const relations = relationsOf(data.links);
     if (relations.length > 0) summary.relations = relations;

@@ -266,7 +266,7 @@ cp -R /abs/data/skill/ctxman-add-entry .claude/skills/ctxman-add-entry
 Details:
 
 * Heading levels: context and "Additional items" headings are `##`; an item is `###` in the grouped layout (`##` when it sits outside a context group or the layout is flat); the item's own headings are shifted below it. A leading H1 that repeats the entry title is dropped.
-* The meta line is the item key, the kind label, then state, stale marker, owner, tags and location when they apply.
+* The meta line is the item key, the kind label, then state, issue key (`issue: \`PROJ-123\``), stale marker, owner, tags and location when they apply (a working-directory document's first item line names the issue key the same way).
 * Context notes become `> **From context ...:**` blockquotes ahead of the item body.
 * Resolved links: with `rewriteLinks`, `/concepts/x.md`, relative `./x.md` and `ctxman:` links become file paths (the link text stays), so the agent can open them directly. Links inside code are untouched and unresolvable targets are left as written.
 * Shell commands quote every value, fenced blocks grow their fence when the content contains backticks, clones go to `repos/<name>` (the `cloneDir` option; the commands say to keep its top folder out of version control) and `.ctxman/tmp/` is the scratch directory of remote skill installs.
