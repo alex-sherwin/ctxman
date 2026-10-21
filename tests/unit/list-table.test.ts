@@ -36,7 +36,12 @@ afterEach(() => {
 describe('listColumns', () => {
   it('shows the dataset columns between Entry / Description and Modified', () => {
     const ids = (ds: (typeof DATASET_IDS)[number]) => listColumns(ds).map((c) => c.id);
-    expect(ids('task')).toEqual(['entry', 'desc', 'state', 'tags', 'modified']);
+    expect(ids('task')).toEqual(['entry', 'desc', 'state', 'tags', 'time', 'modified']);
+    expect(ids('feature')).toEqual(['entry', 'desc', 'state', 'tags', 'time', 'modified']);
+    expect(ids('bug')).toEqual(['entry', 'desc', 'state', 'tags', 'time', 'modified']);
+    expect(ids('rca')).toEqual(['entry', 'desc', 'tags', 'time', 'modified']);
+    expect(ids('idea')).toEqual(['entry', 'desc', 'state', 'tags', 'modified']);
+    expect(ids('project')).toEqual(['entry', 'desc', 'state', 'tags', 'modified']);
     expect(ids('kb')).toEqual(['entry', 'desc', 'tags', 'modified']);
     expect(ids('skill')).toEqual(['entry', 'desc', 'tags', 'modified']);
     expect(ids('reference')).toEqual(['entry', 'desc', 'type', 'owner', 'modified']);

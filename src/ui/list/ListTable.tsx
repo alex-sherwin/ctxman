@@ -23,6 +23,7 @@ import { defaultSortDir } from '../../lib/entry-filter.ts';
 import type { SortDir } from '../../lib/entry-filter.ts';
 import type { EntrySummary } from '../../lib/entry-summary.ts';
 import { TARGETS } from '../../lib/inflate/catalog.ts';
+import { formatSeconds } from '../../lib/iso8601.ts';
 import { rememberListSort } from '../../lib/list-sort-memory.ts';
 import { formatAbsolute, formatRelative } from '../../lib/time.ts';
 import { listSortHref } from '../../lib/url-state.ts';
@@ -408,6 +409,20 @@ function CellContent({
       );
     case 'contexts':
       return <span className="cx-mono">{e.contextCount ?? 0}</span>;
+    case 'time':
+      return e.timeSeconds === undefined ? null : e.timeSeconds === null ? (
+        <span
+          className="cx-mono cx-subtle"
+          title="No total (a value has years or months, or is not a duration)"
+          data-testid="row-time"
+        >
+          ?
+        </span>
+      ) : (
+        <span className="cx-mono" data-testid="row-time">
+          {formatSeconds(e.timeSeconds)}
+        </span>
+      );
     case 'modified':
       return (
         <time

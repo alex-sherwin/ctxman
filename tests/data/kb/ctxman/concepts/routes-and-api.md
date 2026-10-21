@@ -39,8 +39,8 @@ For example, `/kb/ctxman/doc/concepts/search` renders the [search concept](/conc
 | `q` | Text filter; every term must appear in name, title, description or tags |
 | `state` | Repeatable; entries in any selected state |
 | `tag` | Repeatable; entries having all selected tags |
-| `sort` | `modified` (default, or the sort last chosen on this list), `name`, or a column of the dataset: `state` (lifecycle datasets), `type` and `owner` (references), `links` (contexts), `target` and `contexts` (recipes) |
-| `dir` | `asc` or `desc`; omitted when it is the sort's own direction (newest first for `modified`, biggest first for `links` and `contexts`, A to Z or lifecycle order otherwise). A header press sets it; the filters keep it, and a new sort from the Sort select starts in its own direction |
+| `sort` | `modified` (default, or the sort last chosen on this list), `name`, or a column of the dataset: `state` (lifecycle datasets), `type` and `owner` (references), `links` (contexts), `target` and `contexts` (recipes), `time` (the logged total: task, feature, bug, rca) |
+| `dir` | `asc` or `desc`; omitted when it is the sort's own direction (newest first for `modified`, biggest first for `links`, `contexts` and `time`, A to Z or lifecycle order otherwise). A header press sets it; the filters keep it, and a new sort from the Sort select starts in its own direction |
 | `type` | References only: `local-repo`, `local-folder`, `remote-repo` or `remote-skill` |
 | `project` | Only the children of that project (any dataset; the project's `rel: child` links). Shown as a checked chip; the New button then adds `?parent=` |
 

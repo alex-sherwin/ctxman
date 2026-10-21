@@ -1,6 +1,7 @@
 # Update log
 
 ## 2026-10-21
+* **Add**: Task, feature, bug and rca lists have a Time column before Modified: the total of the entry's logged `time` in hours and minutes (`1h 30m`; empty when nothing is logged, `?` when a value has no fixed length), sortable (`sort=time`, most time first). [Datasets](/concepts/datasets.md), [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.
 * **Add**: okf entries take an optional `issueKey`, the key of the matching issue in an issue tracker (one word, e.g. `PROJ-123`): set in the `/new` form, the Details dialog, `--issue-key`, PATCH and MCP; shown in the Details panel and as a list badge, searchable and on the Inflate meta line. [Datasets](/concepts/datasets.md), [Adding entries](/concepts/adding-entries.md), [Routes and API](/concepts/routes-and-api.md), [Search](/concepts/search.md), [MCP server](/concepts/mcp.md) and [Context inflate](/concepts/context-inflate.md) follow.
 * **Update**: List rows end in icon buttons instead of the `⋯` menu: Log time (task, feature, bug, rca: a focused duration field, Enter appends it through the new PATCH `addTime`, also in MCP `patch-entry`) and Delete. [Editing](/concepts/editing.md) and [Routes and API](/concepts/routes-and-api.md) follow.
 * **Fix**: Enter in the search input opens the first result when no result has the keyboard focus (after Backspace, or a query restored from the URL); before, it did nothing until an arrow key had moved into the list. [Search](/concepts/search.md) follows.

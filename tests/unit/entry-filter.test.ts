@@ -343,6 +343,24 @@ describe('filterEntries', () => {
       expect(slugs(filterEntries(recipes, { sort: 'contexts' }))).toEqual(['y', 'x']);
       expect(slugs(filterEntries(recipes, { sort: 'target' }))).toEqual(['y', 'x']);
     });
+
+    it('time: most time logged first; no time or no total after every total, both ways', () => {
+      const list = [
+        entry({ slug: 'a', timeSeconds: 1800 }),
+        entry({ slug: 'b' }),
+        entry({ slug: 'c', timeSeconds: 7200 }),
+        entry({ slug: 'd', timeSeconds: null }),
+        entry({ slug: 'e', timeSeconds: 0 }),
+      ];
+      expect(slugs(filterEntries(list, { sort: 'time' }))).toEqual(['c', 'a', 'e', 'b', 'd']);
+      expect(slugs(filterEntries(list, { sort: 'time', dir: 'asc' }))).toEqual([
+        'e',
+        'a',
+        'c',
+        'b',
+        'd',
+      ]);
+    });
   });
 });
 
@@ -351,7 +369,7 @@ describe('defaultSortDir', () => {
     for (const sort of ['name', 'state', 'type', 'owner', 'target']) {
       expect(defaultSortDir(sort)).toBe('asc');
     }
-    for (const sort of ['modified', 'links', 'contexts', 'bogus', undefined]) {
+    for (const sort of ['modified', 'links', 'contexts', 'time', 'bogus', undefined]) {
       expect(defaultSortDir(sort)).toBe('desc');
     }
   });

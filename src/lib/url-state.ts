@@ -6,6 +6,7 @@ import {
   isDatasetId,
   isLinkableDatasetId,
   isReferenceType,
+  isTimeTrackedDatasetId,
   isValidName,
 } from '../datasets/registry.ts';
 import type { DatasetId, LinkableDatasetId, ReferenceType } from '../datasets/registry.ts';
@@ -99,6 +100,7 @@ export const LIST_SORTS = [
   'links',
   'target',
   'contexts',
+  'time',
 ] as const;
 export type ListSort = (typeof LIST_SORTS)[number];
 
@@ -111,6 +113,7 @@ export const LIST_SORT_LABELS: Readonly<Record<ListSort, string>> = {
   links: 'Links',
   target: 'Target',
   contexts: 'Contexts',
+  time: 'Time logged',
 };
 
 /** The sorts a dataset's list offers (Sort select order): its sortable columns. */
@@ -125,7 +128,8 @@ export function listSortsFor(dataset: DatasetId): readonly ListSort[] {
           : getDataset(dataset)?.states
             ? ['state']
             : [];
-  return ['modified', 'name', ...extra];
+  const time: readonly ListSort[] = isTimeTrackedDatasetId(dataset) ? ['time'] : [];
+  return ['modified', 'name', ...extra, ...time];
 }
 
 export interface ListParams {

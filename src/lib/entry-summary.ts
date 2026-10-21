@@ -5,6 +5,7 @@ import {
   entryUrl,
   isFolderReferenceType,
   isReferenceType,
+  isTimeTrackedDatasetId,
   OWNERS,
   REFERENCE_FOLDER_PATTERN,
   ISSUE_KEY_PATTERN,
@@ -16,6 +17,7 @@ import { validate } from '../datasets/validate.ts';
 import type { Issue } from './context-io.ts';
 import { isInflateTarget } from './inflate/catalog.ts';
 import type { InflateTarget } from './inflate/catalog.ts';
+import { totalDurationSeconds } from './iso8601.ts';
 import { classifyRemoteUri } from './remote-uri.ts';
 import type { RemoteUriKind } from './remote-uri.ts';
 import { isStale, toYmd } from './time.ts';
@@ -42,6 +44,12 @@ export interface EntrySummary {
   okfStatus?: OkfStatus;
   /** okf only: the issue tracker key (`issueKey`), when it is a valid one. */
   issueKey?: string;
+  /**
+   * task, feature, bug, rca only (registry TIME_TRACKED_DATASETS): the sum of the `time` durations in seconds;
+   * null when the list has a value without a fixed length (years, months) or one that is not a duration. Absent
+   * when no time is logged.
+   */
+  timeSeconds?: number | null;
   /** reference only. */
   refType?: ReferenceType;
   /** reference remote-skill only, derived from `uri`: 'git' repo or https 'archive'. */
@@ -167,6 +175,11 @@ export function summarize(
     }
     const relations = relationsOf(data.links);
     if (relations.length > 0) summary.relations = relations;
+    if (isTimeTrackedDatasetId(dataset) && Array.isArray(data.time) && data.time.length > 0) {
+      const values = data.time.filter((t): t is string => typeof t === 'string');
+      summary.timeSeconds =
+        values.length === data.time.length ? totalDurationSeconds(values) : null;
+    }
   }
 
   if (dataset === 'reference') {

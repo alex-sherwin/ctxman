@@ -96,6 +96,23 @@ describe('summarize', () => {
       ).toBeUndefined();
     });
 
+    it('sums the logged time of time-tracked datasets in seconds', () => {
+      const time = (ds: 'task' | 'rca' | 'kb' | 'project', value: unknown) =>
+        summarize(ds, 'x', { time: value }, MODIFIED, NOW).timeSeconds;
+      expect(time('task', ['PT1H', 'PT30M'])).toBe(5400);
+      expect(time('rca', ['P1D', 'PT0.5H'])).toBe(88_200);
+      // no fixed total: a year or month value, a value that is not a duration, a non-string item
+      expect(time('task', ['PT1H', 'P1M'])).toBeNull();
+      expect(time('task', ['PT1H', 'an hour'])).toBeNull();
+      expect(time('task', ['PT1H', 3])).toBeNull();
+      // nothing logged, not a list, or a dataset without time tracking
+      expect(time('task', [])).toBeUndefined();
+      expect(time('task', 'PT1H')).toBeUndefined();
+      expect(time('kb', ['PT1H'])).toBeUndefined();
+      expect(time('project', ['PT1H'])).toBeUndefined();
+      expect(summarize('task', 'x', {}, MODIFIED, NOW)).not.toHaveProperty('timeSeconds');
+    });
+
     it('only lifecycle datasets carry a state', () => {
       expect(summarize('kb', 'x', { state: 'pending' }, MODIFIED, NOW).state).toBeUndefined();
       expect(summarize('bug', 'x', { state: 'fixed' }, MODIFIED, NOW).state).toBe('fixed');

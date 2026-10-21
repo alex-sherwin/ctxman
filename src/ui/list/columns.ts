@@ -1,7 +1,8 @@
 // PURE: the columns of a dataset list table (ListTable island, `/<ds>`): which columns a dataset shows, in order,
 // their header labels, default and minimum widths (RAC column sizes: px or `<n>fr`) and the URL sort a header sets.
-// Every list shows Entry, Description and Modified; the rest depend on the dataset.
-import { getDataset } from '../../datasets/registry.ts';
+// Every list shows Entry, Description and Modified; the rest depend on the dataset (Time, the total of the logged
+// `time`, right before Modified on task, feature, bug and rca lists).
+import { getDataset, isTimeTrackedDatasetId } from '../../datasets/registry.ts';
 import type { DatasetId } from '../../datasets/registry.ts';
 import type { ListSort } from '../../lib/url-state.ts';
 
@@ -15,6 +16,7 @@ export const LIST_COLUMN_IDS = [
   'links',
   'target',
   'contexts',
+  'time',
   'modified',
 ] as const;
 export type ListColumnId = (typeof LIST_COLUMN_IDS)[number];
@@ -93,6 +95,14 @@ const COLUMNS: Readonly<Record<ListColumnId, ListColumn>> = {
     sort: 'contexts',
     hideable: true,
   },
+  time: {
+    id: 'time',
+    label: 'Time',
+    defaultWidth: 100,
+    minWidth: 70,
+    sort: 'time',
+    hideable: true,
+  },
   modified: {
     id: 'modified',
     label: 'Modified',
@@ -119,5 +129,8 @@ export function listColumns(dataset: DatasetId): readonly ListColumn[] {
           : getDataset(dataset)?.states
             ? ['entry', 'desc', 'state', 'tags', 'modified']
             : ['entry', 'desc', 'tags', 'modified'];
-  return ids.map((id) => COLUMNS[id]);
+  const withTime = isTimeTrackedDatasetId(dataset)
+    ? [...ids.slice(0, -1), 'time' as const, ...ids.slice(-1)]
+    : ids;
+  return withTime.map((id) => COLUMNS[id]);
 }

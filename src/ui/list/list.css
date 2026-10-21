@@ -83,6 +83,7 @@
   .cx-table__td--state .cx-statesel__select {
     max-width: 100%;
   }
+  .cx-table__td--time,
   .cx-table__td--modified {
     white-space: nowrap;
   }

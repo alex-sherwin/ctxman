@@ -79,6 +79,8 @@ const SORTS: Record<string, Compare> = {
   links: byKey((e) => e.linkCount ?? 0),
   target: byKey((e) => e.recipeTarget),
   contexts: byKey((e) => e.contextCount ?? 0),
+  // No time logged, or no fixed total (years, months): after every entry with a total.
+  time: byKey((e) => e.timeSeconds ?? undefined),
 };
 
 /** Sorts that start A→Z (lifecycle order for `state`); the others start newest / biggest first. */

@@ -1,6 +1,7 @@
 // What a ListTable row does in place, without opening the entry: the state select (a change saves and reloads the
-// list) and the icon buttons of the actions column (Log time on time-tracked datasets, Delete…; the delete flow
-// itself is in delete.spec.ts). Every test creates its own e2e-* task through the API and removes it after.
+// list) and the icon buttons of the actions column (Log time on time-tracked datasets, with the Time column that
+// shows the logged total, and Delete…; the delete flow itself is in delete.spec.ts). Every test creates its own
+// e2e-* task through the API and removes it after.
 import { readFileSync, rmSync } from 'node:fs';
 import { expect, test } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -55,6 +56,9 @@ test('Log time opens a focused duration field; Enter appends it and the list say
   const name = await createTask(request, 'e2e-row-time');
   await page.goto('/task?sort=name');
   const row = rowOf(page, name);
+  // nothing logged yet: the Time cell is empty
+  await expect(row.getByTestId('row-actions')).toBeVisible();
+  await expect(row.getByTestId('row-time')).toHaveCount(0);
   await row.getByTestId('row-log-time').click();
   const dialog = page.getByTestId('log-time-dialog');
   await expect(dialog).toContainText(`Log time on “E2E row ${name}”`);
@@ -85,6 +89,7 @@ test('Log time opens a focused duration field; Enter appends it and the list say
   await expect(page.getByTestId('list-flash')).toHaveText(
     `Logged PT45M on “E2E row ${name}” (total 45m)`,
   );
+  await expect(rowOf(page, name).getByTestId('row-time')).toHaveText('45m');
   expect(readFileSync(dataPath(`task/${name}/index.md`), 'utf8')).toContain('\ntime: [PT45M]\n');
 
   // a second entry adds to the list; Add works like Enter
@@ -94,6 +99,7 @@ test('Log time opens a focused duration field; Enter appends it and the list say
   await expect(page.getByTestId('list-flash')).toHaveText(
     `Logged PT1H on “E2E row ${name}” (total 1h 45m)`,
   );
+  await expect(rowOf(page, name).getByTestId('row-time')).toHaveText('1h 45m');
   expect(readFileSync(dataPath(`task/${name}/index.md`), 'utf8')).toContain(
     '\ntime: [PT45M, PT1H]\n',
   );

@@ -253,8 +253,10 @@ describe('listSortsFor', () => {
   it('offers modified and name everywhere, then the columns of the dataset', () => {
     expect(listSortsFor('kb')).toEqual(['modified', 'name']);
     expect(listSortsFor('skill')).toEqual(['modified', 'name']);
-    expect(listSortsFor('task')).toEqual(['modified', 'name', 'state']);
-    expect(listSortsFor('bug')).toEqual(['modified', 'name', 'state']);
+    expect(listSortsFor('task')).toEqual(['modified', 'name', 'state', 'time']);
+    expect(listSortsFor('bug')).toEqual(['modified', 'name', 'state', 'time']);
+    expect(listSortsFor('rca')).toEqual(['modified', 'name', 'time']);
+    expect(listSortsFor('idea')).toEqual(['modified', 'name', 'state']);
     expect(listSortsFor('reference')).toEqual(['modified', 'name', 'type', 'owner']);
     expect(listSortsFor('context')).toEqual(['modified', 'name', 'links']);
     expect(listSortsFor('recipe')).toEqual(['modified', 'name', 'target', 'contexts']);
