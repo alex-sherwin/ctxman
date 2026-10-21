@@ -77,18 +77,29 @@ Formats (parse defensively: unknown line types are skipped, a bad line never fai
 `WebSearch` -> `query`, `Task|Agent` -> `description`; Codex `shell`/`exec_command` -> the command (array joined with
 spaces); otherwise compact JSON of the input.
 
-**Listing** (`listAgentSessions({agent?, q?, offset, limit})`, NODE): candidates = readdir + stat of every source
-(cheap), sorted by mtime desc. Summaries are computed lazily for the requested page (skip sessions without any user
-prompt; keep scanning until `limit` items or the end), cached by `(path, mtimeMs, size)` in a module map (cap a few
-thousand). A summary reads only a bounded part of big files: Claude head 128 KB + tail 128 KB (complete lines only);
-Codex the first 256 KB of decompressed text (stream-decompress `.zst`, then stop); VS Code the whole file up to 8 MB,
-else the first 2 MB of complete lines; Copilot head 128 KB + `workspace.yaml`. `q`: case-insensitive, every
-whitespace token must occur in title + firstPrompt + cwd + gitBranch; with `q` set the scan computes summaries until
-the page is full (the cache makes repeats cheap). `limit` default 50, max 200. `next` = index into the sorted
-candidate list to continue from, null at the end.
+**Listing** (`listAgentSessions({agent?, q?, offset, limit})`, NODE; revised 2026-10-21 after the real-home
+validation): sorted by `lastActivityAt ?? modifiedAt` desc (`lastActivityAt` = the last event found, clamped to the
+mtime: agents touch files days after their last event). Candidates = readdir + stat of every source (cheap), scanned
+in mtime order computing (cached) summaries until `offset + limit + 1` listable items are known AND the next
+candidate's mtime is older than the last of them (activity <= mtime, so nothing unread can enter the page); then sort
+and slice. `next` = `offset + limit` (the items returned so far) when more follow, else null. Summaries are cached by
+`(path, mtimeMs, size)` (cap a few thousand; summaries only, strings detached from the parsed text), at most 4 at a
+time / about 8 MB of reads. A summary reads only a bounded part of big files and keeps no transcript: Claude head
+128 KB (on until the first prompt) + tail 128 KB; Codex the first 256 KB + last 64 KB of decompressed text (a `.zst`
+is stream-decompressed keeping only those windows); VS Code the whole file up to 8 MB, else the first 2 MB + last
+64 KB; Copilot head 128 KB + tail 64 KB + `workspace.yaml`. Listed = at least one prompt (a command is not one) and
+not a subagent. `q`: case-insensitive, every whitespace token must occur in title + firstPrompt + cwd + gitBranch.
+`limit` default 50, max 200.
 
 **Detail** (`readAgentSession(key, options)`): resolves the key by listing its source again (never a path from the
-request), parses the whole file (refuse files over 256 MB: 413 `too-large`), returns `AgentSessionDetail`.
+request) and 404s a session the list hides (same predicate); streams the whole file line by line through the parser
+(refuse files over 256 MB, a VS Code `.json` over 64 MB: 413 `too-large`), returns `AgentSessionDetail`; the preview
+html is rendered without the markdown memo and without Shiki.
+
+**Commands** (Claude Code): a user message that is only a slash command (`<command-name>` wrapper, or one typed line
+`/name args`) or a shell escape (`<bash-input>`, or one typed line `! cmd`) is a command: a `role: 'command'`
+transcript message, never a prompt, the title or `firstPrompt`, not counted; shell output is dropped. Rendered as
+`` - Command: `/model` `` lines in the flow.
 
 ## 3. Generated markdown (`src/lib/agent-history/markdown.ts`, PURE)
 
@@ -193,7 +204,10 @@ generate the markdown with the chosen title, call `createDocFile`.
   `+ Session` (`data-entry-action="import-session"`, `data-testid="files-import-session"`, title "Import an agent
   session") and `+ Plan` (`import-plan`, `files-import-plan`, "Import an agent plan"). `ENTRY_ACTIONS`, `EntryDialog`
   and `dialogFor` in `entry-helpers.ts` grow the two actions.
-- **Session dialog** (`ImportSessionDialog.tsx`, `Modal size="large"`, testId `session-dialog`, title "Agent
+- Both dialogs: `Modal size="xlarge"` (`min(100rem, 94vw)` x `88vh`), list column 28rem, the preview the rest; the
+  session preview has no meta strip (its file opens with the info table), the plan meta strip is one line; Path and
+  Title on full-width rows; the toolbar count has a fixed width; times on screen are local and labelled.
+- **Session dialog** (`ImportSessionDialog.tsx`, `Modal size="large"` at first, now `xlarge`, testId `session-dialog`, title "Agent
   sessions"): toolbar = agent ChipToggle All / Claude Code / Codex / GitHub Copilot (`session-agent-<all|id>`) and a
   search field (`session-search`, debounced 250 ms, server `q`). Body = two columns: the list (`session-list`, rows
   `session-row` with `data-key`, newest first: agent badge (+ source badge), title, short cwd, relative time via
