@@ -88,7 +88,8 @@ export function ImportSessionDialog({ dataset, slug, onClose }: ImportSessionDia
   const titleDefault = loaded?.summary.title ?? row?.title ?? '';
   const titleValue = mine?.title ?? titleDefault;
   const pathState = importPathState(pathValue);
-  const titleProblem = importTitleProblem(titleValue);
+  // an untouched title is the agent's own (the server's default, not sent): only an edited one is checked
+  const titleProblem = mine === null || mine.title === null ? null : importTitleProblem(mine.title);
   const canImport = selected !== null && loaded !== null && pathState.ok && titleProblem === null;
   const error = failure !== null && failure.key === selected ? failure.text : null;
 
@@ -263,7 +264,7 @@ export function ImportSessionDialog({ dataset, slug, onClose }: ImportSessionDia
                 pathState={pathState}
                 title={titleValue}
                 onTitle={(v) => edit({ title: v })}
-                titleError={mine !== null && mine.title !== null ? titleProblem : null}
+                titleError={titleProblem}
                 error={error}
                 isDisabled={selected === null || loaded === null || pending}
                 options={
