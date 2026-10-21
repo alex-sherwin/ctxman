@@ -16,9 +16,24 @@ interface Props {
   files: BundleFile[];
   /** Bundle-relative path of the file being shown, e.g. 'index.md' or 'concepts/search.md'. */
   current: string;
-  /** okf only: a `+ Add file` button in the panel title (EntryTools island, `data-entry-action="add-file"`). */
+  /**
+   * okf only: `+ Add file`, `+ Session` and `+ Plan` in the panel title (EntryTools island: `data-entry-action`
+   * `add-file`, `import-session`, `import-plan`; rendered disabled until the island mounts).
+   */
   canCreate?: boolean;
 }
+
+// The panel-title buttons of `canCreate`, in this order (small ghost buttons: they fit one line of the details column).
+const CREATE_BUTTONS = [
+  { action: 'add-file', testId: 'files-add-file', label: '+ Add file', title: undefined },
+  {
+    action: 'import-session',
+    testId: 'files-import-session',
+    label: '+ Session',
+    title: 'Import an agent session',
+  },
+  { action: 'import-plan', testId: 'files-import-plan', label: '+ Plan', title: 'Import an agent plan' },
+] as const;
 
 const { dataset, slug, files, current, canCreate = false } = Astro.props;
 
@@ -48,18 +63,20 @@ const tree = buildFileTree(items);
 
 <Panel as="nav" title="Files" id="h-files" testid="detail-files">
   {
-    canCreate && (
-      <button
-        slot="actions"
-        type="button"
-        class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
-        disabled
-        data-entry-action="add-file"
-        data-testid="files-add-file"
-      >
-        <span class="ck-button__label">+ Add file</span>
-      </button>
-    )
+    canCreate &&
+      CREATE_BUTTONS.map((b) => (
+        <button
+          slot="actions"
+          type="button"
+          class="ck-button ck-button--ghost ck-button--sm ck-button--glow"
+          disabled
+          title={b.title}
+          data-entry-action={b.action}
+          data-testid={b.testId}
+        >
+          <span class="ck-button__label">{b.label}</span>
+        </button>
+      ))
   }
   <div class="cx-files">
     <FileTreeNodes nodes={tree} open={ancestorDirs(current)} />

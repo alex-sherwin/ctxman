@@ -64,9 +64,15 @@ async function run<T>(url: string, init: RequestInit): Promise<ApiResult<T>> {
   };
 }
 
-/** `GET url` with `accept: application/json`. */
-export function getJson<T>(url: string): Promise<ApiResult<T>> {
-  return run<T>(url, { headers: { accept: 'application/json' } });
+/**
+ * `GET url` with `accept: application/json`. An aborted `signal` resolves like a network failure (status 0); a caller
+ * that aborts on change checks `signal.aborted` and drops that result.
+ */
+export function getJson<T>(url: string, signal?: AbortSignal): Promise<ApiResult<T>> {
+  return run<T>(url, {
+    headers: { accept: 'application/json' },
+    ...(signal === undefined ? {} : { signal }),
+  });
 }
 
 /**

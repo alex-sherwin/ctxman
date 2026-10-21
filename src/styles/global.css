@@ -28,6 +28,7 @@
 @import '../ui/forms/forms.css'; /* @layer cx-app (round 2: DataForm) */
 @import '../ui/pickers/pickers.css'; /* @layer cx-app (round 3: EntryPicker) */
 @import '../ui/entry/entry.css'; /* @layer cx-app (round 3: EntryTools island, W8b) */
+@import '../ui/agent/agent.css'; /* @layer cx-app (EntryTools: Import session / Import plan dialogs) */
 @import '../ui/list/list.css'; /* @layer cx-app (ListTable island: the dataset list pages) */
 @import './shortcuts.css'; /* @layer cx-app (keyboard shortcuts dialog) */
 @import './prose.css'; /* @layer cx-prose */
