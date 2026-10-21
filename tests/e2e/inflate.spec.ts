@@ -747,6 +747,57 @@ test.describe('output directory', () => {
     ).toBeVisible();
   });
 
+  test('a local repository can be placed as a Worktree: Branch and New branch, no clone options; they are saved', async ({
+    page,
+    request,
+  }) => {
+    // reference/ctxman-repo (seed) is a local-repo: Symlink by default
+    const name = uniqueName('e2e-rcp');
+    created.add(name);
+    const response = await request.post(`${API}/recipe`, {
+      data: {
+        name,
+        description: 'worktree options',
+        target: 'claude-code',
+        layout: 'grouped',
+        contexts: [],
+        items: [{ dataset: 'reference', slug: 'ctxman-repo' }],
+        overrides: [],
+        output: { dir: `~/ctxman-inflate/${name}` },
+      },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    await openInflate(page, name);
+    const row = segmentRow(page, 'reference/ctxman-repo');
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('inflate-mopt-newBranch')).toHaveCount(0);
+
+    await row.getByTestId('inflate-segment-material').click();
+    await page.getByRole('option', { name: /^Worktree/ }).click();
+    await expect(row.getByTestId('inflate-segment-material')).toContainText('Worktree');
+    await expect(row.getByTestId('inflate-segment-dest')).toContainText('repos/ctxman-repo');
+    // a worktree starts at Branch (empty = the HEAD of the repository) and may get a branch of its own
+    await expect(row.getByTestId('inflate-mopt-branch')).toHaveAttribute(
+      'placeholder',
+      'repository HEAD',
+    );
+    await expect(row.getByTestId('inflate-mopt-newBranch')).toHaveAttribute('placeholder', 'none');
+    await expect(row.getByTestId('inflate-mopt-cloneDepth')).toHaveCount(0);
+    await expect(row.getByTestId('inflate-mopt-subpathOnly')).toHaveCount(0);
+
+    // an invalid ref is not committed, a valid one is
+    await row.getByTestId('inflate-mopt-newBranch').fill('-bad');
+    await expect(page.getByText(/must be a branch or tag name/)).toBeVisible();
+    await row.getByTestId('inflate-mopt-newBranch').fill('feature/work');
+    await saveRecipe(page);
+    const saved = overrideIn(readRecipeYaml(name), 'reference/ctxman-repo');
+    expect(saved).toMatchObject({
+      material: 'worktree',
+      materialOptions: { newBranch: 'feature/work' },
+    });
+    expect(saved?.materialOptions).not.toHaveProperty('branch');
+  });
+
   test('a repository row offers its material, clone options and Primary; they are saved', async ({
     page,
     request,

@@ -257,6 +257,128 @@ test.describe('read, update, delete', () => {
   });
 });
 
+test.describe('folder (the folder name in an Inflate working directory)', () => {
+  const repo = (
+    name: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    name,
+    description: 'Folder name round trip',
+    type: 'local-repo',
+    path: '~/repos/demo',
+    subpath: 'docs',
+    owner: 'me',
+    ...overrides,
+  });
+
+  test('POST keeps folder (after subpath, before owner); GET returns it; PUT changes and removes it', async ({
+    request,
+  }) => {
+    const name = newName();
+    const created = await request.post(`${API}/reference`, {
+      data: repo(name, { folder: 'my-repo.v2' }),
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    expect(((await created.json()) as ReferenceBody).reference).toMatchObject({
+      folder: 'my-repo.v2',
+    });
+    expect(Object.keys(readYaml(`reference/${name}.yaml`) as object)).toEqual([
+      'name',
+      'description',
+      'type',
+      'path',
+      'subpath',
+      'folder',
+      'owner',
+    ]);
+    const read = await request.get(`${API}/reference/${name}`);
+    expect(((await read.json()) as ReferenceBody).reference).toMatchObject({
+      folder: 'my-repo.v2',
+    });
+
+    const changed = await request.put(`${API}/reference/${name}`, {
+      data: repo(name, { folder: 'other-dir' }),
+    });
+    expect(changed.status()).toBe(200);
+    expect(readYaml(`reference/${name}.yaml`)).toMatchObject({ folder: 'other-dir' });
+
+    // no folder in the body: the key leaves the file again (the reference name is the folder)
+    const removed = await request.put(`${API}/reference/${name}`, { data: repo(name) });
+    expect(removed.status()).toBe(200);
+    expect(readYaml(`reference/${name}.yaml`)).not.toHaveProperty('folder');
+    expect(readDataText(`reference/${name}.yaml`)).not.toContain('folder:');
+  });
+
+  test('a remote repo and a local folder take a folder too', async ({ request }) => {
+    const remote = newName();
+    expect(
+      (
+        await request.post(`${API}/reference`, {
+          data: body(remote, {
+            type: 'remote-repo',
+            uri: 'git@github.com:org/e2e-folder.git',
+            subpath: undefined,
+            folder: 'checkout',
+          }),
+        })
+      ).status(),
+    ).toBe(201);
+    expect(readYaml(`reference/${remote}.yaml`)).toMatchObject({ folder: 'checkout' });
+    const plain = newName();
+    expect(
+      (
+        await request.post(`${API}/reference`, {
+          data: {
+            name: plain,
+            description: 'A plain folder',
+            type: 'local-folder',
+            path: '~/e2e-notes',
+            owner: 'me',
+            folder: 'notes',
+          },
+        })
+      ).status(),
+    ).toBe(201);
+    expect(readYaml(`reference/${plain}.yaml`)).toMatchObject({
+      type: 'local-folder',
+      folder: 'notes',
+    });
+  });
+
+  test('a folder that is not one plain name is 400 invalid on the folder path; nothing is written', async ({
+    request,
+  }) => {
+    for (const folder of ['a/b', '../up', '.hidden', '-lead', 'with space', '']) {
+      const name = newName();
+      const response = await request.post(`${API}/reference`, { data: repo(name, { folder }) });
+      expect(response.status(), JSON.stringify(folder)).toBe(400);
+      const error = await errorOf(response);
+      expect(error.error).toBe('invalid');
+      expect(
+        error.issues?.map((i) => i.path),
+        JSON.stringify(folder),
+      ).toEqual(['folder']);
+      expect(dataExists(`reference/${name}.yaml`), JSON.stringify(folder)).toBe(false);
+    }
+    const tooLong = await request.post(`${API}/reference`, {
+      data: repo(newName(), { folder: 'x'.repeat(101) }),
+    });
+    expect(tooLong.status()).toBe(400);
+  });
+
+  test('a remote skill has no folder: the key is refused', async ({ request }) => {
+    const name = newName();
+    const response = await request.post(`${API}/reference`, {
+      data: body(name, { folder: 'skills' }),
+    });
+    expect(response.status()).toBe(400);
+    const error = await errorOf(response);
+    expect(error.error).toBe('invalid');
+    expect(error.issues?.map((i) => i.path)).toContain('folder');
+    expect(dataExists(`reference/${name}.yaml`)).toBe(false);
+  });
+});
+
 test('a created reference shows up in /api/entries?dataset=reference at once, and leaves it when deleted', async ({
   request,
 }) => {

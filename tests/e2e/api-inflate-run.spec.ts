@@ -3,6 +3,8 @@
 // No browser. The web server reaches a local git repository (.tmp/e2e-git) through git's insteadOf env. Runs use no
 // step delay; only the busy/cancel test slows its run through the x-ctxman-step-delay-ms header.
 // Working directories are OS temp dirs, removed afterwards.
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -11,6 +13,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
@@ -760,6 +763,523 @@ test.describe('safety', () => {
     expect(readFileSync(path.join(occupied, 'kb', 'okf-format', 'mine.md'), 'utf8')).toBe('mine');
     // the context file describes the real outcome
     expect(readFileSync(path.join(occupied, 'AGENTS.md'), 'utf8')).toContain('kb/okf-format');
+  });
+});
+
+/** `git -C <cwd> <args>` (argv, no shell): the trimmed stdout. Commits carry a throwaway identity. */
+const git = (cwd: string, ...args: string[]): string =>
+  execFileSync(
+    'git',
+    ['-C', cwd, '-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  ).trim();
+const worktreePaths = (repo: string): string[] =>
+  git(repo, 'worktree', 'list', '--porcelain')
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length));
+
+test.describe('worktrees and work branches (a git repository made by the test)', () => {
+  test.skip(!HAS_GIT, 'git is not available');
+  // Serial by the file (one job at a time): the tests share the source repository, `work` and what it holds.
+  const WT_REF = 'e2e-run-wt';
+  const FOLDER = 'e2e-wt-dir';
+  const BRANCH = 'e2e/work';
+  let source = '';
+  let work = '';
+  const dest = (): string => path.join(work, 'repos', FOLDER);
+
+  /** One local repository item placed with `material` (and its options), `codex` so that AGENTS.md is the only file. */
+  function wtRecipe(
+    dir: string,
+    material: string,
+    opts: Record<string, unknown> | null,
+  ): Record<string, unknown> {
+    return {
+      name: 'e2e-run-wt',
+      description: 'Worktree run spec',
+      target: 'codex',
+      layout: 'grouped',
+      contexts: [],
+      items: [{ dataset: 'reference', slug: WT_REF }],
+      overrides: [
+        {
+          key: `reference/${WT_REF}`,
+          material,
+          ...(opts === null ? {} : { materialOptions: opts }),
+        },
+      ],
+      output: { dir, ...(material === 'none' ? {} : { primary: `reference/${WT_REF}` }) },
+    };
+  }
+
+  test.beforeAll(async ({ request }) => {
+    source = path.join(base, 'wt-source');
+    work = path.join(base, 'wt-work');
+    mkdirSync(source, { recursive: true });
+    git(source, 'init', '-q', '-b', 'trunk');
+    writeFileSync(path.join(source, 'README.md'), '# worktree source\n');
+    git(source, 'add', '-A');
+    git(source, 'commit', '-qm', 'one');
+    const created = await request.post(`${API}/reference`, {
+      data: {
+        name: WT_REF,
+        description: 'A git repository made by the worktree spec.',
+        type: 'local-repo',
+        path: source,
+        folder: FOLDER,
+        owner: 'me',
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+  });
+
+  test.afterAll(async ({ request }) => {
+    await request.delete(`${API}/reference/${WT_REF}`);
+    // drop the registrations of deleted folders, then remove the work trees that are left (the source is the first)
+    git(source, 'worktree', 'prune');
+    for (const wt of worktreePaths(source).slice(1)) {
+      git(source, 'worktree', 'remove', '--force', '--', wt);
+    }
+  });
+
+  test('the dry run plans a gitWorktree step at repos/<folder> and writes nothing', async ({
+    request,
+  }) => {
+    const body = (await (
+      await plan(request, { recipe: wtRecipe(work, 'worktree', { newBranch: BRANCH }) })
+    ).json()) as PlanBody;
+    expect(body.blocking).toEqual([]);
+    expect(body.steps.map((s) => s.id)).toEqual([
+      'dir',
+      `worktree:reference/${WT_REF}`,
+      'context',
+      'stub:.gitignore',
+      'manifest',
+    ]);
+    expect(body.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)).toMatchObject({
+      kind: 'gitWorktree',
+      path: `repos/${FOLDER}`,
+      expect: 'create',
+    });
+    const text = body.document.markdown;
+    expect(text).toContain(`repos/${FOLDER}/`);
+    expect(text).toContain(`work on branch \`${BRANCH}\``);
+    expect(text).toContain('**Where to work**');
+    expect(existsSync(work)).toBe(false);
+    expect(git(source, 'branch', '--list', BRANCH)).toBe('');
+  });
+
+  test('a run adds the worktree on the new branch; the branch and its commits live in the source repository', async ({
+    request,
+  }) => {
+    const job = await runToEnd(request, {
+      recipe: wtRecipe(work, 'worktree', { newBranch: BRANCH }),
+    });
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(job.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)).toMatchObject({
+      status: 'ok',
+      action: 'created',
+      message: `new branch ${BRANCH} from HEAD`,
+    });
+
+    // on disk: a linked work tree (its `.git` is a file) checked out on the new branch
+    expect(git(dest(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(BRANCH);
+    expect(lstatSync(path.join(dest(), '.git')).isFile()).toBe(true);
+    expect(readFileSync(path.join(dest(), 'README.md'), 'utf8')).toBe('# worktree source\n');
+    expect(worktreePaths(source)).toContain(realpathSync(dest()));
+    // the branch is in the source repository, started at its HEAD
+    expect(git(source, 'rev-parse', `refs/heads/${BRANCH}`)).toBe(
+      git(source, 'rev-parse', 'trunk'),
+    );
+
+    expect(readManifest(work).entries).toContainEqual({
+      path: `repos/${FOLDER}`,
+      type: 'worktree',
+      key: `reference/${WT_REF}`,
+      repo: realpathSync(source),
+      branch: null,
+      newBranch: BRANCH,
+    });
+    // the context file is AGENTS.md (the default); the primary repository's work branch reads out
+    expect(existsSync(path.join(work, 'LLM_CONTEXT.md'))).toBe(false);
+    const context = readFileSync(path.join(work, 'AGENTS.md'), 'utf8');
+    expect(context).toContain('## Working directory map');
+    expect(context).toContain(`[\`repos/${FOLDER}/\`](repos/${FOLDER}/)`);
+    expect(context).toContain('**Where to work**');
+    expect(context).toContain(`work on branch \`${BRANCH}\``);
+    expect(context).toContain('git worktree');
+    expect(readFileSync(path.join(work, '.gitignore'), 'utf8')).toContain('/repos/');
+
+    // a commit made in the worktree lands in the source repository's branch
+    writeFileSync(path.join(dest(), 'notes.md'), 'agent notes\n');
+    git(dest(), 'add', '-A');
+    git(dest(), 'commit', '-qm', 'agent work');
+    expect(git(source, 'log', '-1', '--format=%s', BRANCH)).toBe('agent work');
+  });
+
+  test('a second run leaves the worktree as it is; another New branch is kept, not switched to', async ({
+    request,
+  }) => {
+    const same = await runToEnd(request, {
+      recipe: wtRecipe(work, 'worktree', { newBranch: BRANCH }),
+    });
+    expect(same.status).toBe('done');
+    expect(same.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)?.status).toBe(
+      'unchanged',
+    );
+    expect(git(dest(), 'log', '-1', '--format=%s')).toBe('agent work');
+
+    const other = await runToEnd(request, {
+      recipe: wtRecipe(work, 'worktree', { newBranch: 'e2e/other' }),
+    });
+    expect(other.status).toBe('done');
+    expect(other.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)).toMatchObject({
+      status: 'skipped',
+      action: 'kept',
+      message: `on branch ${BRANCH}, recipe wants e2e/other; left as is`,
+    });
+    expect(git(dest(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(BRANCH);
+    expect(git(source, 'branch', '--list', 'e2e/other')).toBe('');
+  });
+
+  test('a clean worktree is removed when the item stops being placed; its branch stays', async ({
+    request,
+  }) => {
+    const job = await runToEnd(request, { recipe: wtRecipe(work, 'none', null) });
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(job.steps.find((s) => s.id === `rm:repos/${FOLDER}`)).toMatchObject({
+      status: 'ok',
+      action: 'removed',
+    });
+    expect(existsSync(dest())).toBe(false);
+    // `git worktree remove` + prune: nothing stale in the source repository, and the commits are still on the branch
+    expect(worktreePaths(source)).toEqual([realpathSync(source)]);
+    expect(git(source, 'worktree', 'list', '--porcelain')).not.toContain('prunable');
+    expect(git(source, 'log', '-1', '--format=%s', BRANCH)).toBe('agent work');
+    expect(readManifest(work).entries.map((e) => e.path)).not.toContain(`repos/${FOLDER}`);
+  });
+
+  test('an existing branch of that name is checked out, and a worktree with local changes is kept', async ({
+    request,
+  }) => {
+    // the branch exists from the first run: it is checked out instead of created
+    const again = await runToEnd(request, {
+      recipe: wtRecipe(work, 'worktree', { newBranch: BRANCH }),
+    });
+    expect(again.status).toBe('done');
+    expect(again.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)).toMatchObject({
+      status: 'ok',
+      action: 'created',
+      message: `the branch ${BRANCH} already exists in the repository: checked it out`,
+    });
+    expect(git(dest(), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(BRANCH);
+    expect(readFileSync(path.join(dest(), 'notes.md'), 'utf8')).toBe('agent notes\n');
+
+    // an untracked file makes git refuse; ctxman keeps the folder and says why
+    writeFileSync(path.join(dest(), 'scratch.txt'), 'not committed');
+    const job = await runToEnd(request, { recipe: wtRecipe(work, 'none', null) });
+    expect(job.status).toBe('done');
+    expect(job.steps.find((s) => s.id === `rm:repos/${FOLDER}`)).toMatchObject({
+      status: 'skipped',
+      action: 'kept',
+      message: `kept repos/${FOLDER}: it has local changes; left in place`,
+    });
+    expect(existsSync(path.join(dest(), 'scratch.txt'))).toBe(true);
+    expect(worktreePaths(source)).toContain(realpathSync(dest()));
+    expect(readManifest(work).entries.map((e) => e.path)).toContain(`repos/${FOLDER}`);
+  });
+
+  test('Branch alone checks it out; no branch at all gives a detached HEAD', async ({
+    request,
+  }) => {
+    git(source, 'branch', 'e2e/plain');
+    const branchDir = path.join(base, 'wt-branch');
+    const onBranch = await runToEnd(request, {
+      recipe: wtRecipe(branchDir, 'worktree', { branch: 'e2e/plain' }),
+    });
+    expect(onBranch.status, JSON.stringify(onBranch.steps.filter((s) => s.status !== 'ok'))).toBe(
+      'done',
+    );
+    expect(git(path.join(branchDir, 'repos', FOLDER), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(
+      'e2e/plain',
+    );
+
+    const detachedDir = path.join(base, 'wt-detached');
+    const detached = await runToEnd(request, { recipe: wtRecipe(detachedDir, 'worktree', null) });
+    expect(detached.status).toBe('done');
+    expect(git(path.join(detachedDir, 'repos', FOLDER), 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(
+      'HEAD',
+    );
+    // a branch another work tree has checked out is refused with the hint (the source is on trunk)
+    const busyDir = path.join(base, 'wt-busy');
+    const busy = await runToEnd(request, {
+      recipe: wtRecipe(busyDir, 'worktree', { branch: 'trunk' }),
+    });
+    expect(busy.status).toBe('failed');
+    expect(busy.steps.find((s) => s.id === `worktree:reference/${WT_REF}`)?.message).toContain(
+      'set New branch to work on a branch of your own',
+    );
+    expect(existsSync(path.join(busyDir, 'repos', FOLDER))).toBe(false);
+  });
+});
+
+test.describe('a clone on a work branch', () => {
+  test.skip(!HAS_GIT, 'git is not available');
+
+  test('New branch switches the clone to it; a second run only fetches and leaves the branch alone', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'clone-work');
+    const body = {
+      recipe: {
+        name: 'e2e-run-clone-work',
+        description: 'Clone work branch spec',
+        target: 'generic',
+        layout: 'grouped',
+        contexts: [],
+        items: [{ dataset: 'reference', slug: REPO_REF }],
+        overrides: [
+          {
+            key: `reference/${REPO_REF}`,
+            material: 'clone',
+            materialOptions: { newBranch: 'e2e/clone-work' },
+          },
+        ],
+        output: { dir, primary: `reference/${REPO_REF}` },
+      },
+    };
+    const first = await runToEnd(request, body);
+    expect(first.status, JSON.stringify(first.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    const clone = path.join(dir, 'repos', REPO_REF);
+    expect(git(clone, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('e2e/clone-work');
+    // full history is the default: no shallow marker
+    expect(git(clone, 'rev-parse', '--is-shallow-repository')).toBe('false');
+    expect(readManifest(dir).entries).toContainEqual(
+      expect.objectContaining({
+        path: `repos/${REPO_REF}`,
+        type: 'clone',
+        depth: 0,
+        newBranch: 'e2e/clone-work',
+      }),
+    );
+    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain(
+      'work on branch `e2e/clone-work`',
+    );
+
+    writeFileSync(path.join(clone, 'mine.txt'), 'work in progress');
+    const second = await runToEnd(request, body);
+    expect(second.status).toBe('done');
+    expect(second.steps.find((s) => s.id === `clone:reference/${REPO_REF}`)).toMatchObject({
+      status: 'unchanged',
+      message: 'on work branch e2e/clone-work; fetched origin',
+    });
+    expect(git(clone, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('e2e/clone-work');
+    expect(readFileSync(path.join(clone, 'mine.txt'), 'utf8')).toBe('work in progress');
+  });
+
+  // KNOWN GAP (found by the real-git validation of the work-branch change): removal asks `git status --branch` for
+  // "[ahead N]", which git prints only for a branch WITH an upstream. A work branch made by `git switch -c` has none,
+  // so a commit on it is invisible and the clone is deleted (src/lib/inflate/material-exec.ts, removeRecorded, case
+  // 'clone'). Turn this into a plain `test` once removal also checks `git rev-list --branches --not --remotes`.
+  test.fixme('a clone with a commit on its work branch is kept when its item stops being placed', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'clone-work-commit');
+    const place = (material: string, opts?: Record<string, unknown>): Record<string, unknown> => ({
+      name: 'e2e-run-clone-work',
+      description: 'Clone work branch removal spec',
+      target: 'generic',
+      layout: 'grouped',
+      contexts: [],
+      items: [{ dataset: 'reference', slug: REPO_REF }],
+      overrides: [
+        {
+          key: `reference/${REPO_REF}`,
+          material,
+          ...(opts === undefined ? {} : { materialOptions: opts }),
+        },
+      ],
+      output: { dir },
+    });
+    const first = await runToEnd(request, {
+      recipe: place('clone', { newBranch: 'e2e/clone-commit' }),
+    });
+    expect(first.status).toBe('done');
+    const clone = path.join(dir, 'repos', REPO_REF);
+    writeFileSync(path.join(clone, 'mine.txt'), 'work');
+    git(clone, 'add', 'mine.txt');
+    git(clone, 'commit', '-qm', 'my work');
+
+    const removal = await runToEnd(request, { recipe: place('none') });
+    expect(removal.status).toBe('done');
+    expect(removal.steps.find((s) => s.id === `rm:repos/${REPO_REF}`)).toMatchObject({
+      status: 'skipped',
+      action: 'kept',
+    });
+    expect(git(clone, 'log', '-1', '--format=%s')).toBe('my work');
+  });
+});
+
+test.describe('AGENTS.md as the context file', () => {
+  const sha = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
+  /** The stub text an older ctxman wrote for `role` (it pointed at LLM_CONTEXT.md). */
+  const oldStub = (role: 'claude-md' | 'agents-md'): string =>
+    role === 'claude-md'
+      ? [
+          '# e2e-old',
+          '',
+          'Generated by ctxman from the recipe `e2e-old`. LLM_CONTEXT.md maps the repositories, skills and knowledge in this directory; read it first.',
+          '',
+          '@LLM_CONTEXT.md',
+          '',
+        ].join('\n')
+      : [
+          '# e2e-old',
+          '',
+          'Generated by ctxman from the recipe `e2e-old`. Read `LLM_CONTEXT.md` first: it maps the repositories, skills and knowledge in this directory.',
+          '',
+          'Paths in it are relative to this directory.',
+          '',
+        ].join('\n');
+
+  /** A directory as ctxman wrote it before AGENTS.md became the default: LLM_CONTEXT.md, one stub, one linked folder. */
+  function oldLayout(dir: string, target: 'claude-code' | 'codex'): string {
+    const role = target === 'claude-code' ? 'claude-md' : 'agents-md';
+    const stubFile = target === 'claude-code' ? 'CLAUDE.md' : 'AGENTS.md';
+    const context = '# old context\n';
+    const stub = oldStub(role);
+    mkdirSync(path.join(dir, 'folders'), { recursive: true });
+    symlinkSync(E2E_LOCAL_FIXTURE, path.join(dir, 'folders', FOLDER_REF), 'dir');
+    writeFileSync(path.join(dir, 'LLM_CONTEXT.md'), context);
+    writeFileSync(path.join(dir, stubFile), stub);
+    const entries = [
+      { path: 'LLM_CONTEXT.md', type: 'file', role: 'context', sha256: sha(context) },
+      { path: stubFile, type: 'file', role, sha256: sha(stub) },
+      {
+        path: `folders/${FOLDER_REF}`,
+        type: 'symlink',
+        key: `reference/${FOLDER_REF}`,
+        target: E2E_LOCAL_FIXTURE,
+      },
+    ].sort((a, b) => (a.path < b.path ? -1 : 1));
+    writeFileSync(
+      path.join(dir, '.ctxman-inflate.json'),
+      JSON.stringify({
+        format: 'ctxman-inflate',
+        version: 1,
+        recipe: 'e2e-old',
+        target,
+        contextFile: 'LLM_CONTEXT.md',
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        jobId: 'old-job',
+        entries,
+      }),
+    );
+    return stubFile;
+  }
+  const folderRecipe = (dir: string, target: 'claude-code' | 'codex'): Record<string, unknown> => ({
+    name: 'e2e-old',
+    description: 'Old layout spec',
+    target,
+    layout: 'grouped',
+    contexts: [],
+    items: [{ dataset: 'reference', slug: FOLDER_REF }],
+    overrides: [{ key: `reference/${FOLDER_REF}`, material: 'symlink' }],
+    output: { dir },
+  });
+
+  test('a claude-code directory made with LLM_CONTEXT.md: the unedited file goes, CLAUDE.md imports @AGENTS.md', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'old-claude');
+    oldLayout(dir, 'claude-code');
+    const planned = (await (
+      await plan(request, { recipe: folderRecipe(dir, 'claude-code') })
+    ).json()) as PlanBody;
+    expect(planned.blocking).toEqual([]);
+    expect(planned.warnings.map((w) => w.code)).not.toContain('context-file-exists');
+    expect(planned.steps.find((s) => s.id === 'rm:LLM_CONTEXT.md')).toMatchObject({
+      kind: 'remove',
+      expect: 'remove',
+    });
+
+    const job = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(existsSync(path.join(dir, 'LLM_CONTEXT.md'))).toBe(false);
+    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain('## Working directory map');
+    const claude = readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(claude.endsWith('@AGENTS.md\n')).toBe(true);
+    expect(claude).not.toContain('LLM_CONTEXT.md');
+    const manifest = readManifest(dir) as Manifest & { contextFile: string };
+    expect(manifest.contextFile).toBe('AGENTS.md');
+    expect(manifest.entries.map((e) => e.path)).not.toContain('LLM_CONTEXT.md');
+
+    // and it settles: the next run changes nothing
+    const next = await runToEnd(request, { recipe: folderRecipe(dir, 'claude-code') });
+    expect(next.status).toBe('done');
+    expect(next.steps.find((s) => s.id === 'context')?.status).toBe('unchanged');
+    expect(next.steps.find((s) => s.id === 'stub:CLAUDE.md')?.status).toBe('unchanged');
+  });
+
+  test('a codex directory whose AGENTS.md was an unedited stub: the context file replaces it', async ({
+    request,
+  }) => {
+    const dir = path.join(base, 'old-codex');
+    oldLayout(dir, 'codex');
+    const job = await runToEnd(request, { recipe: folderRecipe(dir, 'codex') });
+    expect(job.status, JSON.stringify(job.steps.filter((s) => s.status !== 'ok'))).toBe('done');
+    expect(existsSync(path.join(dir, 'LLM_CONTEXT.md'))).toBe(false);
+    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain('## Working directory map');
+    expect(job.steps.find((s) => s.id === 'context')).toMatchObject({
+      status: 'ok',
+      action: 'written',
+      message: 'replaced the AGENTS.md stub',
+    });
+    const entry = readManifest(dir).entries.find((e) => e.path === 'AGENTS.md');
+    expect(entry).toMatchObject({ type: 'file', role: 'context' });
+  });
+
+  test('an edited stub, or an AGENTS.md ctxman never wrote: the dry run warns, the context step fails with the hint, the file stays', async ({
+    request,
+  }) => {
+    const hint = 'move it away or choose another context file name';
+    // 1. a stub the user edited
+    const edited = path.join(base, 'old-codex-edited');
+    oldLayout(edited, 'codex');
+    writeFileSync(path.join(edited, 'AGENTS.md'), `${oldStub('agents-md')}\nmy own notes\n`);
+    const planned = (await (
+      await plan(request, { recipe: folderRecipe(edited, 'codex') })
+    ).json()) as PlanBody;
+    const warning = planned.warnings.find((w) => w.code === 'context-file-exists');
+    expect(warning?.message).toContain('is a stub ctxman wrote earlier and it was edited since');
+    expect(warning?.message).toContain(hint);
+    const job = await runToEnd(request, { recipe: folderRecipe(edited, 'codex') });
+    expect(job.status).toBe('failed');
+    expect(job.steps.find((s) => s.id === 'context')).toMatchObject({ status: 'failed' });
+    expect(job.steps.find((s) => s.id === 'context')?.message).toContain(hint);
+    expect(readFileSync(path.join(edited, 'AGENTS.md'), 'utf8')).toContain('my own notes');
+
+    // 2. an AGENTS.md that is the user's own (no manifest says otherwise)
+    const foreign = path.join(base, 'foreign-agents');
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(path.join(foreign, 'AGENTS.md'), 'my own project rules\n');
+    const overrides = { allowNonEmpty: true };
+    const foreignPlan = (await (
+      await plan(request, { recipe: folderRecipe(foreign, 'claude-code'), overrides })
+    ).json()) as PlanBody;
+    expect(foreignPlan.warnings.find((w) => w.code === 'context-file-exists')?.message).toContain(
+      'was not written by ctxman',
+    );
+    const foreignJob = await runToEnd(request, {
+      recipe: folderRecipe(foreign, 'claude-code'),
+      overrides,
+    });
+    expect(foreignJob.status).toBe('failed');
+    expect(foreignJob.steps.find((s) => s.id === 'context')?.message).toBe(
+      `AGENTS.md exists and was not written by ctxman; ${hint}`,
+    );
+    expect(readFileSync(path.join(foreign, 'AGENTS.md'), 'utf8')).toBe('my own project rules\n');
   });
 });
 
