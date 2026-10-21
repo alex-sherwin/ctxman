@@ -206,7 +206,7 @@ export function FrontmatterDialog({
         onOpenChange={(open) => {
           if (!open) cancel();
         }}
-        size="large"
+        size="form"
         testId="fm-dialog"
       >
         <Dialog

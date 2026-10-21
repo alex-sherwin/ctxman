@@ -43,7 +43,12 @@
   .ck-modal--danger {
     --_accent: var(--danger);
   }
-  /* fixed-size dialog (lists, editors, longer forms): the size never follows the content */
+  /* a longer form: the width of --large, the height of its fields (no empty box below a short form) */
+  .ck-modal--form {
+    width: min(60rem, 90vw);
+    max-height: min(88vh, calc(100dvh - 2 * var(--sp-6)));
+  }
+  /* fixed-size dialog (lists, editors): the size never follows the content */
   .ck-modal--large {
     width: min(60rem, 90vw);
     height: 80vh;

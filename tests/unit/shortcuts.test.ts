@@ -189,9 +189,9 @@ describe('SHORTCUTS', () => {
     expect(combos).toEqual(['?', 'Mod+K', 'c', 'l', '.', 'e', 't', 'Mod+S', 'Mod+Alt+K', 'Esc']);
   });
 
-  it('says where t works: the time-tracked entry pages and lists only', () => {
+  it('says where t works: the time-tracked entry and document pages and lists only', () => {
     const t = SHORTCUTS.find((s) => s.id === 'log-time');
     expect(t?.keys).toEqual(['t']);
-    expect(t?.where).toBe('Task, feature, bug and rca entry pages and lists');
+    expect(t?.where).toBe('Task, feature, bug and rca entry pages, their document pages and lists');
   });
 });

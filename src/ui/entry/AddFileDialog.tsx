@@ -71,7 +71,7 @@ export function AddFileDialog({ dataset, slug, fixedPath, onClose }: AddFileDial
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      size="large"
+      size="form"
       testId="add-file-dialog"
     >
       <Dialog

@@ -59,7 +59,7 @@
   }
 
   /* ---------- Add to context / Build context / Add file ---------- */
-  /* Build context and Add file are Modal size="large"; Add to context (two fields) stays auto-sized */
+  /* Build context is Modal size="large", Add file size="form"; Add to context (two fields) stays auto-sized */
   .cx-bctx__group {
     display: flex;
     flex-direction: column;
@@ -82,7 +82,7 @@
     color: var(--fg-muted);
   }
 
-  /* ---------- Clone… (detail menu, src/ui/menus/CloneEntryDialog.tsx; Modal size="large") ---------- */
+  /* ---------- Clone… (detail menu, src/ui/menus/CloneEntryDialog.tsx; Modal size="form") ---------- */
   .cx-clone__lede {
     margin: 0;
     color: var(--fg-muted);

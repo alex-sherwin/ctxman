@@ -137,7 +137,7 @@ export function CloneEntryDialog({ dataset, slug, title, onClose }: CloneEntryDi
       onOpenChange={(open) => {
         if (!open && !pending) onClose();
       }}
-      size="large"
+      size="form"
       testId="clone-dialog"
     >
       <Dialog

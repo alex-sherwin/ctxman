@@ -42,7 +42,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     id: 'log-time',
     keys: ['t'],
     label: 'Log time on the entry, or on the hovered or focused list row',
-    where: 'Task, feature, bug and rca entry pages and lists',
+    where: 'Task, feature, bug and rca entry pages, their document pages and lists',
   },
   { id: 'save', keys: ['Mod', 'S'], label: 'Save', where: 'Editors' },
   {
