@@ -11,6 +11,35 @@ const tmp = trackTemp();
 afterAll(() => tmp.cleanup());
 
 describe.concurrent('add-entry.ts', { timeout: 20_000 }, () => {
+  it('creates a remote skill reference with --skill-name and rejects other types or invalid names', async ({
+    expect,
+  }) => {
+    const dir = tmp.make();
+    const result = await runCli(
+      'add-entry.ts',
+      dir,
+      'reference',
+      'skill-repo',
+      '--type',
+      'remote-skill',
+      '--skill-name',
+      'actual-skill',
+    );
+    expect(result.code).toBe(0);
+    expect(readFileSync(path.join(dir, 'reference/skill-repo.yaml'), 'utf8')).toContain(
+      'skillName: actual-skill\n',
+    );
+    for (const args of [
+      ['reference', 'wrong-type', '--skill-name', 'actual-skill'],
+      ['reference', 'bad-name', '--type', 'remote-skill', '--skill-name', '../x'],
+      ['kb', 'not-reference', '--skill-name', 'actual-skill'],
+    ]) {
+      const rejected = await runCli('add-entry.ts', dir, ...args);
+      expect(rejected.code).toBe(2);
+      expect(rejected.stderr).toContain('--skill-name');
+    }
+  });
+
   it('creates a lifecycle entry, reports JSON, and the result passes check-all', async ({
     expect,
   }) => {

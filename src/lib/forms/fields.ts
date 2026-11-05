@@ -138,6 +138,15 @@ export const FORM_FIELDS: Record<YamlDatasetId, readonly FieldDef[]> = {
         typeof doc.name === 'string' && doc.name !== '' ? doc.name : 'my-repo',
       when: (doc) => isFolderReferenceType(doc.type),
     },
+    {
+      id: 'skillName',
+      label: 'Skill folder name',
+      kind: 'text',
+      mono: true,
+      help: 'Must match the name in SKILL.md frontmatter; empty = the existing subpath/reference-name default',
+      placeholder: 'my-skill',
+      when: (doc) => doc.type === 'remote-skill',
+    },
     { id: 'owner', label: 'Owner', kind: 'select', required: true, options: OWNER_OPTIONS },
     {
       id: 'info',
@@ -241,9 +250,9 @@ function put(out: FormDoc, key: string, value: unknown): void {
 }
 
 /**
- * The document the API receives: strings trimmed, optional empty values (subpath, folder, tags, info, preamble)
+ * The document the API receives: strings trimmed, optional empty values (subpath, folder, skillName, tags, info, preamble)
  * dropped. Reference keeps only the keys of the active type variant (`path` for local-repo and local-folder,
- * `uri` for the remote types, no `folder` for remote-skill), in the serializer's key order; a snippet keeps its markdown as typed (not trimmed);
+ * `uri` for the remote types, `folder` for repositories/folders, `skillName` for remote-skill), in the serializer's key order; a snippet keeps its markdown as typed (not trimmed);
  * context and recipe keep every other key (links, composition) as is.
  */
 export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
@@ -261,6 +270,10 @@ export function normalizeDoc(ds: YamlDatasetId, doc: FormDoc): FormDoc {
     const folder = trimmed(doc.folder);
     if (isFolderReferenceType(doc.type) && typeof folder === 'string' && folder !== '') {
       out.folder = folder;
+    }
+    const skillName = trimmed(doc.skillName);
+    if (doc.type === 'remote-skill' && typeof skillName === 'string' && skillName !== '') {
+      out.skillName = skillName;
     }
     put(out, 'owner', doc.owner);
     if (tags.length > 0) out.tags = tags;

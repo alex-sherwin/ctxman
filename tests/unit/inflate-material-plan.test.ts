@@ -33,7 +33,7 @@ interface World {
 }
 
 /** The seed-like tree plus a skill `foo`, a local repo, a local folder and one reference of every remote shape. */
-function world(): World {
+function world(extra: Record<string, string> = {}): World {
   const repo = tmp.make({ 'README.md': '', 'src/index.ts': '' });
   const folder = tmp.make({ 'notes.md': '', 'drafts/a.md': '' });
   const D = tmp.make(
@@ -72,6 +72,7 @@ function world(): World {
         'rs-zip',
         'type: remote-skill\nuri: https://h.test/skill.ZIP\nsubpath: pkg/zipped\nowner: me\n',
       ),
+      ...extra,
     }),
   );
   return { D, repo, folder };
@@ -846,6 +847,27 @@ describe('planMaterialization: step groups', () => {
       branch: 'release/1.2',
       depth: null,
       sparse: false,
+    });
+  });
+
+  it.each([
+    ['https://github.com/o/skills.git', ''],
+    ['https://github.com/o/skills.git', 'skills/source-folder'],
+    ['https://h.test/skill.tar.gz', 'pkg/source-folder'],
+    ['https://h.test/skill.zip', ''],
+  ])('skillName controls placement for %s with subpath %s', async (uri, subpath) => {
+    const w = world({
+      'reference/named.yaml': referenceYaml(
+        'named',
+        `type: remote-skill\nuri: ${uri}\nsubpath: ${subpath}\nskillName: actual-skill\nowner: me\n`,
+      ),
+    });
+    const p = await plan(w, adhoc(['reference/named'], { target: 'codex' }));
+    expect(p.materials['reference/named'].dest).toBe('.agents/skills/actual-skill');
+    expect(p.steps.find((s) => s.id === 'skill:reference/named')).toMatchObject({
+      kind: 'placeSkill',
+      path: '.agents/skills/actual-skill',
+      subpath: subpath || null,
     });
   });
 

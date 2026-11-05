@@ -80,6 +80,7 @@ const HAS_GIT = existsSync(path.join(E2E_GIT_FIXTURE, '.git'));
 const REPO_REF = 'e2e-run-repo';
 const LOCAL_REF = 'e2e-run-local';
 const FOLDER_REF = 'e2e-run-folder';
+const SKILL_REF = 'e2e-run-remote-skill';
 const TERMINAL = new Set(['done', 'failed', 'cancelled']);
 
 let base = '';
@@ -123,6 +124,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 test.afterAll(async ({ request }) => {
+  await request.delete(`${API}/reference/${SKILL_REF}`);
   await request.delete(`${API}/reference/${REPO_REF}`);
   await request.delete(`${API}/reference/${LOCAL_REF}`);
   await request.delete(`${API}/reference/${FOLDER_REF}`);
@@ -191,6 +193,56 @@ const readManifest = (dir: string): Manifest =>
 const isLink = (p: string): boolean =>
   lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink() === true;
 const stable = (m: Manifest): unknown => ({ ...m, generatedAt: '', jobId: '' });
+
+test('remote skills use skillName in the dry run, installed folder, document and manifest', async ({
+  request,
+}) => {
+  test.skip(!HAS_GIT, 'git is not installed');
+  for (const subpath of ['', 'docs']) {
+    const reference = {
+      name: SKILL_REF,
+      description: 'Remote skill with an explicit folder name.',
+      type: 'remote-skill',
+      uri: E2E_GIT_URI,
+      subpath,
+      skillName: 'actual-skill',
+      owner: 'not-me',
+    };
+    const response =
+      subpath === ''
+        ? await request.post(`${API}/reference`, { data: reference })
+        : await request.put(`${API}/reference/${SKILL_REF}`, { data: reference });
+    expect(response.status()).toBe(subpath === '' ? 201 : 200);
+    const dir = freshDir(`named-skill-${subpath || 'root'}`);
+    const body = {
+      recipe: recipe(dir, {
+        target: 'codex',
+        items: [{ dataset: 'reference', slug: SKILL_REF }],
+        overrides: [],
+        output: { dir },
+      }),
+    };
+    const planned = await plan(request, body);
+    expect(planned.status()).toBe(200);
+    const dry = (await planned.json()) as PlanBody;
+    expect(dry.steps.find((s) => s.id === `skill:reference/${SKILL_REF}`)?.path).toBe(
+      '.agents/skills/actual-skill',
+    );
+    expect(dry.document.markdown).toContain('.agents/skills/actual-skill/');
+    const job = await runToEnd(request, body);
+    expect(job.status).toBe('done');
+    expect(readFileSync(path.join(dir, '.agents/skills/actual-skill/SKILL.md'), 'utf8')).toContain(
+      'name: actual-skill\n',
+    );
+    expect(existsSync(path.join(dir, '.agents/skills', SKILL_REF))).toBe(false);
+    expect(readManifest(dir).entries).toContainEqual(
+      expect.objectContaining({ path: '.agents/skills/actual-skill', type: 'skill' }),
+    );
+    expect(readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')).toContain(
+      '.agents/skills/actual-skill/',
+    );
+  }
+});
 
 test.describe('plan (dry run)', () => {
   test('200 with the step list, blocking, dirState and the relative document; nothing is written', async ({

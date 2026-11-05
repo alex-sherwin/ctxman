@@ -1351,6 +1351,28 @@ describe('remote-repo modes', () => {
 });
 
 describe('remote-skill modes', () => {
+  it.each([
+    ['https://github.com/o/skills.git', ''],
+    ['https://github.com/o/skills.git', 'skills/source-folder'],
+    ['https://h.test/skill.tar.gz', 'pkg/source-folder'],
+    ['https://h.test/skill.zip', ''],
+  ])('install commands use skillName for %s with subpath %s', async (uri, subpath) => {
+    const { D } = world({
+      'reference/named.yaml': referenceYaml(
+        'named',
+        `type: remote-skill\nuri: ${uri}\nsubpath: ${subpath}\nskillName: actual-skill\nowner: me\n`,
+      ),
+    });
+    const result = await render(
+      D,
+      recipe({ target: 'codex', items: [{ dataset: 'reference', slug: 'named' }] }),
+    );
+    expect(result.markdown).toContain('Install this skill into `.agents/skills/actual-skill/`');
+    expect(result.markdown).not.toContain('.agents/skills/named');
+    if (subpath !== '')
+      expect(result.markdown).toContain(`.ctxman/tmp/named/${subpath} .agents/skills/actual-skill`);
+  });
+
   const only = (slug: string, r: Record<string, unknown> = {}): RecipeData =>
     recipe({ layout: 'flat', items: [{ dataset: 'reference', slug }], ...r });
   const lead = (n: string) =>

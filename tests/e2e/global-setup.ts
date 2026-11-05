@@ -51,6 +51,12 @@ function gitFixture(): void {
   mkdirSync(path.join(E2E_GIT_FIXTURE, 'docs'), { recursive: true });
   writeFileSync(path.join(E2E_GIT_FIXTURE, 'README.md'), '# fixture repo\n');
   writeFileSync(path.join(E2E_GIT_FIXTURE, 'docs', 'guide.md'), '# Guide\n');
+  for (const folder of [E2E_GIT_FIXTURE, path.join(E2E_GIT_FIXTURE, 'docs')]) {
+    writeFileSync(
+      path.join(folder, 'SKILL.md'),
+      '---\nname: actual-skill\ndescription: Fixture skill.\n---\n\n# Fixture skill\n',
+    );
+  }
   mkdirSync(E2E_LOCAL_FIXTURE, { recursive: true });
   writeFileSync(path.join(E2E_LOCAL_FIXTURE, 'README.md'), '# local folder\n');
   const steps = [

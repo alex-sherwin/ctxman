@@ -1010,10 +1010,15 @@ export function resolveMaterialOptions(
 // ---------------------------------------------------------------- destinations (posix, relative to the working directory)
 
 /**
- * Last segment of the trimmed subpath when it is a valid entry name (agentskills.io: the folder name must equal
- * the skill `name`), else `slug` (D14).
+ * Explicit skillName (must equal the SKILL.md `name`), else the last segment of the trimmed subpath when it is
+ * a valid entry name, else `slug` (D14).
  */
-export function remoteSkillDirName(slug: string, subpath: string | null | undefined): string {
+export function remoteSkillDirName(
+  slug: string,
+  subpath: string | null | undefined,
+  skillName?: string,
+): string {
+  if (skillName !== undefined) return skillName;
   const clean = (subpath ?? '').trim().replace(/^\/+|\/+$/g, '');
   const last = clean.split('/').pop() ?? '';
   return NAME_PATTERN.test(last) && last.length <= NAME_MAX_LENGTH ? last : slug;
@@ -1022,7 +1027,7 @@ export function remoteSkillDirName(slug: string, subpath: string | null | undefi
 /**
  * okf `<dataset>/<slug>` · skill `<skillsDir>/<slug>` · local/remote repo `repos/<name>` · local folder
  * `folders/<name>` · remote-skill `<skillsDir>/<remoteSkillDirName>`; `<name>` = `itemDirName(slug, folder)`, the
- * reference's optional `folder`, else the slug.
+ * reference's optional `folder`, else the slug. Remote skills use `skillName` when set, else the existing subpath/slug default.
  */
 export function materialDest(
   kind: ItemKind,
@@ -1031,6 +1036,7 @@ export function materialDest(
   target: InflateTarget,
   subpath?: string | null,
   folder?: string | null,
+  skillName?: string,
 ): string {
   switch (familyOf(kind)) {
     case 'okf':
@@ -1043,7 +1049,7 @@ export function materialDest(
     case 'local-folder':
       return `${FOLDERS_DIR}/${itemDirName(slug, folder)}`;
     case 'remote-skill':
-      return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath)}`;
+      return `${TARGETS[target].skillsDir}/${remoteSkillDirName(slug, subpath, skillName)}`;
     case 'snippet':
       // never placed (its only material is `none`); a stable path keeps the switch exhaustive
       return `snippet/${slug}`;

@@ -57,3 +57,5 @@ Every request is computed from the disk:
 3. Writes are atomic (a temp file in the same folder, then rename) and clear the entry index memo.
 
 The history of the problems this design removed (a watching content layer that reloaded the page after every write, a build snapshot that went stale, a one-second lag before a written file was visible) is in the analysis [astro-dev-full-reload-on-save](ctxman:rca/astro-dev-full-reload-on-save) and the background note [astro-content-layer](ctxman:kb/astro-content-layer). Back to the [overview](/index.md) or on to [Context forge](/concepts/context-forge.md).
+
+A remote-skill reference can set `skillName` to the name in its `SKILL.md` frontmatter. Both document-only install commands and working-directory runs use it for the installed folder. Omitting it keeps the existing naming defaults.

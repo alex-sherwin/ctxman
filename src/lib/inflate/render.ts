@@ -457,7 +457,7 @@ function cloneCommands(
 /** The commands that clone or download a remote skill into the skills directory. */
 function installCommands(
   seg: ItemSegment,
-  ref: { uri: string; subpath?: string | null | undefined },
+  ref: { uri: string; subpath?: string | null | undefined; skillName?: string },
   env: Env,
 ): string[] {
   const subpath = cleanSubpath(ref.subpath);
@@ -465,7 +465,7 @@ function installCommands(
   const skills = env.target.skillsDir;
   const n = seg.slug;
   const tmp = `.ctxman/tmp/${n}`;
-  const dest = `${skills}/${n}`;
+  const dest = `${skills}/${ref.skillName ?? n}`;
   const q = shQuote;
   let lines: string[];
   if (!archive) {

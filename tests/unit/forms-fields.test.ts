@@ -61,6 +61,7 @@ describe('FORM_FIELDS / visibleFields', () => {
       'type',
       'uri',
       'subpath',
+      'skillName',
       'owner',
       'info',
     ]);
@@ -270,6 +271,23 @@ describe('normalizeDoc', () => {
         folder: 'R.git',
       }).ok,
     ).toBe(true);
+  });
+
+  it('reference: skillName is shown only for remote skills, trimmed, and dropped when empty or switching types', () => {
+    const base = { name: 'r', description: 'd', owner: 'me', uri: 'https://example.com/r.git' };
+    const skill = { ...base, type: 'remote-skill' };
+    expect(ids(visibleFields('reference', skill))).toContain('skillName');
+    expect(normalizeDoc('reference', { ...skill, skillName: ' actual-skill ' })).toMatchObject({
+      skillName: 'actual-skill',
+    });
+    expect(normalizeDoc('reference', { ...skill, skillName: ' ' })).not.toHaveProperty('skillName');
+    const repo = { ...base, type: 'remote-repo', skillName: 'actual-skill' };
+    expect(ids(visibleFields('reference', repo))).not.toContain('skillName');
+    expect(normalizeDoc('reference', repo)).not.toHaveProperty('skillName');
+    expect(validateDoc('reference', { ...skill, skillName: '../x' })).toMatchObject({
+      ok: false,
+      errors: { skillName: expect.any(String) },
+    });
   });
 
   it('reference: info is kept as written (last key) and dropped when blank', () => {

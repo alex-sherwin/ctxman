@@ -228,6 +228,13 @@
         "info": {
           "type": "string"
         },
+        "skillName": {
+          "type": "string",
+          "description": "must be kebab-case: a-z, 0-9, single hyphens, no leading/trailing hyphen (max 64 characters)",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64,
+          "patternErrorMessage": "must be kebab-case: a-z, 0-9, single hyphens, no leading/trailing hyphen (max 64 characters)"
+        },
         "subpath": {
           "anyOf": [
             {

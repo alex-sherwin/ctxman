@@ -552,6 +552,26 @@ describe('tools on a private corpus copy (tests that write)', () => {
         await ok('list-entries', { dataset: 'reference', type: 'local-repo' }),
       );
       expect(named.entries.find((e) => e.slug === 'mcp-named')?.folder).toBe('Named.Repo');
+      await ok('create-entry', {
+        dataset: 'reference',
+        name: 'mcp-named-skill',
+        description: 'Skill with an explicit folder name.',
+        type: 'remote-skill',
+        uri: 'https://github.com/acme/skills.git',
+        skillName: 'actual-skill',
+      });
+      expect(read('reference', 'mcp-named-skill.yaml')).toContain('skillName: actual-skill\n');
+      await fails(
+        'create-entry',
+        {
+          dataset: 'reference',
+          name: 'mcp-wrong-skill',
+          description: 'x',
+          type: 'remote-repo',
+          skillName: 'actual-skill',
+        },
+        'invalid',
+      );
       await fails(
         'create-entry',
         {

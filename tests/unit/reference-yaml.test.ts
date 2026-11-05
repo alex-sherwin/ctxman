@@ -40,6 +40,15 @@ const remoteSkill = parse({
 });
 
 describe('serializeReference', () => {
+  it('round-trips skillName after subpath and includes it in equality', () => {
+    const named = parse({ ...remoteSkill, skillName: 'actual-skill' });
+    const yaml = serializeReference(named);
+    expect(yaml).toContain('subpath: skills/skill-creator\nskillName: actual-skill\nowner:');
+    expect(parseReference(parseYaml(yaml))).toEqual({ ok: true, reference: named });
+    expect(sameReference(named, remoteSkill)).toBe(false);
+    expect(sameReference(named, parse({ ...named }))).toBe(true);
+  });
+
   it('writes folder right after subpath; a remote skill rejects it', () => {
     const named = parse({ ...local, folder: 'my-repo.main' });
     expect(Object.keys(referenceToYamlObject(named))).toEqual([

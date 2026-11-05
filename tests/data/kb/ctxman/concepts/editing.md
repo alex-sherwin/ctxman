@@ -70,6 +70,8 @@ On a context page each link's notes, on a recipe page the preamble and each mark
 
 ## Forms for reference, snippet, context and recipe (DataForm)
 
+Remote skill references have an optional **Skill folder name** (`skillName`) field in their create/edit form and YAML editor. Set it to the `name` in the remote `SKILL.md` frontmatter (kebab-case, max 64 characters). Inflate uses it for the installed folder; leaving it empty preserves the current naming defaults. Other reference types hide and drop this field.
+
 The four yaml datasets can be managed in the UI without the Forge or Inflate:
 
 * `/new/reference`, `/new/snippet`, `/new/context` and `/new/recipe` create an entry. The okf datasets and skills have their own create form at `/new/<dataset>` (the NewEntryForm: name, title, description, state, tags and, for work items, "Part of project"; see [Adding entries](/concepts/adding-entries.md)).

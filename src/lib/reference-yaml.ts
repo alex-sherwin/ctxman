@@ -19,7 +19,8 @@ export interface ReferenceIssue {
 /**
  * The plain object that is serialized. Key order: name, description, type, path (local-repo, local-folder) | uri
  * (remote-*), subpath (omitted when undefined / null / ''), folder (local-repo, local-folder, remote-repo; omitted
- * when absent), owner, tags (omitted when empty), info (omitted when blank; a literal block scalar). Matches every
+ * when absent), skillName (remote-skill only; omitted when absent), owner, tags (omitted when empty), info
+ * (omitted when blank; a literal block scalar). Matches every
  * seed file and the `add:reference` template.
  */
 export function referenceToYamlObject(r: ReferenceData): Record<string, unknown> {
@@ -28,6 +29,7 @@ export function referenceToYamlObject(r: ReferenceData): Record<string, unknown>
   else doc.uri = r.uri;
   if (r.subpath !== undefined && r.subpath !== null && r.subpath !== '') doc.subpath = r.subpath;
   if ('folder' in r && r.folder !== undefined && r.folder !== '') doc.folder = r.folder;
+  if (r.type === 'remote-skill' && r.skillName !== undefined) doc.skillName = r.skillName;
   doc.owner = r.owner;
   if (r.tags.length > 0) doc.tags = r.tags;
   if (r.info !== undefined && r.info.trim() !== '') doc.info = r.info;

@@ -25,7 +25,8 @@ import {
 } from '../fixtures/agent-home.ts';
 import { cleanupCorpus, copyCorpus } from './fixtures/corpus.ts';
 
-const NOW = new Date('2026-10-21T12:00:00Z');
+// Keep imports on or after the newest corpus log date so prepending their log entries stays chronological.
+const NOW = new Date('2026-11-04T12:00:00Z');
 let home: string;
 let env: NodeJS.ProcessEnv;
 let dataDir: string;

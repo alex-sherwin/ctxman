@@ -188,10 +188,10 @@ The material of an item is independent of its mode, and it comes first: it decid
 | reference `local-repo` | Symlink, Worktree (`worktree`), Copy, Don't place | `repos/<name>` |
 | reference `local-folder` | Symlink, Copy, Don't place | `folders/<name>` |
 | reference `remote-repo` | Clone (`clone`), Don't place | `repos/<name>` |
-| reference `remote-skill` | Clone for a git URI or Download for an archive (`install`), Don't place | `<skillsDir>/<last subpath segment, or the slug>` |
+| reference `remote-skill` | Clone for a git URI or Download for an archive (`install`), Don't place | `<skillsDir>/<skillName, else last valid subpath segment, else the slug>` |
 | `snippet` | Don't place (`none`, the only one) | none: the markdown is written into the context file |
 
-`<name>` is the reference's optional `folder` (one folder name: a letter or digit first, then letters, digits, `. _ -`; not for remote skills), else the reference name. Two items that end up with the same destination collide (`dest-collision`, the first wins).
+`<name>` is the reference's optional `folder` (one folder name: a letter or digit first, then letters, digits, `. _ -`; not for remote skills), else the reference name. A remote skill’s optional `skillName` overrides the installed folder name and must match its `SKILL.md` frontmatter `name` (kebab-case, at most 64 characters). Set it in the reference’s "Skill folder name" field, YAML, `--skill-name` or MCP `create-entry`; it applies to git and archive sources. Document-only install commands also use it, retaining their current reference-name default when omitted. Two items that end up with the same destination collide (`dest-collision`, the first wins).
 
 A snippet has nothing to place, so the UI shows no Place control for it, the run settings do not list it, and it never counts as "not placed" (neither in the placement summary nor in the `## Placement` legend).
 

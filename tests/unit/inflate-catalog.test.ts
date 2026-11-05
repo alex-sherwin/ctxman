@@ -1141,4 +1141,22 @@ describe('materials (plans/INFLATE_V2_SPEC.md §3)', () => {
       '.agents/skills/ksa-modding',
     );
   });
+
+  it('remote skillName overrides both the reference slug and subpath for every target', () => {
+    for (const target of ['claude-code', 'codex', 'generic'] as const) {
+      for (const subpath of [undefined, 'skills/source-folder']) {
+        expect(
+          materialDest(
+            'remote-skill',
+            'reference',
+            'repo',
+            target,
+            subpath,
+            undefined,
+            'actual-skill',
+          ),
+        ).toBe(`${target === 'claude-code' ? '.claude' : '.agents'}/skills/actual-skill`);
+      }
+    }
+  });
 });

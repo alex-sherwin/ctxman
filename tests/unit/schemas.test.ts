@@ -316,6 +316,22 @@ describe('reference (discriminated by type)', () => {
   const remote = { ...base, type: 'remote-repo', uri: 'git@github.com:o/r.git', owner: 'not-me' };
   const skill = { ...base, type: 'remote-skill', uri: 'https://x.test/r.git' };
 
+  it('skillName is optional, remote-skill only, and follows skill name rules', () => {
+    for (const uri of ['https://x.test/r.git', 'https://x.test/r.zip']) {
+      expect(validate(referenceSchema, { ...skill, uri, skillName: 'actual-skill' }).success).toBe(
+        true,
+      );
+    }
+    for (const skillName of ['', null, 'Bad-Name', 'a/b', '../x', 'a--b', 'x'.repeat(65)]) {
+      expect(validate(referenceSchema, { ...skill, skillName }).success, String(skillName)).toBe(
+        false,
+      );
+    }
+    for (const ref of [local, folder, remote]) {
+      expect(validate(referenceSchema, { ...ref, skillName: 'actual-skill' }).success).toBe(false);
+    }
+  });
+
   it('accepts each variant', () => {
     expect(validate(referenceSchema, local).success).toBe(true);
     expect(validate(referenceSchema, folder).success).toBe(true);

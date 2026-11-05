@@ -207,6 +207,21 @@ describe('planNewEntry skill, reference, context', () => {
     });
   });
 
+  it('reference: optional skillName is trimmed and restricted to remote skills', () => {
+    const [file] = planNewEntry('reference', 'repo', {
+      now,
+      type: 'remote-skill',
+      skillName: ' actual-skill ',
+    });
+    expect(file.content).toContain('skillName: actual-skill\nowner: me\n');
+    expect(() =>
+      planNewEntry('reference', 'repo', { now, type: 'remote-repo', skillName: 'actual-skill' }),
+    ).toThrow('skillName only applies to remote-skill');
+    expect(() =>
+      planNewEntry('reference', 'repo', { now, type: 'remote-skill', skillName: '../x' }),
+    ).toThrow('Invalid skillName');
+  });
+
   it('recipe: name, description, defaults, empty contexts and items', () => {
     const [file] = planNewEntry('recipe', 'brief', { now, description: 'A brief' });
     expect(file).toEqual({

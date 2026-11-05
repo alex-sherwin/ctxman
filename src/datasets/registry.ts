@@ -159,7 +159,7 @@ export type LocalReferenceType = (typeof LOCAL_REFERENCE_TYPES)[number];
 /**
  * Reference types that take an optional `folder`: the folder name Context Inflate places them under in a working
  * directory (`repos/<folder>`, `folders/<folder>`) instead of the reference name. A remote skill is installed
- * under its skill name, so it has none.
+ * under its optional `skillName` instead, which follows the entry name rules.
  */
 export const FOLDER_REFERENCE_TYPES = ['local-repo', 'local-folder', 'remote-repo'] as const;
 export type FolderReferenceType = (typeof FOLDER_REFERENCE_TYPES)[number];

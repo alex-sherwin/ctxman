@@ -54,6 +54,39 @@ async function replaceYaml(page: Page, text: string): Promise<void> {
 }
 
 test.describe('/new/reference', () => {
+  test('remote skills accept a Skill folder name matching SKILL.md and keep it when edited', async ({
+    page,
+  }) => {
+    const name = uniqueName('e2e-skill-ref');
+    created.push({ ds: 'reference', name });
+    await openNew(page, 'reference');
+    const skillName = page.getByTestId('dform-field-skillName');
+    await expect(skillName).toHaveCount(0);
+    await page.getByTestId('dform-field-name').fill(name);
+    await page.getByTestId('dform-field-description').fill('A skill with a separate install name');
+    await pick(page, 'type', 'Remote skill');
+    await expect(skillName).toBeVisible();
+    await page.getByTestId('dform-field-uri').fill('https://github.com/org/skills.git');
+    await page.getByTestId('dform-field-subpath').fill('skills/source-folder');
+    await skillName.fill('../invalid');
+    await page.getByTestId('dform-save').click();
+    await expect(page.locator('.ck-field__error')).toContainText('must be kebab-case');
+    await skillName.fill('actual-skill');
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    await expect(page.getByTestId('reference-skill-name')).toContainText('actual-skill');
+    expect(readYaml(`reference/${name}.yaml`)).toMatchObject({
+      skillName: 'actual-skill',
+      subpath: 'skills/source-folder',
+    });
+    await page.goto(`/reference/${name}?edit=1`);
+    await expect(skillName).toHaveValue('actual-skill');
+    await skillName.fill('updated-skill');
+    await page.getByTestId('dform-save').click();
+    await expect(page).toHaveURL(new RegExp(`/reference/${name}$`));
+    expect(readYaml(`reference/${name}.yaml`)).toMatchObject({ skillName: 'updated-skill' });
+  });
+
   test('the type switch swaps the path field for uri', async ({ page }) => {
     await openNew(page, 'reference');
     await expect(page.getByTestId('dform')).toHaveAttribute('data-mode', 'create');

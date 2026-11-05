@@ -34,6 +34,8 @@ export interface NewEntryOptions {
   subpath?: string;
   /** reference local-repo, local-folder, remote-repo only: the Inflate folder name (`repos/<folder>`). */
   folder?: string;
+  /** reference remote-skill only: installed folder name, matching SKILL.md frontmatter `name`. */
+  skillName?: string;
   owner?: Owner;
   /** snippet only: the markdown (default: a TODO placeholder). */
   markdown?: string;
@@ -238,6 +240,15 @@ function referenceDoc(
       throw new Error(`Invalid folder "${folder}": ${REFERENCE_FOLDER_MESSAGE}`);
     }
     doc.folder = folder;
+  }
+  const skillName = opts.skillName?.trim();
+  if (opts.skillName !== undefined && type !== 'remote-skill') {
+    throw new Error('skillName only applies to remote-skill references');
+  }
+  if (skillName) {
+    if (!isValidName(skillName))
+      throw new Error(`Invalid skillName "${skillName}": ${NAME_HELP} (max 64 characters)`);
+    doc.skillName = skillName;
   }
   doc.owner = owner;
   return doc;

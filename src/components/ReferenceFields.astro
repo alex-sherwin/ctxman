@@ -3,6 +3,7 @@ import { OWNER_LABELS, REFERENCE_TYPE_LABELS } from '../datasets/registry.ts';
 import { isLocalReference } from '../datasets/schemas.ts';
 import type { ReferenceData } from '../datasets/schemas.ts';
 import { classifyRemoteUri } from '../lib/remote-uri.ts';
+import { remoteSkillDirName } from '../lib/inflate/catalog.ts';
 import { INFO_TARGET_ID } from '../ui/markdown/targets.ts';
 import CopyButton from './CopyButton.astro';
 import EmptyState from './EmptyState.astro';
@@ -73,6 +74,19 @@ const placeUnder = data.type === 'local-folder' ? 'folders/' : 'repos/';
             <span class="cx-subtle">{data.name} (the reference name)</span>
           )}{" "}
           <span class="cx-subtle">in an Inflate working directory: {placeUnder}{folder ?? data.name}</span>
+        </dd>
+      </>
+    )
+  }
+  {
+    data.type === 'remote-skill' && (
+      <>
+        <dt class="ck-label">Skill folder name</dt>
+        <dd data-testid="reference-skill-name">
+          <code class="cx-mono">{remoteSkillDirName(data.name, data.subpath, data.skillName)}</code>{" "}
+          <span class="cx-subtle">
+            {data.skillName === undefined ? '(default) ' : ''}must match the name in SKILL.md frontmatter
+          </span>
         </dd>
       </>
     )

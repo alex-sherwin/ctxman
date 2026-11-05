@@ -439,7 +439,15 @@ export function planMaterialization(input: MaterialPlanInput): MaterialPlan {
       dest:
         material === 'none'
           ? null
-          : materialDest(kind, seg.dataset, seg.slug, target, ref?.subpath, seg.meta.folder),
+          : materialDest(
+              kind,
+              seg.dataset,
+              seg.slug,
+              target,
+              ref?.subpath,
+              seg.meta.folder,
+              ref?.type === 'remote-skill' ? ref.skillName : undefined,
+            ),
       sourceAbs:
         family === 'okf' || family === 'skill'
           ? (ic?.rootAbs ?? null)

@@ -1,5 +1,8 @@
 # Update log
 
+## 2026-11-04
+* **Fix**: Remote skill references accept optional `skillName`, the installed folder name matching `SKILL.md` frontmatter, in the form, YAML, add script (`--skill-name`) and MCP. Inflate commands, dry runs and actual runs honor it for git and archive sources; omitted values keep the existing defaults. [Datasets](/concepts/datasets.md), [Adding entries](/concepts/adding-entries.md), [Editing](/concepts/editing.md), [Context inflate](/concepts/context-inflate.md), [Runtime modes](/concepts/runtime-modes.md) and [MCP server](/concepts/mcp.md) follow.
+
 ## 2026-10-21
 * **Add**: The `t` key logs time: on a task, feature, bug or rca entry page (and its document pages) it opens the Log time dialog of the entry, from a new clock button in the Details panel's Time row ("Entry time" on a document page); on those lists it opens it for the row with the keyboard focus, else the row under the pointer. One shared dialog; the entry page shows the result in its status line and reloads. [Keyboard shortcuts](/concepts/keyboard-shortcuts.md), [Editing](/concepts/editing.md) and [Datasets](/concepts/datasets.md) follow.
 * **Update**: Wider reading layout: the page content grows to 2000px (was 1600px), the rendered markdown to 126ch (was 84ch), and the "On this page" nav takes its natural width with 24px on both sides (up to 22rem, at most a quarter of the column) instead of a fixed 15rem plus a 32px gap. [Editing](/concepts/editing.md) follows.

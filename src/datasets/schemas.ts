@@ -321,6 +321,8 @@ export const remoteSkillReferenceSchema = type({
   uri: type('string > 0').narrow(skillUriNarrow).describe(SKILL_URI_MESSAGE),
   /** Skill folder inside the repo / archive; '' / null / absent = root. */
   'subpath?': 'string | null',
+  /** Installed folder name; must match the SKILL.md frontmatter `name`. */
+  'skillName?': nameSchema,
   owner,
   'info?': referenceInfo,
 });

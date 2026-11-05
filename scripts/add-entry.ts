@@ -1,7 +1,7 @@
 // Scaffold a new entry of any dataset from its template. Never overwrites.
 // Usage: node scripts/add-entry.ts <dataset> <name> [--title T] [--description D] [--state S] [--issue-key K]
 //          [--type local-repo|local-folder|remote-repo|remote-skill] [--path P] [--uri U] [--subpath S]
-//          [--folder F] [--owner me|not-me] [--markdown M] [--json]
+//          [--folder F] [--skill-name N] [--owner me|not-me] [--markdown M] [--json]
 // Exit 0 created, 1 refused / self-check failed, 2 usage error.
 import path from 'node:path';
 import process from 'node:process';
@@ -13,6 +13,7 @@ import {
   isFolderReferenceType,
   isLocalReferenceType,
   isReferenceType,
+  isValidName,
   OWNERS,
   REFERENCE_FOLDER_MESSAGE,
   REFERENCE_FOLDER_PATTERN,
@@ -49,6 +50,7 @@ Options:
   --subpath S        reference: repo-relative sub folder
   --folder F         reference local-repo, local-folder, remote-repo: folder name in an Inflate working
                      directory (repos/F, folders/F) instead of the reference name
+  --skill-name N     reference remote-skill: installed folder name; must match SKILL.md frontmatter name
   --owner O          reference: ${OWNERS.join(' | ')} (default: me)
   --markdown M       snippet: the markdown text (default: "TODO: write the <title> snippet.")
   --json             print one JSON document instead of text
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
         uri: { type: 'string' },
         subpath: { type: 'string' },
         folder: { type: 'string' },
+        'skill-name': { type: 'string' },
         owner: { type: 'string' },
         markdown: { type: 'string' },
         json: { type: 'boolean' },
@@ -117,9 +120,9 @@ async function main(): Promise<void> {
   }
   const dataset = datasetArg;
 
-  const referenceOnly = (['type', 'path', 'uri', 'subpath', 'folder', 'owner'] as const).filter(
-    (k) => values[k] !== undefined,
-  );
+  const referenceOnly = (
+    ['type', 'path', 'uri', 'subpath', 'folder', 'skill-name', 'owner'] as const
+  ).filter((k) => values[k] !== undefined);
   if (dataset !== 'reference' && referenceOnly.length > 0) {
     return finish(EXIT_USAGE, `--${referenceOnly[0]} only applies to the reference dataset`);
   }
@@ -158,6 +161,14 @@ async function main(): Promise<void> {
         `invalid --folder "${values.folder.trim()}": ${REFERENCE_FOLDER_MESSAGE}`,
       );
     }
+    if (values['skill-name'] !== undefined) {
+      if (type !== 'remote-skill') {
+        return finish(EXIT_USAGE, '--skill-name only applies to --type remote-skill');
+      }
+      if (!isValidName(values['skill-name'].trim())) {
+        return finish(EXIT_USAGE, 'invalid --skill-name: use kebab-case (max 64 characters)');
+      }
+    }
     if (values.uri !== undefined) {
       const uri = values.uri.trim();
       if (type === 'remote-repo' && !isGitUri(uri)) {
@@ -188,6 +199,7 @@ async function main(): Promise<void> {
       ...(values.uri === undefined ? {} : { uri: values.uri }),
       ...(values.subpath === undefined ? {} : { subpath: values.subpath }),
       ...(values.folder === undefined ? {} : { folder: values.folder }),
+      ...(values['skill-name'] === undefined ? {} : { skillName: values['skill-name'] }),
       ...(values.owner === undefined ? {} : { owner: values.owner as Owner }),
       ...(values.markdown === undefined ? {} : { markdown: values.markdown }),
       serverOrigin: resolveServerOrigin(),

@@ -22,6 +22,7 @@ import {
   uniqueName,
 } from './helpers.ts';
 import type { RecipeBody } from './helpers.ts';
+import { E2E_GIT_FIXTURE } from './paths.ts';
 
 /** The seed's composition in grouped layout (§10): the plan keys in order. */
 const SEED_ORDER = [
@@ -52,10 +53,13 @@ interface OverrideRow {
 
 /** Recipes created by the test in progress; removed after it, whatever happened. */
 const created = new Set<string>();
+const createdReferences = new Set<string>();
 
 test.afterEach(async ({ request }) => {
   for (const name of created) await deleteRecipeQuietly(request, name);
   created.clear();
+  for (const name of createdReferences) await request.delete(`${API}/reference/${name}`);
+  createdReferences.clear();
 });
 
 /** A fresh copy of the seed, removed after the test. */
@@ -750,7 +754,20 @@ test.describe('output directory', () => {
     page,
     request,
   }) => {
-    // reference/ctxman-repo (seed) is a local-repo: Symlink by default
+    test.skip(!existsSync(path.join(E2E_GIT_FIXTURE, '.git')), 'git is not installed');
+    // Use the local git fixture: the seed's ~/repos/ctxman need not exist on this machine.
+    const referenceName = uniqueName('e2e-worktree');
+    createdReferences.add(referenceName);
+    const reference = await request.post(`${API}/reference`, {
+      data: {
+        name: referenceName,
+        description: 'Worktree source fixture.',
+        type: 'local-repo',
+        path: E2E_GIT_FIXTURE,
+        owner: 'me',
+      },
+    });
+    expect(reference.status()).toBe(201);
     const name = uniqueName('e2e-rcp');
     created.add(name);
     const response = await request.post(`${API}/recipe`, {
@@ -760,21 +777,21 @@ test.describe('output directory', () => {
         target: 'claude-code',
         layout: 'grouped',
         contexts: [],
-        items: [{ dataset: 'reference', slug: 'ctxman-repo' }],
+        items: [{ dataset: 'reference', slug: referenceName }],
         overrides: [],
         output: { dir: `~/ctxman-inflate/${name}` },
       },
     });
     expect(response.status(), await response.text()).toBe(201);
     await openInflate(page, name);
-    const row = segmentRow(page, 'reference/ctxman-repo');
+    const row = segmentRow(page, `reference/${referenceName}`);
     await expect(row).toBeVisible();
     await expect(row.getByTestId('inflate-mopt-newBranch')).toHaveCount(0);
 
     await row.getByTestId('inflate-segment-material').click();
     await page.getByRole('option', { name: /^Worktree/ }).click();
     await expect(row.getByTestId('inflate-segment-material')).toContainText('Worktree');
-    await expect(row.getByTestId('inflate-segment-dest')).toContainText('repos/ctxman-repo');
+    await expect(row.getByTestId('inflate-segment-dest')).toContainText(`repos/${referenceName}`);
     // a worktree starts at Branch (empty = the HEAD of the repository) and may get a branch of its own
     await expect(row.getByTestId('inflate-mopt-branch')).toHaveAttribute(
       'placeholder',
@@ -789,7 +806,7 @@ test.describe('output directory', () => {
     await expect(page.getByText(/must be a branch or tag name/)).toBeVisible();
     await row.getByTestId('inflate-mopt-newBranch').fill('feature/work');
     await saveRecipe(page);
-    const saved = overrideIn(readRecipeYaml(name), 'reference/ctxman-repo');
+    const saved = overrideIn(readRecipeYaml(name), `reference/${referenceName}`);
     expect(saved).toMatchObject({
       material: 'worktree',
       materialOptions: { newBranch: 'feature/work' },
